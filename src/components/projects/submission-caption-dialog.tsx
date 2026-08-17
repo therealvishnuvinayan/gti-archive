@@ -54,7 +54,8 @@ type ContainedCaptionPopoverProps = {
 };
 
 const POPOVER_EDGE_GAP = 8;
-const POPOVER_ANCHOR_GAP = 12;
+const POPOVER_ANCHOR_GAP = 24;
+const CAPTION_MARKER_RADIUS = 16;
 
 function clampPixels(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -66,12 +67,14 @@ function ContainedCaptionPopover({
   position,
 }: ContainedCaptionPopoverProps) {
   const popoverRef = useRef<HTMLDivElement | null>(null);
+  const connectorRef = useRef<HTMLSpanElement | null>(null);
 
   useLayoutEffect(() => {
     const popover = popoverRef.current;
+    const connector = connectorRef.current;
     const frame = popover?.parentElement;
 
-    if (!popover || !frame) {
+    if (!popover || !connector || !frame) {
       return;
     }
 
@@ -103,30 +106,72 @@ function ContainedCaptionPopover({
       const abovePlacement = anchorY - popoverHeight - POPOVER_ANCHOR_GAP;
       const prefersRight = anchorX <= frameWidth / 2;
       const prefersBelow = anchorY <= frameHeight / 2;
+      const canPlaceRight = rightPlacement <= maximumLeft;
+      const canPlaceLeft = leftPlacement >= minimumLeft;
+      const canPlaceBelow = belowPlacement <= maximumTop;
+      const canPlaceAbove = abovePlacement >= minimumTop;
+      const horizontalPlacement = prefersRight
+        ? canPlaceRight
+          ? "right"
+          : canPlaceLeft
+            ? "left"
+            : null
+        : canPlaceLeft
+          ? "left"
+          : canPlaceRight
+            ? "right"
+            : null;
+      let placement: "right" | "left" | "below" | "above";
+      let left: number;
+      let top: number;
 
-      let left = prefersRight ? rightPlacement : leftPlacement;
-
-      if (left < minimumLeft || left > maximumLeft) {
-        const oppositeLeft = prefersRight ? leftPlacement : rightPlacement;
-        left =
-          oppositeLeft >= minimumLeft && oppositeLeft <= maximumLeft
-            ? oppositeLeft
-            : clampPixels(anchorX - popoverWidth / 2, minimumLeft, maximumLeft);
-      }
-
-      let top = prefersBelow ? belowPlacement : abovePlacement;
-
-      if (top < minimumTop || top > maximumTop) {
-        const oppositeTop = prefersBelow ? abovePlacement : belowPlacement;
+      if (horizontalPlacement) {
+        placement = horizontalPlacement;
+        left = placement === "right" ? rightPlacement : leftPlacement;
+        top = clampPixels(anchorY - popoverHeight / 2, minimumTop, maximumTop);
+      } else {
+        placement = prefersBelow
+          ? canPlaceBelow
+            ? "below"
+            : "above"
+          : canPlaceAbove
+            ? "above"
+            : "below";
+        left = clampPixels(anchorX - popoverWidth / 2, minimumLeft, maximumLeft);
         top =
-          oppositeTop >= minimumTop && oppositeTop <= maximumTop
-            ? oppositeTop
-            : clampPixels(anchorY - popoverHeight / 2, minimumTop, maximumTop);
+          placement === "below"
+            ? clampPixels(belowPlacement, minimumTop, maximumTop)
+            : clampPixels(abovePlacement, minimumTop, maximumTop);
       }
 
       popover.style.left = `${Math.round(left)}px`;
       popover.style.top = `${Math.round(top)}px`;
       popover.style.visibility = "visible";
+      popover.dataset.captionPlacement = placement;
+
+      if (placement === "right" || placement === "left") {
+        const connectorStart =
+          placement === "right" ? anchorX + CAPTION_MARKER_RADIUS : left + popoverWidth;
+        const connectorEnd =
+          placement === "right" ? left : anchorX - CAPTION_MARKER_RADIUS;
+
+        connector.style.left = `${Math.round(connectorStart)}px`;
+        connector.style.top = `${Math.round(anchorY - 1)}px`;
+        connector.style.width = `${Math.max(0, Math.round(connectorEnd - connectorStart))}px`;
+        connector.style.height = "2px";
+      } else {
+        const connectorStart =
+          placement === "below" ? anchorY + CAPTION_MARKER_RADIUS : top + popoverHeight;
+        const connectorEnd =
+          placement === "below" ? top : anchorY - CAPTION_MARKER_RADIUS;
+
+        connector.style.left = `${Math.round(anchorX - 1)}px`;
+        connector.style.top = `${Math.round(connectorStart)}px`;
+        connector.style.width = "2px";
+        connector.style.height = `${Math.max(0, Math.round(connectorEnd - connectorStart))}px`;
+      }
+
+      connector.style.visibility = "visible";
     };
 
     placePopover();
@@ -144,16 +189,25 @@ function ContainedCaptionPopover({
   }, [position.xPercent, position.yPercent]);
 
   return (
-    <div
-      ref={popoverRef}
-      data-caption-interactive="true"
-      data-contained-caption-popover="true"
-      className={`absolute z-30 max-h-[calc(100%-1rem)] overflow-y-auto rounded-[16px] border border-[#d8e5d9] bg-white p-3 ${className}`}
-      style={{ visibility: "hidden" }}
-      onClick={(event) => event.stopPropagation()}
-    >
-      {children}
-    </div>
+    <>
+      <span
+        ref={connectorRef}
+        data-caption-connector="true"
+        className="pointer-events-none absolute z-[25] rounded-full bg-[#5b9b72]"
+        style={{ visibility: "hidden" }}
+        aria-hidden="true"
+      />
+      <div
+        ref={popoverRef}
+        data-caption-interactive="true"
+        data-contained-caption-popover="true"
+        className={`absolute z-30 max-h-[calc(100%-1rem)] overflow-y-auto rounded-[16px] border border-[#d8e5d9] bg-white p-3 ${className}`}
+        style={{ visibility: "hidden" }}
+        onClick={(event) => event.stopPropagation()}
+      >
+        {children}
+      </div>
+    </>
   );
 }
 
@@ -469,6 +523,21 @@ export function SubmissionCaptionDialog({
                     {activeCaption.body}
                   </p>
                 </ContainedCaptionPopover>
+              ) : null}
+
+              {pendingCaption ? (
+                <span
+                  data-caption-interactive="true"
+                  data-caption-marker="pending"
+                  className="absolute z-20 grid size-8 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-white/90 bg-[#1f7a4b] text-white shadow-[0_12px_22px_rgba(16,33,23,0.2)]"
+                  style={{
+                    left: `${pendingCaption.xPercent}%`,
+                    top: `${pendingCaption.yPercent}%`,
+                  }}
+                  aria-hidden="true"
+                >
+                  <MessageSquarePlus className="h-4 w-4" />
+                </span>
               ) : null}
 
               {pendingCaption ? (
