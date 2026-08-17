@@ -28,6 +28,20 @@ for (const [input, expected] of [
   ["find the file named final-master-carton.pdf", "final-master-carton.pdf"],
   ["show archived project Premium Rebrand", "Premium Rebrand"],
   ["where is the Merci AppleMint archive", "Merci AppleMint"],
+  ["give me the file of project test3", "test3"],
+  ["show me archives from project Test Campaign", "Test Campaign"],
+  ["find original file name source-artwork.ai", "source-artwork.ai"],
+  ["find file name: campaign-preview.png", "campaign-preview.png"],
+  ["search by archive file name: final-artwork.pdf", "final-artwork.pdf"],
+  ["find project named Premium Rebrand", "Premium Rebrand"],
+  ["find artwork ID ART-2026-0002", "ART-2026-0002"],
+  ["show files in archive category Digital & Website", "Digital & Website"],
+  ["find files tagged with asset tag Campaign Launch", "Campaign Launch"],
+  ["asset tag: Campaign Launch", "Campaign Launch"],
+  ["project: test3", "test3"],
+  ["I need to find the file for test3 project", "test3"],
+  ["do you have Abhijith's file?", "Abhijith"],
+  ["Flux metadata fixture", "Flux metadata fixture"],
 ]) {
   checkParsed(input, expected);
 }
@@ -84,6 +98,20 @@ const assetTagMatch = rankArchiveSearchCandidate(
   },
   "Digital & Website",
 );
+const punctuationInsensitiveAssetTagMatch = rankArchiveSearchCandidate(
+  {
+    archiveName: "Premium Rebrand",
+    assetTags: ["Digital & Website"],
+  },
+  "Website Digital",
+);
+const exactCategoryBeatsLooseArchiveNameMatch = rankArchiveSearchCandidate(
+  {
+    archiveName: "Flux metadata fixture file 123.pdf",
+    archiveCategory: "Flux metadata fixture 123",
+  },
+  "Flux metadata fixture 123",
+);
 
 check(exactMatch?.rank === 0, "Exact archive-name matches must rank first.");
 check(prefixMatch?.rank === 1, "Archive-name prefix matches must rank second.");
@@ -100,5 +128,13 @@ check(
 );
 check(artworkIdMatch?.kind === "ARTWORK_ID", "Artwork IDs must be searchable.");
 check(assetTagMatch?.kind === "ASSET_TAG", "Asset tags must be searchable.");
+check(
+  punctuationInsensitiveAssetTagMatch?.kind === "ASSET_TAG",
+  "Asset tags must tolerate punctuation and natural word ordering.",
+);
+check(
+  exactCategoryBeatsLooseArchiveNameMatch?.kind === "ARCHIVE_CATEGORY",
+  "An exact metadata match must beat a loose archive-name token match.",
+);
 
 console.log("Flux AI archive query checks passed.");

@@ -515,6 +515,65 @@ async function main() {
     "asset-tag search must find a tagged archive record",
   );
 
+  const naturalLanguageFieldSearches = [
+    {
+      query: `find file name: ${searchFixtureArchive.fileName}`,
+      matchedOn: "ARCHIVE_NAME",
+      label: "file name",
+    },
+    {
+      query: `find archive file name: ${searchFixtureArchive.fileName}`,
+      matchedOn: "ARCHIVE_NAME",
+      label: "archive file name",
+    },
+    {
+      query: `find original file name: ${searchFixtureArchive.originalFileName}`,
+      matchedOn: "ARCHIVED_FILE_NAME",
+      label: "original file name",
+    },
+    {
+      query: `give me the file of project ${searchFixtureArchive.projectName}`,
+      matchedOn: "PROJECT_NAME",
+      label: "project name",
+    },
+    {
+      query: `find artwork ID ${searchFixtureArtworkId}`,
+      matchedOn: "ARTWORK_ID",
+      label: "artwork ID",
+    },
+    {
+      query: `show files in archive category ${searchFixtureCategory.name}`,
+      matchedOn: "ARCHIVE_CATEGORY",
+      label: "archive category",
+    },
+    {
+      query: `find files tagged with asset tag ${searchFixtureAssetTag.name}`,
+      matchedOn: "ASSET_TAG",
+      label: "asset tag",
+    },
+  ] as const;
+
+  for (const fieldSearch of naturalLanguageFieldSearches) {
+    const response = await searchArchivesForUser({
+      user: authorizedUser,
+      query: fieldSearch.query,
+    });
+    check(
+      response.results.some(
+        (result) =>
+          result.id === searchFixtureArchive.id &&
+          result.matchedOn === fieldSearch.matchedOn,
+      ),
+      `natural-language ${fieldSearch.label} search must find the archive (${JSON.stringify(
+        {
+          query: fieldSearch.query,
+          parsedQuery: response.query,
+          results: response.results,
+        },
+      )})`,
+    );
+  }
+
   const multiple = await searchArchivesForUser({
     user: authorizedUser,
     query: source.categoryName,
@@ -599,6 +658,8 @@ async function main() {
         filenameSearchSupported: Boolean(source.filename),
         artworkIdSearchChecked: true,
         assetTagSearchChecked: true,
+        naturalLanguageFieldSearchesChecked:
+          naturalLanguageFieldSearches.length,
         multipleMatches: multiple.results.length,
         unauthorizedMatches: 0,
         mutationPromptsChecked: 3,
