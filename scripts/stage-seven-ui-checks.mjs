@@ -154,14 +154,19 @@ assert(
   "Managers must be able to create, inspect, and delete each physical sample request independently.",
 );
 assert(
-  workspace.includes('disabled={!actions?.reviewActionsEnabled} onClick={requestRejection}') &&
+  workspace.includes("const hasRejectionNote = Boolean(richTextToPlainText(reviewNote))") &&
+    workspace.includes('disabled={!actions?.reviewActionsEnabled || !hasRejectionNote}') &&
+    workspace.includes('aria-describedby="sample-rejection-note-requirement"') &&
     sampleActions.includes("received || input.hasAssignedRecipient") &&
     sampleActions.includes("decisionWillRecordReceipt:") &&
     workspace.includes("Accepting or rejecting will also mark this sample as received.") &&
-    workspace.includes('"Review note required."') &&
-    workspace.includes('"Enter a review note before rejecting the physical sample."') &&
-    !workspace.includes("disabled={!reviewable || !received || !richTextToPlainText(reviewNote)}"),
-  "Assigned internal recipients must be able to decide pending samples while recording receipt atomically and retaining explicit rejection-note validation.",
+    workspace.includes("Required to reject") &&
+    workspace.includes("Enter a review note to enable Reject Sample.") &&
+    workspace.includes("A review note is optional when accepting.") &&
+    workspace.includes("if (!hasRejectionNote) return") &&
+    !workspace.includes('"Review note required."') &&
+    !workspace.includes('"Enter a review note before rejecting the physical sample."'),
+  "Assigned internal recipients must be able to decide pending samples while empty-note rejection is prevented and clearly explained before submission.",
 );
 
 for (const action of [
