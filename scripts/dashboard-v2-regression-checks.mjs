@@ -47,6 +47,13 @@ for (const panel of [
 }
 
 assert(
+  /function ProjectsByStage[\s\S]*?<Panel className="self-start xl:col-span-3">/.test(
+    workspace,
+  ),
+  "Projects by Stage must keep its natural height instead of stretching to the My Work panel.",
+);
+
+assert(
   service.includes("deriveProjectListWorkflowState(project)"),
   "Dashboard must reuse centralized V2 project state derivation.",
 );

@@ -285,7 +285,7 @@ function UpcomingDeadlines({
 
 function ProjectsByStage({ stages }: { stages: DashboardSnapshot["stages"] }) {
   return (
-    <Panel className="xl:col-span-3">
+    <Panel className="self-start xl:col-span-3">
       <PanelHeader title="Projects by Stage" />
       <div className="overflow-x-auto px-5 py-6 sm:px-6">
         <div className="grid min-w-[680px] grid-cols-7">
