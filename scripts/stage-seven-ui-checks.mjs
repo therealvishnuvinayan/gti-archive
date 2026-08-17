@@ -112,12 +112,17 @@ assert(
   "The request must use the reusable date-only AppDatePicker.",
 );
 assert(
-  workspace.includes("max-h-[calc(100dvh-2rem)]") &&
-    workspace.includes("min-h-0 flex-1 overflow-y-auto overscroll-contain") &&
-    workspace.includes("shrink-0 border-t border-[#e4eae5] bg-white") &&
+  workspace.includes("h-[calc(100dvh-1.5rem)] max-h-[860px]") &&
+    workspace.includes("sm:h-[calc(100dvh-3rem)]") &&
+    workspace.includes("flex min-h-0 flex-1 flex-col overflow-hidden p-0") &&
+    workspace.includes("dashboard-scroll-thin min-h-0 min-w-0 flex-1 touch-pan-y overflow-x-hidden overflow-y-auto overscroll-contain") &&
+    workspace.includes("[scrollbar-gutter:stable]") &&
+    workspace.includes("relative z-10 shrink-0 border-t border-[#e4eae5] bg-white") &&
+    workspace.includes('className="grid min-w-0 gap-4"') &&
+    workspace.includes('className="grid min-w-0 gap-4 sm:grid-cols-2"') &&
     workspace.includes("footer={(") &&
     workspace.indexOf("footer={(") < workspace.indexOf('Round Name *'),
-  "The Request New Sample dialog must remain viewport-bounded, scroll its fields internally, and keep its action footer accessible.",
+  "The Request New Sample dialog must have a definite viewport-bounded height, contain horizontal overflow, scroll fields internally, and keep its action footer separate and accessible.",
 );
 assert(
   (workspace.match(/grid-cols-\[50px_minmax\(155px,1\.25fr\)_minmax\(130px,1fr\)_110px_110px_210px\]/g)?.length ?? 0) === 2 &&

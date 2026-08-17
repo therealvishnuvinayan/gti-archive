@@ -171,12 +171,12 @@ function ModalShell({
 }) {
   return (
     <div
-      className="fixed inset-0 z-[170] flex items-center justify-center overflow-hidden bg-[#112118]/45 px-4 py-4 backdrop-blur-[2px] sm:py-6"
+      className="fixed inset-0 z-[170] flex items-center justify-center overflow-hidden bg-[#112118]/45 p-3 backdrop-blur-[2px] sm:p-6"
       role="dialog"
       aria-modal="true"
     >
-      <Card className="flex max-h-[calc(100dvh-2rem)] w-full max-w-[680px] flex-col overflow-hidden rounded-[24px] border-[#dfe6df] shadow-[0_32px_80px_rgba(14,31,20,.22)] sm:max-h-[calc(100dvh-3rem)]">
-        <CardContent className="flex min-h-0 flex-1 flex-col p-0">
+      <Card className="flex h-[calc(100dvh-1.5rem)] max-h-[860px] w-full max-w-[680px] flex-col overflow-hidden rounded-[24px] border-[#dfe6df] shadow-[0_32px_80px_rgba(14,31,20,.22)] sm:h-[calc(100dvh-3rem)]">
+        <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
           <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[#e4eae5] px-6 py-5 sm:px-7 sm:py-6">
             <div>
               <p className="text-[10px] font-[760] uppercase tracking-[.12em] text-[#4c795e]">{eyebrow}</p>
@@ -187,11 +187,11 @@ function ModalShell({
               <X className="h-4 w-4" />
             </Button>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pb-6 sm:px-7 sm:pb-7">
+          <div className="dashboard-scroll-thin min-h-0 min-w-0 flex-1 touch-pan-y overflow-x-hidden overflow-y-auto overscroll-contain px-5 py-5 [scrollbar-gutter:stable] sm:px-7 sm:py-6">
             {children}
           </div>
           {footer ? (
-            <div className="shrink-0 border-t border-[#e4eae5] bg-white px-6 py-4 sm:px-7">
+            <div className="relative z-10 shrink-0 border-t border-[#e4eae5] bg-white px-5 py-4 sm:px-7">
               {footer}
             </div>
           ) : null}
@@ -336,14 +336,14 @@ function NewSampleRequestDialog({
       eyebrow={unit.name}
       onClose={closeWithAutosave}
       footer={(
-        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center">
-          <Button type="button" variant="secondary" disabled={pending} onClick={closeWithAutosave}>Cancel</Button>
-          <ProjectFormAutosaveStatus status={autosave.status} savedAt={autosave.savedAt} restoredAt={autosave.restoredAt} onRetry={() => void autosave.retry()} className="sm:mr-auto" />
-          <Button type="button" disabled={!ready || pending} onClick={sendRequest}><Send className="h-4 w-4" /> {pending ? "Sending..." : "Send Sample Request"}</Button>
+        <div className="flex w-full flex-col-reverse gap-3 sm:flex-row sm:items-center">
+          <Button type="button" variant="secondary" disabled={pending} onClick={closeWithAutosave} className="w-full sm:w-auto">Cancel</Button>
+          <ProjectFormAutosaveStatus status={autosave.status} savedAt={autosave.savedAt} restoredAt={autosave.restoredAt} onRetry={() => void autosave.retry()} className="w-full sm:mr-auto sm:w-auto" />
+          <Button type="button" disabled={!ready || pending} onClick={sendRequest} className="w-full sm:w-auto"><Send className="h-4 w-4" /> {pending ? "Sending..." : "Send Sample Request"}</Button>
         </div>
       )}
     >
-      <div className="mt-6 grid gap-4">
+      <div className="grid min-w-0 gap-4">
         <label className="space-y-2">
           <span className="text-[12px] font-[720] text-[#2d372f]">Round Name *</span>
           <Input value={name} maxLength={160} autoFocus placeholder="First Physical Packaging Sample" className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setName(event.target.value)} />
@@ -369,9 +369,9 @@ function NewSampleRequestDialog({
         </label>
         <div>
           <span className="text-[12px] font-[720] text-[#2d372f]">Who will provide this sample? *</span>
-          <div className="mt-2 grid gap-3 sm:grid-cols-2">
-            <button type="button" onClick={() => setRecipientRoute(ProductionHandoverRoute.PURCHASE_DEPARTMENT)} className={cn("rounded-[14px] border p-4 text-left", isInternal ? "border-[#72a184] bg-[#f1f8f3]" : "border-[#dfe6df]")}><strong className="block text-[12px] font-[740]">Internal</strong><span className="mt-1 block text-[10px] leading-4 text-[#6f7a72]">Select an existing project participant, such as Purchasing.</span></button>
-            <button type="button" onClick={() => setRecipientRoute(ProductionHandoverRoute.DIRECT_VENDOR)} className={cn("rounded-[14px] border p-4 text-left", !isInternal ? "border-[#72a184] bg-[#f1f8f3]" : "border-[#dfe6df]")}><strong className="block text-[12px] font-[740]">External</strong><span className="mt-1 block text-[10px] leading-4 text-[#6f7a72]">Send the request to a vendor or other external company.</span></button>
+          <div className="mt-2 grid min-w-0 gap-3 sm:grid-cols-2">
+            <button type="button" onClick={() => setRecipientRoute(ProductionHandoverRoute.PURCHASE_DEPARTMENT)} className={cn("min-w-0 rounded-[14px] border p-4 text-left", isInternal ? "border-[#72a184] bg-[#f1f8f3]" : "border-[#dfe6df]")}><strong className="block text-[12px] font-[740]">Internal</strong><span className="mt-1 block text-[10px] leading-4 text-[#6f7a72]">Select an existing project participant, such as Purchasing.</span></button>
+            <button type="button" onClick={() => setRecipientRoute(ProductionHandoverRoute.DIRECT_VENDOR)} className={cn("min-w-0 rounded-[14px] border p-4 text-left", !isInternal ? "border-[#72a184] bg-[#f1f8f3]" : "border-[#dfe6df]")}><strong className="block text-[12px] font-[740]">External</strong><span className="mt-1 block text-[10px] leading-4 text-[#6f7a72]">Send the request to a vendor or other external company.</span></button>
           </div>
         </div>
         {isInternal ? (
@@ -383,11 +383,11 @@ function NewSampleRequestDialog({
             </Select>
           </label>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="space-y-2"><span className="text-[12px] font-[720] text-[#2d372f]">Company Name *</span><Input value={recipientCompany} maxLength={160} placeholder="Enter company name" className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setRecipientCompany(event.target.value)} /></label>
-            <label className="space-y-2"><span className="text-[12px] font-[720] text-[#2d372f]">Contact Name *</span><Input value={recipientName} maxLength={160} placeholder="Enter contact name" className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setRecipientName(event.target.value)} /></label>
-            <label className="space-y-2"><span className="text-[12px] font-[720] text-[#2d372f]">Email *</span><Input type="email" value={recipientEmail} maxLength={320} placeholder="contact@company.com" aria-invalid={Boolean(recipientEmail) && !recipientEmailIsValid} className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setRecipientEmail(event.target.value)} />{recipientEmail && !recipientEmailIsValid ? <span className="block text-[9px] font-[600] text-[#b84e48]">Enter a valid email address.</span> : null}</label>
-            <label className="space-y-2"><span className="text-[12px] font-[720] text-[#2d372f]">Phone *</span><Input type="tel" value={recipientPhone} maxLength={50} placeholder="e.g. +971 50 123 4567" aria-invalid={Boolean(recipientPhone) && !normalizedRecipientPhone} className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setRecipientPhone(event.target.value)} />{recipientPhone && !normalizedRecipientPhone ? <span className="block text-[9px] font-[600] text-[#b84e48]">Enter an international number including country code.</span> : <span className="block text-[9px] text-[#77827a]">Include the international country code; the + is optional.</span>}</label>
+          <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+            <label className="min-w-0 space-y-2"><span className="text-[12px] font-[720] text-[#2d372f]">Company Name *</span><Input value={recipientCompany} maxLength={160} placeholder="Enter company name" className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setRecipientCompany(event.target.value)} /></label>
+            <label className="min-w-0 space-y-2"><span className="text-[12px] font-[720] text-[#2d372f]">Contact Name *</span><Input value={recipientName} maxLength={160} placeholder="Enter contact name" className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setRecipientName(event.target.value)} /></label>
+            <label className="min-w-0 space-y-2"><span className="text-[12px] font-[720] text-[#2d372f]">Email *</span><Input type="email" value={recipientEmail} maxLength={320} placeholder="contact@company.com" aria-invalid={Boolean(recipientEmail) && !recipientEmailIsValid} className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setRecipientEmail(event.target.value)} />{recipientEmail && !recipientEmailIsValid ? <span className="block text-[9px] font-[600] text-[#b84e48]">Enter a valid email address.</span> : null}</label>
+            <label className="min-w-0 space-y-2"><span className="text-[12px] font-[720] text-[#2d372f]">Phone *</span><Input type="tel" value={recipientPhone} maxLength={50} placeholder="e.g. +971 50 123 4567" aria-invalid={Boolean(recipientPhone) && !normalizedRecipientPhone} className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setRecipientPhone(event.target.value)} />{recipientPhone && !normalizedRecipientPhone ? <span className="block text-[9px] font-[600] text-[#b84e48]">Enter an international number including country code.</span> : <span className="block text-[9px] text-[#77827a]">Include the international country code; the + is optional.</span>}</label>
           </div>
         )}
         <div className="space-y-2">
