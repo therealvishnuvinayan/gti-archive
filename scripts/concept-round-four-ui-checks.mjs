@@ -144,6 +144,17 @@ for (const label of [
   assert(chat.includes(label), `Missing Round 4 chat designation UI: ${label}`);
 }
 assert(
+  chat.includes("Select exactly one submitted file below") &&
+    chat.includes('"Select this file"') &&
+    chat.includes("singleApprovalSelection={isStageFourConceptMode}") &&
+    chat.includes("selectedApprovalAttachmentId={selectedConceptApprovalCandidateId}") &&
+    chat.includes("setSelectedConceptApprovalCandidateId(attachment.id)") &&
+    chat.includes("aria-pressed={singleApprovalSelection ? isApprovalSelectionSelected : undefined}") &&
+    chat.includes("openConceptApprovalConfirmation(selectedConceptApprovalCandidate)") &&
+    chat.includes("!selectedConceptApprovalCandidate"),
+  "Stage 4 review must present submitted files as one mutually exclusive final-file choice followed by one approval action.",
+);
+assert(
   chat.includes("markStageFourFinalApprovedAttachmentAction") &&
     chat.includes("revokeStageFourFinalApprovedAttachmentAction") &&
     chat.includes("conceptMode.approvalRevocationEligibility.canRevoke") &&

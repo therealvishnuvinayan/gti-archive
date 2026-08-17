@@ -1750,7 +1750,10 @@ function AttachmentHistoryList({
   approvedFileLabel = "Approved Concept",
   markApprovedFileLabel = "Mark as Approved Concept",
   canApproveConceptFile = false,
+  singleApprovalSelection = false,
+  selectedApprovalAttachmentId,
   approvingConceptAttachmentId,
+  onSelectApprovalAttachment,
   onApproveConceptFile,
 }: {
   attachments: DisplayAttachmentRecord[];
@@ -1765,7 +1768,10 @@ function AttachmentHistoryList({
   approvedFileLabel?: string;
   markApprovedFileLabel?: string;
   canApproveConceptFile?: boolean;
+  singleApprovalSelection?: boolean;
+  selectedApprovalAttachmentId?: string | null;
   approvingConceptAttachmentId?: string | null;
+  onSelectApprovalAttachment?: (attachment: DisplayAttachmentRecord) => void;
   onApproveConceptFile?: (attachment: DisplayAttachmentRecord) => void;
 }) {
   if (attachments.length === 0) {
@@ -1785,6 +1791,8 @@ function AttachmentHistoryList({
         (() => {
           const isApprovedConcept =
             approvedConceptAttachmentId === attachment.id;
+          const isApprovalSelectionSelected =
+            selectedApprovalAttachmentId === attachment.id;
           const effectiveSubmissionStatus = attachment.isSubmission
             ? isApprovedConcept
               ? "APPROVED"
@@ -1807,7 +1815,11 @@ function AttachmentHistoryList({
             attachment.isSubmission &&
             (attachment.assetType === "REVISION_ORIGINAL" ||
               attachment.assetType === "STAGE_SUBMISSION") &&
-            Boolean(onApproveConceptFile);
+            Boolean(
+              singleApprovalSelection
+                ? onSelectApprovalAttachment
+                : onApproveConceptFile,
+            );
 
           const uploadedBy = currentUserDisplayName
             ? getActorDisplayName(attachment.uploadedBy, currentUserDisplayName)
@@ -1967,17 +1979,28 @@ function AttachmentHistoryList({
                   <Button
                     type="button"
                     size="sm"
-                    variant="outline"
+                    variant={isApprovalSelectionSelected ? "secondary" : "outline"}
                     className="h-8 rounded-full border-[#93bda0] px-3 text-[10px] font-[760] text-[#276f49]"
                     disabled={Boolean(approvingConceptAttachmentId)}
-                    onClick={() => onApproveConceptFile?.(attachment)}
+                    aria-pressed={singleApprovalSelection ? isApprovalSelectionSelected : undefined}
+                    onClick={() => {
+                      if (singleApprovalSelection) {
+                        onSelectApprovalAttachment?.(attachment);
+                        return;
+                      }
+                      onApproveConceptFile?.(attachment);
+                    }}
                   >
                     {approvingConceptAttachmentId === attachment.id ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     ) : (
                       <CheckCircle2 className="h-3.5 w-3.5" />
                     )}
-                    {markApprovedFileLabel}
+                    {singleApprovalSelection
+                      ? isApprovalSelectionSelected
+                        ? "Selected"
+                        : "Select this file"
+                      : markApprovedFileLabel}
                   </Button>
                 </div>
               ) : null}
@@ -2616,6 +2639,8 @@ export function ProjectChatWorkspace({
   const [reviewDialogError, setReviewDialogError] = useState<string | null>(null);
   const [approvedConceptAttachmentId, setApprovedConceptAttachmentId] =
     useState<string | null>(conceptMode?.approvedAttachmentId ?? null);
+  const [selectedConceptApprovalCandidateId, setSelectedConceptApprovalCandidateId] =
+    useState<string | null>(null);
   const [conceptApprovalTarget, setConceptApprovalTarget] =
     useState<DisplayAttachmentRecord | null>(null);
   const [conceptApprovalError, setConceptApprovalError] = useState<string | null>(
@@ -4395,6 +4420,17 @@ export function ProjectChatWorkspace({
         : undefined,
     [displayedMessages, reviewRevisionId],
   );
+  const canSelectStageFourFinalApprovedFile = Boolean(
+    reviewRevisionMessage &&
+      isStageFourConceptMode &&
+      conceptMode?.canReview &&
+      !conceptMode.isWorkflowCompleted &&
+      getEffectiveRevisionStatus(reviewRevisionMessage) !== "REJECTED",
+  );
+  const selectedConceptApprovalCandidate =
+    reviewRevisionMessage?.attachments?.find(
+      (attachment) => attachment.id === selectedConceptApprovalCandidateId,
+    ) ?? null;
   const reviewCompletionIsFinalStage =
     Boolean(activeStage?.id) && activeStage?.id === completionState.finalStageId;
   const canReviewLatestRevision =
@@ -5289,6 +5325,7 @@ export function ProjectChatWorkspace({
     setReviewRejectMode(false);
     setReviewRejectReason("");
     setReviewDialogError(null);
+    setSelectedConceptApprovalCandidateId(null);
   }
 
   function updateOptimisticAttachment(
@@ -6005,6 +6042,7 @@ export function ProjectChatWorkspace({
     setReviewRejectMode(false);
     setReviewCompleteDialogOpen(false);
     setReviewRejectReason("");
+    setSelectedConceptApprovalCandidateId(null);
     setReviewRevisionId(revisionEntryId);
   }
 
@@ -11031,20 +11069,34 @@ export function ProjectChatWorkspace({
               {reviewRevisionMessage.attachments?.length ? (
                 <div className="space-y-2">
                   <p className="text-[13px] font-semibold text-[#2d372f]">Submitted Files</p>
+                  {canSelectStageFourFinalApprovedFile ? (
+                    <div className="rounded-[14px] border border-[#cfe2d4] bg-[#f3faf5] px-3.5 py-3 text-[12px] leading-5 text-[#41644d]" role="note">
+                      Select exactly one submitted file below. Only that file will be designated as the Final Approved File for this concept.
+                    </div>
+                  ) : null}
                   <AttachmentHistoryList
                     attachments={reviewRevisionMessage.attachments}
                     approvedConceptAttachmentId={approvedConceptAttachmentId}
                     approvedFileLabel={approvedFileLabel}
                     markApprovedFileLabel={markApprovedFileLabel}
-                    canApproveConceptFile={Boolean(
-                      (conceptMode?.stageNumber === 3 ||
-                        conceptMode?.stageNumber === 4) &&
-                        conceptMode.canReview &&
-                        !conceptMode.isWorkflowCompleted &&
-                        getEffectiveRevisionStatus(reviewRevisionMessage) !==
-                          "REJECTED"
-                    )}
+                    canApproveConceptFile={
+                      isStageFourConceptMode
+                        ? canSelectStageFourFinalApprovedFile
+                        : Boolean(
+                            conceptMode?.stageNumber === 3 &&
+                              conceptMode.canReview &&
+                              !conceptMode.isWorkflowCompleted &&
+                              getEffectiveRevisionStatus(reviewRevisionMessage) !==
+                                "REJECTED",
+                          )
+                    }
+                    singleApprovalSelection={isStageFourConceptMode}
+                    selectedApprovalAttachmentId={selectedConceptApprovalCandidateId}
                     approvingConceptAttachmentId={approvingConceptAttachmentId}
+                    onSelectApprovalAttachment={(attachment) => {
+                      setConceptApprovalError(null);
+                      setSelectedConceptApprovalCandidateId(attachment.id);
+                    }}
                     onApproveConceptFile={openConceptApprovalConfirmation}
                     actionsDisabled={isProjectCompleted}
                     projectCategory={project.category}
@@ -11094,6 +11146,25 @@ export function ProjectChatWorkspace({
                   >
                     {isConceptMode ? "Request Changes" : "Request Revision"}
                   </Button>
+                  {canSelectStageFourFinalApprovedFile ? (
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        if (selectedConceptApprovalCandidate) {
+                          openConceptApprovalConfirmation(selectedConceptApprovalCandidate);
+                        }
+                      }}
+                      disabled={
+                        Boolean(pendingRevisionReviewId) ||
+                        Boolean(approvingConceptAttachmentId) ||
+                        !selectedConceptApprovalCandidate
+                      }
+                      className="w-full sm:w-auto"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      Mark Final Approved File
+                    </Button>
+                  ) : null}
                   {!activeStage?.isTasker ? (
                     <Button
                       type="button"
