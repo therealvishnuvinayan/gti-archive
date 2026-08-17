@@ -349,6 +349,7 @@ async function main() {
     data: {
       name: `Flux metadata fixture ${searchFixtureRunId}`,
       slug: `flux-metadata-fixture-${searchFixtureRunId}`,
+      description: `Flux category description ${searchFixtureRunId}`,
       isActive: true,
     },
   });
@@ -356,6 +357,7 @@ async function main() {
   const searchFixtureAssetTag = await prisma.assetTag.create({
     data: {
       name: `FluxAssetTag-${searchFixtureRunId}`,
+      description: `Flux asset tag description ${searchFixtureRunId}`,
     },
   });
   fixtureIds.searchAssetTagId = searchFixtureAssetTag.id;
@@ -365,13 +367,16 @@ async function main() {
       fileName: `Flux metadata fixture file ${searchFixtureRunId}.pdf`,
       originalFileName: `flux-metadata-original-${searchFixtureRunId}.pdf`,
       projectName: `Flux metadata project ${searchFixtureRunId}`,
+      projectCreatedBy: `Flux project creator ${searchFixtureRunId}`,
+      projectDate: new Date("2040-11-12T12:00:00.000Z"),
       archiveCategoryId: searchFixtureCategory.id,
-      mimeType: "application/pdf",
-      fileSize: 128,
+      mimeType: `application/x-flux-${searchFixtureRunId}`,
+      fileSize: 1_677_722,
       bucket: "flux-search-integration",
       storageKey: `flux-search-integration/metadata-${searchFixtureRunId}.pdf`,
       status: AttachmentStatus.READY,
       uploadedById: superAdmin.id,
+      uploadedAt: new Date("2042-02-03T12:00:00.000Z"),
       assetTags: {
         create: {
           tagId: searchFixtureAssetTag.id,
@@ -380,24 +385,42 @@ async function main() {
       artworkMetadata: {
         create: {
           artworkId: searchFixtureArtworkId,
-          titleWorkingName: "Flux metadata fixture",
-          versionRevision: "1",
-          languageMarket: "English",
-          artworkType: "Integration test",
-          brandSubBrand: "Flux",
-          colourSpace: "RGB",
-          fileFormats: "PDF",
-          creationDate: new Date(),
-          lastModifiedDate: new Date(),
-          archiveStatus: "Archived",
-          createdByName: "Flux integration check",
-          approvedByName: "Flux integration check",
-          clientBrandOwner: "Flux",
-          fontsUsed: "None",
-          imagesPhotography: "None",
-          illustrationsIcons: "None",
-          colourCodes: "None",
-          changeLog: "Created for archive search verification.",
+          titleWorkingName: `Flux title ${searchFixtureRunId}`,
+          versionRevision: `Flux revision ${searchFixtureRunId}`,
+          languageMarket: `Flux market ${searchFixtureRunId}`,
+          artworkType: `Flux artwork type ${searchFixtureRunId}`,
+          brandSubBrand: `Flux brand ${searchFixtureRunId}`,
+          productSku: `Flux-SKU-${searchFixtureRunId}`,
+          campaignProject: `Flux campaign ${searchFixtureRunId}`,
+          formatDimensions: `Flux dimensions ${searchFixtureRunId}`,
+          colourSpace: `Flux colour space ${searchFixtureRunId}`,
+          resolution: `Flux resolution ${searchFixtureRunId}`,
+          fileFormats: `Flux format ${searchFixtureRunId}`,
+          printProcess: `Flux print process ${searchFixtureRunId}`,
+          specialFinishes: `Flux finish ${searchFixtureRunId}`,
+          creationDate: new Date("2041-01-02T12:00:00.000Z"),
+          lastModifiedDate: new Date("2041-03-04T12:00:00.000Z"),
+          goLiveOnShelfDate: new Date("2041-05-06T12:00:00.000Z"),
+          expirySunsetDate: new Date("2041-07-08T12:00:00.000Z"),
+          archiveStatus: `Flux status ${searchFixtureRunId}`,
+          createdByName: `Flux creator ${searchFixtureRunId}`,
+          approvedByName: `Flux approver ${searchFixtureRunId}`,
+          approvedAt: new Date("2041-09-10T12:00:00.000Z"),
+          clientBrandOwner: `Flux owner ${searchFixtureRunId}`,
+          regulatoryClearance: `Flux clearance ${searchFixtureRunId}`,
+          fontsUsed: `Flux fonts ${searchFixtureRunId}`,
+          imagesPhotography: `Flux photography ${searchFixtureRunId}`,
+          illustrationsIcons: `Flux illustration ${searchFixtureRunId}`,
+          colourCodes: `Flux colour code ${searchFixtureRunId}`,
+          thirdPartyLogosIp: `Flux third party IP ${searchFixtureRunId}`,
+          supplierPrinter: `Flux printer ${searchFixtureRunId}`,
+          outputFilesList: `Flux output list ${searchFixtureRunId}`,
+          printProofRef: `Flux proof ${searchFixtureRunId}`,
+          packagingDielineRef: `Flux dieline ${searchFixtureRunId}`,
+          changeLog: `Flux change log ${searchFixtureRunId}`,
+          relatedArtworks: `Flux related artwork ${searchFixtureRunId}`,
+          briefSpecLink: `https://example.test/flux-spec-${searchFixtureRunId}`,
+          generalNotes: `Flux general notes ${searchFixtureRunId}`,
           archivedById: superAdmin.id,
         },
       },
@@ -500,7 +523,12 @@ async function main() {
       (result) =>
         result.id === searchFixtureArchive.id && result.matchedOn === "ARTWORK_ID",
     ),
-    "Artwork ID search must find a metadata-backed archive record",
+    `Artwork ID search must find a metadata-backed archive record (${JSON.stringify({
+      query: fixtureArtworkId.query,
+      fixtureId: searchFixtureArchive.id,
+      artworkId: searchFixtureArtworkId,
+      results: fixtureArtworkId.results,
+    })})`,
   );
 
   const fixtureAssetTag = await searchArchivesForUser({
@@ -571,6 +599,147 @@ async function main() {
           results: response.results,
         },
       )})`,
+    );
+  }
+
+  const comprehensiveMetadataSearches = [
+    ["title / working name", `Flux title ${searchFixtureRunId}`, "ARTWORK_METADATA"],
+    ["version / revision", `Flux revision ${searchFixtureRunId}`, "ARTWORK_METADATA"],
+    ["language / market", `Flux market ${searchFixtureRunId}`, "ARTWORK_METADATA"],
+    ["artwork type", `Flux artwork type ${searchFixtureRunId}`, "ARTWORK_METADATA"],
+    ["brand / sub-brand", `Flux brand ${searchFixtureRunId}`, "ARTWORK_METADATA"],
+    ["product SKU", `Flux-SKU-${searchFixtureRunId}`, "ARTWORK_METADATA"],
+    ["campaign / project", `Flux campaign ${searchFixtureRunId}`, "ARTWORK_METADATA"],
+    ["format / dimensions", `Flux dimensions ${searchFixtureRunId}`, "ARTWORK_METADATA"],
+    ["colour space", `Flux colour space ${searchFixtureRunId}`, "ARTWORK_METADATA"],
+    ["resolution", `Flux resolution ${searchFixtureRunId}`, "ARTWORK_METADATA"],
+    ["file formats", `Flux format ${searchFixtureRunId}`, "ARTWORK_METADATA"],
+    ["print process", `Flux print process ${searchFixtureRunId}`, "ARTWORK_METADATA"],
+    ["special finishes", `Flux finish ${searchFixtureRunId}`, "ARTWORK_METADATA"],
+    ["archive status", `Flux status ${searchFixtureRunId}`, "ARTWORK_METADATA"],
+    ["created by", `Flux creator ${searchFixtureRunId}`, "ARTWORK_METADATA"],
+    ["approved by", `Flux approver ${searchFixtureRunId}`, "ARTWORK_METADATA"],
+    ["client / brand owner", `Flux owner ${searchFixtureRunId}`, "ARTWORK_METADATA"],
+    ["regulatory clearance", `Flux clearance ${searchFixtureRunId}`, "ARTWORK_METADATA"],
+    ["fonts used", `Flux fonts ${searchFixtureRunId}`, "ARTWORK_METADATA"],
+    ["images / photography", `Flux photography ${searchFixtureRunId}`, "ARTWORK_METADATA"],
+    ["illustrations / icons", `Flux illustration ${searchFixtureRunId}`, "ARTWORK_METADATA"],
+    ["colour codes", `Flux colour code ${searchFixtureRunId}`, "ARTWORK_METADATA"],
+    ["third-party logos / IP", `Flux third party IP ${searchFixtureRunId}`, "ARTWORK_METADATA"],
+    ["supplier / printer", `Flux printer ${searchFixtureRunId}`, "ARTWORK_METADATA"],
+    ["output files list", `Flux output list ${searchFixtureRunId}`, "ARTWORK_METADATA"],
+    ["print proof ref", `Flux proof ${searchFixtureRunId}`, "ARTWORK_METADATA"],
+    ["packaging dieline ref", `Flux dieline ${searchFixtureRunId}`, "ARTWORK_METADATA"],
+    ["change log", `Flux change log ${searchFixtureRunId}`, "ARTWORK_METADATA"],
+    ["related artworks", `Flux related artwork ${searchFixtureRunId}`, "ARTWORK_METADATA"],
+    ["brief / spec link", `https://example.test/flux-spec-${searchFixtureRunId}`, "ARTWORK_METADATA"],
+    ["general notes", `Flux general notes ${searchFixtureRunId}`, "ARTWORK_METADATA"],
+    ["archive category description", `Flux category description ${searchFixtureRunId}`, "ARCHIVE_CATEGORY"],
+    ["asset tag description", `Flux asset tag description ${searchFixtureRunId}`, "ASSET_TAG"],
+    ["project created by", `Flux project creator ${searchFixtureRunId}`, "PROJECT_METADATA"],
+    ["MIME type", `application/x-flux-${searchFixtureRunId}`, "FILE_METADATA"],
+  ] as const;
+
+  for (const [field, value, matchedOn] of comprehensiveMetadataSearches) {
+    const response = await searchArchivesForUser({
+      user: authorizedUser,
+      query: `find archives with ${field} ${value}`,
+      limit: 20,
+    });
+    check(
+      response.results.some(
+        (result) =>
+          result.id === searchFixtureArchive.id &&
+          result.matchedOn === matchedOn &&
+          result.matchedFileName === searchFixtureArchive.fileName,
+      ),
+      `full archive field ${field} must find and identify the fixture file (${JSON.stringify({
+        query: response.query,
+        results: response.results,
+      })})`,
+    );
+  }
+
+  const dateAndSizeSearches = [
+    ["project date 12 November 2040", "Project date"],
+    ["creation date 2 January 2041", "Creation date"],
+    ["last modified 4 March 2041", "Last modified"],
+    ["go live 6 May 2041", "Go live / On shelf"],
+    ["expiry 8 July 2041", "Expiry / Sunset"],
+    ["approved at 10 September 2041", "Approved at"],
+    ["archived on 3 February 2042", "Archived date"],
+    ["file size 1.6 MB", "File size"],
+  ] as const;
+
+  for (const [filter, matchedField] of dateAndSizeSearches) {
+    const response = await searchArchivesForUser({
+      user: authorizedUser,
+      query: `find ${searchFixtureArchive.projectName} ${filter}`,
+      limit: 20,
+    });
+    check(
+      response.results.some(
+        (result) =>
+          result.id === searchFixtureArchive.id &&
+          (result.matchedField === matchedField ||
+            result.matchedFileName === searchFixtureArchive.fileName),
+      ),
+      `${matchedField} filtering must find the fixture (${JSON.stringify({
+        query: response.query,
+        results: response.results,
+      })})`,
+    );
+  }
+
+  const combinedFields = await searchArchivesForUser({
+    user: authorizedUser,
+    query: `show archives from project ${searchFixtureArchive.projectName} with colour space Flux colour space ${searchFixtureRunId} created by Flux creator ${searchFixtureRunId}`,
+    limit: 20,
+  });
+  check(
+    combinedFields.results.some(
+      (result) =>
+        result.id === searchFixtureArchive.id &&
+        result.matchedFileName === searchFixtureArchive.fileName,
+    ),
+    "one natural-language request must combine project and multiple artwork metadata filters",
+  );
+
+  const archivedBy = await searchArchivesForUser({
+    user: authorizedUser,
+    query: `find ${searchFixtureArchive.projectName} archived by ${superAdmin.name ?? superAdmin.email}`,
+    limit: 20,
+  });
+  check(
+    archivedBy.results.some(
+      (result) =>
+        result.id === searchFixtureArchive.id &&
+        result.matchedOn === "ARCHIVED_BY",
+    ),
+    "archived-by search must filter against the archive uploader",
+  );
+
+  const screenshotArchivedByPhrase = await searchArchivesForUser({
+    user: authorizedUser,
+    query: `show me the files that Archived by ${superAdmin.name ?? superAdmin.email}`,
+    limit: 20,
+  });
+  check(
+    screenshotArchivedByPhrase.results.some(
+      (result) => result.matchedOn === "ARCHIVED_BY",
+    ),
+    "the reported 'files that Archived by' wording must return archived-by matches",
+  );
+
+  for (const misspelling of ["archieve", "archieves", "achiewes"]) {
+    const response = await searchArchivesForUser({
+      user: authorizedUser,
+      query: `find the ${misspelling} from ${searchFixtureArchive.projectName} project`,
+      limit: 20,
+    });
+    check(
+      response.results.some((result) => result.id === searchFixtureArchive.id),
+      `common archive misspelling '${misspelling}' must not prevent project search`,
     );
   }
 
@@ -660,6 +829,10 @@ async function main() {
         assetTagSearchChecked: true,
         naturalLanguageFieldSearchesChecked:
           naturalLanguageFieldSearches.length,
+        comprehensiveArchiveFieldsChecked:
+          comprehensiveMetadataSearches.length + dateAndSizeSearches.length,
+        combinedFieldSearchesChecked: 2,
+        reportedPhraseRegressionsChecked: 4,
         multipleMatches: multiple.results.length,
         unauthorizedMatches: 0,
         mutationPromptsChecked: 3,

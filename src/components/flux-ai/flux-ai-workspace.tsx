@@ -32,10 +32,15 @@ type FluxArchiveSearchResponse = {
 const matchLabels: Record<ArchiveSearchResult["matchedOn"], string> = {
   ARCHIVE_NAME: "Archive name",
   PROJECT_NAME: "Project name",
+  PROJECT_METADATA: "Project metadata",
   ARCHIVE_CATEGORY: "Archive category",
   ARCHIVED_FILE_NAME: "Archived filename",
+  FILE_METADATA: "File metadata",
   ARTWORK_ID: "Artwork ID",
+  ARTWORK_METADATA: "Artwork metadata",
   ASSET_TAG: "Asset tag",
+  ARCHIVED_BY: "Archived by",
+  ARCHIVED_DATE: "Archive date",
 };
 
 function formatArchivedDate(value: string) {
@@ -95,10 +100,18 @@ function ArchiveResultCard({ result }: { result: ArchiveSearchResult }) {
         </div>
         <div className="min-w-0">
           <dt className="text-[#748077]">Matched</dt>
-          <dd className="mt-0.5 font-[700] text-[#263129]">
-            {matchLabels[result.matchedOn]}
+          <dd className="mt-0.5 truncate font-[700] text-[#263129]">
+            {result.matchedField || matchLabels[result.matchedOn]}
           </dd>
         </div>
+        {result.matchedValue ? (
+          <div className="min-w-0 sm:col-span-2">
+            <dt className="text-[#748077]">Matched value</dt>
+            <dd className="mt-0.5 line-clamp-2 font-[700] text-[#263129]">
+              {result.matchedValue}
+            </dd>
+          </div>
+        ) : null}
         {result.matchedFileName ? (
           <div className="min-w-0 sm:col-span-2">
             <dt className="text-[#748077]">Matched file</dt>
@@ -229,7 +242,7 @@ export function FluxAiWorkspace({
               Flux AI
             </h1>
             <p className="mt-2 text-[15px] text-[#626d64]">
-              Search your archived projects and files.
+              Find files using any archive, project, or artwork metadata.
             </p>
           </div>
         </div>
@@ -243,7 +256,7 @@ export function FluxAiWorkspace({
               ref={inputRef}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search archives..."
+              placeholder="Try: RGB files archived by Admin One in August 2026"
               aria-label="Search archives"
               autoComplete="off"
               maxLength={240}

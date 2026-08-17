@@ -1,4 +1,5 @@
 import {
+  buildArchiveSearchPlan,
   parseArchiveSearchQuery,
   rankArchiveSearchCandidate,
 } from "../src/lib/archive-search-query";
@@ -112,6 +113,80 @@ const exactCategoryBeatsLooseArchiveNameMatch = rankArchiveSearchCandidate(
   },
   "Flux metadata fixture 123",
 );
+const artworkMetadataMatch = rankArchiveSearchCandidate(
+  {
+    archiveName: "Production package",
+    entries: [
+      {
+        field: "Colour space",
+        value: "RGB",
+        kind: "ARTWORK_METADATA",
+        matchedFileName: "production-package.pdf",
+      },
+    ],
+  },
+  "colour space RGB",
+);
+const archivedByMatch = rankArchiveSearchCandidate(
+  {
+    archiveName: "Production package",
+    entries: [
+      {
+        field: "Archived by",
+        value: "Admin One",
+        kind: "ARCHIVED_BY",
+      },
+    ],
+  },
+  "archived by Admin One",
+);
+const combinedMetadataMatch = rankArchiveSearchCandidate(
+  {
+    archiveName: "Production package",
+    projectName: "test3",
+    entries: [
+      {
+        field: "Colour space",
+        value: "RGB",
+        kind: "ARTWORK_METADATA",
+        matchedFileName: "production-package.pdf",
+      },
+      {
+        field: "Created by",
+        value: "User Two",
+        kind: "ARTWORK_METADATA",
+        matchedFileName: "production-package.pdf",
+      },
+    ],
+  },
+  "test3 with colour space RGB created by User Two",
+);
+
+const archiveDatePlan = buildArchiveSearchPlan(
+  "archives archived on 17 August 2026",
+);
+const filenameDatePlan = buildArchiveSearchPlan(
+  "ChatGPT Image Jun 12, 2026, 07_30_15 PM.png",
+);
+const archivedBySentencePlan = buildArchiveSearchPlan(
+  "that Archived by Admin One",
+);
+const misspelledArchiveSentencePlan = buildArchiveSearchPlan(
+  "archieves from test1",
+);
+const archivedBySentenceMatch = rankArchiveSearchCandidate(
+  {
+    archiveName: "test1",
+    entries: [
+      {
+        field: "Archived by",
+        value: "Admin One",
+        kind: "ARCHIVED_BY",
+      },
+    ],
+  },
+  "that Archived by Admin One",
+);
 
 check(exactMatch?.rank === 0, "Exact archive-name matches must rank first.");
 check(prefixMatch?.rank === 1, "Archive-name prefix matches must rank second.");
@@ -135,6 +210,37 @@ check(
 check(
   exactCategoryBeatsLooseArchiveNameMatch?.kind === "ARCHIVE_CATEGORY",
   "An exact metadata match must beat a loose archive-name token match.",
+);
+check(
+  artworkMetadataMatch?.kind === "ARTWORK_METADATA" &&
+    artworkMetadataMatch.matchedFileName === "production-package.pdf",
+  "Every expanded artwork metadata field must identify its matching file.",
+);
+check(
+  archivedByMatch?.kind === "ARCHIVED_BY",
+  "Archived-by wording must match archive ownership data.",
+);
+check(
+  combinedMetadataMatch?.matchedFileName === "production-package.pdf",
+  "One natural-language query must be able to combine project and artwork fields.",
+);
+check(
+  archiveDatePlan.date?.field === "ARCHIVED" &&
+    archiveDatePlan.date.start.toISOString().startsWith("2026-08-17"),
+  "Archive date wording must produce an archived-date filter.",
+);
+check(
+  filenameDatePlan.date === null && filenameDatePlan.terms.includes("chatgpt"),
+  "A date embedded in a filename must remain filename text, not become a date filter.",
+);
+check(
+  archivedBySentencePlan.terms.join(" ") === "admin one" &&
+    archivedBySentenceMatch?.kind === "ARCHIVED_BY",
+  "Conversational archived-by wording must not turn 'that' into a search filter.",
+);
+check(
+  misspelledArchiveSentencePlan.terms.join(" ") === "test1",
+  "Common archive misspellings such as 'archieves' must not outrank the real project term.",
 );
 
 console.log("Flux AI archive query checks passed.");

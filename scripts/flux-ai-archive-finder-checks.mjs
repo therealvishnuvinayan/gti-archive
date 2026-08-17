@@ -96,8 +96,8 @@ for (const snippet of [
 const workspace = read("src/components/flux-ai/flux-ai-workspace.tsx");
 for (const snippet of [
   "Flux AI",
-  "Search your archived projects and files.",
-  'placeholder="Search archives..."',
+  "Find files using any archive, project, or artwork metadata.",
+  'placeholder="Try: RGB files archived by Admin One in August 2026"',
   "Recent searches",
   "initialRecentSearches",
   "selectRecentSearch",
@@ -109,6 +109,10 @@ for (const snippet of [
   'fetch("/api/flux-ai/search"',
   "Open Archive",
   "Matched file",
+  "Matched value",
+  'ARTWORK_METADATA: "Artwork metadata"',
+  'ARCHIVED_BY: "Archived by"',
+  'ARCHIVED_DATE: "Archive date"',
   'ARTWORK_ID: "Artwork ID"',
   'ASSET_TAG: "Asset tag"',
 ]) {

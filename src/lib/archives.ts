@@ -74,8 +74,11 @@ import {
   type ArchiveArtworkMetadataMissingGroup,
 } from "@/lib/archive-artwork-metadata";
 import {
+  buildArchiveSearchPlan,
   parseArchiveSearchQuery,
   rankArchiveSearchCandidate,
+  type ArchiveSearchDateFilter,
+  type ArchiveSearchEntry,
   type ArchiveSearchMatchKind,
 } from "@/lib/archive-search-query";
 
@@ -116,6 +119,8 @@ export type ArchiveSearchResult = {
   archivedAt: string;
   matchedOn: ArchiveSearchMatchKind;
   matchedFileName: string | null;
+  matchedField: string;
+  matchedValue: string;
   href: string;
 };
 
@@ -2333,189 +2338,550 @@ function buildManualArchiveSearchBaseWhere(
   };
 }
 
-function getArchiveSearchTerms(query: string) {
-  const terms = query.split(/\s+/).filter(Boolean);
+const archiveArtworkMetadataSearchSelect = {
+  ...archiveArtworkMetadataSummarySelect,
+  archivedBy: {
+    select: {
+      name: true,
+      email: true,
+    },
+  },
+  createdAt: true,
+  updatedAt: true,
+} satisfies Prisma.ArchiveArtworkMetadataSelect;
 
-  return terms.length ? terms : [query];
+const archiveArtworkMetadataTextFields = [
+  "artworkId",
+  "titleWorkingName",
+  "versionRevision",
+  "languageMarket",
+  "artworkType",
+  "brandSubBrand",
+  "productSku",
+  "campaignProject",
+  "formatDimensions",
+  "colourSpace",
+  "resolution",
+  "fileFormats",
+  "printProcess",
+  "specialFinishes",
+  "archiveStatus",
+  "createdByName",
+  "approvedByName",
+  "clientBrandOwner",
+  "regulatoryClearance",
+  "fontsUsed",
+  "imagesPhotography",
+  "illustrationsIcons",
+  "colourCodes",
+  "thirdPartyLogosIp",
+  "supplierPrinter",
+  "outputFilesList",
+  "printProofRef",
+  "packagingDielineRef",
+  "changeLog",
+  "relatedArtworks",
+  "briefSpecLink",
+  "generalNotes",
+] as const;
+
+function archiveSearchContains(term: string) {
+  return {
+    contains: term,
+    mode: "insensitive" as const,
+  };
 }
 
-function buildArchivedFileNameSearchWhere(
-  user: ArchiveAccessUser,
-  query: string,
-): Prisma.ArchivedProjectFileWhereInput {
+function archiveSearchDateRange(date: ArchiveSearchDateFilter) {
   return {
-    AND: [
-      getArchivedProjectFileAccessWhere(user),
-      ...getArchiveSearchTerms(query).map((term) => ({
-        OR: [
-          {
-            finalArchiveFileName: {
-              contains: term,
-              mode: "insensitive" as const,
-            },
+    gte: date.start,
+    lt: date.end,
+  };
+}
+
+function buildArtworkMetadataTextSearchWhere(
+  term: string,
+): Prisma.ArchiveArtworkMetadataWhereInput {
+  const containsTerm = archiveSearchContains(term);
+
+  return {
+    OR: [
+      ...archiveArtworkMetadataTextFields.map((field) => ({
+        [field]: containsTerm,
+      })),
+      {
+        archivedBy: {
+          is: {
+            OR: [
+              { name: containsTerm },
+              { email: containsTerm },
+            ],
           },
-          {
-            originalFileName: {
-              contains: term,
-              mode: "insensitive" as const,
-            },
+        },
+      },
+    ] as Prisma.ArchiveArtworkMetadataWhereInput[],
+  };
+}
+
+function buildArtworkMetadataDateSearchWhere(
+  date: ArchiveSearchDateFilter,
+): Prisma.ArchiveArtworkMetadataWhereInput {
+  const range = archiveSearchDateRange(date);
+  const fields =
+    date.field === "CREATED"
+      ? ["creationDate", "createdAt"]
+      : date.field === "MODIFIED"
+        ? ["lastModifiedDate", "updatedAt"]
+        : date.field === "APPROVED"
+          ? ["approvedAt"]
+          : date.field === "GO_LIVE"
+            ? ["goLiveOnShelfDate"]
+            : date.field === "EXPIRY"
+              ? ["expirySunsetDate"]
+              : date.field === "ARCHIVED" || date.field === "PROJECT"
+                ? []
+                : [
+                    "creationDate",
+                    "lastModifiedDate",
+                    "goLiveOnShelfDate",
+                    "expirySunsetDate",
+                    "approvedAt",
+                    "createdAt",
+                    "updatedAt",
+                  ];
+
+  return {
+    OR: fields.map((field) => ({ [field]: range })) as Prisma.ArchiveArtworkMetadataWhereInput[],
+  };
+}
+
+function buildArchivedFileTermSearchWhere(
+  term: string,
+): Prisma.ArchivedProjectFileWhereInput {
+  const containsTerm = archiveSearchContains(term);
+
+  return {
+    OR: [
+      { finalArchiveFileName: containsTerm },
+      { originalFileName: containsTerm },
+      { mimeType: containsTerm },
+      {
+        archivedBy: {
+          is: {
+            OR: [{ name: containsTerm }, { email: containsTerm }],
           },
-          {
-            artworkMetadata: {
-              is: {
-                artworkId: {
-                  contains: term,
-                  mode: "insensitive" as const,
-                },
-              },
-            },
-          },
-          {
-            sourceAttachment: {
-              is: {
-                assetTags: {
-                  some: {
-                    tag: {
-                      is: {
-                        name: {
-                          contains: term,
-                          mode: "insensitive" as const,
-                        },
-                      },
-                    },
+        },
+      },
+      {
+        sourceAttachment: {
+          is: {
+            assetTags: {
+              some: {
+                tag: {
+                  is: {
+                    OR: [
+                      { name: containsTerm },
+                      { description: containsTerm },
+                    ],
                   },
                 },
               },
             },
           },
-        ],
-      })),
+        },
+      },
     ],
   };
 }
 
+function buildArchivedFileDateSearchWhere(
+  date: ArchiveSearchDateFilter,
+): Prisma.ArchivedProjectFileWhereInput {
+  const range = archiveSearchDateRange(date);
+  const OR: Prisma.ArchivedProjectFileWhereInput[] = [];
+
+  if (date.field === "ARCHIVED" || date.field === "ANY") {
+    OR.push({ archivedAt: range });
+  }
+  if (date.field === "CREATED" || date.field === "ANY") {
+    OR.push({ createdAt: range });
+  }
+  if (date.field === "MODIFIED" || date.field === "ANY") {
+    OR.push({ updatedAt: range });
+  }
+  return { OR };
+}
+
+function buildProjectArchiveTermSearchWhere(
+  term: string,
+  matchingArchiveIds: string[],
+): Prisma.ProjectArchiveWhereInput {
+  const containsTerm = archiveSearchContains(term);
+
+  return {
+    OR: [
+      { projectName: containsTerm },
+      { projectCategory: containsTerm },
+      { projectTag: containsTerm },
+      { project: { is: { name: containsTerm } } },
+      {
+        archiveCategory: {
+          is: {
+            OR: [
+              { name: containsTerm },
+              { slug: containsTerm },
+              { description: containsTerm },
+              { parent: { is: { name: containsTerm } } },
+            ],
+          },
+        },
+      },
+      {
+        archivedBy: {
+          is: {
+            OR: [{ name: containsTerm }, { email: containsTerm }],
+          },
+        },
+      },
+      ...(matchingArchiveIds.length
+        ? [{ id: { in: matchingArchiveIds } }]
+        : []),
+    ],
+  };
+}
+
+function buildProjectArchiveDateSearchWhere(
+  date: ArchiveSearchDateFilter,
+  matchingArchiveIds: string[],
+): Prisma.ProjectArchiveWhereInput {
+  const range = archiveSearchDateRange(date);
+  const OR: Prisma.ProjectArchiveWhereInput[] = [];
+
+  if (date.field === "ARCHIVED" || date.field === "ANY") {
+    OR.push({ archivedAt: range });
+  }
+  if (date.field === "CREATED" || date.field === "ANY") {
+    OR.push({ createdAt: range });
+  }
+  if (date.field === "MODIFIED" || date.field === "ANY") {
+    OR.push({ updatedAt: range });
+  }
+  if (matchingArchiveIds.length) OR.push({ id: { in: matchingArchiveIds } });
+
+  return { OR };
+}
+
 function buildProjectArchiveBroadSearchWhere(
   user: ArchiveAccessUser,
-  query: string,
+  plan: ReturnType<typeof buildArchiveSearchPlan>,
+  pointers: ArchiveSearchPointers,
 ): Prisma.ProjectArchiveWhereInput {
+  const prefilterTerm = getArchiveSearchPrefilterTerm(plan);
+
   return {
     AND: [
       buildProjectArchiveSearchBaseWhere(user),
-      ...getArchiveSearchTerms(query).map((term) => ({
-        OR: [
-          {
-            projectName: {
-              contains: term,
-              mode: "insensitive" as const,
-            },
-          },
-          {
-            project: {
-              is: {
-                name: {
-                  contains: term,
-                  mode: "insensitive" as const,
-                },
-              },
-            },
-          },
-          {
-            archiveCategory: {
-              is: {
-                name: {
-                  contains: term,
-                  mode: "insensitive" as const,
-                },
-              },
-            },
-          },
-          {
-            files: {
-              some: buildArchivedFileNameSearchWhere(user, term),
-            },
-          },
-        ],
-      })),
+      ...(prefilterTerm
+        ? [buildProjectArchiveTermSearchWhere(prefilterTerm, pointers.termProjectArchiveIds)]
+        : []),
+      ...(plan.date
+        ? [buildProjectArchiveDateSearchWhere(plan.date, pointers.dateProjectArchiveIds)]
+        : []),
+      ...(plan.fileSize
+        ? [{ id: { in: pointers.sizeProjectArchiveIds } }]
+        : []),
     ],
+  };
+}
+
+function buildManualArchiveTermSearchWhere(
+  term: string,
+  matchingManualArchiveIds: string[],
+): Prisma.ManualArchiveFileWhereInput {
+  const containsTerm = archiveSearchContains(term);
+
+  return {
+    OR: [
+      { fileName: containsTerm },
+      { originalFileName: containsTerm },
+      { projectName: containsTerm },
+      { projectCreatedBy: containsTerm },
+      { mimeType: containsTerm },
+      { uploadedBy: { is: { OR: [{ name: containsTerm }, { email: containsTerm }] } } },
+      ...(matchingManualArchiveIds.length
+        ? [{ id: { in: matchingManualArchiveIds } }]
+        : []),
+      {
+        assetTags: {
+          some: {
+            tag: {
+              is: {
+                OR: [
+                  { name: containsTerm },
+                  { description: containsTerm },
+                ],
+              },
+            },
+          },
+        },
+      },
+      {
+        archiveCategory: {
+          is: {
+            OR: [
+              { name: containsTerm },
+              { slug: containsTerm },
+              { description: containsTerm },
+              { parent: { is: { name: containsTerm } } },
+            ],
+          },
+        },
+      },
+    ],
+  };
+}
+
+function buildManualArchiveDateSearchWhere(
+  date: ArchiveSearchDateFilter,
+  matchingManualArchiveIds: string[],
+): Prisma.ManualArchiveFileWhereInput {
+  const range = archiveSearchDateRange(date);
+  const OR: Prisma.ManualArchiveFileWhereInput[] = [];
+
+  if (date.field === "ARCHIVED" || date.field === "ANY") OR.push({ uploadedAt: range });
+  if (date.field === "CREATED" || date.field === "ANY") OR.push({ createdAt: range });
+  if (date.field === "MODIFIED" || date.field === "ANY") OR.push({ updatedAt: range });
+  if (date.field === "PROJECT" || date.field === "ANY") OR.push({ projectDate: range });
+  if (matchingManualArchiveIds.length) OR.push({ id: { in: matchingManualArchiveIds } });
+
+  return { OR };
+}
+
+type ArchiveSearchPointers = {
+  termProjectArchiveIds: string[];
+  dateProjectArchiveIds: string[];
+  sizeProjectArchiveIds: string[];
+  termManualArchiveIds: string[];
+  dateManualArchiveIds: string[];
+};
+
+const EMPTY_ARCHIVE_SEARCH_POINTERS: ArchiveSearchPointers = {
+  termProjectArchiveIds: [],
+  dateProjectArchiveIds: [],
+  sizeProjectArchiveIds: [],
+  termManualArchiveIds: [],
+  dateManualArchiveIds: [],
+};
+
+const MAX_ARCHIVE_SEARCH_POINTERS = 5_000;
+
+function getArchiveSearchPrefilterTerm(
+  plan: ReturnType<typeof buildArchiveSearchPlan>,
+) {
+  return [...plan.terms].sort(
+    (left, right) => right.length - left.length,
+  )[0] ?? "";
+}
+
+function uniqueArchiveSearchIds(values: Array<string | null | undefined>) {
+  return [...new Set(values.filter((value): value is string => Boolean(value)))];
+}
+
+async function resolveArchiveSearchPointers(
+  user: ArchiveAccessUser,
+  plan: ReturnType<typeof buildArchiveSearchPlan>,
+): Promise<ArchiveSearchPointers> {
+  const term = getArchiveSearchPrefilterTerm(plan);
+  const metadataDateWhere = plan.date
+    ? buildArtworkMetadataDateSearchWhere(plan.date)
+    : null;
+  const [termMetadata, dateMetadata] = await withPrismaRetry(() =>
+    Promise.all([
+      term
+        ? prisma.archiveArtworkMetadata.findMany({
+            where: buildArtworkMetadataTextSearchWhere(term),
+            select: {
+              archiveFileId: true,
+              manualArchiveFileId: true,
+            },
+            take: MAX_ARCHIVE_SEARCH_POINTERS,
+          })
+        : Promise.resolve([]),
+      metadataDateWhere?.OR?.length
+        ? prisma.archiveArtworkMetadata.findMany({
+            where: metadataDateWhere,
+            select: {
+              archiveFileId: true,
+              manualArchiveFileId: true,
+            },
+            take: MAX_ARCHIVE_SEARCH_POINTERS,
+          })
+        : Promise.resolve([]),
+    ]),
+  );
+  const termMetadataArchiveFileIds = uniqueArchiveSearchIds(
+    termMetadata.map((metadata) => metadata.archiveFileId),
+  );
+  const dateMetadataArchiveFileIds = uniqueArchiveSearchIds(
+    dateMetadata.map((metadata) => metadata.archiveFileId),
+  );
+  const termFileOR: Prisma.ArchivedProjectFileWhereInput[] = term
+    ? [
+        buildArchivedFileTermSearchWhere(term),
+        ...(termMetadataArchiveFileIds.length
+          ? [{ id: { in: termMetadataArchiveFileIds } }]
+          : []),
+      ]
+    : [];
+  const directDateWhere = plan.date
+    ? buildArchivedFileDateSearchWhere(plan.date)
+    : null;
+  const dateFileOR: Prisma.ArchivedProjectFileWhereInput[] = [
+    ...(directDateWhere?.OR?.length ? [directDateWhere] : []),
+    ...(dateMetadataArchiveFileIds.length
+      ? [{ id: { in: dateMetadataArchiveFileIds } }]
+      : []),
+  ];
+  const [termFiles, dateFiles, sizeFiles] = await withPrismaRetry(() =>
+    Promise.all([
+      termFileOR.length
+        ? prisma.archivedProjectFile.findMany({
+            where: {
+              AND: [
+                getArchivedProjectFileAccessWhere(user),
+                { OR: termFileOR },
+              ],
+            },
+            select: { archiveId: true },
+            take: MAX_ARCHIVE_SEARCH_POINTERS,
+          })
+        : Promise.resolve([]),
+      dateFileOR.length
+        ? prisma.archivedProjectFile.findMany({
+            where: {
+              AND: [
+                getArchivedProjectFileAccessWhere(user),
+                { OR: dateFileOR },
+              ],
+            },
+            select: { archiveId: true },
+            take: MAX_ARCHIVE_SEARCH_POINTERS,
+          })
+        : Promise.resolve([]),
+      plan.fileSize
+        ? prisma.archivedProjectFile.findMany({
+            where: {
+              AND: [
+                getArchivedProjectFileAccessWhere(user),
+                {
+                  fileSize: {
+                    gte: plan.fileSize.min,
+                    lt: plan.fileSize.max,
+                  },
+                },
+              ],
+            },
+            select: { archiveId: true },
+            take: MAX_ARCHIVE_SEARCH_POINTERS,
+          })
+        : Promise.resolve([]),
+    ]),
+  );
+
+  return {
+    termProjectArchiveIds: uniqueArchiveSearchIds(
+      termFiles.map((file) => file.archiveId),
+    ),
+    dateProjectArchiveIds: uniqueArchiveSearchIds(
+      dateFiles.map((file) => file.archiveId),
+    ),
+    sizeProjectArchiveIds: uniqueArchiveSearchIds(
+      sizeFiles.map((file) => file.archiveId),
+    ),
+    termManualArchiveIds: uniqueArchiveSearchIds(
+      termMetadata.map((metadata) => metadata.manualArchiveFileId),
+    ),
+    dateManualArchiveIds: uniqueArchiveSearchIds(
+      dateMetadata.map((metadata) => metadata.manualArchiveFileId),
+    ),
   };
 }
 
 function buildManualArchiveBroadSearchWhere(
   user: ArchiveAccessUser,
-  query: string,
+  plan: ReturnType<typeof buildArchiveSearchPlan>,
+  pointers: ArchiveSearchPointers,
 ): Prisma.ManualArchiveFileWhereInput {
+  const prefilterTerm = getArchiveSearchPrefilterTerm(plan);
+
   return {
     AND: [
       buildManualArchiveSearchBaseWhere(user),
-      ...getArchiveSearchTerms(query).map((term) => {
-        const containsTerm = {
-          contains: term,
-          mode: "insensitive" as const,
-        };
-
-        return {
-          OR: [
-            { fileName: containsTerm },
-            { projectName: containsTerm },
-            { originalFileName: containsTerm },
-            {
-              artworkMetadata: {
-                is: {
-                  artworkId: containsTerm,
-                },
-              },
-            },
-            {
-              assetTags: {
-                some: {
-                  tag: {
-                    is: {
-                      name: containsTerm,
-                    },
-                  },
-                },
-              },
-            },
-            {
-              archiveCategory: {
-                is: {
-                  name: containsTerm,
-                },
-              },
-            },
-          ],
-        };
-      }),
+      ...(prefilterTerm
+        ? [buildManualArchiveTermSearchWhere(prefilterTerm, pointers.termManualArchiveIds)]
+        : []),
+      ...(plan.date
+        ? [buildManualArchiveDateSearchWhere(plan.date, pointers.dateManualArchiveIds)]
+        : []),
+      ...(plan.fileSize
+        ? [{ fileSize: { gte: plan.fileSize.min, lt: plan.fileSize.max } }]
+        : []),
     ],
   };
 }
 
-function getProjectArchiveSearchSelect(user: ArchiveAccessUser, query: string) {
+function getProjectArchiveSearchSelect(
+  user: ArchiveAccessUser,
+) {
   return {
     id: true,
     projectName: true,
+    projectCategory: true,
+    projectTag: true,
+    status: true,
     archivedAt: true,
+    createdAt: true,
+    updatedAt: true,
+    archivedBy: {
+      select: {
+        name: true,
+        email: true,
+      },
+    },
     archiveCategory: {
       select: {
         name: true,
         slug: true,
+        description: true,
+        parent: {
+          select: {
+            name: true,
+          },
+        },
       },
     },
     files: {
-      where: query
-        ? buildArchivedFileNameSearchWhere(user, query)
-        : getArchivedProjectFileAccessWhere(user),
+      where: getArchivedProjectFileAccessWhere(user),
       orderBy: {
         finalArchiveFileName: "asc" as const,
       },
-      take: 5,
+      take: 100,
       select: {
         finalArchiveFileName: true,
         originalFileName: true,
-        artworkMetadata: {
+        mimeType: true,
+        fileSize: true,
+        archivedAt: true,
+        createdAt: true,
+        updatedAt: true,
+        archivedBy: {
           select: {
-            artworkId: true,
+            name: true,
+            email: true,
           },
+        },
+        artworkMetadata: {
+          select: archiveArtworkMetadataSearchSelect,
         },
         sourceAttachment: {
           select: {
@@ -2524,6 +2890,7 @@ function getProjectArchiveSearchSelect(user: ArchiveAccessUser, query: string) {
                 tag: {
                   select: {
                     name: true,
+                    description: true,
                   },
                 },
               },
@@ -2568,17 +2935,29 @@ const manualArchiveSearchSelect = {
   fileName: true,
   originalFileName: true,
   projectName: true,
+  projectCreatedBy: true,
+  projectDate: true,
+  mimeType: true,
+  fileSize: true,
+  status: true,
   uploadedAt: true,
-  artworkMetadata: {
+  createdAt: true,
+  updatedAt: true,
+  uploadedBy: {
     select: {
-      artworkId: true,
+      name: true,
+      email: true,
     },
+  },
+  artworkMetadata: {
+    select: archiveArtworkMetadataSearchSelect,
   },
   assetTags: {
     select: {
       tag: {
         select: {
           name: true,
+          description: true,
         },
       },
     },
@@ -2587,6 +2966,12 @@ const manualArchiveSearchSelect = {
     select: {
       name: true,
       slug: true,
+      description: true,
+      parent: {
+        select: {
+          name: true,
+        },
+      },
     },
   },
 } as const satisfies Prisma.ManualArchiveFileSelect;
@@ -2599,20 +2984,198 @@ type ManualArchiveSearchRecord = Prisma.ManualArchiveFileGetPayload<{
   select: typeof manualArchiveSearchSelect;
 }>;
 
-function mergeArchiveSearchRecords<T extends { id: string }>(...groups: T[][]) {
-  const records = new Map<string, T>();
-
-  for (const record of groups.flat()) {
-    records.set(record.id, record);
-  }
-
-  return [...records.values()];
-}
-
 function buildArchiveModuleHref(categorySlug: string, searchValue: string) {
   return `/archives/${encodeURIComponent(categorySlug)}?search=${encodeURIComponent(
     searchValue,
   )}`;
+}
+
+type ArchiveArtworkMetadataSearchSource = Prisma.ArchiveArtworkMetadataGetPayload<{
+  select: typeof archiveArtworkMetadataSearchSelect;
+}>;
+
+function cleanArchiveSearchValue(value: string | null | undefined) {
+  return value
+    ?.replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/\s+/g, " ")
+    .trim() ?? "";
+}
+
+function archiveSearchDateValues(value: Date) {
+  const day = value.getUTCDate();
+  const month = value.getUTCMonth() + 1;
+  const year = value.getUTCFullYear();
+  const isoDate = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  const shortDate = new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(value);
+  const longDate = new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(value);
+  const monthYear = new Intl.DateTimeFormat("en-GB", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(value);
+
+  return [
+    isoDate,
+    shortDate,
+    longDate,
+    monthYear,
+    String(year),
+    `${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}/${year}`,
+  ];
+}
+
+function addArchiveSearchEntry(
+  entries: ArchiveSearchEntry[],
+  input: ArchiveSearchEntry,
+) {
+  const value = cleanArchiveSearchValue(input.value);
+
+  if (value && value !== "—") {
+    entries.push({ ...input, value });
+  }
+}
+
+function addArchiveSearchDateEntry(
+  entries: ArchiveSearchEntry[],
+  input: {
+    field: string;
+    value: Date | null | undefined;
+    kind: ArchiveSearchMatchKind;
+    matchedFileName?: string | null;
+  },
+) {
+  if (!input.value) return;
+  const values = archiveSearchDateValues(input.value);
+  addArchiveSearchEntry(entries, {
+    field: input.field,
+    value: values[1],
+    kind: input.kind,
+    matchedFileName: input.matchedFileName,
+    aliases: [
+      ...values,
+      ...values.flatMap((value) => [
+        `${input.field} ${value}`,
+        `${input.field} on ${value}`,
+        `${input.field} in ${value}`,
+      ]),
+    ],
+  });
+}
+
+const archiveArtworkMetadataSearchFields = [
+  ["titleWorkingName", "Title / Working name"],
+  ["versionRevision", "Version / Revision"],
+  ["languageMarket", "Language / Market"],
+  ["artworkType", "Artwork type"],
+  ["brandSubBrand", "Brand / Sub-brand"],
+  ["productSku", "Product SKU"],
+  ["campaignProject", "Campaign / Project"],
+  ["formatDimensions", "Format / Dimensions"],
+  ["colourSpace", "Colour space"],
+  ["resolution", "Resolution"],
+  ["fileFormats", "File format(s)"],
+  ["printProcess", "Print process"],
+  ["specialFinishes", "Special finishes"],
+  ["archiveStatus", "Archive status"],
+  ["createdByName", "Created by"],
+  ["approvedByName", "Approved by"],
+  ["clientBrandOwner", "Client / Brand owner"],
+  ["regulatoryClearance", "Regulatory clearance"],
+  ["fontsUsed", "Fonts used"],
+  ["imagesPhotography", "Images / Photography"],
+  ["illustrationsIcons", "Illustrations / Icons"],
+  ["colourCodes", "Colour codes"],
+  ["thirdPartyLogosIp", "Third-party logos / IP"],
+  ["supplierPrinter", "Supplier / Printer"],
+  ["outputFilesList", "Output files list"],
+  ["printProofRef", "Print proof ref"],
+  ["packagingDielineRef", "Packaging dieline ref"],
+  ["changeLog", "Change log"],
+  ["relatedArtworks", "Related artworks"],
+  ["briefSpecLink", "Brief / Spec link"],
+  ["generalNotes", "General notes"],
+] as const satisfies ReadonlyArray<
+  readonly [keyof ArchiveArtworkMetadataSearchSource, string]
+>;
+
+function buildArtworkMetadataSearchEntries(
+  metadata: ArchiveArtworkMetadataSearchSource | null,
+  matchedFileName: string,
+) {
+  if (!metadata) return [];
+  const entries: ArchiveSearchEntry[] = [];
+
+  addArchiveSearchEntry(entries, {
+    field: "Artwork ID",
+    value: metadata.artworkId,
+    kind: "ARTWORK_ID",
+    matchedFileName,
+  });
+  for (const [key, field] of archiveArtworkMetadataSearchFields) {
+    const value = metadata[key];
+    if (typeof value === "string") {
+      addArchiveSearchEntry(entries, {
+        field,
+        value,
+        kind: "ARTWORK_METADATA",
+        matchedFileName,
+      });
+    }
+  }
+
+  for (const [field, value] of [
+    ["Creation date", metadata.creationDate],
+    ["Last modified", metadata.lastModifiedDate],
+    ["Go live / On shelf", metadata.goLiveOnShelfDate],
+    ["Expiry / Sunset", metadata.expirySunsetDate],
+    ["Approved at", metadata.approvedAt],
+    ["Metadata created", metadata.createdAt],
+    ["Metadata updated", metadata.updatedAt],
+  ] as const) {
+    addArchiveSearchDateEntry(entries, {
+      field,
+      value,
+      kind: "ARTWORK_METADATA",
+      matchedFileName,
+    });
+  }
+
+  addArchiveSearchEntry(entries, {
+    field: "Metadata archived by",
+    value: getUserDisplayName(metadata.archivedBy),
+    kind: "ARCHIVED_BY",
+    matchedFileName,
+    aliases: [metadata.archivedBy.email],
+  });
+
+  return entries;
+}
+
+function addArchiveCategorySearchEntries(
+  entries: ArchiveSearchEntry[],
+  category: {
+    name: string;
+    slug: string;
+    description: string | null;
+    parent: { name: string } | null;
+  },
+) {
+  addArchiveSearchEntry(entries, { field: "Archive category", value: category.name, kind: "ARCHIVE_CATEGORY" });
+  addArchiveSearchEntry(entries, { field: "Archive category slug", value: category.slug, kind: "ARCHIVE_CATEGORY" });
+  addArchiveSearchEntry(entries, { field: "Archive category description", value: category.description ?? "", kind: "ARCHIVE_CATEGORY" });
+  addArchiveSearchEntry(entries, { field: "Parent archive category", value: category.parent?.name ?? "", kind: "ARCHIVE_CATEGORY" });
 }
 
 function mapProjectArchiveSearchResult(
@@ -2631,24 +3194,46 @@ function mapProjectArchiveSearchResult(
     return null;
   }
 
-  const archivedFileNames = archive.files.flatMap((file) => [
-    file.finalArchiveFileName,
-    file.originalFileName,
-  ]);
-  const artworkIds = archive.files.flatMap((file) =>
-    file.artworkMetadata ? [file.artworkMetadata.artworkId] : [],
-  );
-  const assetTags = archive.files.flatMap((file) =>
-    file.sourceAttachment.assetTags.map((assignment) => assignment.tag.name),
-  );
+  const entries: ArchiveSearchEntry[] = [];
+
+  addArchiveSearchEntry(entries, { field: "Project category", value: archive.projectCategory, kind: "PROJECT_METADATA" });
+  addArchiveSearchEntry(entries, { field: "Project tag", value: archive.projectTag ?? "", kind: "PROJECT_METADATA" });
+  addArchiveSearchEntry(entries, { field: "Archive status", value: archive.status, kind: "PROJECT_METADATA" });
+  addArchiveCategorySearchEntries(entries, archive.archiveCategory);
+  addArchiveSearchEntry(entries, {
+    field: "Archived by",
+    value: getUserDisplayName(archive.archivedBy),
+    kind: "ARCHIVED_BY",
+    aliases: [archive.archivedBy.email],
+  });
+  addArchiveSearchDateEntry(entries, { field: "Archived date", value: archive.archivedAt, kind: "ARCHIVED_DATE" });
+  addArchiveSearchDateEntry(entries, { field: "Archive record created", value: archive.createdAt, kind: "ARCHIVED_DATE" });
+  addArchiveSearchDateEntry(entries, { field: "Archive record updated", value: archive.updatedAt, kind: "ARCHIVED_DATE" });
+
+  for (const file of archive.files) {
+    const matchedFileName = file.finalArchiveFileName;
+    addArchiveSearchEntry(entries, { field: "Archived filename", value: file.finalArchiveFileName, kind: "ARCHIVED_FILE_NAME", matchedFileName });
+    addArchiveSearchEntry(entries, { field: "Original filename", value: file.originalFileName, kind: "ARCHIVED_FILE_NAME", matchedFileName });
+    addArchiveSearchEntry(entries, { field: "MIME type", value: file.mimeType, kind: "FILE_METADATA", matchedFileName });
+    addArchiveSearchEntry(entries, { field: "File type", value: getArchiveFileTypeLabel(file.finalArchiveFileName, file.mimeType), kind: "FILE_METADATA", matchedFileName });
+    addArchiveSearchEntry(entries, { field: "File size", value: formatArchiveFileSize(file.fileSize), kind: "FILE_METADATA", matchedFileName, aliases: [String(file.fileSize)] });
+    addArchiveSearchEntry(entries, { field: "File archived by", value: getUserDisplayName(file.archivedBy), kind: "ARCHIVED_BY", matchedFileName, aliases: [file.archivedBy.email] });
+    addArchiveSearchDateEntry(entries, { field: "File archived date", value: file.archivedAt, kind: "ARCHIVED_DATE", matchedFileName });
+    addArchiveSearchDateEntry(entries, { field: "File record created", value: file.createdAt, kind: "ARCHIVED_DATE", matchedFileName });
+    addArchiveSearchDateEntry(entries, { field: "File record updated", value: file.updatedAt, kind: "ARCHIVED_DATE", matchedFileName });
+    for (const assignment of file.sourceAttachment.assetTags) {
+      addArchiveSearchEntry(entries, { field: "Asset tag", value: assignment.tag.name, kind: "ASSET_TAG", matchedFileName });
+      addArchiveSearchEntry(entries, { field: "Asset tag description", value: assignment.tag.description ?? "", kind: "ASSET_TAG", matchedFileName });
+    }
+    entries.push(...buildArtworkMetadataSearchEntries(file.artworkMetadata, matchedFileName));
+  }
+
   const match = rankArchiveSearchCandidate(
     {
       archiveName: archive.projectName,
       projectName: archive.project.name,
       archiveCategory: archive.archiveCategory.name,
-      archivedFileNames,
-      artworkIds,
-      assetTags,
+      entries,
     },
     query,
   );
@@ -2657,11 +3242,7 @@ function mapProjectArchiveSearchResult(
     return null;
   }
 
-  const searchValue =
-    match.matchedFileName ??
-    (match.kind === "ARTWORK_ID" || match.kind === "ASSET_TAG"
-      ? query
-      : archive.projectName);
+  const searchValue = match.matchedFileName ?? archive.projectName;
 
   return {
     result: {
@@ -2673,6 +3254,8 @@ function mapProjectArchiveSearchResult(
       archivedAt: archive.archivedAt.toISOString(),
       matchedOn: match.kind,
       matchedFileName: match.matchedFileName,
+      matchedField: match.matchedField,
+      matchedValue: match.matchedValue,
       href: buildArchiveModuleHref(archive.archiveCategory.slug, searchValue),
     } satisfies ArchiveSearchResult,
     rank: match.rank,
@@ -2687,16 +3270,31 @@ function mapManualArchiveSearchResult(
     return null;
   }
 
+  const entries: ArchiveSearchEntry[] = [];
+  addArchiveCategorySearchEntries(entries, archive.archiveCategory);
+  addArchiveSearchEntry(entries, { field: "Original filename", value: archive.originalFileName, kind: "ARCHIVED_FILE_NAME", matchedFileName: archive.fileName });
+  addArchiveSearchEntry(entries, { field: "Project created by", value: archive.projectCreatedBy ?? "", kind: "PROJECT_METADATA", matchedFileName: archive.fileName });
+  addArchiveSearchDateEntry(entries, { field: "Project date", value: archive.projectDate, kind: "PROJECT_METADATA", matchedFileName: archive.fileName });
+  addArchiveSearchEntry(entries, { field: "MIME type", value: archive.mimeType, kind: "FILE_METADATA", matchedFileName: archive.fileName });
+  addArchiveSearchEntry(entries, { field: "File type", value: getArchiveFileTypeLabel(archive.fileName, archive.mimeType), kind: "FILE_METADATA", matchedFileName: archive.fileName });
+  addArchiveSearchEntry(entries, { field: "File size", value: formatArchiveFileSize(archive.fileSize), kind: "FILE_METADATA", matchedFileName: archive.fileName, aliases: [String(archive.fileSize)] });
+  addArchiveSearchEntry(entries, { field: "Archive status", value: archive.status, kind: "FILE_METADATA", matchedFileName: archive.fileName });
+  addArchiveSearchEntry(entries, { field: "Archived by", value: getUserDisplayName(archive.uploadedBy), kind: "ARCHIVED_BY", matchedFileName: archive.fileName, aliases: [archive.uploadedBy.email] });
+  addArchiveSearchDateEntry(entries, { field: "Archived date", value: archive.uploadedAt, kind: "ARCHIVED_DATE", matchedFileName: archive.fileName });
+  addArchiveSearchDateEntry(entries, { field: "Archive record created", value: archive.createdAt, kind: "ARCHIVED_DATE", matchedFileName: archive.fileName });
+  addArchiveSearchDateEntry(entries, { field: "Archive record updated", value: archive.updatedAt, kind: "ARCHIVED_DATE", matchedFileName: archive.fileName });
+  for (const assignment of archive.assetTags) {
+    addArchiveSearchEntry(entries, { field: "Asset tag", value: assignment.tag.name, kind: "ASSET_TAG", matchedFileName: archive.fileName });
+    addArchiveSearchEntry(entries, { field: "Asset tag description", value: assignment.tag.description ?? "", kind: "ASSET_TAG", matchedFileName: archive.fileName });
+  }
+  entries.push(...buildArtworkMetadataSearchEntries(archive.artworkMetadata, archive.fileName));
+
   const match = rankArchiveSearchCandidate(
     {
       archiveName: archive.fileName,
       projectName: archive.projectName,
       archiveCategory: archive.archiveCategory.name,
-      archivedFileNames: [archive.originalFileName],
-      artworkIds: archive.artworkMetadata
-        ? [archive.artworkMetadata.artworkId]
-        : [],
-      assetTags: archive.assetTags.map((assignment) => assignment.tag.name),
+      entries,
     },
     query,
   );
@@ -2705,11 +3303,7 @@ function mapManualArchiveSearchResult(
     return null;
   }
 
-  const searchValue =
-    match.matchedFileName ??
-    (match.kind === "ARTWORK_ID" || match.kind === "ASSET_TAG"
-      ? query
-      : archive.fileName);
+  const searchValue = match.matchedFileName ?? archive.fileName;
 
   return {
     result: {
@@ -2721,6 +3315,8 @@ function mapManualArchiveSearchResult(
       archivedAt: archive.uploadedAt.toISOString(),
       matchedOn: match.kind,
       matchedFileName: match.matchedFileName,
+      matchedField: match.matchedField,
+      matchedValue: match.matchedValue,
       href: buildArchiveModuleHref(archive.archiveCategory.slug, searchValue),
     } satisfies ArchiveSearchResult,
     rank: match.rank,
@@ -2749,10 +3345,11 @@ export async function searchArchivesForUser(input: {
     };
   }
 
-  const projectArchiveSelect = getProjectArchiveSearchSelect(
-    input.user,
-    parsedQuery.query,
-  );
+  const searchPlan = buildArchiveSearchPlan(parsedQuery.query);
+  const searchPointers = parsedQuery.recent
+    ? EMPTY_ARCHIVE_SEARCH_POINTERS
+    : await resolveArchiveSearchPointers(input.user, searchPlan);
+  const projectArchiveSelect = getProjectArchiveSearchSelect(input.user);
   let projectArchives: ProjectArchiveSearchRecord[];
   let manualArchives: ManualArchiveSearchRecord[];
 
@@ -2778,63 +3375,14 @@ export async function searchArchivesForUser(input: {
       ]),
     );
   } else {
-    const query = parsedQuery.query;
-    const insensitiveQuery = {
-      equals: query,
-      mode: "insensitive" as const,
-    };
-    const prefixQuery = {
-      startsWith: query,
-      mode: "insensitive" as const,
-    };
-    const [
-      exactProjectArchives,
-      prefixProjectArchives,
-      nameProjectArchives,
-      broadProjectArchives,
-      exactManualArchives,
-      prefixManualArchives,
-      nameManualArchives,
-      broadManualArchives,
-    ] = await withPrismaRetry(() =>
+    [projectArchives, manualArchives] = await withPrismaRetry(() =>
       Promise.all([
         prisma.projectArchive.findMany({
-          where: {
-            AND: [
-              buildProjectArchiveSearchBaseWhere(input.user),
-              { projectName: insensitiveQuery },
-            ],
-          },
-          take: resultLimit,
-          select: projectArchiveSelect,
-        }),
-        prisma.projectArchive.findMany({
-          where: {
-            AND: [
-              buildProjectArchiveSearchBaseWhere(input.user),
-              { projectName: prefixQuery },
-            ],
-          },
-          take: resultLimit,
-          select: projectArchiveSelect,
-        }),
-        prisma.projectArchive.findMany({
-          where: {
-            AND: [
-              buildProjectArchiveSearchBaseWhere(input.user),
-              {
-                projectName: {
-                  contains: query,
-                  mode: "insensitive",
-                },
-              },
-            ],
-          },
-          take: resultLimit,
-          select: projectArchiveSelect,
-        }),
-        prisma.projectArchive.findMany({
-          where: buildProjectArchiveBroadSearchWhere(input.user, query),
+          where: buildProjectArchiveBroadSearchWhere(
+            input.user,
+            searchPlan,
+            searchPointers,
+          ),
           orderBy: {
             archivedAt: "desc",
           },
@@ -2842,42 +3390,11 @@ export async function searchArchivesForUser(input: {
           select: projectArchiveSelect,
         }),
         prisma.manualArchiveFile.findMany({
-          where: {
-            AND: [
-              buildManualArchiveSearchBaseWhere(input.user),
-              { fileName: insensitiveQuery },
-            ],
-          },
-          take: resultLimit,
-          select: manualArchiveSearchSelect,
-        }),
-        prisma.manualArchiveFile.findMany({
-          where: {
-            AND: [
-              buildManualArchiveSearchBaseWhere(input.user),
-              { fileName: prefixQuery },
-            ],
-          },
-          take: resultLimit,
-          select: manualArchiveSearchSelect,
-        }),
-        prisma.manualArchiveFile.findMany({
-          where: {
-            AND: [
-              buildManualArchiveSearchBaseWhere(input.user),
-              {
-                fileName: {
-                  contains: query,
-                  mode: "insensitive",
-                },
-              },
-            ],
-          },
-          take: resultLimit,
-          select: manualArchiveSearchSelect,
-        }),
-        prisma.manualArchiveFile.findMany({
-          where: buildManualArchiveBroadSearchWhere(input.user, query),
+          where: buildManualArchiveBroadSearchWhere(
+            input.user,
+            searchPlan,
+            searchPointers,
+          ),
           orderBy: {
             uploadedAt: "desc",
           },
@@ -2885,19 +3402,6 @@ export async function searchArchivesForUser(input: {
           select: manualArchiveSearchSelect,
         }),
       ]),
-    );
-
-    projectArchives = mergeArchiveSearchRecords(
-      exactProjectArchives,
-      prefixProjectArchives,
-      nameProjectArchives,
-      broadProjectArchives,
-    );
-    manualArchives = mergeArchiveSearchRecords(
-      exactManualArchives,
-      prefixManualArchives,
-      nameManualArchives,
-      broadManualArchives,
     );
   }
 

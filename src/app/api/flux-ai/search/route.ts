@@ -44,7 +44,7 @@ export async function POST(request: Request) {
 
   if (!query) {
     return NextResponse.json(
-      { error: "Enter an archive name or archived filename." },
+      { error: "Ask about an archive, project, file, date, tag, or metadata field." },
       { status: 400 },
     );
   }
