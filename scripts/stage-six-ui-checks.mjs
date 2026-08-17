@@ -270,6 +270,17 @@ assert(
   "The backend must enforce distinct internal and external handover recipient rules.",
 );
 assert(
+  service.includes("function getHandoverRecipients(project: StageProject)") &&
+    service.includes("participant.id !== project.ownerId") &&
+    service.includes("handoverRecipients: getHandoverRecipients(project)") &&
+    service.includes("input.recipientUserId?.trim() === project.ownerId") &&
+    service.includes("The Project Owner cannot receive an internal production handover.") &&
+    workspace.includes('recipients: StageSixWorkspaceData["handoverRecipients"]') &&
+    workspace.includes("recipients.some((recipient) => recipient.id === recipientUserId)") &&
+    workspace.includes("recipients={pageData.handoverRecipients}"),
+  "Internal production handover must omit the Project Owner in the UI and reject forged owner recipients server-side.",
+);
+assert(
   service.includes("getAuthenticatedProductionHandoverData") &&
     service.includes("getAuthenticatedProductionHandoverFileUrl") &&
     service.includes("canAccessAuthenticatedProductionHandover") &&

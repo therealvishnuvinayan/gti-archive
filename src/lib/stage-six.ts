@@ -156,6 +156,7 @@ export type StageSixUnitRecord = {
 export type StageSixWorkspaceData = {
   units: StageSixUnitRecord[];
   participants: Array<{ id: string; name: string; email: string; role: string }>;
+  handoverRecipients: Array<{ id: string; name: string; email: string; role: string }>;
   canManage: boolean;
   canSaveArchive: boolean;
   stageCompleted: boolean;
@@ -276,6 +277,12 @@ function getParticipants(project: StageProject) {
     }
   }
   return [...unique.values()];
+}
+
+function getHandoverRecipients(project: StageProject) {
+  return getParticipants(project).filter(
+    (participant) => participant.id !== project.ownerId,
+  );
 }
 
 function mapFile(
@@ -694,6 +701,7 @@ export async function getStageSixWorkspaceData(
   return {
     units,
     participants: getParticipants(project),
+    handoverRecipients: getHandoverRecipients(project),
     canManage: canManageStageSix(user, project),
     canSaveArchive:
       (isSuperAdminRole(user.role) ||
@@ -2586,6 +2594,11 @@ export async function handoverProductionUnit(
   }
   const project = await getStageSixManagerProject(user, input.projectId);
   if (!project) return { error: "You do not have permission to manage Stage 6." } as const;
+  if (isInternal && input.recipientUserId?.trim() === project.ownerId) {
+    return {
+      error: "The Project Owner cannot receive an internal production handover.",
+    } as const;
+  }
   const recipient = await resolveRecipient(project, input);
   if (!recipient.ok) return { error: recipient.error } as const;
   const recipientData = {

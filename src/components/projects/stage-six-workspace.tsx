@@ -759,13 +759,13 @@ function ApprovalSection({
 function HandoverDialog({
   projectId,
   unit,
-  participants,
+  recipients,
   onClose,
   onSaved,
 }: {
   projectId: string;
   unit: StageSixUnitRecord;
-  participants: StageSixWorkspaceData["participants"];
+  recipients: StageSixWorkspaceData["handoverRecipients"];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -820,7 +820,7 @@ function HandoverDialog({
     ? ProductionApprovalRecipientType.EXISTING_COLLABORATOR
     : ProductionApprovalRecipientType.EXTERNAL_EMAIL;
   const recipientReady = isInternal
-    ? Boolean(recipientUserId)
+    ? recipients.some((recipient) => recipient.id === recipientUserId)
     : Boolean(company.trim() && contactName.trim() && /^\S+@\S+\.\S+$/.test(email.trim()) && /^\+[\d\s().-]{8,}$/.test(phone.trim()));
   const closeWithAutosave = () => {
     void autosave.flush().finally(onClose);
@@ -875,7 +875,7 @@ function HandoverDialog({
           <button type="button" onClick={() => setRoute(ProductionHandoverRoute.PURCHASE_DEPARTMENT)} className={cn("rounded-[14px] border p-4 text-left", isInternal ? "border-[#72a184] bg-[#f1f8f3]" : "border-[#dfe6df]")}><strong className="block text-[12px] font-[740]">Internal</strong><span className="mt-1 block text-[10px] leading-4 text-[#6f7a72]">Select an existing project participant, such as Purchasing.</span></button>
           <button type="button" onClick={() => setRoute(ProductionHandoverRoute.DIRECT_VENDOR)} className={cn("rounded-[14px] border p-4 text-left", !isInternal ? "border-[#72a184] bg-[#f1f8f3]" : "border-[#dfe6df]")}><strong className="block text-[12px] font-[740]">External</strong><span className="mt-1 block text-[10px] leading-4 text-[#6f7a72]">Send securely to a vendor or other external company.</span></button>
         </div>
-        {isInternal ? <Select value={recipientUserId} onValueChange={setRecipientUserId}><SelectTrigger className="mt-3 h-11 rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] focus:border-[#46906a] focus:ring-[#46906a]/15"><SelectValue placeholder="Select internal recipient" /></SelectTrigger><SelectContent className="z-[190]">{participants.map((participant) => <SelectItem key={participant.id} value={participant.id}>{participant.name} — {participant.role}</SelectItem>)}</SelectContent></Select> : <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        {isInternal ? <Select value={recipientUserId} onValueChange={setRecipientUserId}><SelectTrigger className="mt-3 h-11 rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] focus:border-[#46906a] focus:ring-[#46906a]/15"><SelectValue placeholder="Select internal recipient" /></SelectTrigger><SelectContent className="z-[190]">{recipients.map((recipient) => <SelectItem key={recipient.id} value={recipient.id}>{recipient.name} — {recipient.role}</SelectItem>)}</SelectContent></Select> : <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <label className="space-y-1.5"><span className="text-[11px] font-[700] text-[#3f4b43]">Company name</span><Input value={company} placeholder="Enter company name" className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setCompany(event.target.value)} /></label>
           <label className="space-y-1.5"><span className="text-[11px] font-[700] text-[#3f4b43]">Contact name</span><Input value={contactName} placeholder="Enter contact name" className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setContactName(event.target.value)} /></label>
           <label className="space-y-1.5"><span className="text-[11px] font-[700] text-[#3f4b43]">Email</span><Input type="email" value={email} placeholder="contact@company.com" className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setEmail(event.target.value)} /></label>
@@ -1618,7 +1618,7 @@ export function StageSixWorkspace({
       </CardContent></Card>
 
       {activeUnit && approverDialog ? <ApproverDialog mode={approverDialog} projectId={project.id} unit={activeUnit} participants={pageData.participants} onClose={() => setApproverDialog(null)} onSaved={refresh} /> : null}
-      {activeUnit && handoverDialog ? <HandoverDialog projectId={project.id} unit={activeUnit} participants={pageData.participants} onClose={() => setHandoverDialog(false)} onSaved={refresh} /> : null}
+      {activeUnit && handoverDialog ? <HandoverDialog projectId={project.id} unit={activeUnit} recipients={pageData.handoverRecipients} onClose={() => setHandoverDialog(false)} onSaved={refresh} /> : null}
       {archivePreparation ? (
         <StageSixArchiveDialog
           preparation={archivePreparation}

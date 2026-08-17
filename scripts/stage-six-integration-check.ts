@@ -456,6 +456,13 @@ async function main() {
       "the fixed external first approval must not expose a USER manager workspace or authenticated review link",
     );
     const ownerWorkspace = await getStageSixWorkspaceData(owner, ids.project);
+    check(
+      ownerWorkspace?.participants.some((participant) => participant.id === ids.owner) &&
+        !ownerWorkspace.handoverRecipients.some(
+          (participant) => participant.id === ids.owner,
+        ),
+      "the Project Owner may remain an approver but must not be an internal handover recipient",
+    );
     const ownerStep = ownerWorkspace?.units
       .find((unit) => unit.id === unitA.id)
       ?.approvalSteps.find((step) => step.id === configuredA.step.id);
@@ -537,6 +544,11 @@ async function main() {
     check(isError(invalidExternalHandover), "external handover must require company and international phone details");
     const invalidInternalHandover = await handoverProductionUnit(owner, { clientRequestId: `handover-a-invalid-internal-${runId}`, projectId: ids.project, productionUnitId: unitA.id, route: ProductionHandoverRoute.PURCHASE_DEPARTMENT, recipientType: ProductionApprovalRecipientType.EXTERNAL_EMAIL, recipientName: "Purchasing", recipientEmail: "purchasing@example.test", sharedFieldKeys: [ProjectFileChecklistField.OUTPUT_NAME], selectedFileIds: [unitA.sourceAttachmentId] }, { sendEmail: sendSuccess });
     check(isError(invalidInternalHandover), "internal handover must use an existing project participant");
+    const ownerHandover = await handoverProductionUnit(owner, { clientRequestId: `handover-a-owner-${runId}`, projectId: ids.project, productionUnitId: unitA.id, route: ProductionHandoverRoute.PURCHASE_DEPARTMENT, recipientType: ProductionApprovalRecipientType.EXISTING_COLLABORATOR, recipientUserId: ids.owner, sharedFieldKeys: [ProjectFileChecklistField.OUTPUT_NAME], selectedFileIds: [unitA.sourceAttachmentId] }, { sendEmail: sendSuccess });
+    check(
+      isError(ownerHandover) && ownerHandover.error.includes("Project Owner"),
+      "a forged internal handover to the Project Owner must be rejected",
+    );
     const failedHandover = await handoverProductionUnit(owner, { clientRequestId: `handover-a-fail-${runId}`, projectId: ids.project, productionUnitId: unitA.id, route: ProductionHandoverRoute.DIRECT_VENDOR, recipientType: ProductionApprovalRecipientType.EXTERNAL_EMAIL, recipientName: "Vendor A", recipientEmail: "vendor-a@example.test", recipientCompany: "Vendor A LLC", recipientPhone: "+971 50 123 4567", sharedFieldKeys: [ProjectFileChecklistField.OUTPUT_NAME], selectedFileIds: [unitA.sourceAttachmentId, productionAttachmentId], note: "External vendor package" }, { sendEmail: sendFailure });
     check(isError(failedHandover), "failed handover delivery must return a useful error");
     const afterFailure = await prisma.projectProductionUnit.findUniqueOrThrow({ where: { id: unitA.id }, include: { handover: true } });
