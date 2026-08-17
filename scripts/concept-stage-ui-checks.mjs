@@ -275,6 +275,12 @@ assert(
   "Concept creation and assignment changes must broadcast a project refresh, and refreshed server folders must remount stale client state.",
 );
 assert(
+  workspace.includes('window.location.hash !== "#concept-folders"') &&
+    workspace.includes('getElementById("concept-folders")') &&
+    workspace.includes('scrollIntoView({ behavior: "auto", block: "start" })'),
+  "Concept Folders navigation must scroll to the asynchronously rendered folder listing instead of looking identical to Back to Stage.",
+);
+assert(
   schema.includes("BRIEF_ACCEPTANCE_REQUIRED") &&
     notificationMigration.includes("BRIEF_ACCEPTANCE_REQUIRED") &&
     notificationTriggers.includes("notifyConceptBriefAssigned") &&

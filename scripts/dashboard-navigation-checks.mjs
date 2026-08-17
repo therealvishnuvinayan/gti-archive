@@ -56,14 +56,14 @@ expectNavigation("/projects/project-1/stages/2/folders/folder-1", { owner: "page
 expectNavigation("/projects/project-1/stages/3/concepts/concept-1", {
   owner: "topbar",
   href: "/projects/project-1/stages/3#concept-folders",
-  label: "Concept Taskers",
-  ariaLabel: "Back to Stage 3 Concept Taskers",
+  label: "Concept Folders",
+  ariaLabel: "Back to Stage 3 Concept Folders",
 });
 expectNavigation("/projects/project-1/stages/4/concepts/concept-1", {
   owner: "topbar",
   href: "/projects/project-1/stages/4#concept-folders",
-  label: "Concept Taskers",
-  ariaLabel: "Back to Stage 4 Concept Taskers",
+  label: "Concept Folders",
+  ariaLabel: "Back to Stage 4 Concept Folders",
 });
 expectNavigation("/projects/project-1/stages/3/concepts/concept-1/compare", {
   owner: "topbar",

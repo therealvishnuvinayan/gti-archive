@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useId, useState, useTransition } from "react";
+import { useEffect, useId, useState, useTransition } from "react";
 import {
   ArrowRight,
   CalendarClock,
@@ -534,6 +534,18 @@ export function ConceptStageWorkspace({
   selectedExecutorId: string | null;
   showChrome?: boolean;
 }) {
+  useEffect(() => {
+    if (window.location.hash !== "#concept-folders") return;
+
+    const frame = window.requestAnimationFrame(() => {
+      document
+        .getElementById("concept-folders")
+        ?.scrollIntoView({ behavior: "auto", block: "start" });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [isCompleting, startCompletionTransition] = useTransition();
