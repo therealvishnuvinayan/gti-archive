@@ -1047,6 +1047,26 @@ async function main() {
         completedStageFive.productionUnitCount === 3,
       "Stage 5 completion must create untouched Stage 6 bootstrap units",
     );
+    const [completedStageFiveEligibility, completedStageFiveContext] =
+      await Promise.all([
+        getConceptApprovalRevocationEligibility(owner, {
+          projectId,
+          folderId: conceptA.id,
+          workflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+        }),
+        getProjectConceptChatContext(owner, {
+          projectId,
+          folderId: conceptA.id,
+          stageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+        }),
+      ]);
+    check(
+      !completedStageFiveEligibility.canRevoke &&
+        completedStageFiveEligibility.reason === "STAGE5_DEPENDENCY_EXISTS" &&
+        completedStageFiveContext?.chatMode.approvalRevocationEligibility
+          .canRevoke === false,
+      "completed Stage 5 must hide Stage 4 Revoke Approval before Stage 6 work begins",
+    );
     const stageSixUnit = await prisma.projectProductionUnit.findFirstOrThrow({
       where: { projectId },
       orderBy: { createdAt: "asc" },

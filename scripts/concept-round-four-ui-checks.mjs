@@ -1,7 +1,17 @@
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 
-const [workspace, chat, concepts, actions, stageFive, notifications, history, schema] =
+const [
+  workspace,
+  chat,
+  concepts,
+  actions,
+  stageFive,
+  stageFiveActions,
+  notifications,
+  history,
+  schema,
+] =
   await Promise.all([
     readFile("src/components/projects/concept-stage-workspace.tsx", "utf8"),
     readFile("src/components/projects/project-chat-workspace.tsx", "utf8"),
@@ -11,6 +21,10 @@ const [workspace, chat, concepts, actions, stageFive, notifications, history, sc
       "utf8",
     ),
     readFile("src/lib/stage-five.ts", "utf8"),
+    readFile(
+      "src/app/(dashboard)/projects/[slug]/stages/5/actions.ts",
+      "utf8",
+    ),
     readFile("src/lib/notification-center/triggers.ts", "utf8"),
     readFile("src/lib/project-history.ts", "utf8"),
     readFile("prisma/schema.prisma", "utf8"),
@@ -163,7 +177,11 @@ assert(
 assert(
   chat.includes("markStageFourFinalApprovedAttachmentAction") &&
     chat.includes("revokeStageFourFinalApprovedAttachmentAction") &&
-    chat.includes("conceptMode.approvalRevocationEligibility.canRevoke") &&
+    chat.includes("const canRevokeConceptApproval = Boolean(") &&
+    chat.includes("{canRevokeConceptApproval ? (") &&
+    chat.includes(
+      "isOpen={revokeConceptApprovalOpen && canRevokeConceptApproval}",
+    ) &&
     chat.includes("Revoke Final Approved File?") &&
     chat.includes("Revoke Approval") &&
     chat.includes("Stage 5 will be relocked") &&
@@ -171,6 +189,18 @@ assert(
     chat.includes("conceptMode.isWorkflowCompleted") &&
     chat.includes("!activeStage?.isTasker"),
   "Stage 4 final-file UI must use concept reviewer policy while legacy tasker approval stays blocked.",
+);
+
+assert(
+  stageFiveActions.includes(
+    'revalidatePath(`/projects/${input.projectId}/stages/4`, "layout")',
+  ) &&
+    stageFiveActions.includes("publishProjectActivityUpdatedAfterResponse") &&
+    stageFiveActions.includes('eventType: "timeline_updated"') &&
+    chat.includes(
+      "fallbackRefreshIntervalMs={isConceptMode ? 10_000 : undefined}",
+    ),
+  "Stage 5 completion must invalidate and refresh open Stage 4 concept chats before they can offer a stale revoke action.",
 );
 
 assert(

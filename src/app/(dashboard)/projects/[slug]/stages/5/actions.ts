@@ -7,6 +7,7 @@ import {
 } from "@prisma/client";
 
 import { requireUser } from "@/lib/auth";
+import { publishProjectActivityUpdatedAfterResponse } from "@/lib/realtime/server";
 import {
   cancelStageFiveChecklistRequest,
   completeStageFive,
@@ -21,8 +22,18 @@ export async function completeStageFiveAction(input: { projectId: string }) {
   try {
     const result = await completeStageFive(user, input);
     revalidatePath(`/projects/${input.projectId}`);
+    revalidatePath(`/projects/${input.projectId}/stages/4`, "layout");
     revalidatePath(`/projects/${input.projectId}/stages/5`);
     revalidatePath(`/projects/${input.projectId}/stages/6`);
+    if (!("error" in result)) {
+      publishProjectActivityUpdatedAfterResponse({
+        projectId: input.projectId,
+        stageId: null,
+        eventType: "timeline_updated",
+        changedEntityId: input.projectId,
+        actorId: user.id,
+      });
+    }
     return result;
   } catch (error) {
     console.error("[stage-five] completion failed", error);

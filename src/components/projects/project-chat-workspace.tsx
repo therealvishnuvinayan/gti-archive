@@ -3277,6 +3277,10 @@ export function ProjectChatWorkspace({
   const canReviewSubmissions = conceptMode
     ? conceptMode.canReview && !conceptMode.isAssignedExecutor
     : project.ownerId === currentUserId;
+  const canRevokeConceptApproval = Boolean(
+    conceptMode?.approvalRevocationEligibility.canRevoke &&
+      approvedConceptAttachmentId,
+  );
   const isProjectCompleted = completionState.isCompleted;
   const isFinalStage =
     Boolean(activeStage?.id) && activeStage?.id === completionState.finalStageId;
@@ -7580,7 +7584,11 @@ export function ProjectChatWorkspace({
           : "[@media_(min-width:1536px)_and_(min-height:900px)]:h-[calc(100dvh-11rem)] [@media_(min-width:1536px)_and_(min-height:900px)]:overflow-hidden"
       }`}
     >
-      <ProjectAccessRealtimeGuard projectId={project.id} currentUserId={currentUserId} />
+      <ProjectAccessRealtimeGuard
+        projectId={project.id}
+        currentUserId={currentUserId}
+        fallbackRefreshIntervalMs={isConceptMode ? 10_000 : undefined}
+      />
       {conceptMode && stageThreeReferenceDialogOpen ? (
         <div
           className="fixed inset-0 z-[190] flex items-center justify-center bg-[#112118]/35 p-4 backdrop-blur-[2px]"
@@ -7718,8 +7726,7 @@ export function ProjectChatWorkspace({
                 </div>
               ))}
             </dl>
-            {conceptMode.approvalRevocationEligibility.canRevoke &&
-            approvedConceptAttachmentId ? (
+            {canRevokeConceptApproval ? (
               <Button
                 type="button"
                 variant="outline"
@@ -10974,7 +10981,7 @@ export function ProjectChatWorkspace({
         }}
       />
       <ConfirmationDialog
-        isOpen={revokeConceptApprovalOpen}
+        isOpen={revokeConceptApprovalOpen && canRevokeConceptApproval}
         title={
           isStageFourConceptMode
             ? "Revoke Final Approved File?"
