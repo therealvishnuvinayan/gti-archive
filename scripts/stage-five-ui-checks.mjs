@@ -345,6 +345,17 @@ assert(
   "Stage 5 completion must use real draft differences and avoid stale server-prop synchronization.",
 );
 assert(
+  workspace.includes("STAGE_FIVE_SESSION_DRAFT_PREFIX") &&
+    workspace.includes("currentUserId}:${project.id}:${selectedHandoffId") &&
+    workspace.includes("readStageFiveSessionDraft(stageFiveSessionDraftKey)") &&
+    workspace.includes("window.sessionStorage.setItem(") &&
+    workspace.includes("parseStageFiveAutosaveValue") &&
+    workspace.includes("clearStageFiveSessionDraft(stageFiveSessionDraftKey)") &&
+    workspace.includes('window.addEventListener("beforeunload", warnBeforeDiscardingDraft)') &&
+    workspace.includes("event.returnValue = \"\""),
+  "Stage 5 must synchronously preserve each user's unsaved checklist draft, warn before discarding non-restorable input, and clear the backup after save.",
+);
+assert(
   confirmationDialog.includes('createPortal(') &&
     confirmationDialog.includes('document.body') &&
     confirmationDialog.includes('role="dialog"') &&

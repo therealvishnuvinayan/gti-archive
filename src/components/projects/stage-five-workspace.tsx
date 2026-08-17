@@ -104,6 +104,8 @@ type StageFiveAutosaveValue = {
   };
 };
 
+const STAGE_FIVE_SESSION_DRAFT_PREFIX = "gti:stage-five-checklist-draft";
+
 type ChecklistSaveProgress = {
   percent: number;
   label: string;
@@ -211,6 +213,104 @@ function buildStageFiveAutosaveValue(draft: StageFiveDraft): StageFiveAutosaveVa
       ),
     },
   };
+}
+
+function parseStageFiveAutosaveValue(value: string): StageFiveAutosaveValue | null {
+  try {
+    const parsed = JSON.parse(value) as {
+      draft?: {
+        textValues?: unknown;
+        files?: unknown;
+        multiValues?: unknown;
+        healthWarningIncluded?: unknown;
+      };
+    };
+    if (!parsed?.draft || typeof parsed.draft !== "object") return null;
+
+    const textSource = parsed.draft.textValues;
+    const fileSource = parsed.draft.files;
+    const multiSource = parsed.draft.multiValues;
+    const textValues: StageFiveDraft["textValues"] = {};
+    const files: StageFiveDraft["files"] = {};
+    const multiValues: StageFiveDraft["multiValues"] = {};
+
+    for (const fieldKey of STAGE_FIVE_FIELD_KEYS) {
+      if (textSource && typeof textSource === "object") {
+        const textValue = (textSource as Record<string, unknown>)[fieldKey];
+        if (typeof textValue === "string") textValues[fieldKey] = textValue;
+      }
+
+      if (multiSource && typeof multiSource === "object") {
+        const values = (multiSource as Record<string, unknown>)[fieldKey];
+        if (Array.isArray(values)) {
+          multiValues[fieldKey] = values.filter(
+            (item): item is string => typeof item === "string",
+          );
+        }
+      }
+
+      if (fileSource && typeof fileSource === "object") {
+        const records = (fileSource as Record<string, unknown>)[fieldKey];
+        if (Array.isArray(records)) {
+          files[fieldKey] = records.flatMap((record) => {
+            if (!record || typeof record !== "object") return [];
+            const candidate = record as Record<string, unknown>;
+            if (
+              typeof candidate.id !== "string" ||
+              typeof candidate.attachmentId !== "string" ||
+              typeof candidate.name !== "string" ||
+              typeof candidate.mimeType !== "string" ||
+              typeof candidate.size !== "number"
+            ) {
+              return [];
+            }
+            return [{
+              id: candidate.id,
+              attachmentId: candidate.attachmentId,
+              name: candidate.name,
+              mimeType: candidate.mimeType,
+              size: candidate.size,
+            } satisfies LocalFileRecord];
+          });
+        }
+      }
+    }
+
+    return {
+      draft: {
+        textValues,
+        files,
+        multiValues,
+        healthWarningIncluded: parsed.draft.healthWarningIncluded === true,
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
+function readStageFiveSessionDraft(key: string) {
+  try {
+    return parseStageFiveAutosaveValue(window.sessionStorage.getItem(key) ?? "");
+  } catch {
+    return null;
+  }
+}
+
+function writeStageFiveSessionDraft(key: string, value: StageFiveAutosaveValue) {
+  try {
+    window.sessionStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Server autosave remains available when browser storage is disabled or full.
+  }
+}
+
+function clearStageFiveSessionDraft(key: string) {
+  try {
+    window.sessionStorage.removeItem(key);
+  } catch {
+    // Browser storage is only the synchronous refresh fallback.
+  }
 }
 
 function stageFiveDraftFingerprint(
@@ -841,6 +941,14 @@ export function StageFiveWorkspace({
   const [drafts, setDrafts] = useState(() => committedDrafts);
   const [dirtyHandoffIds, setDirtyHandoffIds] = useState<Set<string>>(() => new Set());
   const dirtyHandoffIdsRef = useRef(dirtyHandoffIds);
+  const stageFiveSessionDraftKey = useMemo(
+    () =>
+      `${STAGE_FIVE_SESSION_DRAFT_PREFIX}:${currentUserId}:${project.id}:${selectedHandoffId || "none"}`,
+    [currentUserId, project.id, selectedHandoffId],
+  );
+  const [hydratedSessionDraftKey, setHydratedSessionDraftKey] = useState<string | null>(
+    null,
+  );
   const [isSaving, startSaving] = useTransition();
   const [saveProgress, setSaveProgress] = useState<ChecklistSaveProgress | null>(null);
   const [isRequestActionPending, startRequestAction] = useTransition();
@@ -931,6 +1039,88 @@ export function StageFiveWorkspace({
       ),
     );
   }, [committedDrafts]);
+
+  useEffect(() => {
+    setHydratedSessionDraftKey(null);
+    if (!pageData.canEdit || pageData.stageCompleted || !selectedHandoffId) {
+      setHydratedSessionDraftKey(stageFiveSessionDraftKey);
+      return;
+    }
+
+    const committedDraft = committedDrafts[selectedHandoffId];
+    const storedDraft = readStageFiveSessionDraft(stageFiveSessionDraftKey)?.draft;
+
+    if (committedDraft && storedDraft) {
+      if (
+        stageFiveDraftFingerprint(committedDraft) ===
+        stageFiveDraftFingerprint(storedDraft)
+      ) {
+        clearStageFiveSessionDraft(stageFiveSessionDraftKey);
+      } else if (!dirtyHandoffIdsRef.current.has(selectedHandoffId)) {
+        setDrafts((current) => ({
+          ...current,
+          [selectedHandoffId]: {
+            ...current[selectedHandoffId],
+            textValues: storedDraft.textValues,
+            files: storedDraft.files,
+            multiValues: storedDraft.multiValues,
+            healthWarningIncluded: storedDraft.healthWarningIncluded,
+          },
+        }));
+        updateDirtyHandoffIds((current) => new Set(current).add(selectedHandoffId));
+      }
+    }
+
+    setHydratedSessionDraftKey(stageFiveSessionDraftKey);
+  }, [
+    committedDrafts,
+    pageData.canEdit,
+    pageData.stageCompleted,
+    selectedHandoffId,
+    stageFiveSessionDraftKey,
+  ]);
+
+  useEffect(() => {
+    if (
+      hydratedSessionDraftKey !== stageFiveSessionDraftKey ||
+      !pageData.canEdit ||
+      pageData.stageCompleted ||
+      !selectedHandoffId ||
+      !activeDraft
+    ) {
+      return;
+    }
+
+    if (unsavedHandoffIds.has(selectedHandoffId)) {
+      writeStageFiveSessionDraft(
+        stageFiveSessionDraftKey,
+        buildStageFiveAutosaveValue(activeDraft),
+      );
+    } else {
+      clearStageFiveSessionDraft(stageFiveSessionDraftKey);
+    }
+  }, [
+    activeDraft,
+    hydratedSessionDraftKey,
+    pageData.canEdit,
+    pageData.stageCompleted,
+    selectedHandoffId,
+    stageFiveSessionDraftKey,
+    unsavedHandoffIds,
+  ]);
+
+  useEffect(() => {
+    if (!pageData.canEdit || pageData.stageCompleted || !hasUnsavedChecklistChanges) {
+      return;
+    }
+
+    const warnBeforeDiscardingDraft = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeDiscardingDraft);
+    return () => window.removeEventListener("beforeunload", warnBeforeDiscardingDraft);
+  }, [hasUnsavedChecklistChanges, pageData.canEdit, pageData.stageCompleted]);
 
   function updateDirtyHandoffIds(updater: (current: Set<string>) => Set<string>) {
     setDirtyHandoffIds((current) => {
@@ -1219,6 +1409,7 @@ export function StageFiveWorkspace({
               files: resolvedFiles,
             }),
           }).catch(() => undefined);
+          clearStageFiveSessionDraft(stageFiveSessionDraftKey);
           showSuccessToast("File checklist saved.");
           router.refresh();
         } else {
