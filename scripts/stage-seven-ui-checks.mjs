@@ -165,6 +165,14 @@ for (const action of [
 ]) {
   assert(workspace.includes(action) && actions.includes(action), `Final Stage 7 action is not wired: ${action}`);
 }
+assert(
+  actions.includes("publishProjectActivityUpdatedAfterResponse") &&
+    actions.includes("function publishStageSevenChange") &&
+    actions.includes('eventType: "timeline_updated"') &&
+    actions.includes("publishStageSevenChange({ projectId, actorId, changedEntityId })") &&
+    workspace.includes("ProjectAccessRealtimeGuard"),
+  "Every successful Stage 7 mutation must invalidate all open project views through the existing realtime guard.",
+);
 for (const removedAction of [
   "updateProductionSampleEvaluationAction",
   "addProductionSampleParticipantAction",

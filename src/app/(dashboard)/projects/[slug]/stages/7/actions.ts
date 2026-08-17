@@ -9,6 +9,7 @@ import type {
 } from "@prisma/client";
 
 import { requireUser } from "@/lib/auth";
+import { publishProjectActivityUpdatedAfterResponse } from "@/lib/realtime/server";
 import {
   closeStageSevenProject,
   createProductionSampleRound,
@@ -24,10 +25,30 @@ function revalidateStageSeven(projectId: string) {
   revalidatePath(`/projects/${projectId}/stages/7`);
 }
 
-async function stageSevenAction<T>(projectId: string, operation: () => Promise<T>) {
+function publishStageSevenChange(input: {
+  projectId: string;
+  changedEntityId: string | null;
+  actorId: string;
+}) {
+  publishProjectActivityUpdatedAfterResponse({
+    projectId: input.projectId,
+    stageId: null,
+    eventType: "timeline_updated",
+    changedEntityId: input.changedEntityId,
+    actorId: input.actorId,
+  });
+}
+
+async function stageSevenAction<T>(
+  projectId: string,
+  actorId: string,
+  changedEntityId: string | null,
+  operation: () => Promise<T>,
+) {
   try {
     const result = await operation();
     revalidateStageSeven(projectId);
+    publishStageSevenChange({ projectId, actorId, changedEntityId });
     return result;
   } catch (error) {
     if (error instanceof StageSevenWorkflowError) {
@@ -56,7 +77,9 @@ export async function createProductionSampleRoundAction(input: {
   requestNote?: string | null;
 }) {
   const user = await requireUser();
-  return stageSevenAction(input.projectId, () => createProductionSampleRound(user, input));
+  return stageSevenAction(input.projectId, user.id, input.productionUnitId, () =>
+    createProductionSampleRound(user, input),
+  );
 }
 
 export async function retryProductionSampleRequestEmailAction(input: {
@@ -65,7 +88,7 @@ export async function retryProductionSampleRequestEmailAction(input: {
   sampleRoundId: string;
 }) {
   const user = await requireUser();
-  return stageSevenAction(input.projectId, () =>
+  return stageSevenAction(input.projectId, user.id, input.sampleRoundId, () =>
     retryProductionSampleRequestEmail(user, input),
   );
 }
@@ -76,7 +99,7 @@ export async function deleteProductionSampleRoundAction(input: {
   sampleRoundId: string;
 }) {
   const user = await requireUser();
-  return stageSevenAction(input.projectId, () =>
+  return stageSevenAction(input.projectId, user.id, input.sampleRoundId, () =>
     deleteProductionSampleRound(user, input),
   );
 }
@@ -89,7 +112,9 @@ export async function decidePhysicalSampleRoundAction(input: {
   decisionNote?: string | null;
 }) {
   const user = await requireUser();
-  return stageSevenAction(input.projectId, () => decidePhysicalSampleRound(user, input));
+  return stageSevenAction(input.projectId, user.id, input.sampleRoundId, () =>
+    decidePhysicalSampleRound(user, input),
+  );
 }
 
 export async function markPhysicalSampleRoundReceivedAction(input: {
@@ -98,12 +123,14 @@ export async function markPhysicalSampleRoundReceivedAction(input: {
   sampleRoundId: string;
 }) {
   const user = await requireUser();
-  return stageSevenAction(input.projectId, () =>
+  return stageSevenAction(input.projectId, user.id, input.sampleRoundId, () =>
     markPhysicalSampleRoundReceived(user, input),
   );
 }
 
 export async function closeStageSevenProjectAction(input: { projectId: string }) {
   const user = await requireUser();
-  return stageSevenAction(input.projectId, () => closeStageSevenProject(user, input));
+  return stageSevenAction(input.projectId, user.id, null, () =>
+    closeStageSevenProject(user, input),
+  );
 }
