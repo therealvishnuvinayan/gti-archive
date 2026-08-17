@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Loader2, MessageSquarePlus, Send, X } from "lucide-react";
 
@@ -47,11 +47,114 @@ function clampPercent(value: number, min = 0, max = 100) {
   return Math.min(max, Math.max(min, value));
 }
 
-function getPopoverPosition(position: { xPercent: number; yPercent: number }) {
-  return {
-    left: `${clampPercent(position.xPercent, 14, 86)}%`,
-    top: `${clampPercent(position.yPercent, 12, 82)}%`,
-  };
+type ContainedCaptionPopoverProps = {
+  children: ReactNode;
+  className: string;
+  position: PendingCaptionPosition;
+};
+
+const POPOVER_EDGE_GAP = 8;
+const POPOVER_ANCHOR_GAP = 12;
+
+function clampPixels(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function ContainedCaptionPopover({
+  children,
+  className,
+  position,
+}: ContainedCaptionPopoverProps) {
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+
+  useLayoutEffect(() => {
+    const popover = popoverRef.current;
+    const frame = popover?.parentElement;
+
+    if (!popover || !frame) {
+      return;
+    }
+
+    const placePopover = () => {
+      const frameWidth = frame.clientWidth;
+      const frameHeight = frame.clientHeight;
+
+      if (frameWidth <= 0 || frameHeight <= 0) {
+        return;
+      }
+
+      const popoverWidth = popover.offsetWidth;
+      const popoverHeight = popover.offsetHeight;
+      const anchorX = (clampPercent(position.xPercent) / 100) * frameWidth;
+      const anchorY = (clampPercent(position.yPercent) / 100) * frameHeight;
+      const minimumLeft = POPOVER_EDGE_GAP;
+      const maximumLeft = Math.max(
+        minimumLeft,
+        frameWidth - popoverWidth - POPOVER_EDGE_GAP,
+      );
+      const minimumTop = POPOVER_EDGE_GAP;
+      const maximumTop = Math.max(
+        minimumTop,
+        frameHeight - popoverHeight - POPOVER_EDGE_GAP,
+      );
+      const rightPlacement = anchorX + POPOVER_ANCHOR_GAP;
+      const leftPlacement = anchorX - popoverWidth - POPOVER_ANCHOR_GAP;
+      const belowPlacement = anchorY + POPOVER_ANCHOR_GAP;
+      const abovePlacement = anchorY - popoverHeight - POPOVER_ANCHOR_GAP;
+      const prefersRight = anchorX <= frameWidth / 2;
+      const prefersBelow = anchorY <= frameHeight / 2;
+
+      let left = prefersRight ? rightPlacement : leftPlacement;
+
+      if (left < minimumLeft || left > maximumLeft) {
+        const oppositeLeft = prefersRight ? leftPlacement : rightPlacement;
+        left =
+          oppositeLeft >= minimumLeft && oppositeLeft <= maximumLeft
+            ? oppositeLeft
+            : clampPixels(anchorX - popoverWidth / 2, minimumLeft, maximumLeft);
+      }
+
+      let top = prefersBelow ? belowPlacement : abovePlacement;
+
+      if (top < minimumTop || top > maximumTop) {
+        const oppositeTop = prefersBelow ? abovePlacement : belowPlacement;
+        top =
+          oppositeTop >= minimumTop && oppositeTop <= maximumTop
+            ? oppositeTop
+            : clampPixels(anchorY - popoverHeight / 2, minimumTop, maximumTop);
+      }
+
+      popover.style.left = `${Math.round(left)}px`;
+      popover.style.top = `${Math.round(top)}px`;
+      popover.style.visibility = "visible";
+    };
+
+    placePopover();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", placePopover);
+      return () => window.removeEventListener("resize", placePopover);
+    }
+
+    const resizeObserver = new ResizeObserver(placePopover);
+    resizeObserver.observe(frame);
+    resizeObserver.observe(popover);
+
+    return () => resizeObserver.disconnect();
+  }, [position.xPercent, position.yPercent]);
+
+  return (
+    <div
+      ref={popoverRef}
+      data-caption-interactive="true"
+      data-contained-caption-popover="true"
+      className={`absolute z-30 max-h-[calc(100%-1rem)] overflow-y-auto rounded-[16px] border border-[#d8e5d9] bg-white p-3 ${className}`}
+      style={{ visibility: "hidden" }}
+      onClick={(event) => event.stopPropagation()}
+    >
+      {children}
+    </div>
+  );
 }
 
 export function SubmissionCaptionDialog({
@@ -340,11 +443,9 @@ export function SubmissionCaptionDialog({
               })}
 
               {activeCaption ? (
-                <div
-                  data-caption-interactive="true"
-                  className="absolute z-30 w-[min(18rem,calc(100%-1rem))] -translate-x-1/2 rounded-[16px] border border-[#d8e5d9] bg-white p-3 shadow-[0_18px_36px_rgba(14,31,20,0.14)]"
-                  style={getPopoverPosition(activeCaption)}
-                  onClick={(event) => event.stopPropagation()}
+                <ContainedCaptionPopover
+                  className="w-[min(18rem,calc(100%-1rem))] shadow-[0_18px_36px_rgba(14,31,20,0.14)]"
+                  position={activeCaption}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -367,15 +468,13 @@ export function SubmissionCaptionDialog({
                   <p className="mt-2 whitespace-pre-wrap text-[12px] leading-[1.45] text-[#111712]">
                     {activeCaption.body}
                   </p>
-                </div>
+                </ContainedCaptionPopover>
               ) : null}
 
               {pendingCaption ? (
-                <div
-                  data-caption-interactive="true"
-                  className="absolute z-30 w-[min(19rem,calc(100%-1rem))] -translate-x-1/2 rounded-[16px] border border-[#d8e5d9] bg-white p-3 shadow-[0_20px_38px_rgba(14,31,20,0.16)]"
-                  style={getPopoverPosition(pendingCaption)}
-                  onClick={(event) => event.stopPropagation()}
+                <ContainedCaptionPopover
+                  className="w-[min(19rem,calc(100%-1rem))] shadow-[0_20px_38px_rgba(14,31,20,0.16)]"
+                  position={pendingCaption}
                 >
                   <Textarea
                     value={captionDraft}
@@ -412,7 +511,7 @@ export function SubmissionCaptionDialog({
                       Save
                     </Button>
                   </div>
-                </div>
+                </ContainedCaptionPopover>
               ) : null}
             </div>
           </div>

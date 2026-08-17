@@ -109,6 +109,11 @@ for (const snippet of [
   "SubmissionCaptionDialog",
   "/api/project-assets/${attachment.id}/captions",
   "stageSubmissionCaptionHelpText",
+  "ContainedCaptionPopover",
+  "data-contained-caption-popover",
+  "new ResizeObserver(placePopover)",
+  "frameWidth - popoverWidth - POPOVER_EDGE_GAP",
+  "frameHeight - popoverHeight - POPOVER_EDGE_GAP",
   "No captions yet.",
 ]) {
   assertIncludes(captionDialog, snippet, `caption dialog ${snippet}`);
