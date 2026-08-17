@@ -107,6 +107,7 @@ for (const snippet of [
   'title="Clear all recent searches?"',
   "recentSearches.length > 0",
   'fetch("/api/flux-ai/search"',
+  'currentQuery.trim() === submittedQuery ? "" : currentQuery',
   "Open Archive",
   "Matched file",
   "Matched value",

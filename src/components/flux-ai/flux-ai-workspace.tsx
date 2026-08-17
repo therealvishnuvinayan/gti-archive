@@ -170,6 +170,9 @@ export function FluxAiWorkspace({
       }
 
       setResponse(payload);
+      setQuery((currentQuery) =>
+        currentQuery.trim() === submittedQuery ? "" : currentQuery,
+      );
       if (payload.recentSearches) {
         setRecentSearches(payload.recentSearches);
       }
