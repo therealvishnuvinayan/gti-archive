@@ -87,16 +87,25 @@ assert(
 );
 assert(
   workspace.includes("max-h-[calc(100dvh-1.5rem)]") &&
-    workspace.includes("min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain") &&
-    workspace.includes("flex shrink-0 flex-col-reverse gap-3 border-t"),
+    workspace.includes("min-h-0 min-w-0 flex-1") &&
+    workspace.includes("overflow-x-hidden overflow-y-auto overscroll-contain") &&
+    workspace.includes("shrink-0 flex-col-reverse gap-3 border-t"),
   "The concept details dialog must fit the viewport, scroll its fields, and keep actions accessible.",
 );
 assert(
   workspace.includes("max-w-[680px]") &&
-    workspace.includes("overflow-x-hidden overflow-y-auto") &&
-    workspace.includes("grid min-w-0 gap-5") &&
-    workspace.includes('className="min-w-0 max-w-full"'),
-  "The Create Task dialog must contain wide editor controls without collapsing or horizontally scrolling the form.",
+    workspace.includes("touch-pan-y overflow-x-hidden overflow-y-auto") &&
+    workspace.includes("[scroll-padding-block:1.25rem]") &&
+    workspace.includes("[scrollbar-gutter:stable]") &&
+    workspace.includes("grid w-full min-w-0 gap-5") &&
+    workspace.includes('className="box-border w-full min-w-0 max-w-full"'),
+  "The Create Task dialog must contain wide editor controls without shifting or horizontally scrolling the form.",
+);
+assert(
+  workspace.includes('role="alert"') &&
+    workspace.includes("block min-h-4 w-full break-words") &&
+    workspace.includes("relative z-10 flex shrink-0 flex-col-reverse"),
+  "Concept Brief validation must remain fully visible above the isolated dialog action bar.",
 );
 assert(
   workspace.includes('aria-busy={pending}') &&

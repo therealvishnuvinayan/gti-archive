@@ -212,9 +212,9 @@ function ConceptDetailsDialog({
             </Button>
           </div>
 
-          <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-5 py-5 sm:px-6">
-            <div className="grid min-w-0 gap-5">
-              <label className="block min-w-0 space-y-2">
+          <div className="dashboard-scroll-thin min-h-0 min-w-0 flex-1 touch-pan-y overflow-x-hidden overflow-y-auto overscroll-contain px-5 py-5 [scroll-padding-block:1.25rem] [scrollbar-gutter:stable] sm:px-6">
+            <div className="grid w-full min-w-0 gap-5">
+              <label className="block w-full min-w-0 space-y-2">
                 <span className="text-[12px] font-[700] text-[#2d372f]">Concept Name *</span>
                 <Input
                   autoFocus
@@ -229,7 +229,7 @@ function ConceptDetailsDialog({
                 />
               </label>
 
-              <label className="block min-w-0 space-y-2">
+              <label className="block w-full min-w-0 space-y-2">
                 <span className="text-[12px] font-[700] text-[#2d372f]">Assigned Executor *</span>
                 <Select
                   value={assignedExecutorId}
@@ -265,7 +265,7 @@ function ConceptDetailsDialog({
                 </span>
               </label>
 
-              <label className="block min-w-0 space-y-2">
+              <label className="block w-full min-w-0 space-y-2">
                 <span className="text-[12px] font-[700] text-[#2d372f]">Deadline *</span>
                 <DateTimePicker
                   name="conceptDeadline"
@@ -287,7 +287,7 @@ function ConceptDetailsDialog({
                 ) : null}
               </label>
 
-              <div className="block min-w-0 space-y-2">
+              <div className="block w-full min-w-0 space-y-2">
                 <span className="text-[12px] font-[700] text-[#2d372f]">Concept Brief *</span>
                 <RichTextEditor
                   value={brief}
@@ -295,19 +295,22 @@ function ConceptDetailsDialog({
                   disabled={detailsLocked}
                   placeholder="Describe the direction, requirements, and expected outcome."
                   minHeightClassName="min-h-[112px]"
-                  className="min-w-0 max-w-full"
+                  className="box-border w-full min-w-0 max-w-full"
                   ariaLabel="Concept brief"
                   required
                   error={!cleanBrief}
                 />
                 {!cleanBrief ? (
-                  <span className="block text-[11px] font-[600] text-[#b84e48]">
+                  <span
+                    role="alert"
+                    className="block min-h-4 w-full break-words text-[11px] font-[600] leading-4 text-[#b84e48]"
+                  >
                     Concept Brief is required.
                   </span>
                 ) : null}
               </div>
 
-              <div className="min-w-0 space-y-2">
+              <div className="w-full min-w-0 space-y-2">
                 <span className="block text-[12px] font-[700] text-[#2d372f]">Brief Attachments</span>
                 <Input
                   id={attachmentInputId}
@@ -388,7 +391,7 @@ function ConceptDetailsDialog({
             </div>
           </div>
 
-          <div className="flex shrink-0 flex-col-reverse gap-3 border-t border-[#e5ebe6] bg-white px-5 py-4 sm:flex-row sm:items-center sm:px-6">
+          <div className="relative z-10 flex shrink-0 flex-col-reverse gap-3 border-t border-[#e5ebe6] bg-white px-5 py-4 sm:flex-row sm:items-center sm:px-6">
             <Button type="button" className="w-full sm:w-auto" variant="secondary" onClick={closeWithAutosave} disabled={pending}>
               Cancel
             </Button>
