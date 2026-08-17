@@ -125,9 +125,11 @@ assert(
   "The Request New Sample dialog must have a definite viewport-bounded height, contain horizontal overflow, scroll fields internally, and keep its action footer separate and accessible.",
 );
 assert(
-  (workspace.match(/grid-cols-\[50px_minmax\(155px,1\.25fr\)_minmax\(130px,1fr\)_110px_110px_210px\]/g)?.length ?? 0) === 2 &&
-    workspace.includes('<span className="justify-self-start">Status</span>') &&
-    workspace.includes('<span className="justify-self-end text-right">Actions</span>') &&
+  (workspace.match(/grid-cols-\[50px_minmax\(0,1\.25fr\)_minmax\(0,1fr\)_100px_128px_210px\]/g)?.length ?? 0) === 2 &&
+    workspace.includes('<span className="w-full">Status</span>') &&
+    workspace.includes('<span className="w-full text-right">Actions</span>') &&
+    workspace.includes('className="w-full min-w-0"') &&
+    workspace.includes("whitespace-nowrap border-[#dfe5df]") &&
     workspace.includes("<ReceiptStatusBadge round={round} />") &&
     workspace.includes("<DecisionBadge decision={round.decision} />") &&
     !workspace.includes('{selected ? "Selected" : "View"}'),

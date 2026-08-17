@@ -142,9 +142,9 @@ function UnitStatusBadge({ status }: { status: ProductionSupervisionStatus }) {
 
 function ReceiptStatusBadge({ round }: { round: Round }) {
   return round.status !== ProductionSampleRoundStatus.PENDING ? (
-    <Badge className="border-[#cde3d3] bg-[#e9f6ed] text-[#257049]">Received</Badge>
+    <Badge className="whitespace-nowrap border-[#cde3d3] bg-[#e9f6ed] text-[#257049]">Received</Badge>
   ) : (
-    <Badge className="border-[#dfe5df] bg-[#f5f7f5] text-[#68736b]">Not Received</Badge>
+    <Badge className="whitespace-nowrap border-[#dfe5df] bg-[#f5f7f5] text-[#68736b]">Not Received</Badge>
   );
 }
 
@@ -478,7 +478,7 @@ function SampleRoundsList({
       </div>
       {unit.rounds.length ? (
         <div>
-          <div className="hidden grid-cols-[50px_minmax(155px,1.25fr)_minmax(130px,1fr)_110px_110px_210px] gap-3 border-b border-[#edf0ed] bg-[#fafbfa] px-5 py-2.5 text-[8px] font-[760] uppercase tracking-[0.065em] text-[#7d8780] lg:grid"><span>Round</span><span>Name / Type</span><span>Provider</span><span>Deadline</span><span className="justify-self-start">Status</span><span className="justify-self-end text-right">Actions</span></div>
+          <div className="hidden grid-cols-[50px_minmax(0,1.25fr)_minmax(0,1fr)_100px_128px_210px] gap-3 border-b border-[#edf0ed] bg-[#fafbfa] px-5 py-2.5 text-[8px] font-[760] uppercase tracking-[0.065em] text-[#7d8780] lg:grid"><span>Round</span><span>Name / Type</span><span>Provider</span><span>Deadline</span><span className="w-full">Status</span><span className="w-full text-right">Actions</span></div>
           <div className="divide-y divide-[#e9ede9]">
             {unit.rounds.map((round) => {
               const selected = round.id === selectedRoundId;
@@ -493,13 +493,13 @@ function SampleRoundsList({
                 roundStatus: round.status,
               });
               return (
-                <article key={round.id} className={cn("grid gap-4 px-4 py-4 transition lg:grid-cols-[50px_minmax(155px,1.25fr)_minmax(130px,1fr)_110px_110px_210px] lg:items-center lg:gap-3 lg:px-5", selected ? "bg-[#f4faf5]" : "hover:bg-[#fbfcfb]")}>
+                <article key={round.id} className={cn("grid gap-4 px-4 py-4 transition lg:grid-cols-[50px_minmax(0,1.25fr)_minmax(0,1fr)_100px_128px_210px] lg:items-center lg:gap-3 lg:px-5", selected ? "bg-[#f4faf5]" : "hover:bg-[#fbfcfb]")}>
                   <div><span className="mb-1 block text-[8px] font-[760] uppercase text-[#8a948d] lg:hidden">Round</span><span className={cn("grid size-8 shrink-0 place-items-center rounded-full border text-[11px] font-[780]", selected ? "border-[#86b395] bg-[#e7f4ea] text-[#2d744d]" : "border-[#dce4dd] bg-[#f7f9f7] text-[#68746b]")}>{round.sequence}</span></div>
                   <div className="min-w-0"><span className="mb-1 block text-[8px] font-[760] uppercase text-[#8a948d] lg:hidden">Name / Type</span><h3 className="truncate text-[11px] font-[700] leading-4 text-[#29342c]">{round.name}</h3><p className="mt-0.5 truncate text-[9px] text-[#758078]">{round.type === ProductionSampleRoundType.CUSTOM ? round.customTypeName : ROUND_TYPE_LABELS[round.type]}</p></div>
                   <div className="min-w-0"><span className="mb-1 block text-[8px] font-[760] uppercase text-[#8a948d] lg:hidden">Provider</span><p className="truncate text-[10px] font-[680] text-[#39443c]">{round.recipientCompany || round.recipientName || "Legacy request"}</p>{round.recipientEmail ? <p className="mt-0.5 truncate text-[8px] text-[#849087]">{round.recipientEmail}</p> : null}</div>
                   <div><span className="mb-1 block text-[8px] font-[760] uppercase text-[#8a948d] lg:hidden">Deadline</span><p className="text-[10px] font-[680] text-[#39443c]">{formatDate(round.deadline)}</p>{round.overdue ? <p className="mt-0.5 text-[8px] font-[700] text-[#bd473d]">{overdueLabel(round.deadline)}</p> : null}</div>
-                  <div className="min-w-0 justify-self-start"><span className="mb-1 block text-[8px] font-[760] uppercase text-[#8a948d] lg:hidden">Status</span><ReceiptStatusBadge round={round} /></div>
-                  <div className="justify-self-start lg:justify-self-end"><span className="mb-1 block text-[8px] font-[760] uppercase text-[#8a948d] lg:hidden">Actions</span><div className="flex flex-wrap justify-start gap-2 lg:justify-end">{round.decision ? <button type="button" className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4b9068]/40" aria-label={`View ${round.decision === PhysicalSampleDecision.ACCEPTED ? "accepted" : "rejected"} sample request`} onClick={() => onSelectRound(round.id)}><DecisionBadge decision={round.decision} /></button> : <Button type="button" size="sm" variant={selected ? "secondary" : "outline"} className="min-h-8 rounded-[10px] px-3 text-[10px]" onClick={() => onSelectRound(round.id)}>{actions.reviewable ? "Accept / Reject" : "View Request"}</Button>}{actions.showRowDelete ? <Button type="button" size="sm" variant="destructive" className="min-h-8 rounded-[10px] px-3 text-[10px]" onClick={() => onDeleteRound(round)}><Trash2 className="h-3.5 w-3.5" /> Delete Request</Button> : null}</div></div>
+                  <div className="w-full min-w-0"><span className="mb-1 block text-[8px] font-[760] uppercase text-[#8a948d] lg:hidden">Status</span><ReceiptStatusBadge round={round} /></div>
+                  <div className="w-full min-w-0"><span className="mb-1 block text-[8px] font-[760] uppercase text-[#8a948d] lg:hidden">Actions</span><div className="flex min-w-0 flex-wrap justify-start gap-2 lg:justify-end">{round.decision ? <button type="button" className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4b9068]/40" aria-label={`View ${round.decision === PhysicalSampleDecision.ACCEPTED ? "accepted" : "rejected"} sample request`} onClick={() => onSelectRound(round.id)}><DecisionBadge decision={round.decision} /></button> : <Button type="button" size="sm" variant={selected ? "secondary" : "outline"} className="min-h-8 shrink-0 rounded-[10px] px-3 text-[10px]" onClick={() => onSelectRound(round.id)}>{actions.reviewable ? "Accept / Reject" : "View Request"}</Button>}{actions.showRowDelete ? <Button type="button" size="sm" variant="destructive" className="min-h-8 shrink-0 rounded-[10px] px-3 text-[10px]" onClick={() => onDeleteRound(round)}><Trash2 className="h-3.5 w-3.5" /> Delete Request</Button> : null}</div></div>
                 </article>
               );
             })}
