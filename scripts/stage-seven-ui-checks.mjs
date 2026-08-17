@@ -137,7 +137,7 @@ assert(
 assert(
   workspace.includes("const canRequest = Boolean(selectedUnit && data.canManage") &&
     workspace.includes("const canDelete = Boolean(round && canManage && !stageCompleted && !decided)") &&
-    workspace.includes("canDeleteRequests && !round.decision") &&
+    workspace.includes("canDeleteRequests && !round.decision && !selected") &&
     workspace.includes("onDeleteRound(round)") &&
     workspace.includes("sampleRoundId: target.round.id") &&
     !workspace.includes("!latestRound || latestRound.decision") &&
@@ -146,6 +146,13 @@ assert(
     !service.includes("Previous sample rounds are read-only history.") &&
     !service.includes("The physical sample request email must be sent before recording a decision."),
   "Managers must be able to create, review, and delete each physical sample request independently.",
+);
+assert(
+  workspace.includes('disabled={!reviewable || !received} onClick={requestRejection}') &&
+    workspace.includes('"Review note required."') &&
+    workspace.includes('"Enter a review note before rejecting the physical sample."') &&
+    !workspace.includes("disabled={!reviewable || !received || !richTextToPlainText(reviewNote)}"),
+  "Received samples must enable both decision actions while rejection-note validation remains explicit.",
 );
 
 for (const action of [
