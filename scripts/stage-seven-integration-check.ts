@@ -17,6 +17,7 @@ import {
 } from "@prisma/client";
 
 import type { SendEmailInput } from "../src/lib/email/resend";
+import { getNotificationsForUser } from "../src/lib/notification-center";
 import { prisma } from "../src/lib/prisma";
 import {
   closeStageSevenProject,
@@ -516,7 +517,7 @@ async function main() {
     check((await prisma.notification.count({ where: { entityType: "SAMPLE_ROUND", entityId: deletableInternalRound.id } })) === 0, "deleting an internal request must remove its recipient notification");
     check((await getStageSevenWorkspaceData(executor, ids.project, units[1].id, deletableInternalRound.id)) === null, "a deleted request must disappear from the internal recipient workspace");
 
-    const recipientDecisionRound = await createProductionSampleRound(owner, {
+    const recipientDecisionInput = {
       projectId: ids.project,
       productionUnitId: units[1].id,
       clientRequestId: `recipient-decision-${runId}`,
@@ -527,7 +528,58 @@ async function main() {
       recipientType: ProductionApprovalRecipientType.EXISTING_COLLABORATOR,
       recipientUserId: ids.executor,
       requestNote: "The assigned internal recipient will review this sample.",
-    }, { sendEmail: sendSuccess });
+    };
+    const recipientDecisionRound = await createProductionSampleRound(
+      owner,
+      recipientDecisionInput,
+      { sendEmail: sendSuccess },
+    );
+    check(
+      (await prisma.notification.count({
+        where: {
+          type: "PRODUCTION_SAMPLE_REQUESTED",
+          entityId: recipientDecisionRound.id,
+          userId: ids.executor,
+        },
+      })) === 1,
+      "creating an internal request must immediately persist its recipient notification",
+    );
+    await prisma.notification.deleteMany({
+      where: {
+        type: "PRODUCTION_SAMPLE_REQUESTED",
+        entityId: recipientDecisionRound.id,
+      },
+    });
+    const replayedRecipientDecisionRound = await createProductionSampleRound(
+      owner,
+      recipientDecisionInput,
+      { sendEmail: sendSuccess },
+    );
+    check(
+      replayedRecipientDecisionRound.duplicate &&
+        (await prisma.notification.count({
+          where: {
+            type: "PRODUCTION_SAMPLE_REQUESTED",
+            entityId: recipientDecisionRound.id,
+            userId: ids.executor,
+          },
+        })) === 1,
+      "an idempotent internal-request retry must repair a missing recipient notification",
+    );
+    const recipientInbox = await getNotificationsForUser({
+      userId: ids.executor,
+      page: 1,
+      pageSize: 50,
+    });
+    check(
+      recipientInbox.notifications.some(
+        (notification) =>
+          notification.title === "Physical sample requested" &&
+          notification.targetHref ===
+            `/projects/${ids.project}/stages/7?unit=${units[1].id}&round=${recipientDecisionRound.id}`,
+      ),
+      "the repaired request notification must appear in the recipient inbox and link to the assigned request",
+    );
     const ownerInternalWorkspace = await getStageSevenWorkspaceData(
       owner,
       ids.project,

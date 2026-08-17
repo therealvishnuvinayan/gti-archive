@@ -227,13 +227,16 @@ assert(
     notificationMigration.includes("PRODUCTION_SAMPLE_REQUESTED") &&
     service.includes("NotificationType.PRODUCTION_SAMPLE_REQUESTED") &&
     service.includes("publishNotificationChanges") &&
-    service.includes("stage7-physical-sample-requested:${created.id}:${recipient.recipientUserId}") &&
+    service.includes("ensureInternalSampleRequestNotification") &&
+    service.includes("tx.notification.upsert") &&
+    service.includes("stage7-physical-sample-requested:${input.roundId}:${input.recipientUserId}") &&
+    service.includes("if (prepared.duplicate) return prepared") &&
     notificationPresenter.includes('"PRODUCTION_SAMPLE_REQUESTED"') &&
     service.includes("const assignedRecipientId = canManage ? null : user.id") &&
     service.includes("some: { recipientUserId: assignedRecipientId }") &&
     service.includes("participants: canManage ? getParticipants(project) : []") &&
     !page.includes("isBusinessAdministratorRole(user.role)"),
-  "Internal sample recipients must receive a realtime notification and a request-scoped read-only Stage 7 view.",
+  "Internal sample recipients must receive a repairable realtime notification and a request-scoped read-only Stage 7 view.",
 );
 assert(
   service.includes("requestReferenceFileIds") &&

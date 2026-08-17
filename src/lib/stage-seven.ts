@@ -883,6 +883,43 @@ async function deliverSampleRequestEmail(
   return { status: ProductionDispatchStatus.SENT, error: null } as const;
 }
 
+async function ensureInternalSampleRequestNotification(
+  tx: Prisma.TransactionClient,
+  input: {
+    projectId: string;
+    projectName: string;
+    productionUnitId: string;
+    roundId: string;
+    roundName: string;
+    recipientUserId: string;
+    unitName?: string;
+  },
+) {
+  const dedupeKey =
+    `stage7-physical-sample-requested:${input.roundId}:${input.recipientUserId}`;
+  const notification = {
+    userId: input.recipientUserId,
+    type: NotificationType.PRODUCTION_SAMPLE_REQUESTED,
+    title: "Physical sample requested",
+    entityType: NotificationEntityType.SAMPLE_ROUND,
+    entityId: input.roundId,
+    projectId: input.projectId,
+    url: `/projects/${input.projectId}/stages/7?unit=${input.productionUnitId}&round=${input.roundId}`,
+  } as const;
+
+  await tx.notification.upsert({
+    where: { dedupeKey },
+    update: notification,
+    create: {
+      ...notification,
+      message: input.unitName
+        ? `${input.roundName} for ${input.unitName} in ${input.projectName} has been assigned to you.`
+        : `${input.roundName} in ${input.projectName} has been assigned to you.`,
+      dedupeKey,
+    },
+  });
+}
+
 export async function createProductionSampleRound(
   user: PermissionUser,
   input: {
@@ -914,7 +951,9 @@ export async function createProductionSampleRound(
       where: { clientRequestId: input.clientRequestId },
       select: {
         id: true,
+        name: true,
         projectId: true,
+        recipientUserId: true,
         emailStatus: true,
         emailError: true,
         supervision: { select: { productionUnitId: true } },
@@ -926,6 +965,16 @@ export async function createProductionSampleRound(
         duplicate.supervision.productionUnitId !== input.productionUnitId
       ) {
         throw new StageSevenWorkflowError("The request identifier is already in use.");
+      }
+      if (duplicate.recipientUserId) {
+        await ensureInternalSampleRequestNotification(tx, {
+          projectId: duplicate.projectId,
+          projectName: project.name,
+          productionUnitId: duplicate.supervision.productionUnitId,
+          roundId: duplicate.id,
+          roundName: duplicate.name,
+          recipientUserId: duplicate.recipientUserId,
+        });
       }
       return { ...duplicate, duplicate: true } as const;
     }
@@ -987,31 +1036,31 @@ export async function createProductionSampleRound(
     });
 
     if (recipient.recipientUserId) {
-      await tx.notification.create({
-        data: {
-          userId: recipient.recipientUserId,
-          type: NotificationType.PRODUCTION_SAMPLE_REQUESTED,
-          title: "Physical sample requested",
-          message: `${validated.name} for ${productionUnitName(unit)} in ${project.name} has been assigned to you.`,
-          entityType: NotificationEntityType.SAMPLE_ROUND,
-          entityId: created.id,
-          projectId: input.projectId,
-          url: `/projects/${input.projectId}/stages/7?unit=${input.productionUnitId}&round=${created.id}`,
-          dedupeKey: `stage7-physical-sample-requested:${created.id}:${recipient.recipientUserId}`,
-        },
+      await ensureInternalSampleRequestNotification(tx, {
+        projectId: input.projectId,
+        projectName: project.name,
+        productionUnitId: input.productionUnitId,
+        roundId: created.id,
+        roundName: validated.name,
+        recipientUserId: recipient.recipientUserId,
+        unitName: productionUnitName(unit),
       });
     }
 
-    return { ...created, duplicate: false } as const;
+    return {
+      ...created,
+      recipientUserId: recipient.recipientUserId,
+      duplicate: false,
+    } as const;
   });
 
-  if (prepared.duplicate) return prepared;
-  if (recipient.recipientUserId) {
+  if (prepared.recipientUserId) {
     await publishNotificationChanges({
-      recipientUserIds: [recipient.recipientUserId],
+      recipientUserIds: [prepared.recipientUserId],
       reason: "created",
     });
   }
+  if (prepared.duplicate) return prepared;
   const delivery = await deliverSampleRequestEmail(
     prepared.id,
     options.sendEmail ?? sendResendEmail,
