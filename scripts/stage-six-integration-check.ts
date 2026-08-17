@@ -42,6 +42,8 @@ import {
   completeStageSix,
   configureMarketingDirector,
   decideProductionApproval,
+  getAuthenticatedProductionHandoverData,
+  getAuthenticatedProductionHandoverFileUrl,
   getAuthenticatedProductionApprovalData,
   getExternalProductionApprovalData,
   getExternalProductionHandoverData,
@@ -53,6 +55,7 @@ import {
   reorderProductionApprover,
 } from "../src/lib/stage-six";
 import { STAGE_SIX_FIRST_APPROVER } from "../src/lib/stage-six-constants";
+import { getRecentNotificationsForUser } from "../src/lib/notification-center/service";
 
 function check(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`Stage 6 integration check failed: ${message}`);
@@ -223,6 +226,12 @@ async function createProjectFixture(input: {
 }
 
 async function main() {
+  process.env.AWS_REGION ||= "us-east-1";
+  process.env.AWS_ACCESS_KEY_ID ||= "stage-six-test";
+  process.env.AWS_SECRET_ACCESS_KEY ||= "stage-six-test-secret";
+  process.env.AWS_S3_BUCKET ||= "stage-six-integration";
+  process.env.S3_USE_ACCELERATE_ENDPOINT ||= "false";
+
   const runId = randomUUID();
   const ids = {
     owner: `s6-owner-${runId}`,
@@ -347,6 +356,12 @@ async function main() {
       role: UserRole.USER,
       email: `${ids.approver}@example.test`,
       name: ids.approver,
+    };
+    const secondApprover = {
+      id: ids.secondApprover,
+      role: UserRole.USER,
+      email: `${ids.secondApprover}@example.test`,
+      name: ids.secondApprover,
     };
     const outsider = {
       id: ids.outsider,
@@ -538,7 +553,81 @@ async function main() {
     const completedSix = await completeStageSix(coOwner, { projectId: ids.project });
     check(!isError(completedSix) && completedSix.stageSevenAvailable, "all approved units must allow Stage 6 completion without requiring handover");
     const successfulHandoverB = await handoverProductionUnit(owner, { clientRequestId: `handover-b-${runId}`, projectId: ids.project, productionUnitId: unitB.id, route: ProductionHandoverRoute.PURCHASE_DEPARTMENT, recipientType: ProductionApprovalRecipientType.EXISTING_COLLABORATOR, recipientUserId: ids.secondApprover, sharedFieldKeys: [ProjectFileChecklistField.OUTPUT_NAME], selectedFileIds: [unitB.sourceAttachmentId], note: "Purchase route" }, { sendEmail: sendSuccess });
-    check(!isError(successfulHandoverB), "internal route must deliver to an existing project participant after optional Stage 6 completion");
+    check(!isError(successfulHandoverB) && "handoverId" in successfulHandoverB, "internal route must deliver to an existing project participant after optional Stage 6 completion");
+    const internalHandoverId = successfulHandoverB.handoverId;
+    const recipientHandover = await getAuthenticatedProductionHandoverData(
+      secondApprover,
+      internalHandoverId,
+    );
+    check(
+      recipientHandover.state === "active" &&
+        recipientHandover.unit.id === unitB.id &&
+        recipientHandover.snapshot.files.length === 1,
+      "the named internal recipient must open the exact handed-over package without Stage 6 manager access",
+    );
+    check(
+      (await getAuthenticatedProductionHandoverData(owner, internalHandoverId))
+        .state === "active",
+      "the handover sender must retain authenticated access to the delivered package",
+    );
+    check(
+      (await getAuthenticatedProductionHandoverData(outsider, internalHandoverId))
+        .state === "invalid",
+      "an unrelated user must not open an internal handover",
+    );
+    const recipientFileUrl = await getAuthenticatedProductionHandoverFileUrl(
+      secondApprover,
+      internalHandoverId,
+      unitB.sourceAttachmentId,
+      "download",
+    );
+    check(
+      recipientFileUrl.startsWith("http"),
+      "the internal recipient must receive a signed download URL for a selected handover file",
+    );
+    await expectRejected(
+      getAuthenticatedProductionHandoverFileUrl(
+        secondApprover,
+        internalHandoverId,
+        productionAttachmentId,
+        "download",
+      ),
+      "the internal recipient must not download a file outside the handover snapshot",
+    );
+    await expectRejected(
+      getAuthenticatedProductionHandoverFileUrl(
+        outsider,
+        internalHandoverId,
+        unitB.sourceAttachmentId,
+        "download",
+      ),
+      "an unrelated user must not download an internal handover file",
+    );
+    const internalNotification = await prisma.notification.findFirst({
+      where: {
+        userId: ids.secondApprover,
+        type: "PRODUCTION_HANDOVER_COMPLETED",
+        entityId: unitB.id,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    check(
+      internalNotification?.url ===
+        `/production-handovers/${internalHandoverId}`,
+      "the internal recipient notification must link to the scoped handover page",
+    );
+    await prisma.notification.update({
+      where: { id: internalNotification.id },
+      data: { url: `/projects/${ids.project}/stages/6?unit=${unitB.id}` },
+    });
+    const resolvedNotification = (
+      await getRecentNotificationsForUser(ids.secondApprover, 20)
+    ).notifications.find((notification) => notification.id === internalNotification.id);
+    check(
+      resolvedNotification?.targetHref ===
+        `/production-handovers/${internalHandoverId}`,
+      "existing handover notifications must resolve to the scoped handover page",
+    );
     const retriedSix = await completeStageSix(owner, { projectId: ids.project });
     check(!isError(retriedSix) && !retriedSix.transitioned, "Stage 6 completion retry must be idempotent");
     const finalWorkflow = await prisma.projectWorkflowStage.findMany({ where: { projectId: ids.project } });

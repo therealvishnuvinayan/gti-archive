@@ -42,6 +42,11 @@ const [
   optionalLegacyStageMigration,
   assetPreview,
   archiveMetadataForm,
+  handoverWorkspace,
+  authenticatedHandoverPage,
+  authenticatedHandoverPreviewRoute,
+  authenticatedHandoverDownloadRoute,
+  notificationService,
 ] = await Promise.all([
     readFile("src/lib/archives.ts", "utf8"),
     readFile(
@@ -54,6 +59,17 @@ const [
     ),
     readFile("src/components/projects/asset-preview-button.tsx", "utf8"),
     readFile("src/components/archives/archive-artwork-metadata-form.tsx", "utf8"),
+    readFile("src/components/projects/production-handover-workspace.tsx", "utf8"),
+    readFile("src/app/production-handovers/[handoverId]/page.tsx", "utf8"),
+    readFile(
+      "src/app/api/production-handovers/[handoverId]/files/[attachmentId]/preview/route.ts",
+      "utf8",
+    ),
+    readFile(
+      "src/app/api/production-handovers/[handoverId]/files/[attachmentId]/download/route.ts",
+      "utf8",
+    ),
+    readFile("src/lib/notification-center/service.ts", "utf8"),
   ]);
 
 for (const content of [
@@ -252,6 +268,22 @@ assert(
     service.includes("Enter the external recipient company name.") &&
     service.includes("Enter a valid external phone number including country code."),
   "The backend must enforce distinct internal and external handover recipient rules.",
+);
+assert(
+  service.includes("getAuthenticatedProductionHandoverData") &&
+    service.includes("getAuthenticatedProductionHandoverFileUrl") &&
+    service.includes("canAccessAuthenticatedProductionHandover") &&
+    service.includes('url: `/production-handovers/${prepared.handover.id}`') &&
+    authenticatedHandoverPage.includes("requireUser") &&
+    authenticatedHandoverPage.includes("getAuthenticatedProductionHandoverData") &&
+    authenticatedHandoverPage.includes('kind: "authenticated"') &&
+    authenticatedHandoverPreviewRoute.includes("getCurrentUser") &&
+    authenticatedHandoverPreviewRoute.includes("getAuthenticatedProductionHandoverFileUrl") &&
+    authenticatedHandoverDownloadRoute.includes("getCurrentUser") &&
+    authenticatedHandoverDownloadRoute.includes("getAuthenticatedProductionHandoverFileUrl") &&
+    handoverWorkspace.includes("/api/production-handovers/") &&
+    notificationService.includes("handoverRouteByProductionUnitId"),
+  "Internal handover notifications must open a recipient-scoped package whose selected files have authenticated preview and download access.",
 );
 assert(
   stageSevenService.includes("ProjectProductionUnitStatus.HANDOVER_READY") &&

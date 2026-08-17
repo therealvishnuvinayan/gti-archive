@@ -2855,7 +2855,7 @@ export async function handoverProductionUnit(
           entityType: "PRODUCTION_UNIT",
           entityId: input.productionUnitId,
           projectId: project.id,
-          url: `/projects/${project.id}/stages/6?unit=${input.productionUnitId}`,
+          url: `/production-handovers/${prepared.handover.id}`,
         }),
       );
       return { handedOver: true, handoverId: prepared.handover.id } as const;
@@ -2910,7 +2910,10 @@ export async function getExternalProductionHandoverData(token: string) {
   }
   return {
     state: "active",
-    project: handover.productionUnit.project,
+    project: {
+      id: handover.productionUnit.project.id,
+      name: handover.productionUnit.project.name,
+    },
     unit: {
       id: handover.productionUnit.id,
       name: handover.productionUnit.sourceAttachment.originalFileName,
@@ -2921,6 +2924,138 @@ export async function getExternalProductionHandoverData(token: string) {
     snapshot,
     sentAt: handover.sentAt.toISOString(),
   } as const;
+}
+
+type AuthenticatedProductionHandoverRecord = {
+  recipientUserId: string | null;
+  requestedById: string;
+  handedOverById: string | null;
+  productionUnit: {
+    project: {
+      ownerId: string | null;
+      coOwners: Array<{ userId: string }>;
+    };
+  };
+};
+
+function canAccessAuthenticatedProductionHandover(
+  userId: string,
+  handover: AuthenticatedProductionHandoverRecord,
+) {
+  return (
+    handover.recipientUserId === userId ||
+    handover.requestedById === userId ||
+    handover.handedOverById === userId ||
+    handover.productionUnit.project.ownerId === userId ||
+    handover.productionUnit.project.coOwners.some(
+      (coOwner) => coOwner.userId === userId,
+    )
+  );
+}
+
+export async function getAuthenticatedProductionHandoverData(
+  user: PermissionUser,
+  handoverId: string,
+): Promise<ProductionHandoverData> {
+  const handover = await withPrismaRetry(() =>
+    prisma.projectProductionHandover.findUnique({
+      where: { id: handoverId },
+      select: {
+        id: true,
+        route: true,
+        recipientUserId: true,
+        requestedById: true,
+        handedOverById: true,
+        note: true,
+        deliveryStatus: true,
+        sentAt: true,
+        contentSnapshot: true,
+        handedOverBy: { select: { name: true, email: true } },
+        productionUnit: {
+          select: {
+            id: true,
+            sourceAttachment: { select: { originalFileName: true } },
+            project: {
+              select: {
+                id: true,
+                name: true,
+                ownerId: true,
+                coOwners: { select: { userId: true } },
+              },
+            },
+          },
+        },
+      },
+    }),
+  );
+  if (
+    !handover ||
+    !canAccessAuthenticatedProductionHandover(user.id, handover)
+  ) {
+    return { state: "invalid" } as const;
+  }
+  const snapshot = parseSnapshot(handover.contentSnapshot);
+  if (
+    handover.deliveryStatus !== ProductionHandoverDeliveryStatus.SENT ||
+    !handover.sentAt ||
+    !handover.handedOverBy ||
+    !snapshot
+  ) {
+    return { state: "unavailable" } as const;
+  }
+  return {
+    state: "active",
+    project: {
+      id: handover.productionUnit.project.id,
+      name: handover.productionUnit.project.name,
+    },
+    unit: {
+      id: handover.productionUnit.id,
+      name: handover.productionUnit.sourceAttachment.originalFileName,
+    },
+    sender: displayName(handover.handedOverBy),
+    route: handover.route,
+    note: handover.note,
+    snapshot,
+    sentAt: handover.sentAt.toISOString(),
+  } as const;
+}
+
+async function createProductionHandoverFileUrl(
+  handover: { contentSnapshot: Prisma.JsonValue; projectId: string },
+  attachmentId: string,
+  mode: "preview" | "download",
+) {
+  const snapshot = parseSnapshot(handover.contentSnapshot);
+  const allowedIds = new Set([
+    ...(snapshot?.files.map((file) => file.id) ?? []),
+    ...(snapshot?.fields.flatMap((field) =>
+      field.attachments.map((file) => file.id),
+    ) ?? []),
+  ]);
+  if (!allowedIds.has(attachmentId)) {
+    throw new Error("Handover file not found.");
+  }
+  const attachment = await withPrismaRetry(() =>
+    prisma.projectAttachment.findFirst({
+      where: {
+        id: attachmentId,
+        projectId: handover.projectId,
+        status: AttachmentStatus.READY,
+      },
+      select: attachmentSelect,
+    }),
+  );
+  if (!attachment) throw new Error("Handover file not found.");
+  const fileInput = {
+    bucket: attachment.bucket,
+    storageKey: attachment.storageKey,
+    fileName: attachment.originalFileName,
+    mimeType: attachment.mimeType,
+  };
+  return mode === "download"
+    ? createPresignedDownloadUrl(fileInput)
+    : createPresignedPreviewUrl(fileInput);
 }
 
 export async function getProductionHandoverFileUrl(
@@ -2944,32 +3079,61 @@ export async function getProductionHandoverFileUrl(
       },
     }),
   );
-  const snapshot = handover ? parseSnapshot(handover.contentSnapshot) : null;
-  const allowedIds = new Set([
-    ...(snapshot?.files.map((file) => file.id) ?? []),
-    ...(snapshot?.fields.flatMap((field) => field.attachments.map((file) => file.id)) ?? []),
-  ]);
-  if (!handover || !allowedIds.has(attachmentId)) throw new Error("Handover file not found.");
-  const attachment = await withPrismaRetry(() =>
-    prisma.projectAttachment.findFirst({
-      where: {
-        id: attachmentId,
-        projectId: handover.productionUnit.projectId,
-        status: AttachmentStatus.READY,
+  if (!handover) throw new Error("Handover file not found.");
+  return createProductionHandoverFileUrl(
+    {
+      contentSnapshot: handover.contentSnapshot,
+      projectId: handover.productionUnit.projectId,
+    },
+    attachmentId,
+    mode,
+  );
+}
+
+export async function getAuthenticatedProductionHandoverFileUrl(
+  user: PermissionUser,
+  handoverId: string,
+  attachmentId: string,
+  mode: "preview" | "download",
+) {
+  const handover = await withPrismaRetry(() =>
+    prisma.projectProductionHandover.findUnique({
+      where: { id: handoverId },
+      select: {
+        recipientUserId: true,
+        requestedById: true,
+        handedOverById: true,
+        deliveryStatus: true,
+        contentSnapshot: true,
+        productionUnit: {
+          select: {
+            projectId: true,
+            project: {
+              select: {
+                ownerId: true,
+                coOwners: { select: { userId: true } },
+              },
+            },
+          },
+        },
       },
-      select: attachmentSelect,
     }),
   );
-  if (!attachment) throw new Error("Handover file not found.");
-  const fileInput = {
-    bucket: attachment.bucket,
-    storageKey: attachment.storageKey,
-    fileName: attachment.originalFileName,
-    mimeType: attachment.mimeType,
-  };
-  return mode === "download"
-    ? createPresignedDownloadUrl(fileInput)
-    : createPresignedPreviewUrl(fileInput);
+  if (
+    !handover ||
+    handover.deliveryStatus !== ProductionHandoverDeliveryStatus.SENT ||
+    !canAccessAuthenticatedProductionHandover(user.id, handover)
+  ) {
+    throw new Error("Handover file not found.");
+  }
+  return createProductionHandoverFileUrl(
+    {
+      contentSnapshot: handover.contentSnapshot,
+      projectId: handover.productionUnit.projectId,
+    },
+    attachmentId,
+    mode,
+  );
 }
 
 export async function completeStageSix(

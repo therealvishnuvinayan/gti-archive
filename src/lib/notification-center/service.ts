@@ -1,5 +1,6 @@
 import {
   Prisma,
+  ProductionHandoverDeliveryStatus,
   ProjectWorkflowStageKey,
   type NotificationType,
 } from "@prisma/client";
@@ -32,6 +33,7 @@ type NotificationDestinationRecord = {
   id: string;
   type: NotificationType;
   title: string;
+  entityId: string | null;
   projectId: string | null;
   stageId: string | null;
   url: string | null;
@@ -66,19 +68,42 @@ async function resolveNotificationDestinations<
         .filter((stageId): stageId is string => Boolean(stageId)),
     ),
   );
+  const handoverProductionUnitIds = Array.from(
+    new Set(
+      assignmentResolvedItems
+        .filter((item) => item.type === "PRODUCTION_HANDOVER_COMPLETED")
+        .map((item) => item.entityId)
+        .filter((entityId): entityId is string => Boolean(entityId)),
+    ),
+  );
 
-  if (taskerStageIds.length === 0) return assignmentResolvedItems;
+  if (taskerStageIds.length === 0 && handoverProductionUnitIds.length === 0) {
+    return assignmentResolvedItems;
+  }
 
-  const conceptFolders = await withPrismaRetry(() =>
-    prisma.projectConceptFolder.findMany({
-      where: { taskerStageId: { in: taskerStageIds } },
-      select: {
-        id: true,
-        projectId: true,
-        taskerStageId: true,
-        workflowStageKey: true,
-      },
-    }),
+  const [conceptFolders, handovers] = await withPrismaRetry(() =>
+    Promise.all([
+      taskerStageIds.length
+        ? prisma.projectConceptFolder.findMany({
+            where: { taskerStageId: { in: taskerStageIds } },
+            select: {
+              id: true,
+              projectId: true,
+              taskerStageId: true,
+              workflowStageKey: true,
+            },
+          })
+        : Promise.resolve([]),
+      handoverProductionUnitIds.length
+        ? prisma.projectProductionHandover.findMany({
+            where: {
+              productionUnitId: { in: handoverProductionUnitIds },
+              deliveryStatus: ProductionHandoverDeliveryStatus.SENT,
+            },
+            select: { id: true, productionUnitId: true },
+          })
+        : Promise.resolve([]),
+    ]),
   );
   const conceptRouteByStageId = new Map(
     conceptFolders.map((folder) => {
@@ -93,8 +118,21 @@ async function resolveNotificationDestinations<
       ];
     }),
   );
+  const handoverRouteByProductionUnitId = new Map(
+    handovers.map((handover) => [
+      handover.productionUnitId,
+      `/production-handovers/${encodeURIComponent(handover.id)}`,
+    ]),
+  );
 
   return assignmentResolvedItems.map((item) => {
+    const handoverRoute =
+      item.type === "PRODUCTION_HANDOVER_COMPLETED" && item.entityId
+        ? handoverRouteByProductionUnitId.get(item.entityId)
+        : undefined;
+    if (handoverRoute) {
+      return { ...item, url: handoverRoute };
+    }
     const conceptRoute = item.stageId
       ? conceptRouteByStageId.get(item.stageId)
       : undefined;
@@ -306,6 +344,7 @@ export async function getRecentNotificationsForUser(
           title: true,
           message: true,
           url: true,
+          entityId: true,
           projectId: true,
           stageId: true,
           isRead: true,
