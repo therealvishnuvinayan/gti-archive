@@ -16,6 +16,7 @@ export const workflowNotificationTypes = [
   "PROJECT_ASSIGNED",
   "PROJECT_CREATED",
   "PROJECT_UPDATED",
+  "BRIEF_ACCEPTANCE_REQUIRED",
   "BRIEF_ACCEPTED",
   "REVISION_SUBMITTED",
   "REVISION_APPROVED",
@@ -69,7 +70,12 @@ export function mapTypeFilterToNotificationTypes(
         "SUBMISSION_REVISION_REQUESTED",
       ];
     case "Stage":
-      return ["BRIEF_ACCEPTED", "STAGE_COMPLETED", "NEXT_STAGE_ACTIVATED"];
+      return [
+        "BRIEF_ACCEPTANCE_REQUIRED",
+        "BRIEF_ACCEPTED",
+        "STAGE_COMPLETED",
+        "NEXT_STAGE_ACTIVATED",
+      ];
     case "Mention":
       return ["MENTION"];
     case "Comment":
@@ -113,6 +119,7 @@ function mapNotificationType(type: PrismaNotificationType): NotificationType {
     case "SUBMISSION_COMPLETED":
     case "SUBMISSION_REVISION_REQUESTED":
       return "Revision";
+    case "BRIEF_ACCEPTANCE_REQUIRED":
     case "BRIEF_ACCEPTED":
     case "STAGE_COMPLETED":
     case "NEXT_STAGE_ACTIVATED":
@@ -162,6 +169,7 @@ function mapNotificationContextLabel(type: PrismaNotificationType) {
     case "SUBMISSION_COMPLETED":
     case "SUBMISSION_REVISION_REQUESTED":
       return "Revision";
+    case "BRIEF_ACCEPTANCE_REQUIRED":
     case "BRIEF_ACCEPTED":
     case "STAGE_COMPLETED":
     case "NEXT_STAGE_ACTIVATED":
@@ -212,6 +220,7 @@ function mapNotificationContextTone(type: PrismaNotificationType): NotificationC
     case "REVISION_REJECTED":
     case "SUBMISSION_REVISION_REQUESTED":
       return "design";
+    case "BRIEF_ACCEPTANCE_REQUIRED":
     case "BRIEF_ACCEPTED":
     case "STAGE_COMPLETED":
     case "NEXT_STAGE_ACTIVATED":
@@ -263,6 +272,8 @@ function mapNotificationVisualKind(type: PrismaNotificationType): NotificationVi
       return "revision-rejected";
     case "SUBMISSION_PENDING_REVIEW":
       return "submission-pending";
+    case "BRIEF_ACCEPTANCE_REQUIRED":
+      return "approval-required";
     case "BRIEF_ACCEPTED":
       return "brief-accepted";
     case "STAGE_COMPLETED":

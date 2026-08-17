@@ -17,6 +17,7 @@ const [
   stageFourPage,
   schema,
   migration,
+  notificationMigration,
 ] = await Promise.all([
   readFile("src/components/projects/concept-stage-workspace.tsx", "utf8"),
   readFile("src/components/projects/concept-stage-route.tsx", "utf8"),
@@ -34,6 +35,10 @@ const [
   readFile("prisma/schema.prisma", "utf8"),
   readFile(
     "prisma/migrations/20260809120000_concept_executor_assignment_round_one/migration.sql",
+    "utf8",
+  ),
+  readFile(
+    "prisma/migrations/20260817110000_concept_brief_assignment_notification/migration.sql",
     "utf8",
   ),
 ]);
@@ -268,6 +273,19 @@ assert(
     actions.includes('eventType: "participant_access_changed"') &&
     actions.includes("changedEntityId: folder.id"),
   "Concept creation and assignment changes must broadcast a project refresh, and refreshed server folders must remount stale client state.",
+);
+assert(
+  schema.includes("BRIEF_ACCEPTANCE_REQUIRED") &&
+    notificationMigration.includes("BRIEF_ACCEPTANCE_REQUIRED") &&
+    notificationTriggers.includes("notifyConceptBriefAssigned") &&
+    notificationTriggers.includes('type: "BRIEF_ACCEPTANCE_REQUIRED"') &&
+    notificationTriggers.includes("Review and accept the brief to begin work.") &&
+    actions.includes('runNotificationTask("concept-brief-assigned"') &&
+    actions.includes('runNotificationTask("concept-brief-reassigned"') &&
+    actions.includes("if (folder.assignmentChanged)") &&
+    actions.includes("notifyConceptBriefAssigned") &&
+    concepts.includes("assignmentChanged,"),
+  "Creating or reassigning a concept must notify only the assigned executor to accept the brief in that concept chat.",
 );
 assert(
   history.includes('mode: "work"') &&

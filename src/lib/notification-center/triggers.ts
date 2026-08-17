@@ -422,6 +422,63 @@ export async function notifyProjectAssignmentChanges(input: {
   }
 }
 
+export async function notifyConceptBriefAssigned(input: {
+  projectId: string;
+  folderId: string;
+  actorId: string;
+}) {
+  const folder = await withPrismaRetry(() =>
+    prisma.projectConceptFolder.findFirst({
+      where: {
+        id: input.folderId,
+        projectId: input.projectId,
+      },
+      select: {
+        id: true,
+        name: true,
+        workflowStageKey: true,
+        assignedExecutorId: true,
+        taskerStage: {
+          select: {
+            id: true,
+            actualStartedAt: true,
+          },
+        },
+        project: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    }),
+  );
+
+  if (
+    !folder?.assignedExecutorId ||
+    folder.assignedExecutorId === input.actorId ||
+    folder.taskerStage.actualStartedAt
+  ) {
+    return;
+  }
+
+  const stageNumber =
+    folder.workflowStageKey === ProjectWorkflowStageKey.CONCEPT_CREATION ? 3 : 4;
+  const url = `/projects/${encodeURIComponent(folder.project.id)}/stages/${stageNumber}/concepts/${encodeURIComponent(folder.id)}`;
+
+  await createNotificationsForUsers({
+    recipientUserIds: [folder.assignedExecutorId],
+    type: "BRIEF_ACCEPTANCE_REQUIRED",
+    title: "Concept brief ready",
+    message: `You have been assigned to ${folder.name} in ${folder.project.name}. Review and accept the brief to begin work.`,
+    entityType: "STAGE",
+    entityId: folder.taskerStage.id,
+    projectId: folder.project.id,
+    stageId: folder.taskerStage.id,
+    url,
+  });
+}
+
 export async function notifyBriefAccepted(
   input: ActorInput & {
     projectId: string;

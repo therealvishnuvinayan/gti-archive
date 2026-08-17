@@ -1124,6 +1124,7 @@ export async function editProjectConceptFolder(
         taskerStageId: folder.taskerStageId,
         assignedExecutorId: requestedExecutorId ?? folder.assignedExecutorId,
         deadline: requestedDeadline,
+        assignmentChanged,
       },
     } as const;
   } catch (error) {

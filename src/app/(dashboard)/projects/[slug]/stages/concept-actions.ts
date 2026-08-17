@@ -4,6 +4,7 @@ import { revalidatePath, revalidateTag } from "next/cache";
 
 import { requireUser } from "@/lib/auth";
 import {
+  notifyConceptBriefAssigned,
   notifyConceptFileApproved,
   notifyStageFiveActivated,
   notifyStageFourFinalFileApproved,
@@ -65,6 +66,13 @@ export async function createProjectConceptFolderAction(input: {
         changedEntityId: folder.id,
         actorId: user.id,
       });
+      await runNotificationTask("concept-brief-assigned", () =>
+        notifyConceptBriefAssigned({
+          projectId: input.projectId,
+          folderId: folder.id,
+          actorId: user.id,
+        }),
+      );
     }
 
     return result;
@@ -127,6 +135,15 @@ export async function editProjectConceptFolderAction(input: {
         changedEntityId: folder.id,
         actorId: user.id,
       });
+      if (folder.assignmentChanged) {
+        await runNotificationTask("concept-brief-reassigned", () =>
+          notifyConceptBriefAssigned({
+            projectId: input.projectId,
+            folderId: folder.id,
+            actorId: user.id,
+          }),
+        );
+      }
     }
 
     return result;

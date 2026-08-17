@@ -44,6 +44,7 @@ import {
   startProjectStageWork,
 } from "../src/lib/project-history";
 import {
+  notifyConceptBriefAssigned,
   notifyConceptFileApproved,
   notifyStageFourConceptsActivated,
 } from "../src/lib/notification-center/triggers";
@@ -288,6 +289,32 @@ async function main() {
     check(taskerA.startedById === null, "new tasker starter must remain null");
     check(taskerA.status === StageStatus.ONGOING, "new tasker must remain ONGOING");
     check(!taskerA.invoiceRequired, "concept taskers must not require invoices");
+
+    await notifyConceptBriefAssigned({
+      projectId,
+      folderId: conceptA.folder.id,
+      actorId: owner.id,
+    });
+    const briefAssignmentNotifications = await prisma.notification.findMany({
+      where: {
+        projectId,
+        stageId: conceptA.folder.taskerStageId,
+        type: "BRIEF_ACCEPTANCE_REQUIRED",
+      },
+      select: {
+        userId: true,
+        entityId: true,
+        url: true,
+      },
+    });
+    check(
+      briefAssignmentNotifications.length === 1 &&
+        briefAssignmentNotifications[0].userId === executorA.id &&
+        briefAssignmentNotifications[0].entityId === conceptA.folder.taskerStageId &&
+        briefAssignmentNotifications[0].url ===
+          `/projects/${projectId}/stages/3/concepts/${conceptA.folder.id}`,
+      "a new concept brief must notify only its assigned executor and open its Stage 3 chat",
+    );
 
     const duplicate = await createProjectConceptFolder(owner, {
       projectId,
