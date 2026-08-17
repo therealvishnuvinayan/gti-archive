@@ -78,11 +78,14 @@ assert(
 assert(
   workspace.includes("AssetImageThumbnail") &&
     workspace.includes("AssetPreviewButton") &&
+    workspace.includes("interactive={!canShowFileActions}") &&
     assetPreview.includes("export function AssetImageThumbnail") &&
+    assetPreview.includes("interactive = true") &&
+    assetPreview.includes("if (!interactive)") &&
     assetPreview.includes('aria-label={`Preview image ${fileName}`}') &&
     assetPreview.includes('loading="lazy"') &&
     assetPreview.includes('className="h-full w-full object-contain"'),
-  "Stage 3/4 chat image documents must place a small uncropped thumbnail in the document visual area while retaining the full preview action.",
+  "Stage 3/4 chat image documents must keep an uncropped visual thumbnail without duplicating the dedicated preview action.",
 );
 assert(
   workspace.includes("Concept Status") &&

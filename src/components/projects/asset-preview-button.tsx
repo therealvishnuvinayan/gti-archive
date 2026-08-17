@@ -36,6 +36,7 @@ type AssetImageThumbnailProps = {
   previewPath: string;
   downloadPath?: string | null;
   className?: string;
+  interactive?: boolean;
 };
 
 function isPreviewableAsset(
@@ -310,6 +311,7 @@ export function AssetImageThumbnail({
   previewPath,
   downloadPath,
   className,
+  interactive = true,
 }: AssetImageThumbnailProps) {
   const [open, setOpen] = useState(false);
   const [failedThumbnailPath, setFailedThumbnailPath] = useState<string>();
@@ -321,28 +323,39 @@ export function AssetImageThumbnail({
     return null;
   }
 
+  const thumbnailImage = (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={previewPath}
+      alt=""
+      aria-hidden="true"
+      loading="lazy"
+      decoding="async"
+      onError={() => setFailedThumbnailPath(previewPath)}
+      className="h-full w-full object-contain"
+    />
+  );
+  const thumbnailClassName = cn(
+    "relative h-10 w-14 shrink-0 overflow-hidden rounded-[9px] border border-[#d8e2d9] bg-[#f4f7f4] shadow-[0_3px_10px_rgba(22,40,28,0.08)]",
+    interactive &&
+      "group outline-none transition hover:border-[#86b397] focus-visible:ring-2 focus-visible:ring-[#3f8f63] focus-visible:ring-offset-2",
+    className,
+  );
+
+  if (!interactive) {
+    return <div className={thumbnailClassName}>{thumbnailImage}</div>;
+  }
+
   return (
     <>
       <button
         type="button"
-        className={cn(
-          "group relative h-10 w-14 shrink-0 overflow-hidden rounded-[9px] border border-[#d8e2d9] bg-[#f4f7f4] shadow-[0_3px_10px_rgba(22,40,28,0.08)] outline-none transition hover:border-[#86b397] focus-visible:ring-2 focus-visible:ring-[#3f8f63] focus-visible:ring-offset-2",
-          className,
-        )}
+        className={thumbnailClassName}
         onClick={() => setOpen(true)}
         aria-label={`Preview image ${fileName}`}
         title={`Preview ${fileName}`}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={previewPath}
-          alt=""
-          aria-hidden="true"
-          loading="lazy"
-          decoding="async"
-          onError={() => setFailedThumbnailPath(previewPath)}
-          className="h-full w-full object-contain"
-        />
+        {thumbnailImage}
         <span className="absolute inset-0 grid place-items-center bg-[#102218]/40 text-white opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">
           <Eye className="h-3.5 w-3.5" />
         </span>

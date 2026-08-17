@@ -1892,6 +1892,7 @@ function AttachmentHistoryList({
                     mimeType={attachment.mimeType}
                     previewPath={attachment.previewPath}
                     downloadPath={attachment.downloadPath}
+                    interactive={!canShowFileActions}
                   />
                 ) : (
                   <div
