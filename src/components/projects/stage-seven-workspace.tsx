@@ -498,7 +498,7 @@ function SampleRoundsList({
                   <div className="min-w-0"><span className="mb-1 block text-[8px] font-[760] uppercase text-[#8a948d] lg:hidden">Provider</span><p className="truncate text-[10px] font-[680] text-[#39443c]">{round.recipientCompany || round.recipientName || "Legacy request"}</p>{round.recipientEmail ? <p className="mt-0.5 truncate text-[8px] text-[#849087]">{round.recipientEmail}</p> : null}</div>
                   <div><span className="mb-1 block text-[8px] font-[760] uppercase text-[#8a948d] lg:hidden">Deadline</span><p className="text-[10px] font-[680] text-[#39443c]">{formatDate(round.deadline)}</p>{round.overdue ? <p className="mt-0.5 text-[8px] font-[700] text-[#bd473d]">{overdueLabel(round.deadline)}</p> : null}</div>
                   <div className="min-w-0 justify-self-start"><span className="mb-1 block text-[8px] font-[760] uppercase text-[#8a948d] lg:hidden">Status</span><ReceiptStatusBadge round={round} /></div>
-                  <div className="justify-self-start lg:justify-self-end"><span className="mb-1 block text-[8px] font-[760] uppercase text-[#8a948d] lg:hidden">Actions</span><div className="flex flex-wrap justify-start gap-2 lg:justify-end">{round.decision ? <button type="button" className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4b9068]/40" aria-label={`View ${round.decision === PhysicalSampleDecision.ACCEPTED ? "accepted" : "rejected"} sample request`} onClick={() => onSelectRound(round.id)}><DecisionBadge decision={round.decision} /></button> : <Button type="button" size="sm" variant={selected ? "secondary" : "outline"} className="min-h-8 rounded-[10px] px-3 text-[10px]" onClick={() => onSelectRound(round.id)}>{round.canReview ? "Accept / Reject" : "View Request"}</Button>}{actions.showRowDelete ? <Button type="button" size="sm" variant="destructive" className="min-h-8 rounded-[10px] px-3 text-[10px]" onClick={() => onDeleteRound(round)}><Trash2 className="h-3.5 w-3.5" /> Delete Request</Button> : null}</div></div>
+                  <div className="justify-self-start lg:justify-self-end"><span className="mb-1 block text-[8px] font-[760] uppercase text-[#8a948d] lg:hidden">Actions</span><div className="flex flex-wrap justify-start gap-2 lg:justify-end">{round.decision ? <button type="button" className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4b9068]/40" aria-label={`View ${round.decision === PhysicalSampleDecision.ACCEPTED ? "accepted" : "rejected"} sample request`} onClick={() => onSelectRound(round.id)}><DecisionBadge decision={round.decision} /></button> : <Button type="button" size="sm" variant={selected ? "secondary" : "outline"} className="min-h-8 rounded-[10px] px-3 text-[10px]" onClick={() => onSelectRound(round.id)}>{actions.reviewable ? "Accept / Reject" : "View Request"}</Button>}{actions.showRowDelete ? <Button type="button" size="sm" variant="destructive" className="min-h-8 rounded-[10px] px-3 text-[10px]" onClick={() => onDeleteRound(round)}><Trash2 className="h-3.5 w-3.5" /> Delete Request</Button> : null}</div></div>
                 </article>
               );
             })}
@@ -736,7 +736,11 @@ export function StageSevenWorkspace({
 
   return (
     <section className="mx-auto w-full max-w-[1420px] pb-6">
-      <ProjectAccessRealtimeGuard projectId={project.id} currentUserId={currentUserId} />
+      <ProjectAccessRealtimeGuard
+        projectId={project.id}
+        currentUserId={currentUserId}
+        fallbackRefreshIntervalMs={10_000}
+      />
       <Card className="overflow-hidden rounded-[26px] border-[#dfe6df] shadow-[0_20px_54px_rgba(23,39,28,0.055)]">
         <CardContent className="p-0">
           <div className="px-5 py-6 sm:px-7 sm:py-8 lg:px-9">

@@ -109,6 +109,20 @@ function checkPhysicalSampleRequestActionStates() {
       internalRecipient.reviewActionsEnabled,
     "the assigned internal recipient must review a received request without receiving Delete access",
   );
+
+  const accepted = getPhysicalSampleRequestActionState({
+    ...base,
+    hasDecision: true,
+    unitStatus: ProductionSupervisionStatus.SIGNED_OFF,
+  });
+  check(
+    !accepted.reviewable &&
+      !accepted.reviewActionsEnabled &&
+      !accepted.showMarkReceived &&
+      !accepted.showRowDelete &&
+      !accepted.showDetailsDelete,
+    "an accepted request must immediately remove every receipt, review, and delete action",
+  );
 }
 
 type FixtureUnit = {

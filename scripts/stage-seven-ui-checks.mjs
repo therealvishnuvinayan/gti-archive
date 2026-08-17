@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [workspace, sampleActions, page, actions, service, dashboard, schema, baseMigration, correctionMigration, physicalMigration, recipientMigration, notificationMigration, notificationPresenter, cronRoute, datePicker] =
+const [workspace, sampleActions, realtimeGuard, page, actions, service, dashboard, schema, baseMigration, correctionMigration, physicalMigration, recipientMigration, notificationMigration, notificationPresenter, cronRoute, datePicker] =
   await Promise.all([
     readFile("src/components/projects/stage-seven-workspace.tsx", "utf8"),
     readFile("src/lib/stage-seven-sample-actions.ts", "utf8"),
+    readFile("src/components/projects/project-access-realtime-guard.tsx", "utf8"),
     readFile("src/app/(dashboard)/projects/[slug]/stages/7/page.tsx", "utf8"),
     readFile("src/app/(dashboard)/projects/[slug]/stages/7/actions.ts", "utf8"),
     readFile("src/lib/stage-seven.ts", "utf8"),
@@ -175,8 +176,14 @@ assert(
     actions.includes("function publishStageSevenChange") &&
     actions.includes('eventType: "timeline_updated"') &&
     actions.includes("publishStageSevenChange({ projectId, actorId, changedEntityId })") &&
-    workspace.includes("ProjectAccessRealtimeGuard"),
-  "Every successful Stage 7 mutation must invalidate all open project views through the existing realtime guard.",
+    workspace.includes("ProjectAccessRealtimeGuard") &&
+    workspace.includes("fallbackRefreshIntervalMs={10_000}") &&
+    realtimeGuard.includes('window.addEventListener("focus", refreshVisibleProject)') &&
+    realtimeGuard.includes('window.addEventListener("online", refreshVisibleProject)') &&
+    realtimeGuard.includes('document.addEventListener("visibilitychange", handleVisibilityChange)') &&
+    realtimeGuard.includes("window.setInterval(") &&
+    realtimeGuard.includes("refreshProject();"),
+  "Every successful Stage 7 mutation must invalidate open project views through realtime with focus, reconnect, and polling reconciliation.",
 );
 for (const removedAction of [
   "updateProductionSampleEvaluationAction",
@@ -266,7 +273,7 @@ assert(
 assert(
   workspace.includes("ProductionSampleRoundStatus.PENDING") &&
     workspace.includes("Mark as Received") &&
-    workspace.includes('round.canReview ? "Accept / Reject" : "View Request"') &&
+    workspace.includes('actions.reviewable ? "Accept / Reject" : "View Request"') &&
     workspace.includes("Assigned recipient review") &&
     workspace.includes("only its assigned internal recipient can mark it received") &&
     workspace.includes("canReview={Boolean(selectedRound?.canReview)}") &&
