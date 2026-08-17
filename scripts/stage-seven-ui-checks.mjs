@@ -154,11 +154,13 @@ assert(
 );
 assert(
   workspace.includes('disabled={!actions?.reviewActionsEnabled} onClick={requestRejection}') &&
-    sampleActions.includes("reviewActionsEnabled: reviewable && received") &&
+    sampleActions.includes("received || input.hasAssignedRecipient") &&
+    sampleActions.includes("decisionWillRecordReceipt:") &&
+    workspace.includes("Accepting or rejecting will also mark this sample as received.") &&
     workspace.includes('"Review note required."') &&
     workspace.includes('"Enter a review note before rejecting the physical sample."') &&
     !workspace.includes("disabled={!reviewable || !received || !richTextToPlainText(reviewNote)}"),
-  "Received samples must enable both decision actions for authorized reviewers while rejection-note validation remains explicit.",
+  "Assigned internal recipients must be able to decide pending samples while recording receipt atomically and retaining explicit rejection-note validation.",
 );
 
 for (const action of [
@@ -281,6 +283,9 @@ assert(
     service.includes("canReviewPhysicalSampleRound") &&
     service.includes("input.recipientUserId === input.userId") &&
     service.includes("Only the assigned internal recipient can review this sample request.") &&
+    service.includes("canRecordInternalDecisionBeforeReceipt") &&
+    service.includes("Boolean(round.recipientUserId)") &&
+    service.includes("deliveredAt: round.deliveredAt ?? now") &&
     service.includes("status: ProductionSampleRoundStatus.UNDER_REVIEW") &&
     service.includes("deliveredAt: receivedAt") &&
     service.includes("Mark the physical sample as received before accepting or rejecting it."),

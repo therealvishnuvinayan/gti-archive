@@ -7,6 +7,7 @@ export function getPhysicalSampleRequestActionState(input: {
   selected: boolean;
   canManage: boolean;
   canReview: boolean;
+  hasAssignedRecipient: boolean;
   stageCompleted: boolean;
   hasDecision: boolean;
   unitStatus: ProductionSupervisionStatus;
@@ -30,6 +31,9 @@ export function getPhysicalSampleRequestActionState(input: {
     showRowDelete: canDelete && !input.selected,
     showDetailsDelete: canDelete && input.selected,
     showMarkReceived: reviewable && !received,
-    reviewActionsEnabled: reviewable && received,
+    reviewActionsEnabled:
+      reviewable && (received || input.hasAssignedRecipient),
+    decisionWillRecordReceipt:
+      reviewable && input.hasAssignedRecipient && !received,
   };
 }

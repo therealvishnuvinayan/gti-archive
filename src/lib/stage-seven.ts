@@ -1236,7 +1236,13 @@ export async function decidePhysicalSampleRound(
     if (round.supervision.status === ProductionSupervisionStatus.SIGNED_OFF) {
       throw new StageSevenWorkflowError("Accepted Production Units are read-only.");
     }
-    if (round.status !== ProductionSampleRoundStatus.UNDER_REVIEW) {
+    const canRecordInternalDecisionBeforeReceipt =
+      Boolean(round.recipientUserId) &&
+      round.status === ProductionSampleRoundStatus.PENDING;
+    if (
+      round.status !== ProductionSampleRoundStatus.UNDER_REVIEW &&
+      !canRecordInternalDecisionBeforeReceipt
+    ) {
       throw new StageSevenWorkflowError(
         "Mark the physical sample as received before accepting or rejecting it.",
       );
@@ -1249,6 +1255,7 @@ export async function decidePhysicalSampleRound(
         decisionNote,
         decidedById: user.id,
         decidedAt: now,
+        deliveredAt: round.deliveredAt ?? now,
         status: ProductionSampleRoundStatus.COMPLETED,
         completedById: user.id,
         completedAt: now,
