@@ -440,10 +440,13 @@ assert(
 );
 assert(
   requestActions.includes("revalidatePath") &&
+    requestActions.includes("publishProjectActivityUpdatedAfterResponse") &&
+    requestActions.includes('eventType: "timeline_updated"') &&
+    requestActions.includes("changedEntityId: input.requestId") &&
     requestActions.includes("acceptStageFiveChecklistRequest") &&
     requestActions.includes("declineStageFiveChecklistRequest") &&
     requestActions.includes("submitStageFiveChecklistResponse"),
-  "Dedicated request actions must reauthorize, mutate, and revalidate request and Stage 5 pages.",
+  "Dedicated request actions must reauthorize, mutate, revalidate Stage 5, and refresh open project pages in realtime after terminal response changes.",
 );
 assert(
   uploadClient.includes("checklistRequestId") &&

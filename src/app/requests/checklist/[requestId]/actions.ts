@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { requireUser } from "@/lib/auth";
+import { publishProjectActivityUpdatedAfterResponse } from "@/lib/realtime/server";
 import {
   acceptStageFiveChecklistRequest,
   declineStageFiveChecklistRequest,
@@ -25,7 +26,15 @@ export async function declineStageFiveChecklistRequestAction(input: {
   const result = await declineStageFiveChecklistRequest(user, input);
   revalidatePath(`/requests/checklist/${input.requestId}`);
   if (!("error" in result)) {
+    revalidatePath(`/projects/${result.projectId}`);
     revalidatePath(`/projects/${result.projectId}/stages/5`);
+    publishProjectActivityUpdatedAfterResponse({
+      projectId: result.projectId,
+      stageId: null,
+      eventType: "timeline_updated",
+      changedEntityId: input.requestId,
+      actorId: user.id,
+    });
   }
   return result;
 }
@@ -39,7 +48,15 @@ export async function submitStageFiveChecklistResponseAction(input: {
   const result = await submitStageFiveChecklistResponse(user, input);
   revalidatePath(`/requests/checklist/${input.requestId}`);
   if (!("error" in result)) {
+    revalidatePath(`/projects/${result.projectId}`);
     revalidatePath(`/projects/${result.projectId}/stages/5`);
+    publishProjectActivityUpdatedAfterResponse({
+      projectId: result.projectId,
+      stageId: null,
+      eventType: "timeline_updated",
+      changedEntityId: input.requestId,
+      actorId: user.id,
+    });
   }
   return result;
 }
