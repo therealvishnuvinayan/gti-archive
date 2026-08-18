@@ -164,16 +164,15 @@ assert(
   workspace.includes("const hasRejectionNote = Boolean(richTextToPlainText(reviewNote))") &&
     workspace.includes('disabled={!actions?.reviewActionsEnabled || !hasRejectionNote}') &&
     workspace.includes('aria-describedby="sample-rejection-note-requirement"') &&
-    sampleActions.includes("received || input.hasAssignedRecipient") &&
-    sampleActions.includes("decisionWillRecordReceipt:") &&
-    workspace.includes("Accepting or rejecting will also mark this sample as received.") &&
+    sampleActions.includes("reviewActionsEnabled: reviewable && received") &&
+    workspace.includes("Mark the physical sample as received before accepting or rejecting it.") &&
     workspace.includes("Required to reject") &&
     workspace.includes("Enter a review note to enable Reject Sample.") &&
     workspace.includes("A review note is optional when accepting.") &&
-    workspace.includes("if (!hasRejectionNote) return") &&
+    workspace.includes("if (!received || !hasRejectionNote) return") &&
     !workspace.includes('"Review note required."') &&
     !workspace.includes('"Enter a review note before rejecting the physical sample."'),
-  "Assigned internal recipients must be able to decide pending samples while empty-note rejection is prevented and clearly explained before submission.",
+  "Assigned internal recipients must record receipt before deciding, while empty-note rejection remains prevented and clearly explained.",
 );
 
 for (const action of [
@@ -299,9 +298,8 @@ assert(
     service.includes("canReviewPhysicalSampleRound") &&
     service.includes("input.recipientUserId === input.userId") &&
     service.includes("Only the assigned internal recipient can review this sample request.") &&
-    service.includes("canRecordInternalDecisionBeforeReceipt") &&
-    service.includes("Boolean(round.recipientUserId)") &&
-    service.includes("deliveredAt: round.deliveredAt ?? now") &&
+    service.includes("!round.deliveredAt") &&
+    service.includes("deliveredAt: { not: null }") &&
     service.includes("status: ProductionSampleRoundStatus.UNDER_REVIEW") &&
     service.includes("deliveredAt: receivedAt") &&
     service.includes("Mark the physical sample as received before accepting or rejecting it."),

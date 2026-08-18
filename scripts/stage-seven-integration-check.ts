@@ -57,7 +57,6 @@ function checkPhysicalSampleRequestActionStates() {
     selected: true,
     canManage: true,
     canReview: true,
-    hasAssignedRecipient: false,
     stageCompleted: false,
     hasDecision: false,
     unitStatus: ProductionSupervisionStatus.IN_REVIEW,
@@ -93,14 +92,12 @@ function checkPhysicalSampleRequestActionStates() {
   const pendingInternalRecipient = getPhysicalSampleRequestActionState({
     ...base,
     canManage: false,
-    hasAssignedRecipient: true,
     roundStatus: ProductionSampleRoundStatus.PENDING,
   });
   check(
     pendingInternalRecipient.showMarkReceived &&
-      pendingInternalRecipient.reviewActionsEnabled &&
-      pendingInternalRecipient.decisionWillRecordReceipt,
-    "a pending internal request must let its assigned recipient decide immediately and record receipt atomically",
+      !pendingInternalRecipient.reviewActionsEnabled,
+    "a pending internal request must require its assigned recipient to record receipt before deciding",
   );
 
   const internalOwner = getPhysicalSampleRequestActionState({
@@ -117,7 +114,6 @@ function checkPhysicalSampleRequestActionStates() {
   const internalRecipient = getPhysicalSampleRequestActionState({
     ...base,
     canManage: false,
-    hasAssignedRecipient: true,
   });
   check(
     !internalRecipient.showRowDelete &&
@@ -623,15 +619,18 @@ async function main() {
     check(recipientDecisionWorkspace?.units[0].rounds[0].canReview === true, "the assigned internal recipient workspace must enable review for its own request");
     await expectRejected(markPhysicalSampleRoundReceived(collaborator, { projectId: ids.project, productionUnitId: units[1].id, sampleRoundId: recipientDecisionRound.id }), "an unassigned collaborator must not mark another recipient's sample as received");
     await expectRejected(decidePhysicalSampleRound(collaborator, { projectId: ids.project, productionUnitId: units[1].id, sampleRoundId: recipientDecisionRound.id, decision: PhysicalSampleDecision.REJECTED, decisionNote: "Unauthorized review." }), "an unassigned collaborator must not decide another recipient's sample request");
+    await expectRejected(decidePhysicalSampleRound(executor, { projectId: ids.project, productionUnitId: units[1].id, sampleRoundId: recipientDecisionRound.id, decision: PhysicalSampleDecision.REJECTED, decisionNote: "The physical sample needs correction." }), "the assigned internal recipient must not decide before marking the sample as received");
+    const recipientReceipt = await markPhysicalSampleRoundReceived(executor, { projectId: ids.project, productionUnitId: units[1].id, sampleRoundId: recipientDecisionRound.id });
+    check(!recipientReceipt.duplicate, "the assigned internal recipient must be able to mark its sample as received");
     const recipientRejection = await decidePhysicalSampleRound(executor, { projectId: ids.project, productionUnitId: units[1].id, sampleRoundId: recipientDecisionRound.id, decision: PhysicalSampleDecision.REJECTED, decisionNote: "The physical sample needs correction." });
-    check(!recipientRejection.duplicate, "the assigned internal recipient must be able to reject its pending sample request directly");
+    check(!recipientRejection.duplicate, "the assigned internal recipient must be able to reject its received sample request");
     const recipientRejectedRow = await prisma.productionSampleRound.findUniqueOrThrow({ where: { id: recipientDecisionRound.id } });
     check(
       recipientRejectedRow.decision === PhysicalSampleDecision.REJECTED &&
         recipientRejectedRow.decidedById === ids.executor &&
         recipientRejectedRow.status === ProductionSampleRoundStatus.COMPLETED &&
         Boolean(recipientRejectedRow.deliveredAt),
-      "the internal recipient's direct rejection must persist receipt and decision audit atomically",
+      "the internal recipient's rejection must preserve receipt and persist the decision audit",
     );
     await expectRejected(retryProductionSampleRequestEmail(executor, { projectId: ids.project, productionUnitId: units[1].id, sampleRoundId: recipientDecisionRound.id }, { sendEmail: sendSuccess }), "review authority must not grant the internal recipient resend management access");
 
@@ -692,6 +691,8 @@ async function main() {
     const overdueWorkspace = await getStageSevenWorkspaceData(owner, ids.project, units[1].id, overdueRound.id);
     check(overdueWorkspace?.summary.totalUnits === 2 && overdueWorkspace.summary.waitingUnits === 1 && overdueWorkspace.summary.overdueRounds === 1 && overdueWorkspace.summary.acceptedUnits === 1, "summary must report Production Units, Waiting, Overdue, and Accepted from persisted physical-sample state");
 
+    await expectRejected(decidePhysicalSampleRound(executor, { projectId: ids.project, productionUnitId: units[1].id, sampleRoundId: overdueRound.id, decision: PhysicalSampleDecision.ACCEPTED }), "the assigned internal recipient must not accept an overdue sample before recording receipt");
+    await markPhysicalSampleRoundReceived(executor, { projectId: ids.project, productionUnitId: units[1].id, sampleRoundId: overdueRound.id });
     await decidePhysicalSampleRound(executor, { projectId: ids.project, productionUnitId: units[1].id, sampleRoundId: overdueRound.id, decision: PhysicalSampleDecision.ACCEPTED });
     const directlyAcceptedInternalRound =
       await prisma.productionSampleRound.findUniqueOrThrow({
@@ -701,7 +702,7 @@ async function main() {
       directlyAcceptedInternalRound.decision === PhysicalSampleDecision.ACCEPTED &&
         directlyAcceptedInternalRound.status === ProductionSampleRoundStatus.COMPLETED &&
         Boolean(directlyAcceptedInternalRound.deliveredAt),
-      "the assigned internal recipient's direct acceptance must persist receipt and final acceptance atomically",
+      "the assigned internal recipient's acceptance must preserve receipt and persist final acceptance",
     );
     await processStageSevenOverdueDeadlines(new Date());
     check(

@@ -1406,12 +1406,9 @@ export async function decidePhysicalSampleRound(
     if (round.supervision.status === ProductionSupervisionStatus.SIGNED_OFF) {
       throw new StageSevenWorkflowError("Accepted Production Units are read-only.");
     }
-    const canRecordInternalDecisionBeforeReceipt =
-      Boolean(round.recipientUserId) &&
-      round.status === ProductionSampleRoundStatus.PENDING;
     if (
-      round.status !== ProductionSampleRoundStatus.UNDER_REVIEW &&
-      !canRecordInternalDecisionBeforeReceipt
+      round.status !== ProductionSampleRoundStatus.UNDER_REVIEW ||
+      !round.deliveredAt
     ) {
       throw new StageSevenWorkflowError(
         "Mark the physical sample as received before accepting or rejecting it.",
@@ -1419,13 +1416,17 @@ export async function decidePhysicalSampleRound(
     }
     const now = new Date();
     const updated = await tx.productionSampleRound.updateMany({
-      where: { id: round.id, decision: null },
+      where: {
+        id: round.id,
+        decision: null,
+        status: ProductionSampleRoundStatus.UNDER_REVIEW,
+        deliveredAt: { not: null },
+      },
       data: {
         decision: input.decision,
         decisionNote,
         decidedById: user.id,
         decidedAt: now,
-        deliveredAt: round.deliveredAt ?? now,
         status: ProductionSampleRoundStatus.COMPLETED,
         completedById: user.id,
         completedAt: now,
@@ -1437,7 +1438,14 @@ export async function decidePhysicalSampleRound(
         select: { decision: true },
       });
       if (decided.decision === input.decision) return { duplicate: true } as const;
-      throw new StageSevenWorkflowError("This sample request already has a final decision.");
+      if (decided.decision) {
+        throw new StageSevenWorkflowError(
+          "This sample request already has a final decision.",
+        );
+      }
+      throw new StageSevenWorkflowError(
+        "Mark the physical sample as received before accepting or rejecting it.",
+      );
     }
     await tx.requestReminder.updateMany({
       where:

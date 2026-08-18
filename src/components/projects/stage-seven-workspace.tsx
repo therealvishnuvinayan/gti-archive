@@ -529,7 +529,6 @@ function SampleRoundsList({
                 selected,
                 canManage,
                 canReview: round.canReview,
-                hasAssignedRecipient: Boolean(round.recipientUserId),
                 stageCompleted,
                 hasDecision: Boolean(round.decision),
                 unitStatus: unit.status,
@@ -585,7 +584,6 @@ function SampleRequestDetails({
         selected: true,
         canManage,
         canReview,
-        hasAssignedRecipient: Boolean(round.recipientUserId),
         stageCompleted,
         hasDecision: Boolean(round.decision),
         unitStatus: unit.status,
@@ -615,9 +613,7 @@ function SampleRequestDetails({
     : reviewable
       ? received
         ? "Record the note and outcome for this sample request."
-        : actions?.decisionWillRecordReceipt
-          ? "Accepting or rejecting will also mark this sample as received."
-          : "Mark the physical sample as received before accepting or rejecting it."
+        : "Mark the physical sample as received before accepting or rejecting it."
       : round.recipientUserId
         ? "The assigned internal recipient is responsible for reviewing this sample."
         : "You are not assigned to review this sample request.";
@@ -673,7 +669,7 @@ function SampleRequestDetails({
   }
 
   function requestRejection() {
-    if (!hasRejectionNote) return;
+    if (!received || !hasRejectionNote) return;
     setConfirm(PhysicalSampleDecision.REJECTED);
   }
 
@@ -700,7 +696,7 @@ function SampleRequestDetails({
   }
 
   function decide() {
-    if (!confirm || pending) return;
+    if (!confirm || pending || !received) return;
     startPending(async () => {
       const result = await decidePhysicalSampleRoundAction({ projectId, productionUnitId: unit.id, sampleRoundId: roundId, decision: confirm, decisionNote: reviewNote });
       if ("error" in result) {
