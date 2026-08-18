@@ -15,6 +15,8 @@ const [
   chatWorkspace,
   stageThreePage,
   stageFourPage,
+  stageThreeFoldersPage,
+  stageFourFoldersPage,
   schema,
   migration,
   notificationMigration,
@@ -32,6 +34,8 @@ const [
   readFile("src/components/projects/project-chat-workspace.tsx", "utf8"),
   readFile("src/app/(dashboard)/projects/[slug]/stages/3/page.tsx", "utf8"),
   readFile("src/app/(dashboard)/projects/[slug]/stages/4/page.tsx", "utf8"),
+  readFile("src/app/(dashboard)/projects/[slug]/stages/3/concepts/page.tsx", "utf8"),
+  readFile("src/app/(dashboard)/projects/[slug]/stages/4/concepts/page.tsx", "utf8"),
   readFile("prisma/schema.prisma", "utf8"),
   readFile(
     "prisma/migrations/20260809120000_concept_executor_assignment_round_one/migration.sql",
@@ -61,7 +65,7 @@ for (const label of [
 }
 
 assert(
-  route.includes('description="Create and manage concept taskers."') &&
+  route.includes('"Create and manage concept taskers."') &&
     workspace.includes("Manage your concept taskers.") &&
     !workspace.includes("Create Concept") &&
     !workspace.includes("Concept Folders"),
@@ -284,10 +288,12 @@ assert(
   "Concept creation and assignment changes must broadcast a project refresh, and refreshed server folders must remount stale client state.",
 );
 assert(
-  workspace.includes('window.location.hash !== "#concept-folders"') &&
-    workspace.includes('getElementById("concept-folders")') &&
-    workspace.includes('scrollIntoView({ behavior: "auto", block: "start" })'),
-  "Concept Folders navigation must scroll to the asynchronously rendered folder listing instead of looking identical to Back to Stage.",
+  route.includes('title={foldersOnly ? "Concept Folders"') &&
+    route.includes("Browse and manage Stage ${stageNumber} concept folders.") &&
+    stageThreeFoldersPage.includes("foldersOnly") &&
+    stageFourFoldersPage.includes("foldersOnly") &&
+    concepts.includes('backHref: `/projects/${encodeURIComponent(input.projectId)}/stages/${stageNumber}`'),
+  "Concept Folders must have a dedicated listing route while Back to Stage remains a direct stage destination.",
 );
 assert(
   schema.includes("BRIEF_ACCEPTANCE_REQUIRED") &&

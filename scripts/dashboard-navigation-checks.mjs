@@ -55,15 +55,27 @@ for (const stage of ["1", "2", "3", "4", "5", "6", "7"]) {
 expectNavigation("/projects/project-1/stages/2/folders/folder-1", { owner: "page" });
 expectNavigation("/projects/project-1/stages/3/concepts/concept-1", {
   owner: "topbar",
-  href: "/projects/project-1/stages/3#concept-folders",
+  href: "/projects/project-1/stages/3/concepts",
   label: "Concept Folders",
   ariaLabel: "Back to Stage 3 Concept Folders",
 });
 expectNavigation("/projects/project-1/stages/4/concepts/concept-1", {
   owner: "topbar",
-  href: "/projects/project-1/stages/4#concept-folders",
+  href: "/projects/project-1/stages/4/concepts",
   label: "Concept Folders",
   ariaLabel: "Back to Stage 4 Concept Folders",
+});
+expectNavigation("/projects/project-1/stages/3/concepts", {
+  owner: "topbar",
+  href: "/projects/project-1/stages/3",
+  label: "Stage 3",
+  ariaLabel: "Back to Stage 3",
+});
+expectNavigation("/projects/project-1/stages/4/concepts", {
+  owner: "topbar",
+  href: "/projects/project-1/stages/4",
+  label: "Stage 4",
+  ariaLabel: "Back to Stage 4",
 });
 expectNavigation("/projects/project-1/stages/3/concepts/concept-1/compare", {
   owner: "topbar",

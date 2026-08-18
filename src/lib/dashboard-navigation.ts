@@ -107,9 +107,16 @@ export function getDashboardBackNavigation(
 
   if (
     (stageNumber === "3" || stageNumber === "4") &&
-    nestedStageRoute === "concepts" &&
-    segments[5]
+    nestedStageRoute === "concepts"
   ) {
+    if (!segments[5]) {
+      return topbar(
+        `/projects/${projectId}/stages/${stageNumber}`,
+        `Stage ${stageNumber}`,
+        `Back to Stage ${stageNumber}`,
+      );
+    }
+
     const conceptId = segments[5];
 
     if (segments[6] === "compare") {
@@ -121,7 +128,7 @@ export function getDashboardBackNavigation(
     }
 
     return topbar(
-      `/projects/${projectId}/stages/${stageNumber}#concept-folders`,
+      `/projects/${projectId}/stages/${stageNumber}/concepts`,
       "Concept Folders",
       `Back to Stage ${stageNumber} Concept Folders`,
     );

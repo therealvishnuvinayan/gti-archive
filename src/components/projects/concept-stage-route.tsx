@@ -48,6 +48,7 @@ async function ConceptStageContent({
   stageKey,
   userPromise,
   executorFilter,
+  foldersOnly,
 }: {
   slug: string;
   stageNumber: 3 | 4;
@@ -55,6 +56,7 @@ async function ConceptStageContent({
   stageKey: ConceptWorkflowStageKey;
   userPromise: Promise<ConceptStageRouteUser>;
   executorFilter?: string;
+  foldersOnly: boolean;
 }) {
   const user = await userPromise;
   const project = await getProjectStageShellById(slug, user);
@@ -85,9 +87,13 @@ async function ConceptStageContent({
       <StageRouteShell
         project={project}
         currentUserId={user.id}
-        eyebrow="Concept Workspace"
-        title={`Stage ${stageNumber} - ${stageTitle}`}
-        description="Create and manage concept taskers."
+        eyebrow={foldersOnly ? `Stage ${stageNumber} - ${stageTitle}` : "Concept Workspace"}
+        title={foldersOnly ? "Concept Folders" : `Stage ${stageNumber} - ${stageTitle}`}
+        description={
+          foldersOnly
+            ? `Browse and manage Stage ${stageNumber} concept folders.`
+            : "Create and manage concept taskers."
+        }
         icon={<FolderKanban className="h-4 w-4" />}
       />
       <Suspense fallback={<StageSectionLoadingShell rows={3} />}>
@@ -163,12 +169,14 @@ export function ConceptStageRoute({
   stageTitle,
   stageKey,
   executorFilter,
+  foldersOnly = false,
 }: {
   slug: string;
   stageNumber: 3 | 4;
   stageTitle: string;
   stageKey: ConceptWorkflowStageKey;
   executorFilter?: string;
+  foldersOnly?: boolean;
 }) {
   const userPromise = requireUser();
 
@@ -182,6 +190,7 @@ export function ConceptStageRoute({
           stageKey={stageKey}
           userPromise={userPromise}
           executorFilter={executorFilter}
+          foldersOnly={foldersOnly}
         />
       </Suspense>
     </DashboardLayout>
