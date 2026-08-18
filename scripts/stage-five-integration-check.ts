@@ -475,6 +475,18 @@ async function main() {
       "notification must deep-link to the dedicated authenticated request page",
     );
 
+    const recipientRequestContext = await getStageFiveChecklistRequestData(
+      recipient,
+      inApp.request.id,
+    );
+    check(
+      recipientRequestContext?.project.id === projectId &&
+        recipientRequestContext.handoffId === fileA.handoffId &&
+        recipientRequestContext.file.id === fileA.sourceAttachment.id &&
+        recipientRequestContext.field.key === ProjectFileChecklistField.COMPULSORY_TEXT,
+      "the notification destination must recover its authoritative project, Stage 5 checklist file, and field context",
+    );
+
     check(
       (await getStageFiveChecklistRequestData(outsider, inApp.request.id)) === null,
       "an unrelated collaborator must not view another recipient's request",

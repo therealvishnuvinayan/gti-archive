@@ -428,6 +428,16 @@ assert(
   "Authenticated collaborator notifications must open a focused, terminal-state-aware response page.",
 );
 assert(
+  requestWorkspace.includes('aria-label="Information request context"') &&
+    requestWorkspace.includes('href={`/projects/${data.project.id}`}') &&
+    requestWorkspace.includes('label="Project Workspace"') &&
+    requestWorkspace.includes("Stage 5 · File Checklist") &&
+    requestWorkspace.includes("{data.project.name}") &&
+    requestWorkspace.includes("{data.file.name}") &&
+    requestWorkspace.includes("{data.field.title}"),
+  "An information-request notification must preserve its authoritative project, stage, checklist file, and field context with a safe project return path.",
+);
+assert(
   requestWorkspace.includes("Requested file") &&
     requestWorkspace.includes("sourcePreviewPath") &&
     requestWorkspace.includes("sourceDownloadPath") &&

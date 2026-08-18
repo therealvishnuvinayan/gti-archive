@@ -6,6 +6,7 @@ import { ProjectFileChecklistRequestWorkflowStatus } from "@prisma/client";
 import {
   Check,
   CheckCircle2,
+  ChevronRight,
   CircleAlert,
   Download,
   FileImage,
@@ -25,6 +26,7 @@ import {
   type ChecklistFileRecord,
 } from "@/components/projects/checklist-file-picker";
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
+import { ProjectBackButton } from "@/components/projects/project-back-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RichTextContent, RichTextEditor, richTextToPlainText } from "@/components/ui/rich-text-editor";
@@ -395,6 +397,35 @@ export function StageFiveRequestWorkspace({ data }: { data: StageFiveChecklistRe
 
   return (
     <section className="mx-auto w-full max-w-[980px] pb-8">
+      <nav
+        aria-label="Information request context"
+        className="mb-4 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center"
+      >
+        <ProjectBackButton
+          href={`/projects/${data.project.id}`}
+          label="Project Workspace"
+          ariaLabel={`Back to ${data.project.name}`}
+        />
+        <ol className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[12px] font-[680] text-[#718078]">
+          <li className="max-w-[220px] truncate text-[#344d3d]" title={data.project.name}>
+            {data.project.name}
+          </li>
+          <li aria-hidden="true">
+            <ChevronRight className="h-3.5 w-3.5" />
+          </li>
+          <li>Stage 5 · File Checklist</li>
+          <li aria-hidden="true">
+            <ChevronRight className="h-3.5 w-3.5" />
+          </li>
+          <li className="max-w-[220px] truncate" title={data.file.name}>
+            {data.file.name}
+          </li>
+          <li aria-hidden="true">
+            <ChevronRight className="h-3.5 w-3.5" />
+          </li>
+          <li className="text-[#344d3d]">{data.field.title}</li>
+        </ol>
+      </nav>
       <div className="overflow-hidden rounded-[28px] border border-[#dfe7df] bg-white shadow-[0_24px_70px_rgba(18,35,23,0.08)]">
         <header className="border-b border-[#e4ebe5] bg-[linear-gradient(135deg,#f8fbf8,#eef6f0)] px-6 py-7 sm:px-9 sm:py-9">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
@@ -426,6 +457,7 @@ export function StageFiveRequestWorkspace({ data }: { data: StageFiveChecklistRe
           <dl className="grid gap-4 sm:grid-cols-2">
             {[
               ["Project", data.project.name],
+              ["Workflow context", "Stage 5 · File Checklist"],
               ["Requested information", data.field.title],
               ["Requested by", data.requestedBy.name],
               ["Requested on", formatDate(data.requestedAt)],
