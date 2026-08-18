@@ -735,13 +735,13 @@ export function StageTwoFolderWorkspace({
   }
 
   return (
-    <section className="mx-auto flex h-full min-h-0 w-full max-w-[1420px]">
+    <section className="mx-auto flex h-full min-h-0 min-w-0 w-full max-w-[1420px] overflow-hidden">
       <ProjectAccessRealtimeGuard projectId={data.project.id} currentUserId={currentUserId} />
-      <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[26px] border-[#dfe6df] shadow-[0_20px_54px_rgba(23,39,28,0.055)]">
-        <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
+      <Card className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[26px] border-[#dfe6df] shadow-[0_20px_54px_rgba(23,39,28,0.055)]">
+        <CardContent className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-0">
           <div
             data-folder-toolbar
-            className="relative z-10 shrink-0 isolate bg-white shadow-[0_10px_24px_rgba(23,39,28,0.06)]"
+            className="relative z-10 min-w-0 shrink-0 isolate bg-white shadow-[0_10px_24px_rgba(23,39,28,0.06)]"
           >
             <nav
               aria-label="Folder navigation"

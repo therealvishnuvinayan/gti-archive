@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [workspace, folderWorkspace, dashboardShell, assetPreview, page, folderPage, actions, service, access, files, storage, uploadClient, textFile, migration, schema, overview, uploadRoute, completeRoute, deleteRoute, downloadRoute] = await Promise.all([
+const [workspace, folderWorkspace, dashboardShell, privateFolderPage, sharedFolderPage, assetPreview, page, folderPage, actions, service, access, files, storage, uploadClient, textFile, migration, schema, overview, uploadRoute, completeRoute, deleteRoute, downloadRoute] = await Promise.all([
   readFile("src/components/projects/stage-two-workspace.tsx", "utf8"),
   readFile("src/components/projects/stage-two-folder-workspace.tsx", "utf8"),
   readFile("src/components/layout/dashboard-shell.tsx", "utf8"),
+  readFile("src/app/(dashboard)/projects/[slug]/workspace/private/[folderId]/page.tsx", "utf8"),
+  readFile("src/app/(dashboard)/projects/[slug]/workspace/shared/[folderId]/page.tsx", "utf8"),
   readFile("src/components/projects/asset-preview-button.tsx", "utf8"),
   readFile("src/app/(dashboard)/projects/[slug]/stages/2/page.tsx", "utf8"),
   readFile("src/app/(dashboard)/projects/[slug]/stages/2/folders/[folderId]/page.tsx", "utf8"),
@@ -186,16 +188,21 @@ assert(
 );
 assert(
   folderWorkspace.includes("data-folder-toolbar") &&
-    folderWorkspace.includes("relative z-10 shrink-0 isolate bg-white") &&
+    folderWorkspace.includes("relative z-10 min-w-0 shrink-0 isolate bg-white") &&
+    folderWorkspace.includes("h-full min-h-0 min-w-0 w-full") &&
     folderWorkspace.includes("data-folder-file-scroll") &&
     folderWorkspace.includes("min-h-0 flex-1 touch-pan-y overflow-x-hidden overflow-y-auto") &&
     folderWorkspace.includes("[scrollbar-gutter:stable]") &&
     dashboardShell.includes("stages\\/2\\/folders") &&
     dashboardShell.includes("workspace\\/(?:private|shared)") &&
+    privateFolderPage.includes("<StageTwoFolderWorkspace") &&
+    privateFolderPage.includes('context="private"') &&
+    sharedFolderPage.includes("<StageTwoFolderWorkspace") &&
+    sharedFolderPage.includes('context="user-shared"') &&
     folderWorkspace.includes('aria-label="Folder navigation"') &&
     !folderWorkspace.includes("bg-white/95") &&
     !folderWorkspace.includes("backdrop-blur-sm") &&
-    folderWorkspace.includes("flex min-h-0 flex-1 flex-col overflow-hidden rounded-[26px]") &&
+    folderWorkspace.includes("flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[26px]") &&
     folderWorkspace.includes('ariaLabel="Back to Stage 2 Research Workspace"'),
   "The folder toolbar must remain outside a bounded file scroller so cards cannot move behind or overlap it.",
 );
