@@ -302,7 +302,14 @@ assert(
   access.includes("isGlobalProjectAdministrator") &&
     access.includes("isCanonicalWorkspace") &&
     access.includes("context.workspaceOwnerUserId === context.project.ownerId") &&
-    access.includes("isProjectCoOwner"),
+    access.includes("isProjectCoOwner") &&
+    access.includes("isProjectStatusCompleted(context.project.status)") &&
+    access.includes("context.project.completedAt") &&
+    access.includes("context.project.archivedAt") &&
+    access.includes("!isProjectCompleted") &&
+    service.includes("isProjectCompleted: access.isProjectCompleted") &&
+    workspace.includes("This project is completed. Stage 2 research is read-only.") &&
+    workspace.includes("Project completed · Read-only"),
   "Workspace access must enforce global administrator authority and canonical owner-workspace identity.",
 );
 assert(files.includes("assertResearchFolderWriteAccess") && files.includes("getAttachmentDownloadUrlForUser") && files.includes("deleteAttachmentForUser"), "Research files must reuse secured attachment infrastructure.");

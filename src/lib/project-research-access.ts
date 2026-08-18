@@ -11,9 +11,20 @@ import {
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { isProjectStatusCompleted } from "@/lib/project-statuses";
 
 const researchAccessProjectSelect = {
   ownerId: true,
+  completedAt: true,
+  archivedAt: true,
+  status: {
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      group: { select: { id: true, name: true, slug: true } },
+    },
+  },
   coOwners: { select: { userId: true } },
   executors: { select: { userId: true } },
   collaborators: { select: { userId: true } },
@@ -24,6 +35,20 @@ const researchAccessProjectSelect = {
   },
 } satisfies Prisma.ProjectSelect;
 
+type ProjectResearchAccessProject = {
+  ownerId: string | null;
+  completedAt?: Date | null;
+  archivedAt?: Date | null;
+  status?: Parameters<typeof isProjectStatusCompleted>[0];
+  coOwners: Array<{ userId: string }>;
+  executors: Array<{ userId: string }>;
+  collaborators: Array<{ userId: string }>;
+  workflowStages: Array<{
+    stageKey: ProjectWorkflowStageKey;
+    status: ProjectWorkflowStageStatus;
+  }>;
+};
+
 export type ProjectResearchAccess = {
   projectId: string;
   workspaceId: string;
@@ -31,6 +56,7 @@ export type ProjectResearchAccess = {
   isCanonicalWorkspace: boolean;
   canRead: boolean;
   canWrite: boolean;
+  isProjectCompleted: boolean;
   isProjectOwner: boolean;
   isProjectCoOwner: boolean;
   isProjectParticipant: boolean;
@@ -43,9 +69,7 @@ export function getProjectResearchAccess(
     workspaceId: string;
     workspaceOwnerUserId: string;
     folderSystemKey?: ProjectResearchFolderSystemKey | null;
-    project: Prisma.ProjectGetPayload<{
-      select: typeof researchAccessProjectSelect;
-    }>;
+    project: ProjectResearchAccessProject;
   },
 ): ProjectResearchAccess {
   const isGlobalAdministrator = isGlobalProjectAdministrator(user);
@@ -70,6 +94,11 @@ export function getProjectResearchAccess(
   const stageAvailable =
     workflowStatus === ProjectWorkflowStageStatus.AVAILABLE ||
     workflowStatus === ProjectWorkflowStageStatus.COMPLETED;
+  const isProjectCompleted = Boolean(
+    context.project.completedAt ||
+      context.project.archivedAt ||
+      isProjectStatusCompleted(context.project.status),
+  );
   const isCanonicalSharedFolder =
     user.role === UserRole.USER &&
     isCanonicalWorkspace &&
@@ -85,7 +114,12 @@ export function getProjectResearchAccess(
     canRead:
       isCanonicalSharedFolder ||
       (isCanonicalWorkspace && stageAvailable && isGlobalAdministrator),
-    canWrite: isCanonicalWorkspace && stageAvailable && isGlobalAdministrator,
+    canWrite:
+      isCanonicalWorkspace &&
+      stageAvailable &&
+      isGlobalAdministrator &&
+      !isProjectCompleted,
+    isProjectCompleted,
     isProjectOwner,
     isProjectCoOwner,
     isProjectParticipant,

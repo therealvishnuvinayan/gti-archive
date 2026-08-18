@@ -433,7 +433,19 @@ export function StageTwoWorkspace({
             <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
               <div className="flex items-start gap-3">
                 <span className="grid size-10 place-items-center rounded-[12px] bg-[#eaf4ec] text-[#2e754f]"><Folder className="h-5 w-5" /></span>
-                <div><h2 className="text-[18px] font-[750] text-[#1b261f]">Shared folders</h2><p className="mt-0.5 text-[12px] text-[#758078]">Shared project research files and folders.</p></div>
+                <div>
+                  <h2 className="text-[18px] font-[750] text-[#1b261f]">Shared folders</h2>
+                  <p className="mt-0.5 text-[12px] text-[#758078]">
+                    {data.sharedWorkspace.isProjectCompleted
+                      ? "This project is completed. Stage 2 research is read-only."
+                      : "Shared project research files and folders."}
+                  </p>
+                  {data.sharedWorkspace.isProjectCompleted ? (
+                    <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-[#e9eeea] px-2.5 py-1 text-[10px] font-[720] text-[#5c6960]">
+                      <LockKeyhole className="h-3 w-3" /> Project completed · Read-only
+                    </span>
+                  ) : null}
+                </div>
               </div>
               <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end xl:w-auto xl:flex-nowrap">
                 <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">

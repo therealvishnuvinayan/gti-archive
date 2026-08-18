@@ -251,6 +251,7 @@ export async function getProjectResearchPageData(
       id: sharedWorkspace.id,
       canWrite: access.canWrite,
       canDeleteFolders: access.canWrite,
+      isProjectCompleted: access.isProjectCompleted,
     },
     folders: folders.map((folder) => ({
       id: folder.id,

@@ -492,6 +492,63 @@ async function main() {
     "historical non-canonical workspace data must remain stored while hidden",
   );
 
+  await prisma.project.update({
+    where: { id: projectId },
+    data: { completedAt: new Date() },
+  });
+  const completedProjectWorkspace = await getProjectResearchPageData(
+    users.owner,
+    projectId,
+  );
+  const completedProjectFolder = await getProjectResearchFolderPageData(
+    users.owner,
+    { projectId, folderId: canonicalBrief.id },
+  );
+  check(
+    completedProjectWorkspace?.sharedWorkspace.isProjectCompleted === true &&
+      completedProjectWorkspace.sharedWorkspace.canWrite === false &&
+      completedProjectWorkspace.sharedWorkspace.canDeleteFolders === false &&
+      completedProjectFolder?.canWrite === false,
+    "completed projects must keep Stage 2 readable while making its workspace and folders read-only",
+  );
+  await expectRejected(
+    () =>
+      requestProjectResearchFileUpload(users.owner, {
+        projectId,
+        folderId: canonicalBrief.id,
+        originalFileName: "blocked-after-completion.txt",
+        mimeType: "text/plain",
+        fileSize: 1,
+      }),
+    "completed projects must reject Stage 2 uploads server-side",
+  );
+  check(
+    expectError(
+      await createProjectResearchFolder(users.owner, {
+        projectId,
+        name: "Blocked After Completion",
+      }),
+    ),
+    "completed projects must reject new Stage 2 folders server-side",
+  );
+  await expectRejected(
+    () =>
+      deleteProjectResearchFile(users.owner, {
+        projectId,
+        folderId: canonicalBrief.id,
+        fileId: briefFile!.id,
+      }),
+    "completed projects must reject Stage 2 file deletion server-side",
+  );
+  check(
+    (await getProjectResearchFileDownloadUrl(users.owner, {
+      projectId,
+      folderId: canonicalBrief.id,
+      fileId: briefFile!.id,
+    })).length > 0,
+    "completed projects must keep existing Stage 2 files readable",
+  );
+
   const zeroFileProjectId = await mustCreateProject("Stage 2 zero-file completion");
   const zeroCompletion = await completeProjectResearchStage(users.superAdmin, zeroFileProjectId);
   check("success" in zeroCompletion && !zeroCompletion.alreadyCompleted, "Stage 2 must complete with zero files");
