@@ -6,7 +6,11 @@ import {
 } from "@prisma/client";
 
 import { canUseProjects } from "@/lib/permissions/resolver";
-import { buildProjectListStatusWhere } from "@/lib/project-list-workflow";
+import {
+  buildProjectListStatusWhere,
+  deriveProjectListWorkflowState,
+  type ProjectBusinessStatus,
+} from "@/lib/project-list-workflow";
 import {
   buildAccessibleProjectsWhere,
   type ProjectAccessUser,
@@ -147,7 +151,10 @@ export function deriveUserTaskDisplayState(
 
 export function deriveUserProjectDisplayStatus(
   taskStates: readonly UserTaskDisplayState[],
+  businessStatus: ProjectBusinessStatus | null,
 ): UserProjectDisplayStatus {
+  if (businessStatus === "COMPLETED") return "COMPLETED";
+
   if (taskStates.length === 0) return "NO_ASSIGNED_TASKS";
 
   if (
@@ -167,7 +174,8 @@ export function deriveUserProjectDisplayStatus(
     return "IN_PROGRESS";
   }
 
-  return "COMPLETED";
+  // Completing the current user's assignments does not complete the project.
+  return "IN_PROGRESS";
 }
 
 function getUserProjectStatusLabel(status: UserProjectDisplayStatus) {
@@ -272,6 +280,14 @@ export async function getUserProjectsList(
           owner: {
             select: { id: true, name: true, email: true },
           },
+          workflowStages: {
+            select: {
+              stageKey: true,
+              status: true,
+              unlockedAt: true,
+              completedAt: true,
+            },
+          },
           conceptFolders: {
             where: { assignedExecutorId: currentUser.id },
             orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
@@ -306,7 +322,11 @@ export async function getUserProjectsList(
 
   const mapped = records.map<UserProjectListItem>((project) => {
     const taskStates = project.conceptFolders.map(deriveUserTaskDisplayState);
-    const status = deriveUserProjectDisplayStatus(taskStates);
+    const workflow = deriveProjectListWorkflowState(project);
+    const status = deriveUserProjectDisplayStatus(
+      taskStates,
+      workflow.businessStatus,
+    );
     const activeDueDates = project.conceptFolders
       .filter((_, index) => taskStates[index]?.status !== "COMPLETED")
       .map((task) => task.taskerStage.plannedDueAt)

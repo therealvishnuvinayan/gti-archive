@@ -275,6 +275,8 @@ async function main() {
       userTwo,
     );
     check(userTwoResult.projects[0]?.tasks.length === 1 && userTwoResult.projects[0]?.tasks[0]?.name === "Concept D", "USER 2 must receive only Concept D");
+    check(userTwoResult.projects[0]?.tasks[0]?.display.status === "COMPLETED", "USER 2's completed assignment must remain completed");
+    check(userTwoResult.projects[0]?.status === "IN_PROGRESS", "an active project must not be labeled completed when all of the USER's assignments are completed");
 
     const zeroTask = all.projects.find((project) => project.id === zeroTaskProjectId);
     check(zeroTask?.status === "NO_ASSIGNED_TASKS" && zeroTask.tasks.length === 0, "related zero-task project must remain neutral");

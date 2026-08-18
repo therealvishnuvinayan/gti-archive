@@ -92,19 +92,21 @@ assert.deepEqual(completed, {
   dotTone: "green",
 });
 
-assert.equal(deriveUserProjectDisplayStatus([]), "NO_ASSIGNED_TASKS");
-assert.equal(deriveUserProjectDisplayStatus([completed]), "COMPLETED");
-assert.equal(deriveUserProjectDisplayStatus([inProgress]), "IN_PROGRESS");
+assert.equal(deriveUserProjectDisplayStatus([], "ACTIVE"), "NO_ASSIGNED_TASKS");
+assert.equal(deriveUserProjectDisplayStatus([completed], "ACTIVE"), "IN_PROGRESS");
+assert.equal(deriveUserProjectDisplayStatus([completed], "COMPLETED"), "COMPLETED");
+assert.equal(deriveUserProjectDisplayStatus([], "COMPLETED"), "COMPLETED");
+assert.equal(deriveUserProjectDisplayStatus([inProgress], "ACTIVE"), "IN_PROGRESS");
 assert.equal(
-  deriveUserProjectDisplayStatus([inProgress, waitingForReview]),
+  deriveUserProjectDisplayStatus([inProgress, waitingForReview], "ACTIVE"),
   "WAITING_FOR_REVIEW",
 );
 assert.equal(
-  deriveUserProjectDisplayStatus([waitingForReview, changesRequested]),
+  deriveUserProjectDisplayStatus([waitingForReview, changesRequested], "ACTIVE"),
   "NEEDS_ATTENTION",
 );
 assert.equal(
-  deriveUserProjectDisplayStatus([completed, notStarted]),
+  deriveUserProjectDisplayStatus([completed, notStarted], "ACTIVE"),
   "NEEDS_ATTENTION",
 );
 
@@ -172,7 +174,8 @@ assert.match(query, /where: listWhere/);
 assert.match(query, /where: \{ assignedExecutorId: currentUser\.id \}/);
 assert.match(query, /plannedDueAt: true/);
 assert.match(query, /revisions: \{/);
-assert.doesNotMatch(query, /workflowStages:/);
+assert.match(query, /workflowStages: \{/);
+assert.match(query, /deriveProjectListWorkflowState\(project\)/);
 assert.doesNotMatch(query, /inquiry:/);
 assert.doesNotMatch(query, /researchWorkspaces:/);
 
