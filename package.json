@@ -14,6 +14,8 @@
     "notifications:realtime-check": "node scripts/notification-realtime-checks.mjs",
     "submission:realtime-check": "node scripts/submission-realtime-checks.mjs",
     "archive:access-level-check": "node scripts/archive-access-level-checks.mjs",
+    "archive:edit-check": "node scripts/archive-edit-permission-checks.mjs",
+    "archive:edit-integration-check": "tsc --project scripts/tsconfig.archive-edit-permission-integration.json && COMPILED_ALIAS_ROOT=.tmp/archive-edit-permission-integration node -r ./scripts/register-compiled-alias.cjs .tmp/archive-edit-permission-integration/scripts/archive-edit-permission-integration-check.js",
     "archive:direct-wizard-check": "node scripts/archive-direct-wizard-checks.mjs",
     "flow:check": "node scripts/flow-regression-checks.mjs",
     "flux-ai:archive-finder-check": "node scripts/flux-ai-archive-finder-checks.mjs && tsc --project scripts/tsconfig.flux-ai-archive-query.json && node .tmp/flux-ai-archive-query/scripts/flux-ai-archive-query-check.js",

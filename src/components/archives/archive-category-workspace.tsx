@@ -1,13 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronUp, Download, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Download, Pencil, X } from "lucide-react";
 
 import {
   ArchiveCategoryIconGlyph,
   ArchiveFileTypeIcon,
   getArchiveCategoryIconImageSrc,
 } from "@/components/archives/archive-data";
+import { ArchiveItemDialog } from "@/components/archives/archive-item-dialog";
 import { ArchiveUploadButton } from "@/components/dashboard/upload-assets-button";
 import {
   MotionItem,
@@ -26,7 +27,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { ArchivedProjectFileRecord } from "@/lib/archives";
+import type {
+  ArchivedFileInformationUpdate,
+  ArchivedProjectFileRecord,
+} from "@/lib/archives";
 
 type ArchiveCategoryWorkspaceProps = {
   categoryId: string;
@@ -186,20 +190,23 @@ export function ArchiveCategoryWorkspace({
   const [expandedArchiveItemIds, setExpandedArchiveItemIds] = useState<Set<string>>(
     () => new Set(),
   );
+  const [archiveItems, setArchiveItems] = useState(items);
+  const [editingArchiveItem, setEditingArchiveItem] =
+    useState<ArchivedProjectFileRecord | null>(null);
   const categoryIconSrc = getArchiveCategoryIconImageSrc(categoryIconUrl);
 
   const options = useMemo(
     () => ({
-      projectName: uniqueValues(items, "projectName"),
-      archivedBy: uniqueValues(items, "archivedBy"),
-      projectTag: uniqueProjectTags(items),
-      assetTag: uniqueAssetTags(items),
+      projectName: uniqueValues(archiveItems, "projectName"),
+      archivedBy: uniqueValues(archiveItems, "archivedBy"),
+      projectTag: uniqueProjectTags(archiveItems),
+      assetTag: uniqueAssetTags(archiveItems),
     }),
-    [items],
+    [archiveItems],
   );
 
   const visibleItems = useMemo(() => {
-    return items.filter((item) => {
+    return archiveItems.filter((item) => {
       if (
         filters.search &&
         ![
@@ -251,7 +258,7 @@ export function ArchiveCategoryWorkspace({
 
       return true;
     });
-  }, [filters, items]);
+  }, [archiveItems, filters]);
   const hasActiveFilters = Boolean(
     filters.search ||
       filters.projectName ||
@@ -282,6 +289,20 @@ export function ArchiveCategoryWorkspace({
     });
   }
 
+  function applyArchiveFileUpdate(file: ArchivedFileInformationUpdate) {
+    setArchiveItems((current) =>
+      current.map((item) =>
+        item.id === file.archivedFileId
+          ? {
+              ...item,
+              finalArchiveFileName: file.finalArchiveFileName,
+              artworkMetadata: file.artworkMetadata,
+            }
+          : item,
+      ),
+    );
+  }
+
   return (
     <section className="space-y-6">
       <MotionSection>
@@ -306,7 +327,7 @@ export function ArchiveCategoryWorkspace({
                 {categoryTitle}
               </h1>
             </div>
-            <RichTextContent value={categoryDescription} fallback="Final archived files, completion documents, and manual archive uploads are read-only. Allowed users can view or download files in this category." className="mt-3 max-w-[760px] text-[15px] leading-6 text-[#5f695f]" />
+            <RichTextContent value={categoryDescription} fallback="Allowed users can view, edit information for, or download archived files in this category." className="mt-3 max-w-[760px] text-[15px] leading-6 text-[#5f695f]" />
           </div>
           <ArchiveUploadButton
             canUploadAssets={canUploadArchives}
@@ -434,11 +455,24 @@ export function ArchiveCategoryWorkspace({
                     <div className="flex min-w-0 flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start gap-3">
-                        <div className="grid h-12 w-12 shrink-0 place-items-center rounded-[16px] border border-[#ecefed] bg-white shadow-[0_8px_20px_rgba(16,26,20,0.08)]">
+                        <div className="relative grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-[16px] border border-[#ecefed] bg-white shadow-[0_8px_20px_rgba(16,26,20,0.08)]">
                           <ArchiveFileTypeIcon
                             type={item.fileTypeLabel}
                             className="h-5 w-5 text-brand"
                           />
+                          {item.mimeType.startsWith("image/") ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={item.previewPath}
+                              alt={`Preview of ${item.finalArchiveFileName}`}
+                              loading="lazy"
+                              decoding="async"
+                              onError={(event) => {
+                                event.currentTarget.style.display = "none";
+                              }}
+                              className="absolute inset-0 h-full w-full rounded-[15px] bg-white object-cover"
+                            />
+                          ) : null}
                         </div>
                         <div className="min-w-0">
                           <h3 className="truncate text-[14px] font-[700] leading-[1.25] text-[#111712]">
@@ -522,6 +556,15 @@ export function ArchiveCategoryWorkspace({
                           <Download className="h-4 w-4 text-brand" />
                           Download
                         </a>
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => setEditingArchiveItem(item)}
+                        className="h-10 min-w-[94px] justify-center rounded-full border border-[#ecefed] bg-white px-3 text-[13px] font-[600] text-[#3a443d] shadow-[0_8px_20px_rgba(16,26,20,0.08)]"
+                      >
+                        <Pencil className="h-4 w-4 text-brand" />
+                        Edit
                       </Button>
                       {item.artworkMetadata ? (
                         <button
@@ -668,6 +711,15 @@ export function ArchiveCategoryWorkspace({
           </MotionStaggerGroup>
         </div>
       </MotionSection>
+
+      {editingArchiveItem ? (
+        <ArchiveItemDialog
+          key={editingArchiveItem.id}
+          item={editingArchiveItem}
+          onClose={() => setEditingArchiveItem(null)}
+          onSaved={applyArchiveFileUpdate}
+        />
+      ) : null}
     </section>
   );
 }

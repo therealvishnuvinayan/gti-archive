@@ -359,6 +359,21 @@ type CompleteArchiveUploadInput = {
   artworkMetadata?: ArchiveArtworkMetadataDraft;
 };
 
+export type UpdateArchivedFileInformationInput = {
+  archivedFileId: string;
+  finalArchiveFileName: string;
+  artworkMetadata?: ArchiveArtworkMetadataDraft;
+};
+
+export type ArchivedFileInformationUpdate = {
+  archivedFileId: string;
+  recordType: "FINAL_ARCHIVE_FILE" | "MANUAL_ARCHIVE_FILE";
+  projectId: string | null;
+  finalArchiveFileName: string;
+  archiveCategorySlug: string;
+  artworkMetadata: ArchiveArtworkMetadataSummary | null;
+};
+
 type ArchiveCategoryDisplay = {
   id: string;
   name: string;
@@ -4867,6 +4882,318 @@ async function assertCanAccessManualArchiveFileAsset(
 
   if (accessCount === 0) {
     throw new Error(message);
+  }
+}
+
+type EditableArchivedProjectFile = Prisma.ArchivedProjectFileGetPayload<{
+  select: {
+    id: true;
+    archiveId: true;
+    projectId: true;
+    finalArchiveFileName: true;
+    originalFileName: true;
+    archivedAt: true;
+    artworkMetadata: true;
+    archive: {
+      select: {
+        archiveCategoryId: true;
+        archiveCategory: { select: { slug: true } };
+      };
+    };
+    project: {
+      select: {
+        ownerId: true;
+        coOwners: { select: { userId: true } };
+      };
+    };
+  };
+}>;
+
+type EditableManualArchiveFile = Prisma.ManualArchiveFileGetPayload<{
+  select: {
+    id: true;
+    fileName: true;
+    originalFileName: true;
+    archiveCategoryId: true;
+    archiveCategory: { select: { slug: true } };
+    artworkMetadata: true;
+  };
+}>;
+
+type EditableArchiveFile =
+  | { recordType: "FINAL_ARCHIVE_FILE"; file: EditableArchivedProjectFile }
+  | { recordType: "MANUAL_ARCHIVE_FILE"; file: EditableManualArchiveFile };
+
+/**
+ * Resolves an editable Archive item using the same item-level visibility rules as
+ * the Archive listing. Editing intentionally adds no role, ownership, executor,
+ * uploader, or collaborator requirement beyond the user's existing Archive access.
+ */
+export async function assertCanEditArchivedFileInformation(
+  user: ArchiveAccessUser,
+  archivedFileId: string,
+): Promise<EditableArchiveFile> {
+  assertCanUseArchives(
+    user,
+    "You do not have permission to edit archive file information.",
+  );
+
+  const archivedProjectFile = await withPrismaRetry(() =>
+    prisma.archivedProjectFile.findUnique({
+      where: { id: archivedFileId },
+      select: {
+        id: true,
+        archiveId: true,
+        projectId: true,
+        finalArchiveFileName: true,
+        originalFileName: true,
+        archivedAt: true,
+        artworkMetadata: true,
+        archive: {
+          select: {
+            archiveCategoryId: true,
+            archiveCategory: { select: { slug: true } },
+          },
+        },
+        project: {
+          select: {
+            ownerId: true,
+            coOwners: { select: { userId: true } },
+          },
+        },
+      },
+    }),
+  );
+
+  if (archivedProjectFile) {
+    const deniedMessage =
+      "You do not have permission to edit this archive file.";
+
+    await assertCanAccessArchivedProjectFileAsset(
+      user,
+      archivedProjectFile,
+      deniedMessage,
+    );
+
+    if (!hasPartialArchiveAccess(user)) {
+      await assertProjectAccess(user, archivedProjectFile.projectId);
+    }
+
+    if (
+      !canBypassCollaboratorVisibility(
+        user,
+        archivedProjectFile.project.ownerId ?? "",
+      ) &&
+      !archivedProjectFile.project.coOwners.some(
+        (coOwner) => coOwner.userId === user.id,
+      )
+    ) {
+      await assertProjectTimestampVisibleForUser(user, {
+        projectId: archivedProjectFile.projectId,
+        projectOwnerId: archivedProjectFile.project.ownerId ?? "",
+        timestamp: archivedProjectFile.archivedAt,
+        message: deniedMessage,
+      });
+    }
+
+    return {
+      recordType: "FINAL_ARCHIVE_FILE",
+      file: archivedProjectFile,
+    };
+  }
+
+  const manualArchiveFile = await withPrismaRetry(() =>
+    prisma.manualArchiveFile.findFirst({
+      where: {
+        id: archivedFileId,
+        status: AttachmentStatus.READY,
+      },
+      select: {
+        id: true,
+        fileName: true,
+        originalFileName: true,
+        archiveCategoryId: true,
+        archiveCategory: { select: { slug: true } },
+        artworkMetadata: true,
+      },
+    }),
+  );
+
+  if (!manualArchiveFile) {
+    throw new Error("Archived file not found.");
+  }
+
+  await assertCanAccessManualArchiveFileAsset(
+    user,
+    manualArchiveFile,
+    "You do not have permission to edit this archive file.",
+  );
+
+  return {
+    recordType: "MANUAL_ARCHIVE_FILE",
+    file: manualArchiveFile,
+  };
+}
+
+function getUpdatedArchiveArtworkMetadataData(input: {
+  metadata: ArchiveArtworkMetadataDraft | undefined;
+  currentMetadata: ArchiveArtworkMetadata | null;
+  recordType: "FINAL_ARCHIVE_FILE" | "MANUAL_ARCHIVE_FILE";
+  archiveFileId?: string;
+  manualArchiveFileId?: string;
+  projectId?: string;
+}) {
+  if (!input.metadata) {
+    return null;
+  }
+
+  if (!input.currentMetadata) {
+    throw new Error("This archive file does not have editable artwork metadata.");
+  }
+
+  const artworkMetadata = validateArchiveArtworkMetadataInput({
+    metadata: input.metadata,
+    file: {
+      createdByUserId: input.currentMetadata.createdByUserId,
+      approvedByUserId: input.currentMetadata.approvedByUserId,
+      approvedAt: input.currentMetadata.approvedAt,
+    },
+  });
+
+  return buildArchiveArtworkMetadataCreateData({
+    sourceType:
+      input.recordType === "FINAL_ARCHIVE_FILE"
+        ? "PROJECT_FINAL_FILE"
+        : "DIRECT_UPLOAD",
+    archiveFileId: input.archiveFileId,
+    manualArchiveFileId: input.manualArchiveFileId,
+    projectId: input.projectId,
+    sourceAttachmentId: input.currentMetadata.sourceAttachmentId,
+    artworkMetadata,
+    archivedById: input.currentMetadata.archivedById,
+  });
+}
+
+export async function updateArchivedFileInformation(
+  user: ArchiveAccessUser,
+  input: UpdateArchivedFileInformationInput,
+): Promise<ArchivedFileInformationUpdate> {
+  const archivedFileId = input.archivedFileId.trim();
+
+  if (!archivedFileId) {
+    throw new Error("Archived file id is required.");
+  }
+
+  const editableFile = await assertCanEditArchivedFileInformation(
+    user,
+    archivedFileId,
+  );
+
+  try {
+    if (editableFile.recordType === "FINAL_ARCHIVE_FILE") {
+      const siblingNames = await withPrismaRetry(() =>
+        prisma.archivedProjectFile.findMany({
+          where: {
+            archiveId: editableFile.file.archiveId,
+            id: { not: editableFile.file.id },
+          },
+          select: { finalArchiveFileName: true },
+        }),
+      );
+      const finalArchiveFileName = validateArchiveFileName(
+        editableFile.file.originalFileName,
+        input.finalArchiveFileName,
+        new Set(
+          siblingNames.map((file) => file.finalArchiveFileName.toLowerCase()),
+        ),
+      );
+      const artworkMetadataData = getUpdatedArchiveArtworkMetadataData({
+        metadata: input.artworkMetadata,
+        currentMetadata: editableFile.file.artworkMetadata,
+        recordType: editableFile.recordType,
+        archiveFileId: editableFile.file.id,
+        projectId: editableFile.file.projectId,
+      });
+
+      const updatedFile = await withPrismaRetry(() =>
+        prisma.$transaction(async (tx) => {
+          await tx.archivedProjectFile.update({
+            where: { id: editableFile.file.id },
+            data: { finalArchiveFileName },
+          });
+
+          const artworkMetadata = artworkMetadataData
+            ? await tx.archiveArtworkMetadata.update({
+                where: { id: editableFile.file.artworkMetadata!.id },
+                data: artworkMetadataData,
+              })
+            : editableFile.file.artworkMetadata;
+
+          return { artworkMetadata };
+        }),
+      );
+
+      return {
+        archivedFileId: editableFile.file.id,
+        recordType: editableFile.recordType,
+        projectId: editableFile.file.projectId,
+        finalArchiveFileName,
+        archiveCategorySlug: editableFile.file.archive.archiveCategory!.slug,
+        artworkMetadata: mapArchiveArtworkMetadataSummary(
+          updatedFile.artworkMetadata,
+        ),
+      };
+    }
+
+    const finalArchiveFileName = validateArchiveFileName(
+      editableFile.file.originalFileName,
+      input.finalArchiveFileName,
+      new Set(),
+    );
+    const artworkMetadataData = getUpdatedArchiveArtworkMetadataData({
+      metadata: input.artworkMetadata,
+      currentMetadata: editableFile.file.artworkMetadata,
+      recordType: editableFile.recordType,
+      manualArchiveFileId: editableFile.file.id,
+    });
+
+    const updatedFile = await withPrismaRetry(() =>
+      prisma.$transaction(async (tx) => {
+        await tx.manualArchiveFile.update({
+          where: { id: editableFile.file.id },
+          data: { fileName: finalArchiveFileName },
+        });
+
+        const artworkMetadata = artworkMetadataData
+          ? await tx.archiveArtworkMetadata.update({
+              where: { id: editableFile.file.artworkMetadata!.id },
+              data: artworkMetadataData,
+            })
+          : editableFile.file.artworkMetadata;
+
+        return { artworkMetadata };
+      }),
+    );
+
+    return {
+      archivedFileId: editableFile.file.id,
+      recordType: editableFile.recordType,
+      projectId: null,
+      finalArchiveFileName,
+      archiveCategorySlug: editableFile.file.archiveCategory!.slug,
+      artworkMetadata: mapArchiveArtworkMetadataSummary(
+        updatedFile.artworkMetadata,
+      ),
+    };
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      throw new Error("An archive file with this name already exists.");
+    }
+
+    throw error;
   }
 }
 
