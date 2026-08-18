@@ -1210,10 +1210,25 @@ async function approveConceptRevision(
     projectId: string;
     taskerStageId: string;
     revisionId: string;
+    approvedAttachmentId: string;
     reviewedById: string;
     approvedAt: Date;
   },
 ) {
+  await tx.projectRevision.updateMany({
+    where: {
+      projectId: input.projectId,
+      stageId: input.taskerStageId,
+      id: { not: input.revisionId },
+      status: ProjectRevisionStatus.APPROVED,
+    },
+    data: {
+      status: ProjectRevisionStatus.PENDING_REVIEW,
+      reviewedById: null,
+      reviewedAt: null,
+      rejectionReason: null,
+    },
+  });
   await tx.projectRevision.update({
     where: { id: input.revisionId },
     data: {
@@ -1227,10 +1242,20 @@ async function approveConceptRevision(
     where: {
       projectId: input.projectId,
       stageId: input.taskerStageId,
-      revisionId: input.revisionId,
+      id: { not: input.approvedAttachmentId },
       status: AttachmentStatus.READY,
       assetType: { in: formalConceptAttachmentTypes },
+      submissionReviewStatus: SubmissionReviewStatus.APPROVED,
     },
+    data: {
+      submissionReviewStatus: SubmissionReviewStatus.PENDING_REVIEW,
+      reviewedById: null,
+      reviewedAt: null,
+      reviewNote: null,
+    },
+  });
+  await tx.projectAttachment.update({
+    where: { id: input.approvedAttachmentId },
     data: {
       submissionReviewStatus: SubmissionReviewStatus.APPROVED,
       reviewedById: input.reviewedById,
@@ -1415,6 +1440,7 @@ export async function markProjectConceptApprovedAttachment(
             projectId: input.projectId,
             taskerStageId: folder.taskerStageId,
             revisionId: attachment.revisionId!,
+            approvedAttachmentId: attachment.id,
             reviewedById,
             approvedAt,
           });
@@ -1611,6 +1637,7 @@ export async function markStageFourFinalApprovedAttachment(
             projectId: input.projectId,
             taskerStageId: folder.taskerStageId,
             revisionId: attachment.revisionId!,
+            approvedAttachmentId: attachment.id,
             reviewedById,
             approvedAt,
           });

@@ -84,13 +84,15 @@ assert(
   "Designation must be idempotent, audited, replaceable before completion, and locked afterward.",
 );
 assert(
-  concepts.includes("approveConceptRevision") &&
+    concepts.includes("approveConceptRevision") &&
+    concepts.includes("approvedAttachmentId: attachment.id") &&
+    concepts.includes("id: { not: input.approvedAttachmentId }") &&
     concepts.includes("status: ProjectRevisionStatus.APPROVED") &&
     concepts.includes("submissionReviewStatus: SubmissionReviewStatus.APPROVED") &&
     concepts.includes("status: StageStatus.COMPLETED") &&
     concepts.includes("allConceptsApproved: unapprovedConceptCount === 0") &&
     !concepts.includes("const stageTransition = await completeStageThreeConcepts"),
-  "Designating the approved file must approve its revision and files and complete the concept tasker without bypassing explicit Stage 3 confirmation.",
+  "Designating the approved file must approve its revision and only the selected file, then complete the concept tasker without bypassing explicit Stage 3 confirmation.",
 );
 assert(
   concepts.includes("revokeProjectConceptApprovedAttachment") &&

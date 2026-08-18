@@ -1319,8 +1319,8 @@ async function main() {
       preCompletionState[5].status === ProjectRevisionStatus.APPROVED &&
         preCompletionState[5].reviewedById === owner.id &&
         preCompletionState[5].reviewedAt !== null &&
-        preCompletionState[6] === 2,
-      "the designated submission revision and all of its formal files must be approved together",
+        preCompletionState[6] === 1,
+      "the designated submission revision and only its selected formal file must be approved",
     );
 
     await notifyConceptFileApproved({
@@ -1796,8 +1796,8 @@ async function main() {
             revisionId: secondRevision.id,
             submissionReviewStatus: "APPROVED",
           },
-        })) === 2,
-      "legacy reconciliation must restore the completed tasker and approved file statuses",
+        })) === 1,
+      "legacy reconciliation must restore the completed tasker and only the designated approved file status",
     );
     await expectRejected(
       createStageTextCommentFast(executorA, {

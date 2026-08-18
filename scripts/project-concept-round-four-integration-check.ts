@@ -541,8 +541,8 @@ async function main() {
       preCompletion[6].status === ProjectRevisionStatus.APPROVED &&
         preCompletion[6].reviewedById === superAdmin.id &&
         preCompletion[6].reviewedAt !== null &&
-        preCompletion[7] === 2,
-      "the final submission revision and all of its formal files must be approved together",
+        preCompletion[7] === 1,
+      "the final submission revision and only its selected formal file must be approved",
     );
 
     await notifyStageFourFinalFileApproved({

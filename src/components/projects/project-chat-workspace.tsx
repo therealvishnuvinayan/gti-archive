@@ -1852,8 +1852,8 @@ function AttachmentHistoryList({
   return (
     <div
       className={compact ? "mt-3 min-w-0 max-w-full space-y-2" : "mt-3 min-w-0 max-w-full space-y-2.5"}
-      role={singleApprovalSelection ? "radiogroup" : undefined}
-      aria-label={singleApprovalSelection ? "Final Approved File" : undefined}
+      role={singleApprovalSelection ? "group" : undefined}
+      aria-label={singleApprovalSelection ? "Final Approved File selection" : undefined}
     >
       {attachments.map((attachment) => (
         (() => {
@@ -2052,26 +2052,21 @@ function AttachmentHistoryList({
                           ? "border-[#2f8d5d] bg-[#e8f5eb] text-[#1f7145]"
                           : "border-[#93bda0] bg-white text-[#276f49] hover:bg-[#f3faf5]"
                       } ${approvingConceptAttachmentId ? "cursor-not-allowed opacity-60" : ""}`}
-                      onClick={(event) => {
-                        if (
-                          !isApprovalSelectionSelected ||
-                          approvingConceptAttachmentId ||
-                          !onClearApprovalSelection
-                        ) {
-                          return;
-                        }
-
-                        event.preventDefault();
-                        onClearApprovalSelection();
-                      }}
                     >
                       <input
-                        type="radio"
+                        type="checkbox"
                         name="stage-four-final-approved-file"
                         value={attachment.id}
                         checked={isApprovalSelectionSelected}
                         disabled={Boolean(approvingConceptAttachmentId)}
-                        onChange={() => onSelectApprovalAttachment?.(attachment)}
+                        onChange={() => {
+                          if (isApprovalSelectionSelected) {
+                            onClearApprovalSelection?.();
+                            return;
+                          }
+
+                          onSelectApprovalAttachment?.(attachment);
+                        }}
                         aria-label={
                           isApprovalSelectionSelected
                             ? `Unselect ${attachment.originalFileName}`

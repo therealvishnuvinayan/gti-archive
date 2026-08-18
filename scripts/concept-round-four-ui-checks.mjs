@@ -11,6 +11,7 @@ const [
   notifications,
   history,
   schema,
+  singleApprovalMigration,
 ] =
   await Promise.all([
     readFile("src/components/projects/concept-stage-workspace.tsx", "utf8"),
@@ -28,6 +29,10 @@ const [
     readFile("src/lib/notification-center/triggers.ts", "utf8"),
     readFile("src/lib/project-history.ts", "utf8"),
     readFile("prisma/schema.prisma", "utf8"),
+    readFile(
+      "prisma/migrations/20260818160000_concept_single_approved_attachment/migration.sql",
+      "utf8",
+    ),
   ]);
 const migrationDirectories = await readdir("prisma/migrations");
 
@@ -63,12 +68,20 @@ assert(
 );
 assert(
   concepts.includes("approveConceptRevision") &&
+    concepts.includes("approvedAttachmentId: attachment.id") &&
+    concepts.includes("id: { not: input.approvedAttachmentId }") &&
     concepts.includes("status: ProjectRevisionStatus.APPROVED") &&
     concepts.includes("submissionReviewStatus: SubmissionReviewStatus.APPROVED") &&
     concepts.includes("status: StageStatus.COMPLETED") &&
     concepts.includes("allConceptsApproved: conceptsWithoutFinalFile === 0") &&
     !concepts.includes("const stageTransition = await completeStageFourConcepts"),
-  "Final-file approval must approve its revision and files and complete the concept tasker without bypassing explicit Stage 4 confirmation.",
+  "Final-file approval must approve its revision and only the selected file, then complete the concept tasker without bypassing explicit Stage 4 confirmation.",
+);
+assert(
+  singleApprovalMigration.includes('attachment."id" <> concept."approvedAttachmentId"') &&
+    singleApprovalMigration.includes('"submissionReviewStatus" = \'PENDING_REVIEW\'') &&
+    singleApprovalMigration.includes('revision."id" <> approved_attachment."revisionId"'),
+  "The single-file approval migration must repair non-designated approved files and superseded approved revisions.",
 );
 assert(
   concepts.includes("revokeStageFourFinalApprovedAttachment") &&
@@ -162,22 +175,23 @@ assert(
   chat.includes("Select exactly one submitted file below") &&
     chat.includes('"Select this file"') &&
     chat.includes("conceptMode?.stageNumber === 4") &&
-    chat.includes('role={singleApprovalSelection ? "radiogroup" : undefined}') &&
+    chat.includes('role={singleApprovalSelection ? "group" : undefined}') &&
+    chat.includes('type="checkbox"') &&
     chat.includes('name="stage-four-final-approved-file"') &&
     chat.includes("checked={isApprovalSelectionSelected}") &&
-    chat.includes("onChange={() => onSelectApprovalAttachment?.(attachment)}") &&
-    chat.includes("isApprovalSelectionSelected ||") &&
-    chat.includes("onClearApprovalSelection();") &&
+    chat.includes("if (isApprovalSelectionSelected)") &&
+    chat.includes("onClearApprovalSelection?.();") &&
+    chat.includes("onSelectApprovalAttachment?.(attachment);") &&
     chat.includes("onClearApprovalSelection={clearConceptApprovalSelection}") &&
     chat.includes("Clear selection") &&
     chat.includes("singleApprovalSelection={canSelectStageFourFinalApprovedFile}") &&
     chat.includes("selectedApprovalAttachmentId={selectedConceptApprovalCandidateId}") &&
     chat.includes("setSelectedConceptApprovalCandidateId(attachment.id)") &&
     chat.includes('"No file selected yet."') &&
-    !chat.includes("aria-pressed={singleApprovalSelection ? isApprovalSelectionSelected : undefined}") &&
+    !chat.includes('type="radio"') &&
     chat.includes("openConceptApprovalConfirmation(selectedConceptApprovalCandidate)") &&
     chat.includes("!selectedConceptApprovalCandidate"),
-  "Stage 4 review must present submitted files as one native, mutually exclusive radio group followed by one approval action.",
+  "Stage 4 review must present submitted files as one mutually exclusive, toggleable selection followed by one approval action.",
 );
 assert(
   chat.includes("markStageFourFinalApprovedAttachmentAction") &&
