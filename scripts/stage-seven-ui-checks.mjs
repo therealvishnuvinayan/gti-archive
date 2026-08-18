@@ -271,7 +271,7 @@ assert(
     service.includes("Accepted or rejected sample requests cannot be deleted.") &&
     service.includes("tx.notification.deleteMany") &&
     service.includes("tx.productionSampleRound.deleteMany") &&
-    service.includes("latestRemainingRound") &&
+    service.includes("refreshProductionSupervisionStatus") &&
     service.includes('reason: "deleted"') &&
     service.includes("ProductionDispatchStatus.SENT") &&
     workspace.includes('title="Delete physical sample request?"') &&
@@ -283,9 +283,11 @@ assert(
   service.includes("PhysicalSampleDecision.ACCEPTED") &&
     service.includes("PhysicalSampleDecision.REJECTED") &&
     service.includes("Enter a review note before rejecting the sample.") &&
-    service.includes("status: ProductionSupervisionStatus.SIGNED_OFF") &&
-    service.includes("status: ProductionSupervisionStatus.REVISIONS_NEEDED"),
-  "Acceptance and rejection must be final, audited decisions with rejection-note enforcement.",
+    service.includes("undecidedRoundCount === 0") &&
+    service.includes("where: { enabled: true, stageSevenSampleRoundId: round.id }") &&
+    service.includes("ProductionSupervisionStatus.SIGNED_OFF") &&
+    service.includes("ProductionSupervisionStatus.REVISIONS_NEEDED"),
+  "Acceptance and rejection must be final, audited, round-scoped decisions, and a unit may be accepted only after every active request is resolved.",
 );
 assert(
   workspace.includes("ProductionSampleRoundStatus.PENDING") &&

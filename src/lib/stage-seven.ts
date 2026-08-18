@@ -587,6 +587,46 @@ async function serializable<T>(operation: (tx: Prisma.TransactionClient) => Prom
   throw new StageSevenWorkflowError("Unable to save after multiple attempts.");
 }
 
+async function refreshProductionSupervisionStatus(
+  tx: Prisma.TransactionClient,
+  supervisionId: string,
+) {
+  const [undecidedRoundCount, latestRound] = await Promise.all([
+    tx.productionSampleRound.count({
+      where: { supervisionId, decision: null },
+    }),
+    tx.productionSampleRound.findFirst({
+      where: { supervisionId },
+      orderBy: [{ sequence: "desc" }, { id: "desc" }],
+      select: {
+        decision: true,
+        decidedById: true,
+        decidedAt: true,
+      },
+    }),
+  ]);
+
+  const signedOff =
+    undecidedRoundCount === 0 &&
+    latestRound?.decision === PhysicalSampleDecision.ACCEPTED;
+  const status = signedOff
+    ? ProductionSupervisionStatus.SIGNED_OFF
+    : undecidedRoundCount > 0
+      ? ProductionSupervisionStatus.IN_REVIEW
+      : latestRound?.decision === PhysicalSampleDecision.REJECTED
+        ? ProductionSupervisionStatus.REVISIONS_NEEDED
+        : ProductionSupervisionStatus.NOT_STARTED;
+
+  await tx.projectProductionSupervision.update({
+    where: { id: supervisionId },
+    data: {
+      status,
+      signedOffById: signedOff ? latestRound?.decidedById : null,
+      signedOffAt: signedOff ? latestRound?.decidedAt : null,
+    },
+  });
+}
+
 async function assertStageSevenActive(
   tx: Prisma.TransactionClient,
   projectId: string,
@@ -1299,7 +1339,6 @@ export async function deleteProductionSampleRound(
         decision: true,
         recipientUserId: true,
         supervisionId: true,
-        supervision: { select: { status: true } },
       },
     });
     if (!round) throw new StageSevenWorkflowError("Sample request not found.");
@@ -1323,25 +1362,7 @@ export async function deleteProductionSampleRound(
       );
     }
 
-    const latestRemainingRound = await tx.productionSampleRound.findFirst({
-      where: { supervisionId: round.supervisionId },
-      orderBy: [{ sequence: "desc" }, { id: "desc" }],
-      select: { decision: true },
-    });
-    if (round.supervision.status !== ProductionSupervisionStatus.SIGNED_OFF) {
-      await tx.projectProductionSupervision.update({
-        where: { id: round.supervisionId },
-        data: {
-          status: !latestRemainingRound
-            ? ProductionSupervisionStatus.NOT_STARTED
-            : latestRemainingRound.decision === PhysicalSampleDecision.REJECTED
-              ? ProductionSupervisionStatus.REVISIONS_NEEDED
-              : ProductionSupervisionStatus.IN_REVIEW,
-          signedOffById: null,
-          signedOffAt: null,
-        },
-      });
-    }
+    await refreshProductionSupervisionStatus(tx, round.supervisionId);
     return { recipientUserId: round.recipientUserId };
   });
 
@@ -1448,13 +1469,7 @@ export async function decidePhysicalSampleRound(
       );
     }
     await tx.requestReminder.updateMany({
-      where:
-        input.decision === PhysicalSampleDecision.ACCEPTED
-          ? {
-              enabled: true,
-              stageSevenSampleRound: { supervisionId: round.supervisionId },
-            }
-          : { enabled: true, stageSevenSampleRoundId: round.id },
+      where: { enabled: true, stageSevenSampleRoundId: round.id },
       data: {
         enabled: false,
         nextReminderAt: null,
@@ -1463,21 +1478,7 @@ export async function decidePhysicalSampleRound(
         processingStartedAt: null,
       },
     });
-    await tx.projectProductionSupervision.update({
-      where: { id: round.supervisionId },
-      data:
-        input.decision === PhysicalSampleDecision.ACCEPTED
-          ? {
-              status: ProductionSupervisionStatus.SIGNED_OFF,
-              signedOffById: user.id,
-              signedOffAt: now,
-            }
-          : {
-              status: ProductionSupervisionStatus.REVISIONS_NEEDED,
-              signedOffById: null,
-              signedOffAt: null,
-            },
-    });
+    await refreshProductionSupervisionStatus(tx, round.supervisionId);
     return { duplicate: false } as const;
   });
 }

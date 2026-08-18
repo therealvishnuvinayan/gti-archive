@@ -488,12 +488,23 @@ async function main() {
     const accepted = await decidePhysicalSampleRound(superAdmin, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: acceptedRound.id, decision: PhysicalSampleDecision.ACCEPTED, decisionNote: "Physical sample matches approved production artwork." });
     check(!accepted.duplicate, "SUPER_ADMIN must be able to accept a physical sample");
     const acceptedSupervision = await prisma.projectProductionSupervision.findUniqueOrThrow({ where: { productionUnitId: units[0].id } });
-    check(acceptedSupervision.status === ProductionSupervisionStatus.SIGNED_OFF && acceptedSupervision.signedOffById === ids.superAdmin && Boolean(acceptedSupervision.signedOffAt), "acceptance must mark the unit Accepted with signer audit");
+    check(acceptedSupervision.status === ProductionSupervisionStatus.IN_REVIEW && !acceptedSupervision.signedOffById && !acceptedSupervision.signedOffAt, "accepting one request must keep the unit in review while another request is active");
+    const siblingAfterAcceptance = await prisma.productionSampleRound.findUniqueOrThrow({ where: { id: stalePendingRound.id } });
+    check(siblingAfterAcceptance.status === ProductionSampleRoundStatus.PENDING && siblingAfterAcceptance.decision === null, "accepting one request must not complete or change an active sibling request");
+    const workspaceAfterAcceptance = await getStageSevenWorkspaceData(owner, ids.project, units[0].id, acceptedRound.id);
+    const unitAfterAcceptance = workspaceAfterAcceptance?.units.find((unit) => unit.id === units[0].id);
+    check(
+      unitAfterAcceptance?.rounds.some((round) => round.id === acceptedRound.id && round.decision === PhysicalSampleDecision.ACCEPTED) &&
+        unitAfterAcceptance.rounds.some((round) => round.id === stalePendingRound.id && round.decision === null),
+      "the Stage 7 list must retain both the accepted request and every active sibling request",
+    );
     check((await prisma.projectProductionUnit.findUniqueOrThrow({ where: { id: units[0].id } })).status === ProjectProductionUnitStatus.HANDED_OVER, "Stage 7 must not mutate the Stage 6 HANDED_OVER state");
-    await expectRejected(createProductionSampleRound(owner, { ...baseInput, clientRequestId: `locked-unit-${runId}` }, { sendEmail: sendSuccess }), "accepted units must lock further sample requests");
-    await expectRejected(retryProductionSampleRequestEmail(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: stalePendingRound.id }, { sendEmail: sendSuccess }), "accepted units must block resending older undecided requests");
+    const retriedSibling = await retryProductionSampleRequestEmail(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: stalePendingRound.id }, { sendEmail: sendSuccess });
+    check(!retriedSibling.duplicate && retriedSibling.emailStatus === ProductionDispatchStatus.SENT, "accepting one request must preserve the actions of an active sibling request");
     await deleteProductionSampleRound(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: stalePendingRound.id });
-    check((await prisma.projectProductionSupervision.findUniqueOrThrow({ where: { productionUnitId: units[0].id } })).status === ProductionSupervisionStatus.SIGNED_OFF, "deleting an older undecided request must preserve an accepted Production Unit");
+    const signedOffSupervision = await prisma.projectProductionSupervision.findUniqueOrThrow({ where: { productionUnitId: units[0].id } });
+    check(signedOffSupervision.status === ProductionSupervisionStatus.SIGNED_OFF && signedOffSupervision.signedOffById === ids.superAdmin && Boolean(signedOffSupervision.signedOffAt), "the unit must become Accepted only after no sibling request remains active");
+    await expectRejected(createProductionSampleRound(owner, { ...baseInput, clientRequestId: `locked-unit-${runId}` }, { sendEmail: sendSuccess }), "accepted units must lock further sample requests");
     await expectRejected(deleteProductionSampleRound(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: acceptedRound.id }), "accepted sample-request history must not be deletable");
 
     const deletableInternalRound = await createProductionSampleRound(owner, {
