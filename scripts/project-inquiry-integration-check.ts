@@ -496,10 +496,23 @@ async function main() {
   );
 
   const stageOneCompletionTime = stageOneAfterSuccess.completedAt?.getTime();
-  const repeated = await completeProjectInquiry(superAdmin, richInput);
+  const repeated = await completeProjectInquiry(superAdmin, {
+    ...richInput,
+    businessObjectives: "Updated after Stage 1 completion",
+    deadline: "2026-10-01",
+  });
   assert(
     "success" in repeated && repeated.alreadyCompleted,
-    "Repeated completion must succeed idempotently without retriggering completion.",
+    "Editing a completed Stage 1 must save without retriggering completion.",
+  );
+  const editedCompletedInquiry = await prisma.projectInquiry.findUniqueOrThrow({
+    where: { projectId: mainProject.id },
+  });
+  assert(
+    editedCompletedInquiry.businessObjectives ===
+      "<p>Updated after Stage 1 completion</p>" &&
+      editedCompletedInquiry.deadline?.toISOString().slice(0, 10) === "2026-10-01",
+    "Authorized edits after Stage 1 completion must persist permitted inquiry fields.",
   );
   assert(
     (await prisma.projectInquiryTargetMarket.count({
@@ -516,7 +529,7 @@ async function main() {
   assert(
     (await stageStatus(mainProject.id, ProjectWorkflowStageKey.PROJECT_INQUIRY)).completedAt?.getTime() ===
       stageOneCompletionTime,
-    "Repeated completion must preserve the original Stage 1 completion time.",
+    "Editing completed Stage 1 data must preserve the original completion time.",
   );
 
   const reopened = await getProjectInquiryPageData(superAdmin, mainProject.id);

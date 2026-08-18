@@ -101,9 +101,13 @@ assert(
 assert(
   workspace.includes('pageData.workflowStatus === "COMPLETED"') &&
     workspace.includes('href={`/projects/${project.id}/stages/2`}') &&
-    workspace.includes("if (!result.alreadyCompleted)") &&
+    workspace.includes('enabled: pageData.canEdit') &&
+    workspace.includes('"Save Changes"') &&
+    workspace.includes('"Project Inquiry updated."') &&
+    workspace.includes("if (result.alreadyCompleted)") &&
+    !workspace.includes('if (pageData.workflowStatus === "COMPLETED") {\n      router.push(stageTwoHref)') &&
     service.includes("alreadyCompleted: !isFirstCompletion"),
-  "Next Stage must navigate directly from completed Stage 1 and suppress repeated completion notifications for stale pages.",
+  "Authorized users must be able to save completed Stage 1 changes while Next Stage remains a separate navigation action.",
 );
 
 assert(
