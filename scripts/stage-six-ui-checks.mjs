@@ -47,6 +47,7 @@ const [
   authenticatedHandoverPreviewRoute,
   authenticatedHandoverDownloadRoute,
   notificationService,
+  sharedFieldValue,
 ] = await Promise.all([
     readFile("src/lib/archives.ts", "utf8"),
     readFile(
@@ -70,6 +71,7 @@ const [
       "utf8",
     ),
     readFile("src/lib/notification-center/service.ts", "utf8"),
+    readFile("src/components/projects/production-shared-field-value.tsx", "utf8"),
   ]);
 
 for (const content of [
@@ -295,6 +297,17 @@ assert(
     handoverWorkspace.includes("/api/production-handovers/") &&
     notificationService.includes("handoverRouteByProductionUnitId"),
   "Internal handover notifications must open a recipient-scoped package whose selected files have authenticated preview and download access.",
+);
+assert(
+  handoverWorkspace.includes("ProductionSharedFieldValue") &&
+    approvalWorkspace.includes("ProductionSharedFieldValue") &&
+    handoverWorkspace.includes("<RichTextContent value={data.note}") &&
+    approvalWorkspace.includes("<RichTextContent value={data.message}") &&
+    sharedFieldValue.includes("<RichTextContent value={text}") &&
+    sharedFieldValue.includes("isRichTextEmpty(record.text)") &&
+    !handoverWorkspace.includes("valueText(field.value)") &&
+    !approvalWorkspace.includes("valueText(field.value)"),
+  "Production approval and handover views must safely render stored rich text instead of exposing HTML tags.",
 );
 assert(
   stageSevenService.includes("ProjectProductionUnitStatus.HANDOVER_READY") &&
