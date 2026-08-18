@@ -66,6 +66,7 @@ function checkPhysicalSampleRequestActionStates() {
   check(
     selectedReceived.showRowDelete &&
       selectedReceived.showDetailsDelete &&
+      selectedReceived.showReviewAction &&
       selectedReceived.reviewable &&
       selectedReceived.reviewActionsEnabled,
     "a selected eligible request must retain its row Delete action, expose the details Delete action, and enable both review actions",
@@ -106,6 +107,7 @@ function checkPhysicalSampleRequestActionStates() {
   });
   check(
     internalOwner.showDetailsDelete &&
+      !internalOwner.showReviewAction &&
       !internalOwner.reviewable &&
       !internalOwner.reviewActionsEnabled,
     "an internal-request owner may manage the selected request but must not review it",
@@ -118,6 +120,7 @@ function checkPhysicalSampleRequestActionStates() {
   check(
     !internalRecipient.showRowDelete &&
       !internalRecipient.showDetailsDelete &&
+      internalRecipient.showReviewAction &&
       internalRecipient.reviewActionsEnabled,
     "the assigned internal recipient must review a received request without receiving Delete access",
   );
@@ -129,6 +132,7 @@ function checkPhysicalSampleRequestActionStates() {
   });
   check(
     !accepted.reviewable &&
+      !accepted.showReviewAction &&
       !accepted.reviewActionsEnabled &&
       !accepted.showMarkReceived &&
       !accepted.showRowDelete &&

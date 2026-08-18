@@ -27,6 +27,7 @@ export function getPhysicalSampleRequestActionState(input: {
     received,
     reviewable,
     requestMutable,
+    showReviewAction: reviewable,
     showRowDelete: canDelete,
     showDetailsDelete: canDelete && input.selected,
     showMarkReceived: reviewable && !received,

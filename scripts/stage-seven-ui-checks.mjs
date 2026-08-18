@@ -292,7 +292,9 @@ assert(
 assert(
   workspace.includes("ProductionSampleRoundStatus.PENDING") &&
     workspace.includes("Mark as Received") &&
-    workspace.includes('actions.reviewable ? "Accept / Reject" : "View Request"') &&
+    workspace.includes("actions.showReviewAction") &&
+    !workspace.includes('"View Request"') &&
+    sampleActions.includes("showReviewAction: reviewable") &&
     workspace.includes("Assigned recipient review") &&
     workspace.includes("only its assigned internal recipient can mark it received") &&
     workspace.includes("canReview={Boolean(selectedRound?.canReview)}") &&
