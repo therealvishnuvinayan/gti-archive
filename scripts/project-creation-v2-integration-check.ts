@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   PrismaClient,
+  ProjectWorkflowStageKey,
   ProjectWorkflowStageStatus,
   UserRole,
 } from "@prisma/client";
@@ -352,8 +353,8 @@ async function main() {
     "Additional collaborators must receive COLLABORATOR_ADDED notifications.",
   );
   assert(
-    notifications.every((item) => item.url === `/projects/${created.id}/chat`),
-    "Every project assignment notification must link directly to the project chat.",
+    notifications.every((item) => item.url === `/projects/${created.id}/stages/1`),
+    "Every new project assignment notification must initially link to active Stage 1.",
   );
 
   const legacyAssignmentNotifications = notifications.filter(
@@ -362,9 +363,34 @@ async function main() {
       item.type === "COLLABORATOR_ADDED" ||
       (item.type === "PROJECT_CREATED" && item.title === "Project assigned to you"),
   );
+  const stageTwoActivatedAt = new Date();
+  await prisma.projectWorkflowStage.update({
+    where: {
+      projectId_stageKey: {
+        projectId: created.id,
+        stageKey: ProjectWorkflowStageKey.PROJECT_INQUIRY,
+      },
+    },
+    data: {
+      status: ProjectWorkflowStageStatus.COMPLETED,
+      completedAt: stageTwoActivatedAt,
+    },
+  });
+  await prisma.projectWorkflowStage.update({
+    where: {
+      projectId_stageKey: {
+        projectId: created.id,
+        stageKey: ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING,
+      },
+    },
+    data: {
+      status: ProjectWorkflowStageStatus.AVAILABLE,
+      unlockedAt: stageTwoActivatedAt,
+    },
+  });
   await prisma.notification.updateMany({
     where: { id: { in: legacyAssignmentNotifications.map((item) => item.id) } },
-    data: { url: `/projects/${created.id}` },
+    data: { url: `/projects/${created.id}/chat` },
   });
   for (const legacyNotification of legacyAssignmentNotifications) {
     const resolved = await getNotificationsForUser({
@@ -373,8 +399,8 @@ async function main() {
     });
     assert(
       resolved.notifications.find((item) => item.id === legacyNotification.id)
-        ?.targetHref === `/projects/${created.id}/chat`,
-      "Existing project assignment notifications must resolve to the project chat without a data migration.",
+        ?.targetHref === `/projects/${created.id}/stages/2`,
+      "Existing project assignment notifications must resolve to active Stage 2 instead of Stage 3 chat.",
     );
   }
 

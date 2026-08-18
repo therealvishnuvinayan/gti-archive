@@ -48,13 +48,16 @@ assert(
     service.includes('item.type === "PROJECT_ASSIGNED"') &&
     service.includes('item.type === "COLLABORATOR_ADDED"') &&
     service.includes('item.type === "PROJECT_CREATED" && item.title === "Project assigned to you"') &&
-    service.includes('kind: "project-chat"') &&
+    service.includes("getProjectWorkflowSequenceState") &&
+    service.includes("assignmentProjectIds") &&
+    service.includes("workflowStages") &&
+    service.includes("/stages/${sequence.currentStage.number}") &&
     service.includes("projectConceptFolder.findMany") &&
     service.includes("taskerStageId: { in: taskerStageIds }") &&
     service.includes("ProjectWorkflowStageKey.CONCEPT_CREATION ? 3 : 4") &&
     service.includes("/stages/${stageNumber}/concepts/") &&
     service.includes("resolvedItems.map(mapNotificationToView)"),
-  "Project assignments and concept activity notifications, including legacy records, must resolve to their chat routes.",
+  "Project assignments must follow the active workflow stage, while concept activity notifications retain their secured deep links.",
 );
 assert(
   server.includes("publishAblyNotificationChanged") &&

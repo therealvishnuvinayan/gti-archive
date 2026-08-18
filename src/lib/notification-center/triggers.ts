@@ -16,7 +16,11 @@ import {
   getProjectParticipantUserIds,
   getVisibleStageEventRecipientUserIds,
 } from "./recipients";
-import { buildNotificationUrl, createNotificationsForUsers } from "./service";
+import {
+  buildNotificationUrl,
+  buildProjectAssignmentNotificationUrl,
+  createNotificationsForUsers,
+} from "./service";
 
 type ActorInput = {
   actorId: string;
@@ -291,6 +295,10 @@ export async function notifyProjectCreated(input: {
   if (!project) {
     return;
   }
+  const assignmentUrl = buildProjectAssignmentNotificationUrl({
+    projectId: project.id,
+    workflowStages: project.workflowStages,
+  });
 
   const executorIds = getProjectExecutorRecipientUserIds(project).filter(
     (userId) => userId !== input.actorId,
@@ -305,10 +313,7 @@ export async function notifyProjectCreated(input: {
       entityType: "PROJECT",
       entityId: project.id,
       projectId: project.id,
-      url: buildNotificationUrl({
-        kind: "project-chat",
-        projectId: project.id,
-      }),
+      url: assignmentUrl,
     });
   }
 
@@ -326,10 +331,7 @@ export async function notifyProjectCreated(input: {
     entityType: "PROJECT",
     entityId: project.id,
     projectId: project.id,
-    url: buildNotificationUrl({
-      kind: "project-chat",
-      projectId: project.id,
-    }),
+    url: assignmentUrl,
   });
 }
 
@@ -348,6 +350,10 @@ export async function notifyProjectAssignmentChanges(input: {
   if (!project) {
     return;
   }
+  const assignmentUrl = buildProjectAssignmentNotificationUrl({
+    projectId: project.id,
+    workflowStages: project.workflowStages,
+  });
 
   const previousExecutorIds = new Set(
     dedupeRecipients([
@@ -372,10 +378,7 @@ export async function notifyProjectAssignmentChanges(input: {
       entityType: "PROJECT",
       entityId: project.id,
       projectId: project.id,
-      url: buildNotificationUrl({
-        kind: "project-chat",
-        projectId: project.id,
-      }),
+      url: assignmentUrl,
     });
   }
 
@@ -392,10 +395,7 @@ export async function notifyProjectAssignmentChanges(input: {
       entityType: "PROJECT",
       entityId: project.id,
       projectId: project.id,
-      url: buildNotificationUrl({
-        kind: "project-chat",
-        projectId: project.id,
-      }),
+      url: assignmentUrl,
     });
   }
 

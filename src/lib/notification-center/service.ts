@@ -3,6 +3,7 @@ import {
   ProductionHandoverDeliveryStatus,
   ProjectWorkflowStageKey,
   type NotificationType,
+  type ProjectWorkflowStageStatus,
 } from "@prisma/client";
 
 import type {
@@ -12,6 +13,7 @@ import type {
   NotificationTypeFilter,
 } from "@/lib/notifications";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { getProjectWorkflowSequenceState } from "@/lib/project-workflow";
 import { publishNotificationChanges } from "@/lib/realtime/server";
 
 import {
@@ -50,59 +52,86 @@ function isProjectAssignmentNotification(item: NotificationDestinationRecord) {
 async function resolveNotificationDestinations<
   T extends NotificationDestinationRecord,
 >(items: T[]) {
-  const assignmentResolvedItems = items.map((item) =>
-    item.projectId && isProjectAssignmentNotification(item)
-      ? {
-          ...item,
-          url: buildNotificationUrl({
-            kind: "project-chat",
-            projectId: item.projectId,
-          }),
-        }
-      : item,
+  const assignmentProjectIds = Array.from(
+    new Set(
+      items
+        .filter(isProjectAssignmentNotification)
+        .map((item) => item.projectId)
+        .filter((projectId): projectId is string => Boolean(projectId)),
+    ),
   );
   const taskerStageIds = Array.from(
     new Set(
-      assignmentResolvedItems
+      items
         .map((item) => item.stageId)
         .filter((stageId): stageId is string => Boolean(stageId)),
     ),
   );
   const handoverProductionUnitIds = Array.from(
     new Set(
-      assignmentResolvedItems
+      items
         .filter((item) => item.type === "PRODUCTION_HANDOVER_COMPLETED")
         .map((item) => item.entityId)
         .filter((entityId): entityId is string => Boolean(entityId)),
     ),
   );
 
-  if (taskerStageIds.length === 0 && handoverProductionUnitIds.length === 0) {
-    return assignmentResolvedItems;
+  if (
+    assignmentProjectIds.length === 0 &&
+    taskerStageIds.length === 0 &&
+    handoverProductionUnitIds.length === 0
+  ) {
+    return items;
   }
 
-  const [conceptFolders, handovers] = await withPrismaRetry(() =>
-    Promise.all([
-      taskerStageIds.length
-        ? prisma.projectConceptFolder.findMany({
-            where: { taskerStageId: { in: taskerStageIds } },
-            select: {
-              id: true,
-              projectId: true,
-              taskerStageId: true,
-              workflowStageKey: true,
-            },
-          })
-        : Promise.resolve([]),
-      handoverProductionUnitIds.length
-        ? prisma.projectProductionHandover.findMany({
-            where: {
-              productionUnitId: { in: handoverProductionUnitIds },
-              deliveryStatus: ProductionHandoverDeliveryStatus.SENT,
-            },
-            select: { id: true, productionUnitId: true },
-          })
-        : Promise.resolve([]),
+  const [assignmentProjects, conceptFolders, handovers] = await withPrismaRetry(
+    () =>
+      Promise.all([
+        assignmentProjectIds.length
+          ? prisma.project.findMany({
+              where: { id: { in: assignmentProjectIds } },
+              select: {
+                id: true,
+                workflowStages: {
+                  select: {
+                    stageKey: true,
+                    status: true,
+                    unlockedAt: true,
+                    completedAt: true,
+                  },
+                },
+              },
+            })
+          : Promise.resolve([]),
+        taskerStageIds.length
+          ? prisma.projectConceptFolder.findMany({
+              where: { taskerStageId: { in: taskerStageIds } },
+              select: {
+                id: true,
+                projectId: true,
+                taskerStageId: true,
+                workflowStageKey: true,
+              },
+            })
+          : Promise.resolve([]),
+        handoverProductionUnitIds.length
+          ? prisma.projectProductionHandover.findMany({
+              where: {
+                productionUnitId: { in: handoverProductionUnitIds },
+                deliveryStatus: ProductionHandoverDeliveryStatus.SENT,
+              },
+              select: { id: true, productionUnitId: true },
+            })
+          : Promise.resolve([]),
+      ]),
+  );
+  const assignmentRouteByProjectId = new Map(
+    assignmentProjects.map((project) => [
+      project.id,
+      buildProjectAssignmentNotificationUrl({
+        projectId: project.id,
+        workflowStages: project.workflowStages,
+      }),
     ]),
   );
   const conceptRouteByStageId = new Map(
@@ -125,7 +154,16 @@ async function resolveNotificationDestinations<
     ]),
   );
 
-  return assignmentResolvedItems.map((item) => {
+  return items.map((item) => {
+    if (item.projectId && isProjectAssignmentNotification(item)) {
+      return {
+        ...item,
+        url:
+          assignmentRouteByProjectId.get(item.projectId) ??
+          buildNotificationUrl({ kind: "project", projectId: item.projectId }),
+      };
+    }
+
     const handoverRoute =
       item.type === "PRODUCTION_HANDOVER_COMPLETED" && item.entityId
         ? handoverRouteByProductionUnitId.get(item.entityId)
@@ -233,6 +271,22 @@ export function buildNotificationUrl(input: NotificationUrlInput) {
     default:
       return "/notifications";
   }
+}
+
+export function buildProjectAssignmentNotificationUrl(input: {
+  projectId: string;
+  workflowStages: ReadonlyArray<{
+    stageKey: ProjectWorkflowStageKey;
+    status: ProjectWorkflowStageStatus;
+    unlockedAt?: Date | null;
+    completedAt?: Date | null;
+  }>;
+}) {
+  const sequence = getProjectWorkflowSequenceState(input.workflowStages);
+
+  return sequence.kind === "ACTIVE"
+    ? `/projects/${encodeURIComponent(input.projectId)}/stages/${sequence.currentStage.number}`
+    : buildNotificationUrl({ kind: "project", projectId: input.projectId });
 }
 
 export async function createNotification(input: CreateNotificationInput) {

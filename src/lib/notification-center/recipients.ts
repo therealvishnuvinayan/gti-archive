@@ -1,3 +1,8 @@
+import type {
+  ProjectWorkflowStageKey,
+  ProjectWorkflowStageStatus,
+} from "@prisma/client";
+
 import { withPrismaRetry, prisma } from "@/lib/prisma";
 import { isTimestampHiddenByPauseWindows } from "@/lib/project-collaborator-visibility";
 import {
@@ -18,6 +23,12 @@ type ProjectNotificationContext = {
       pausedAt: Date;
       resumedAt: Date | null;
     }>;
+  }>;
+  workflowStages: Array<{
+    stageKey: ProjectWorkflowStageKey;
+    status: ProjectWorkflowStageStatus;
+    unlockedAt: Date | null;
+    completedAt: Date | null;
   }>;
 };
 
@@ -52,6 +63,14 @@ export async function getProjectNotificationContext(projectId: string) {
                 resumedAt: true,
               },
             },
+          },
+        },
+        workflowStages: {
+          select: {
+            stageKey: true,
+            status: true,
+            unlockedAt: true,
+            completedAt: true,
           },
         },
       },
