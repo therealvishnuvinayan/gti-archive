@@ -6295,7 +6295,9 @@ export function ProjectChatWorkspace({
       showSuccessToast(
         "Approval revoked.",
         result.resetThroughStageFive
-          ? "Stage 3 reopened for rework. Its dependent Stage 4 approval and Stage 5 handoff were reset."
+          ? isStageFourConceptMode
+            ? "Stage 4 reopened for rework. Stage 5 was relocked, and work tied to the revoked final file was reset."
+            : "Stage 3 reopened for rework. Its dependent Stage 4 approval and Stage 5 handoff were reset."
           : `${approvedFileLabel} was returned to Pending Review.`,
       );
       router.refresh();
@@ -11133,7 +11135,7 @@ export function ProjectChatWorkspace({
         }
         description={
           isStageFourConceptMode
-            ? "This removes the Final Approved File designation, returns its revision to Pending Review, and reopens Stage 4. Stage 5 will be relocked when it has no checklist activity; otherwise revocation is blocked."
+            ? "This removes the Final Approved File designation, returns its revision to Pending Review, and reopens Stage 4. Stage 5 will be relocked, and any in-progress checklist, requests, or attachments tied to this final file will be reset. Revocation is unavailable after Stage 5 is completed."
             : "This starts Stage 3 rework and returns the concept to Pending Review. If it is already used downstream, its dependent Stage 4 approval and Stage 5 handoff/checklist will be reset. Rework is allowed through completed Stage 5, but is blocked after Stage 6 production work begins."
         }
         confirmLabel="Revoke Approval"

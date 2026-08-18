@@ -1931,48 +1931,23 @@ async function resolveConceptApprovalRevocationEligibility(
 
   let stageFourDownstreamHandoffId: string | null = null;
   if (stageNumber === 4) {
-    if (reopensWorkflowStage) {
-      if (nextWorkflowStage.status === ProjectWorkflowStageStatus.COMPLETED) {
-        return denyConceptApprovalRevocation(
-          "STAGE5_DEPENDENCY_EXISTS",
-          "Stage 5 is already completed, so this Final Approved File cannot be revoked.",
-        );
-      }
-
-      const stageFiveHandoffs = await tx.projectStageFileHandoff.findMany({
-        where: {
-          projectId: input.projectId,
-          sourceWorkflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
-          targetWorkflowStageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
-        },
-        select: { sourceAttachmentId: true },
-      });
-      for (const handoff of stageFiveHandoffs) {
-        const handoffActivity =
-          await hasStageFiveDownstreamActivityForAttachment(tx, {
-            projectId: input.projectId,
-            attachmentId: handoff.sourceAttachmentId,
-          });
-        if (handoffActivity.hasActivity) {
-          return denyConceptApprovalRevocation(
-            "STAGE5_DEPENDENCY_EXISTS",
-            "Stage 5 already contains checklist activity, so this Final Approved File cannot be revoked.",
-          );
-        }
-      }
-    }
-
-    const downstream = await hasStageFiveDownstreamActivityForAttachment(tx, {
-      projectId: input.projectId,
-      attachmentId: approvedAttachment.id,
-    });
-    if (downstream.hasActivity) {
+    if (nextWorkflowStage.status === ProjectWorkflowStageStatus.COMPLETED) {
       return denyConceptApprovalRevocation(
         "STAGE5_DEPENDENCY_EXISTS",
-        "This Final Approved File already has Stage 5 activity and cannot be revoked.",
+        "Stage 5 is already completed, so this Final Approved File cannot be revoked.",
       );
     }
-    stageFourDownstreamHandoffId = downstream.handoffId;
+
+    const downstreamHandoff = await tx.projectStageFileHandoff.findFirst({
+      where: {
+        projectId: input.projectId,
+        sourceWorkflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+        sourceAttachmentId: approvedAttachment.id,
+        targetWorkflowStageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
+      },
+      select: { id: true },
+    });
+    stageFourDownstreamHandoffId = downstreamHandoff?.id ?? null;
   }
 
   return {
@@ -2052,7 +2027,6 @@ async function revokeConceptApprovedAttachment(
           let cascadedStageFourApproval = false;
           let removedStageFiveHandoff = false;
           let resetThroughStageFive = false;
-          let removedUnusedHandoff = false;
 
           if (stageNumber === 3) {
             if (reopensWorkflowStage) {
@@ -2144,7 +2118,7 @@ async function revokeConceptApprovedAttachment(
             await tx.projectStageFileHandoff.delete({
               where: { id: stageFourDownstreamHandoffId },
             });
-            removedUnusedHandoff = true;
+            removedStageFiveHandoff = true;
           }
 
           if (reopensWorkflowStage) {
@@ -2186,6 +2160,7 @@ async function revokeConceptApprovedAttachment(
                   completedAt: null,
                 },
               });
+              resetThroughStageFive = true;
             }
           }
 
@@ -2239,7 +2214,6 @@ async function revokeConceptApprovedAttachment(
             revisionStatus: ProjectRevisionStatus.PENDING_REVIEW,
             cascadedStageFourApproval,
             removedStageFiveHandoff,
-            removedUnusedHandoff,
             reopensWorkflowStage,
             resetThroughStageFive,
           } as const;

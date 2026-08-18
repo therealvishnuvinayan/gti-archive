@@ -1425,7 +1425,7 @@ async function main() {
       (await getExternalChecklistRequestData(externalToken)).state === "completed",
     "external response must update only the real Final B checklist and revoke reuse",
   );
-  const [protectedFinalEligibility, protectedFinalContext] = await Promise.all([
+  const [activeFinalEligibility, activeFinalContext] = await Promise.all([
     getConceptApprovalRevocationEligibility(owner, {
       projectId,
       folderId: stageFourA.id,
@@ -1438,10 +1438,9 @@ async function main() {
     }),
   ]);
   check(
-    !protectedFinalEligibility.canRevoke &&
-      protectedFinalEligibility.reason === "STAGE5_DEPENDENCY_EXISTS" &&
-      protectedFinalContext?.chatMode.approvalRevocationEligibility.canRevoke === false,
-    "Stage 5 checklist requests, responses, values, or attachments must hide Stage 4 Revoke Approval",
+    activeFinalEligibility.canRevoke &&
+      activeFinalContext?.chatMode.approvalRevocationEligibility.canRevoke === true,
+    "Stage 5 requests, responses, values, and attachments must keep Stage 4 Revoke Approval visible while Stage 5 is ongoing",
   );
 
   const protectedReplacement = await markStageFourFinalApprovedAttachment(owner, {
@@ -1463,20 +1462,11 @@ async function main() {
       postCompletionReplacement.error.includes("Stage 4 is completed"),
     "Stage 4 final replacement must be locked after completion without losing Stage 5 data",
   );
-  const postCompletionRevocation = await revokeStageFourFinalApprovedAttachment(owner, {
-    projectId,
-    folderId: stageFourA.id,
-  });
-  check(
-    isError(postCompletionRevocation) &&
-      postCompletionRevocation.error.includes("Stage 5"),
-    "Stage 4 final revocation must be locked after completion without losing Stage 5 data",
-  );
   check(
     (await prisma.projectFileChecklistRequest.count({ where: { projectId } })) === 2 &&
       (await prisma.projectFileChecklist.count({ where: { projectId } })) === 2 &&
       (await prisma.projectStageFileHandoff.count({ where: { projectId } })) === 2,
-    "downstream requests, checklists, and handoffs must remain intact",
+    "revocation eligibility checks must leave downstream requests, checklists, and handoffs intact",
   );
 
   const stageFiveCompletion = await completeStageFive(owner, { projectId });
@@ -1485,6 +1475,16 @@ async function main() {
       stageFiveCompletion.transitioned &&
       stageFiveCompletion.productionUnitCount === 2,
     "completed Stage 5 must create untouched Stage 6 bootstrap units",
+  );
+  const completedStageFiveRevocation =
+    await revokeStageFourFinalApprovedAttachment(owner, {
+      projectId,
+      folderId: stageFourA.id,
+    });
+  check(
+    isError(completedStageFiveRevocation) &&
+      completedStageFiveRevocation.error.includes("Stage 5 is already completed"),
+    "Stage 4 final revocation must become unavailable only after Stage 5 completion",
   );
   const stageSixUnit = await prisma.projectProductionUnit.findFirstOrThrow({
     where: { projectId },

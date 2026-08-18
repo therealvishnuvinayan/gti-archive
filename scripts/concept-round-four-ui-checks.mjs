@@ -76,13 +76,14 @@ assert(
     concepts.includes("resolveConceptApprovalRevocationEligibility") &&
     concepts.includes('"STAGE5_DEPENDENCY_EXISTS"') &&
     concepts.includes("reopensWorkflowStage") &&
-    concepts.includes("Stage 5 already contains checklist activity") &&
-    concepts.includes("already has Stage 5 activity and cannot be revoked") &&
+    concepts.includes("Stage 5 is already completed") &&
+    !concepts.includes("Stage 5 already contains checklist activity") &&
+    !concepts.includes("This Final Approved File already has Stage 5 activity") &&
     concepts.includes("projectStageFileHandoff.delete") &&
     concepts.includes("approvedAttachmentId: null") &&
     concepts.includes("submissionReviewStatus: SubmissionReviewStatus.PENDING_REVIEW") &&
     concepts.includes("status: StageStatus.ONGOING"),
-  "Stage 4 revocation must reopen the tasker while protecting completed workflow and meaningful Stage 5 dependencies.",
+  "Stage 4 revocation must remain available through active Stage 5 and stop after Stage 5 completion.",
 );
 
 assert(
@@ -189,6 +190,8 @@ assert(
     chat.includes("Revoke Final Approved File?") &&
     chat.includes("Revoke Approval") &&
     chat.includes("Stage 5 will be relocked") &&
+    chat.includes("Revocation is unavailable after Stage 5 is completed") &&
+    chat.includes("work tied to the revoked final file was reset") &&
     chat.includes("conceptMode.canReview") &&
     chat.includes("conceptMode.isWorkflowCompleted") &&
     chat.includes("!activeStage?.isTasker"),

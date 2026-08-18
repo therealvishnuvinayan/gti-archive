@@ -976,7 +976,7 @@ async function main() {
       ],
     });
     check(!isError(saved), "existing Stage 5 Edit persistence must work for a real final handoff");
-    const [protectedStageFourEligibility, protectedStageFourContext] =
+    const [activeStageFourEligibility, activeStageFourContext] =
       await Promise.all([
         getConceptApprovalRevocationEligibility(owner, {
           projectId,
@@ -990,10 +990,9 @@ async function main() {
         }),
       ]);
     check(
-      !protectedStageFourEligibility.canRevoke &&
-        protectedStageFourEligibility.reason === "STAGE5_DEPENDENCY_EXISTS" &&
-        protectedStageFourContext?.chatMode.approvalRevocationEligibility.canRevoke === false,
-      "meaningful Stage 5 checklist activity must hide Stage 4 Revoke Approval using the same eligibility result as the server",
+      activeStageFourEligibility.canRevoke &&
+        activeStageFourContext?.chatMode.approvalRevocationEligibility.canRevoke === true,
+      "ongoing Stage 5 checklist activity must keep Stage 4 Revoke Approval visible until Stage 5 is completed",
     );
     const selectedB = await getStageFiveWorkspaceData(owner, projectId, handoffB.handoffId);
     check(
@@ -1002,6 +1001,91 @@ async function main() {
         ?.items.find((item) => item.fieldKey === ProjectFileChecklistField.OUTPUT_NAME)
         ?.value.text !== "Final A output",
       "Checklist A values must not leak into Checklist B",
+    );
+
+    const activeStageFiveRevocation =
+      await revokeStageFourFinalApprovedAttachment(owner, {
+        projectId,
+        folderId: conceptA.id,
+      });
+    check(
+      !isError(activeStageFiveRevocation) &&
+        activeStageFiveRevocation.reopensWorkflowStage &&
+        activeStageFiveRevocation.resetThroughStageFive &&
+        activeStageFiveRevocation.removedStageFiveHandoff,
+      "Stage 4 revocation must remain available while Stage 5 is ongoing and reset its dependent handoff",
+    );
+    const [revokedWorkflow, remainingHandoffs] = await Promise.all([
+      prisma.projectWorkflowStage.findMany({
+        where: {
+          projectId,
+          stageKey: {
+            in: [
+              ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+              ProjectWorkflowStageKey.FINAL_LAYOUT,
+            ],
+          },
+        },
+        select: { stageKey: true, status: true },
+      }),
+      prisma.projectStageFileHandoff.findMany({
+        where: { projectId },
+        select: { id: true, sourceAttachmentId: true },
+      }),
+    ]);
+    check(
+      revokedWorkflow.find(
+        (stage) =>
+          stage.stageKey === ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+      )?.status === ProjectWorkflowStageStatus.AVAILABLE &&
+        revokedWorkflow.find(
+          (stage) => stage.stageKey === ProjectWorkflowStageKey.FINAL_LAYOUT,
+        )?.status === ProjectWorkflowStageStatus.LOCKED &&
+        remainingHandoffs.length === 2 &&
+        !remainingHandoffs.some((handoff) => handoff.id === handoffA.handoffId) &&
+        remainingHandoffs.some((handoff) => handoff.id === handoffB.handoffId),
+      "active Stage 5 revocation must relock Stage 5 and remove only the revoked final file's downstream work",
+    );
+
+    const restoredActiveFinal = await markStageFourFinalApprovedAttachment(owner, {
+      projectId,
+      folderId: conceptA.id,
+      attachmentId: finalA.id,
+    });
+    check(
+      !isError(restoredActiveFinal) && restoredActiveFinal.changed,
+      "the final file must be approvable again after active Stage 5 revocation",
+    );
+    const restoredActiveStageFour = await completeStageFourConcepts(owner, {
+      projectId,
+    });
+    check(
+      !isError(restoredActiveStageFour) && restoredActiveStageFour.transitioned,
+      "Stage 4 must complete again and recreate the revoked Stage 5 handoff",
+    );
+    const restoredStageFiveData = await getStageFiveWorkspaceData(owner, projectId);
+    const restoredHandoffA = restoredStageFiveData?.files.find(
+      (file) => file.sourceAttachment.id === finalA.id,
+    );
+    check(
+      Boolean(restoredHandoffA) &&
+        restoredHandoffA?.handoffId !== handoffA.handoffId,
+      "reapproval must create a fresh Stage 5 handoff for the restored final file",
+    );
+    const restoredChecklist = await saveStageFiveChecklist(owner, {
+      projectId,
+      handoffId: restoredHandoffA!.handoffId,
+      items: [
+        {
+          fieldKey: ProjectFileChecklistField.OUTPUT_NAME,
+          value: { text: "Restored Final A output" },
+          attachmentIds: [],
+        },
+      ],
+    });
+    check(
+      !isError(restoredChecklist),
+      "Stage 5 work must resume on the fresh handoff after Stage 4 is completed again",
     );
 
     await notifyStageFiveActivated({
@@ -1066,6 +1150,16 @@ async function main() {
         completedStageFiveContext?.chatMode.approvalRevocationEligibility
           .canRevoke === false,
       "completed Stage 5 must hide Stage 4 Revoke Approval before Stage 6 work begins",
+    );
+    const completedStageFiveRevocation =
+      await revokeStageFourFinalApprovedAttachment(owner, {
+        projectId,
+        folderId: conceptA.id,
+      });
+    check(
+      isError(completedStageFiveRevocation) &&
+        completedStageFiveRevocation.error.includes("Stage 5 is already completed"),
+      "Stage 5 completion must be the server-enforced cutoff for Stage 4 revocation",
     );
     const stageSixUnit = await prisma.projectProductionUnit.findFirstOrThrow({
       where: { projectId },
