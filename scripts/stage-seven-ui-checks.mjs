@@ -112,14 +112,19 @@ assert(
   "The request must use the reusable date-only AppDatePicker.",
 );
 assert(
-  workspace.includes("h-[calc(100dvh-1.5rem)] max-h-[860px]") &&
+  workspace.includes("h-[calc(100dvh-1.5rem)] max-h-[900px]") &&
     workspace.includes("sm:h-[calc(100dvh-3rem)]") &&
     workspace.includes("flex min-h-0 flex-1 flex-col overflow-hidden p-0") &&
     workspace.includes("dashboard-scroll-thin min-h-0 min-w-0 flex-1 touch-pan-y overflow-x-hidden overflow-y-auto overscroll-contain") &&
     workspace.includes("[scrollbar-gutter:stable]") &&
-    workspace.includes("relative z-10 shrink-0 border-t border-[#e4eae5] bg-white") &&
-    workspace.includes('className="grid min-w-0 gap-4"') &&
-    workspace.includes('className="grid min-w-0 gap-4 sm:grid-cols-2"') &&
+    workspace.includes("relative z-10 shrink-0 border-t border-[#e4eae5] bg-[#fbfcfb]") &&
+    workspace.includes('className="grid min-w-0 gap-6 sm:gap-7"') &&
+    workspace.includes('className="grid min-w-0 gap-5 sm:grid-cols-2"') &&
+    workspace.includes('aria-labelledby="sample-details-heading"') &&
+    workspace.includes('aria-labelledby="sample-provider-heading"') &&
+    workspace.includes('aria-labelledby="sample-instructions-heading"') &&
+    workspace.includes('aria-labelledby="sample-reminder-heading"') &&
+    workspace.includes("border-t border-[#dce7de] pt-5") &&
     workspace.includes("footer={(") &&
     workspace.indexOf("footer={(") < workspace.indexOf('Round Name *'),
   "The Request New Sample dialog must have a definite viewport-bounded height, contain horizontal overflow, scroll fields internally, and keep its action footer separate and accessible.",

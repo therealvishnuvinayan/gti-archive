@@ -181,9 +181,9 @@ function ModalShell({
       role="dialog"
       aria-modal="true"
     >
-      <Card className="flex h-[calc(100dvh-1.5rem)] max-h-[860px] w-full max-w-[680px] flex-col overflow-hidden rounded-[24px] border-[#dfe6df] shadow-[0_32px_80px_rgba(14,31,20,.22)] sm:h-[calc(100dvh-3rem)]">
+      <Card className="flex h-[calc(100dvh-1.5rem)] max-h-[900px] w-full max-w-[760px] flex-col overflow-hidden rounded-[24px] border-[#dfe6df] shadow-[0_32px_80px_rgba(14,31,20,.22)] sm:h-[calc(100dvh-3rem)] sm:rounded-[28px]">
         <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
-          <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[#e4eae5] px-6 py-5 sm:px-7 sm:py-6">
+          <div className="flex shrink-0 items-start justify-between gap-5 border-b border-[#e4eae5] px-5 py-5 sm:px-8 sm:py-7">
             <div>
               <p className="text-[10px] font-[760] uppercase tracking-[.12em] text-[#4c795e]">{eyebrow}</p>
               <h2 className="mt-2 text-[22px] font-[760] text-[#162019]">{title}</h2>
@@ -193,11 +193,11 @@ function ModalShell({
               <X className="h-4 w-4" />
             </Button>
           </div>
-          <div className="dashboard-scroll-thin min-h-0 min-w-0 flex-1 touch-pan-y overflow-x-hidden overflow-y-auto overscroll-contain px-5 py-5 [scrollbar-gutter:stable] sm:px-7 sm:py-6">
+          <div className="dashboard-scroll-thin min-h-0 min-w-0 flex-1 touch-pan-y overflow-x-hidden overflow-y-auto overscroll-contain px-4 py-6 [scrollbar-gutter:stable] sm:px-8 sm:py-8">
             {children}
           </div>
           {footer ? (
-            <div className="relative z-10 shrink-0 border-t border-[#e4eae5] bg-white px-5 py-4 sm:px-7">
+            <div className="relative z-10 shrink-0 border-t border-[#e4eae5] bg-[#fbfcfb] px-4 py-4 shadow-[0_-12px_30px_rgba(23,39,28,0.045)] sm:px-8 sm:py-5">
               {footer}
             </div>
           ) : null}
@@ -356,69 +356,111 @@ function NewSampleRequestDialog({
       eyebrow={unit.name}
       onClose={closeWithAutosave}
       footer={(
-        <div className="flex w-full flex-col-reverse gap-3 sm:flex-row sm:items-center">
-          <Button type="button" variant="secondary" disabled={pending} onClick={closeWithAutosave} className="w-full sm:w-auto">Cancel</Button>
+        <div className="flex w-full flex-col-reverse gap-4 sm:flex-row sm:items-center">
+          <Button type="button" variant="secondary" disabled={pending} onClick={closeWithAutosave} className="min-h-11 w-full rounded-[12px] px-5 sm:w-auto">Cancel</Button>
           <ProjectFormAutosaveStatus status={autosave.status} savedAt={autosave.savedAt} restoredAt={autosave.restoredAt} onRetry={() => void autosave.retry()} className="w-full sm:mr-auto sm:w-auto" />
-          <Button type="button" disabled={!ready || pending} onClick={sendRequest} className="w-full sm:w-auto"><Send className="h-4 w-4" /> {pending ? "Sending..." : "Send Sample Request"}</Button>
+          <Button type="button" disabled={!ready || pending} onClick={sendRequest} className="min-h-11 w-full rounded-[12px] px-5 sm:w-auto"><Send className="h-4 w-4" /> {pending ? "Sending..." : "Send Sample Request"}</Button>
         </div>
       )}
     >
-      <div className="grid min-w-0 gap-4">
-        <label className="space-y-2">
-          <span className="text-[12px] font-[720] text-[#2d372f]">Round Name *</span>
-          <Input value={name} maxLength={160} autoFocus placeholder="First Physical Packaging Sample" className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setName(event.target.value)} />
-        </label>
-        <label className="space-y-2">
-          <span className="text-[12px] font-[720] text-[#2d372f]">Sample Type *</span>
-          <Select value={type} onValueChange={(value) => setType(value as ProductionSampleRoundType)}>
-            <SelectTrigger className="h-11 rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] focus:border-[#46906a] focus:ring-[#46906a]/15"><SelectValue /></SelectTrigger>
-            <SelectContent className="z-[190]">
-              {Object.values(ProductionSampleRoundType).map((value) => <SelectItem key={value} value={value}>{ROUND_TYPE_LABELS[value]}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </label>
-        {type === ProductionSampleRoundType.CUSTOM ? (
-          <label className="space-y-2">
-            <span className="text-[12px] font-[720] text-[#2d372f]">Custom Sample Type *</span>
-            <Input value={customTypeName} maxLength={120} placeholder="Enter custom sample type" className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setCustomTypeName(event.target.value)} />
-          </label>
-        ) : null}
-        <label className="space-y-2">
-          <span className="text-[12px] font-[720] text-[#2d372f]">Deadline *</span>
-          <AppDatePicker value={deadline} onChange={setDeadline} required clearable={false} placeholder="Select deadline" popoverZIndex={200} triggerClassName="h-11 w-full justify-between rounded-[12px] border border-[#c8d5cb] bg-[#fbfdfb] px-4 text-left text-[14px] font-normal text-[#18211a] shadow-none hover:bg-white focus-visible:border-[#46906a] focus-visible:ring-3 focus-visible:ring-[#46906a]/15" />
-        </label>
-        <div>
-          <span className="text-[12px] font-[720] text-[#2d372f]">Who will provide this sample? *</span>
-          <div className="mt-2 grid min-w-0 gap-3 sm:grid-cols-2">
-            <button type="button" onClick={() => setRecipientRoute(ProductionHandoverRoute.PURCHASE_DEPARTMENT)} className={cn("min-w-0 rounded-[14px] border p-4 text-left", isInternal ? "border-[#72a184] bg-[#f1f8f3]" : "border-[#dfe6df]")}><strong className="block text-[12px] font-[740]">Internal</strong><span className="mt-1 block text-[10px] leading-4 text-[#6f7a72]">Select an existing project participant, such as Purchasing.</span></button>
-            <button type="button" onClick={() => setRecipientRoute(ProductionHandoverRoute.DIRECT_VENDOR)} className={cn("min-w-0 rounded-[14px] border p-4 text-left", !isInternal ? "border-[#72a184] bg-[#f1f8f3]" : "border-[#dfe6df]")}><strong className="block text-[12px] font-[740]">External</strong><span className="mt-1 block text-[10px] leading-4 text-[#6f7a72]">Send the request to a vendor or other external company.</span></button>
+      <div className="grid min-w-0 gap-6 sm:gap-7">
+        <section
+          aria-labelledby="sample-details-heading"
+          className="rounded-[18px] border border-[#dfe7e0] bg-white p-5 shadow-[0_8px_22px_rgba(23,39,28,0.025)] sm:p-6"
+        >
+          <div className="mb-5 border-b border-[#edf1ed] pb-4">
+            <h3 id="sample-details-heading" className="text-[13px] font-[760] text-[#253028]">
+              Sample details
+            </h3>
+            <p className="mt-1 text-[10px] leading-4 text-[#748078]">
+              Name the sample round, choose its type, and set the delivery deadline.
+            </p>
           </div>
-        </div>
-        {isInternal ? (
-          <label className="space-y-2">
-            <span className="text-[12px] font-[720] text-[#2d372f]">Internal Provider *</span>
-            <Select value={recipientUserId} onValueChange={setRecipientUserId}>
-              <SelectTrigger className="h-11 rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] focus:border-[#46906a] focus:ring-[#46906a]/15"><SelectValue placeholder="Select internal provider" /></SelectTrigger>
-              <SelectContent className="z-[190]">{participants.map((participant) => <SelectItem key={participant.id} value={participant.id}>{participant.name} — {participant.role}</SelectItem>)}</SelectContent>
-            </Select>
-          </label>
-        ) : (
-          <div className="grid min-w-0 gap-4 sm:grid-cols-2">
-            <label className="min-w-0 space-y-2"><span className="text-[12px] font-[720] text-[#2d372f]">Company Name *</span><Input value={recipientCompany} maxLength={160} placeholder="Enter company name" className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setRecipientCompany(event.target.value)} /></label>
-            <label className="min-w-0 space-y-2"><span className="text-[12px] font-[720] text-[#2d372f]">Contact Name *</span><Input value={recipientName} maxLength={160} placeholder="Enter contact name" className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setRecipientName(event.target.value)} /></label>
-            <label className="min-w-0 space-y-2"><span className="text-[12px] font-[720] text-[#2d372f]">Email *</span><Input type="email" value={recipientEmail} maxLength={320} placeholder="contact@company.com" aria-invalid={Boolean(recipientEmail) && !recipientEmailIsValid} className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setRecipientEmail(event.target.value)} />{recipientEmail && !recipientEmailIsValid ? <span className="block text-[9px] font-[600] text-[#b84e48]">Enter a valid email address.</span> : null}</label>
-            <label className="min-w-0 space-y-2"><span className="text-[12px] font-[720] text-[#2d372f]">Phone *</span><Input type="tel" value={recipientPhone} maxLength={50} placeholder="e.g. +971 50 123 4567" aria-invalid={Boolean(recipientPhone) && !normalizedRecipientPhone} className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setRecipientPhone(event.target.value)} />{recipientPhone && !normalizedRecipientPhone ? <span className="block text-[9px] font-[600] text-[#b84e48]">Enter an international number including country code.</span> : <span className="block text-[9px] text-[#77827a]">Include the international country code; the + is optional.</span>}</label>
+          <div className="grid min-w-0 gap-5 sm:grid-cols-2">
+            <label className="space-y-2 sm:col-span-2">
+              <span className="text-[12px] font-[720] text-[#2d372f]">Round Name *</span>
+              <Input value={name} maxLength={160} autoFocus placeholder="First Physical Packaging Sample" className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setName(event.target.value)} />
+            </label>
+            <label className="space-y-2">
+              <span className="text-[12px] font-[720] text-[#2d372f]">Sample Type *</span>
+              <Select value={type} onValueChange={(value) => setType(value as ProductionSampleRoundType)}>
+                <SelectTrigger className="h-11 rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] focus:border-[#46906a] focus:ring-[#46906a]/15"><SelectValue /></SelectTrigger>
+                <SelectContent className="z-[190]">
+                  {Object.values(ProductionSampleRoundType).map((value) => <SelectItem key={value} value={value}>{ROUND_TYPE_LABELS[value]}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </label>
+            <label className="space-y-2">
+              <span className="text-[12px] font-[720] text-[#2d372f]">Deadline *</span>
+              <AppDatePicker value={deadline} onChange={setDeadline} required clearable={false} placeholder="Select deadline" popoverZIndex={200} triggerClassName="h-11 w-full justify-between rounded-[12px] border border-[#c8d5cb] bg-[#fbfdfb] px-4 text-left text-[14px] font-normal text-[#18211a] shadow-none hover:bg-white focus-visible:border-[#46906a] focus-visible:ring-3 focus-visible:ring-[#46906a]/15" />
+            </label>
+            {type === ProductionSampleRoundType.CUSTOM ? (
+              <label className="space-y-2 sm:col-span-2">
+                <span className="text-[12px] font-[720] text-[#2d372f]">Custom Sample Type *</span>
+                <Input value={customTypeName} maxLength={120} placeholder="Enter custom sample type" className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setCustomTypeName(event.target.value)} />
+              </label>
+            ) : null}
           </div>
-        )}
-        <div className="space-y-2">
-          <span className="text-[12px] font-[720] text-[#2d372f]">Request Note</span>
+        </section>
+        <section
+          aria-labelledby="sample-provider-heading"
+          className="space-y-5 rounded-[18px] border border-[#dfe7e0] bg-[#fafcfa] p-5 sm:p-6"
+        >
+          <div className="border-b border-[#e6ece7] pb-4">
+            <h3 id="sample-provider-heading" className="text-[13px] font-[760] text-[#253028]">
+              Sample provider
+            </h3>
+            <p className="mt-1 text-[10px] leading-4 text-[#748078]">
+              Choose the assigned internal reviewer or enter the external supplier details.
+            </p>
+          </div>
+          <div>
+            <span className="text-[12px] font-[720] text-[#2d372f]">Who will provide this sample? *</span>
+            <div className="mt-2 grid min-w-0 gap-3 sm:grid-cols-2">
+              <button type="button" onClick={() => setRecipientRoute(ProductionHandoverRoute.PURCHASE_DEPARTMENT)} className={cn("min-w-0 rounded-[14px] border p-4 text-left", isInternal ? "border-[#72a184] bg-[#f1f8f3]" : "border-[#dfe6df]")}><strong className="block text-[12px] font-[740]">Internal</strong><span className="mt-1 block text-[10px] leading-4 text-[#6f7a72]">Select an existing project participant, such as Purchasing.</span></button>
+              <button type="button" onClick={() => setRecipientRoute(ProductionHandoverRoute.DIRECT_VENDOR)} className={cn("min-w-0 rounded-[14px] border p-4 text-left", !isInternal ? "border-[#72a184] bg-[#f1f8f3]" : "border-[#dfe6df]")}><strong className="block text-[12px] font-[740]">External</strong><span className="mt-1 block text-[10px] leading-4 text-[#6f7a72]">Send the request to a vendor or other external company.</span></button>
+            </div>
+          </div>
+          {isInternal ? (
+            <label className="space-y-2">
+              <span className="text-[12px] font-[720] text-[#2d372f]">Internal Provider *</span>
+              <Select value={recipientUserId} onValueChange={setRecipientUserId}>
+                <SelectTrigger className="h-11 rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] focus:border-[#46906a] focus:ring-[#46906a]/15"><SelectValue placeholder="Select internal provider" /></SelectTrigger>
+                <SelectContent className="z-[190]">{participants.map((participant) => <SelectItem key={participant.id} value={participant.id}>{participant.name} — {participant.role}</SelectItem>)}</SelectContent>
+              </Select>
+            </label>
+          ) : (
+            <div className="grid min-w-0 gap-5 sm:grid-cols-2">
+              <label className="min-w-0 space-y-2"><span className="text-[12px] font-[720] text-[#2d372f]">Company Name *</span><Input value={recipientCompany} maxLength={160} placeholder="Enter company name" className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setRecipientCompany(event.target.value)} /></label>
+              <label className="min-w-0 space-y-2"><span className="text-[12px] font-[720] text-[#2d372f]">Contact Name *</span><Input value={recipientName} maxLength={160} placeholder="Enter contact name" className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setRecipientName(event.target.value)} /></label>
+              <label className="min-w-0 space-y-2"><span className="text-[12px] font-[720] text-[#2d372f]">Email *</span><Input type="email" value={recipientEmail} maxLength={320} placeholder="contact@company.com" aria-invalid={Boolean(recipientEmail) && !recipientEmailIsValid} className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setRecipientEmail(event.target.value)} />{recipientEmail && !recipientEmailIsValid ? <span className="block text-[9px] font-[600] text-[#b84e48]">Enter a valid email address.</span> : null}</label>
+              <label className="min-w-0 space-y-2"><span className="text-[12px] font-[720] text-[#2d372f]">Phone *</span><Input type="tel" value={recipientPhone} maxLength={50} placeholder="e.g. +971 50 123 4567" aria-invalid={Boolean(recipientPhone) && !normalizedRecipientPhone} className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setRecipientPhone(event.target.value)} />{recipientPhone && !normalizedRecipientPhone ? <span className="block text-[9px] font-[600] text-[#b84e48]">Enter an international number including country code.</span> : <span className="block text-[9px] text-[#77827a]">Include the international country code; the + is optional.</span>}</label>
+            </div>
+          )}
+        </section>
+        <section
+          aria-labelledby="sample-instructions-heading"
+          className="rounded-[18px] border border-[#dfe7e0] bg-white p-5 sm:p-6"
+        >
+          <div className="mb-4">
+            <h3 id="sample-instructions-heading" className="text-[13px] font-[760] text-[#253028]">
+              Request instructions
+            </h3>
+            <p className="mt-1 text-[10px] leading-4 text-[#748078]">
+              Add any production, packaging, or courier guidance for the recipient.
+            </p>
+          </div>
+          <p className="mb-2 text-[11px] font-[700] text-[#455148]">Request note</p>
           <RichTextEditor value={requestNote} maxLength={8000} minHeightClassName="min-h-[110px]" ariaLabel="Request note" placeholder="Please produce and courier one physical sample using the approved packaging artwork. Please ensure it reaches GTI before the deadline." onChange={setRequestNote} />
-        </div>
-        <div className="rounded-[14px] border border-[#dce5dd] bg-[#f8fbf8] p-4">
-          <div className="flex items-center justify-between gap-4">
+        </section>
+        <section
+          aria-labelledby="sample-reminder-heading"
+          className="rounded-[18px] border border-[#d6e4d9] bg-[#f4f9f5] p-5 sm:p-6"
+        >
+          <div className="flex items-start justify-between gap-5">
             <div>
-              <p className="text-[12px] font-[720] text-[#2d372f]">Reminder</p>
-              <p className="mt-1 text-[10px] leading-4 text-[#748078]">Repeat while this sample round is unresolved.</p>
+              <h3 id="sample-reminder-heading" className="text-[13px] font-[760] text-[#253028]">Reminder</h3>
+              <p className="mt-1.5 max-w-[470px] text-[10px] leading-4 text-[#66736a]">Repeat the notification while this sample round remains unresolved.</p>
             </div>
             <button type="button" role="switch" aria-checked={reminderEnabled} className={cn("relative h-7 w-12 shrink-0 rounded-full transition", reminderEnabled ? "bg-[#2f8057]" : "bg-[#cdd6cf]")} onClick={() => setReminderEnabled((value) => !value)}>
               <span className={cn("absolute top-1 size-5 rounded-full bg-white shadow-sm transition", reminderEnabled ? "left-6" : "left-1")} />
@@ -426,7 +468,7 @@ function NewSampleRequestDialog({
             </button>
           </div>
           {reminderEnabled ? (
-            <label className="mt-4 block space-y-2">
+            <label className="mt-5 block space-y-2 border-t border-[#dce7de] pt-5">
               <span className="text-[11px] font-[700] text-[#455148]">Reminder interval</span>
               <Select value={String(reminderIntervalHours)} onValueChange={(value) => setReminderIntervalHours(Number(value) as RequestReminderIntervalHours)}>
                 <SelectTrigger className="h-11 rounded-[12px] border-[#c8d5cb] bg-white"><SelectValue /></SelectTrigger>
@@ -436,7 +478,7 @@ function NewSampleRequestDialog({
               </Select>
             </label>
           ) : null}
-        </div>
+        </section>
       </div>
     </ModalShell>
   );
