@@ -1803,6 +1803,7 @@ function AttachmentHistoryList({
   selectedApprovalAttachmentId,
   approvingConceptAttachmentId,
   onSelectApprovalAttachment,
+  onClearApprovalSelection,
   onApproveConceptFile,
 }: {
   attachments: DisplayAttachmentRecord[];
@@ -1821,6 +1822,7 @@ function AttachmentHistoryList({
   selectedApprovalAttachmentId?: string | null;
   approvingConceptAttachmentId?: string | null;
   onSelectApprovalAttachment?: (attachment: DisplayAttachmentRecord) => void;
+  onClearApprovalSelection?: () => void;
   onApproveConceptFile?: (attachment: DisplayAttachmentRecord) => void;
 }) {
   if (attachments.length === 0) {
@@ -2037,6 +2039,18 @@ function AttachmentHistoryList({
                           ? "border-[#2f8d5d] bg-[#e8f5eb] text-[#1f7145]"
                           : "border-[#93bda0] bg-white text-[#276f49] hover:bg-[#f3faf5]"
                       } ${approvingConceptAttachmentId ? "cursor-not-allowed opacity-60" : ""}`}
+                      onClick={(event) => {
+                        if (
+                          !isApprovalSelectionSelected ||
+                          approvingConceptAttachmentId ||
+                          !onClearApprovalSelection
+                        ) {
+                          return;
+                        }
+
+                        event.preventDefault();
+                        onClearApprovalSelection();
+                      }}
                     >
                       <input
                         type="radio"
@@ -2045,6 +2059,11 @@ function AttachmentHistoryList({
                         checked={isApprovalSelectionSelected}
                         disabled={Boolean(approvingConceptAttachmentId)}
                         onChange={() => onSelectApprovalAttachment?.(attachment)}
+                        aria-label={
+                          isApprovalSelectionSelected
+                            ? `Unselect ${attachment.originalFileName}`
+                            : `Select ${attachment.originalFileName}`
+                        }
                         className="size-3.5 accent-[#2f8d5d]"
                       />
                       {isApprovalSelectionSelected ? "Selected" : "Select this file"}
@@ -5445,6 +5464,11 @@ export function ProjectChatWorkspace({
     setReviewRejectMode(false);
     setReviewRejectReason("");
     setReviewDialogError(null);
+    setSelectedConceptApprovalCandidateId(null);
+  }
+
+  function clearConceptApprovalSelection() {
+    setConceptApprovalError(null);
     setSelectedConceptApprovalCandidateId(null);
   }
 
@@ -11196,11 +11220,26 @@ export function ProjectChatWorkspace({
                   {canSelectStageFourFinalApprovedFile ? (
                     <div className="rounded-[14px] border border-[#cfe2d4] bg-[#f3faf5] px-3.5 py-3 text-[12px] leading-5 text-[#41644d]" role="note">
                       <p>Select exactly one submitted file below. Only that file will be designated as the Final Approved File for this concept.</p>
-                      <p className="mt-1 font-semibold" aria-live="polite">
-                        {selectedConceptApprovalCandidate
-                          ? `Selected: ${selectedConceptApprovalCandidate.originalFileName}. Choose another file to change the selection.`
-                          : "No file selected yet."}
-                      </p>
+                      <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+                        <p className="font-semibold" aria-live="polite">
+                          {selectedConceptApprovalCandidate
+                            ? `Selected: ${selectedConceptApprovalCandidate.originalFileName}. Click Selected again or clear the selection before continuing.`
+                            : "No file selected yet."}
+                        </p>
+                        {selectedConceptApprovalCandidate ? (
+                          <button
+                            type="button"
+                            className="shrink-0 rounded-full border border-[#9fc7ab] bg-white px-3 py-1 text-[11px] font-[750] text-[#276f49] transition hover:bg-[#edf7ef] disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={clearConceptApprovalSelection}
+                            disabled={
+                              Boolean(pendingRevisionReviewId) ||
+                              Boolean(approvingConceptAttachmentId)
+                            }
+                          >
+                            Clear selection
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
                   ) : null}
                   <AttachmentHistoryList
@@ -11226,6 +11265,7 @@ export function ProjectChatWorkspace({
                       setConceptApprovalError(null);
                       setSelectedConceptApprovalCandidateId(attachment.id);
                     }}
+                    onClearApprovalSelection={clearConceptApprovalSelection}
                     onApproveConceptFile={openConceptApprovalConfirmation}
                     actionsDisabled={isProjectCompleted}
                     projectCategory={project.category}

@@ -165,6 +165,10 @@ assert(
     chat.includes('name="stage-four-final-approved-file"') &&
     chat.includes("checked={isApprovalSelectionSelected}") &&
     chat.includes("onChange={() => onSelectApprovalAttachment?.(attachment)}") &&
+    chat.includes("isApprovalSelectionSelected ||") &&
+    chat.includes("onClearApprovalSelection();") &&
+    chat.includes("onClearApprovalSelection={clearConceptApprovalSelection}") &&
+    chat.includes("Clear selection") &&
     chat.includes("singleApprovalSelection={canSelectStageFourFinalApprovedFile}") &&
     chat.includes("selectedApprovalAttachmentId={selectedConceptApprovalCandidateId}") &&
     chat.includes("setSelectedConceptApprovalCandidateId(attachment.id)") &&
