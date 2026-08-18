@@ -22,6 +22,12 @@ export default async function StageFiveChecklistRequestPage({
   if (!data) notFound();
 
   const displayName = getUserDisplayName(user);
+  const checklistContextHref =
+    `/projects/${encodeURIComponent(data.project.id)}/stages/5` +
+    `?file=${encodeURIComponent(data.handoffId)}` +
+    `&field=${encodeURIComponent(data.field.key)}` +
+    "&mode=view";
+
   return (
     <DashboardAppFrame
       user={{
@@ -34,6 +40,11 @@ export default async function StageFiveChecklistRequestPage({
           : null,
       }}
       sidebarVisibility={getSidebarVisibility(user)}
+      backNavigation={{
+        href: checklistContextHref,
+        label: "Stage 5 Checklist",
+        ariaLabel: `Back to ${data.project.name} Stage 5 File Checklist`,
+      }}
     >
       <StageFiveRequestWorkspace data={data} />
     </DashboardAppFrame>

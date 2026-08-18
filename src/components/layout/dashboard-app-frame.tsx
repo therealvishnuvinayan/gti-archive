@@ -15,12 +15,30 @@ type DashboardAppFrameProps = {
   user?: DashboardUserView | null;
   projectBadgeCount?: number;
   sidebarVisibility: SidebarVisibility;
+  backNavigation?: {
+    href: string;
+    label: string;
+    ariaLabel: string;
+  };
 };
 
 function getTopbarProps(
   pathname: string,
   searchParams: URLSearchParams,
+  backNavigation?: DashboardAppFrameProps["backNavigation"],
 ) {
+  if (backNavigation) {
+    return {
+      leadingContent: (
+        <ProjectBackButton
+          href={backNavigation.href}
+          label={backNavigation.label}
+          ariaLabel={backNavigation.ariaLabel}
+        />
+      ),
+    };
+  }
+
   const navigation = getDashboardBackNavigation(pathname, searchParams);
   if (navigation.owner !== "topbar") return {};
   const isCompareWorkspace =
@@ -50,6 +68,7 @@ export function DashboardAppFrame({
   user,
   projectBadgeCount,
   sidebarVisibility,
+  backNavigation,
 }: DashboardAppFrameProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -74,7 +93,7 @@ export function DashboardAppFrame({
         user={user}
         projectBadgeCount={projectBadgeCount}
         sidebarVisibility={sidebarVisibility}
-        topbarProps={getTopbarProps(pathname, searchParams)}
+        topbarProps={getTopbarProps(pathname, searchParams, backNavigation)}
       >
         {children}
       </DashboardShell>

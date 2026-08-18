@@ -429,13 +429,16 @@ assert(
 );
 assert(
   requestWorkspace.includes('aria-label="Information request context"') &&
-    requestWorkspace.includes('href={`/projects/${data.project.id}`}') &&
-    requestWorkspace.includes('label="Project Workspace"') &&
+    requestPage.includes("checklistContextHref") &&
+    requestPage.includes("encodeURIComponent(data.handoffId)") &&
+    requestPage.includes("encodeURIComponent(data.field.key)") &&
+    requestPage.includes('label: "Stage 5 Checklist"') &&
+    requestPage.includes("backNavigation={{") &&
     requestWorkspace.includes("Stage 5 · File Checklist") &&
     requestWorkspace.includes("{data.project.name}") &&
     requestWorkspace.includes("{data.file.name}") &&
     requestWorkspace.includes("{data.field.title}"),
-  "An information-request notification must preserve its authoritative project, stage, checklist file, and field context with a safe project return path.",
+  "An information-request page must show a topbar Back button to its authoritative project, Stage 5 checklist file, and field context.",
 );
 assert(
   requestWorkspace.includes("Requested file") &&

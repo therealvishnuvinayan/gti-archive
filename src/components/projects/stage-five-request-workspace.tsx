@@ -26,7 +26,6 @@ import {
   type ChecklistFileRecord,
 } from "@/components/projects/checklist-file-picker";
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
-import { ProjectBackButton } from "@/components/projects/project-back-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RichTextContent, RichTextEditor, richTextToPlainText } from "@/components/ui/rich-text-editor";
@@ -399,13 +398,8 @@ export function StageFiveRequestWorkspace({ data }: { data: StageFiveChecklistRe
     <section className="mx-auto w-full max-w-[980px] pb-8">
       <nav
         aria-label="Information request context"
-        className="mb-4 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center"
+        className="mb-4 flex min-w-0 items-center"
       >
-        <ProjectBackButton
-          href={`/projects/${data.project.id}`}
-          label="Project Workspace"
-          ariaLabel={`Back to ${data.project.name}`}
-        />
         <ol className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[12px] font-[680] text-[#718078]">
           <li className="max-w-[220px] truncate text-[#344d3d]" title={data.project.name}>
             {data.project.name}
