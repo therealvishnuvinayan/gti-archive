@@ -579,7 +579,9 @@ function isBriefAcceptedSystemBody(body: string) {
 }
 
 function getRevisionRequestSystemDetails(body: string) {
-  const match = body.trim().match(/^Revision brief for Revision (\d+):\s*(.*)$/i);
+  const match = body
+    .trim()
+    .match(/^Revision brief for Revision (\d+):\s*([\s\S]*)$/i);
 
   if (!match) {
     return null;
@@ -685,9 +687,6 @@ function mapCommentEntry(
 
   if (revisionRequestSystemDetails) {
     const actorName = getDisplayName(comment.author);
-    const reasonText = revisionRequestSystemDetails.reason
-      ? `\n\nReason: ${revisionRequestSystemDetails.reason}`
-      : "";
 
     return {
       id: comment.id,
@@ -697,7 +696,8 @@ function mapCommentEntry(
       authorId: comment.author.id,
       author: actorName,
       role: getActorRole(comment.author),
-      body: `${actorName} requested a revision for ${revisionRequestSystemDetails.revisionLabel}.${reasonText}`,
+      body: `${actorName} requested a revision for ${revisionRequestSystemDetails.revisionLabel}.`,
+      revisionRequestReason: revisionRequestSystemDetails.reason,
       createdAt: formatHistoryTimestamp(comment.createdAt),
       createdAtValue: comment.createdAt.toISOString(),
       mentions: [],

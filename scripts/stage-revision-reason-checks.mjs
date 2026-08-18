@@ -23,13 +23,17 @@ assert(
 );
 
 assert(
-  historySource.includes("reason: match[2]?.trim() || null"),
-  "Revision request system mapper must parse the stored reason.",
+  historySource.includes("([\\s\\S]*)$/i") &&
+    historySource.includes("reason: match[2]?.trim() || null"),
+  "Revision request system mapper must preserve single- and multi-paragraph stored reasons.",
 );
 
 assert(
-  historySource.includes("Reason: ${revisionRequestSystemDetails.reason}"),
-  "Refetched revision request system cards must display the reason.",
+  historySource.includes(
+    "revisionRequestReason: revisionRequestSystemDetails.reason",
+  ) &&
+    !historySource.includes("Reason: ${revisionRequestSystemDetails.reason}"),
+  "Refetched revision request system cards must keep rich-text reasons separate from plain activity text.",
 );
 
 assert(
@@ -38,8 +42,17 @@ assert(
 );
 
 assert(
-  workspaceSource.includes("Reason: ${revisionReasonText}"),
-  "Optimistic revision request card must display the reason.",
+  workspaceSource.includes("revisionRequestReason: revisionReasonText") &&
+    !workspaceSource.includes("Reason: ${revisionReasonText}"),
+  "Optimistic revision request cards must keep rich-text reasons separate from plain activity text.",
+);
+
+assert(
+  workspaceSource.includes(
+    'addSegment("revisionRequestReason", message.revisionRequestReason)',
+  ) &&
+    workspaceSource.includes("value={displayRevisionRequestReason}"),
+  "Revision request reasons must support translation and render through the safe rich-text component.",
 );
 
 assert(

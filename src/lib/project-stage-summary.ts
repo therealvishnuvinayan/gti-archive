@@ -80,6 +80,9 @@ function buildEntryLine(entry: ProjectChatEntry) {
     entry.rejectionReason
       ? `rejection note ${normalizeInlineText(entry.rejectionReason)}`
       : "",
+    entry.revisionRequestReason
+      ? `revision request reason ${normalizeInlineText(entry.revisionRequestReason)}`
+      : "",
     body,
     buildAttachmentSummary(entry),
     entry.comparison
@@ -108,6 +111,7 @@ function buildHistorySignature(entries: ProjectChatEntry[]) {
     body: entry.body,
     revisionStatus: entry.revisionStatus ?? null,
     rejectionReason: entry.rejectionReason ?? null,
+    revisionRequestReason: entry.revisionRequestReason ?? null,
     createdAt: entry.createdAt,
     attachments: (entry.attachments ?? []).map((attachment) => ({
       id: attachment.id,

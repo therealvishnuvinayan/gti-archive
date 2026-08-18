@@ -1383,6 +1383,7 @@ function SystemActivityCard({
   activityLabelOverride,
   titleOverride,
   bodyOverride,
+  revisionRequestReasonOverride,
 }: {
   message: DisplayChatEntry;
   alignment?: TimelineAlignment;
@@ -1391,6 +1392,7 @@ function SystemActivityCard({
   activityLabelOverride?: string | null;
   titleOverride?: string | null;
   bodyOverride?: string | null;
+  revisionRequestReasonOverride?: string | null;
 }) {
   const meta = getSystemActivityMeta(message);
   const Icon = meta.Icon;
@@ -1405,6 +1407,8 @@ function SystemActivityCard({
       message.author,
       currentUserDisplayName,
     );
+  const displayRevisionRequestReason =
+    revisionRequestReasonOverride ?? message.revisionRequestReason;
 
   return (
     <TimelineFrame
@@ -1435,6 +1439,15 @@ function SystemActivityCard({
             <p className={`mt-1 whitespace-pre-wrap break-words text-[12px] leading-5 ${meta.bodyClassName}`}>
               {displayBody}
             </p>
+            {displayRevisionRequestReason ? (
+              <div className={`mt-2 text-[12px] leading-5 ${meta.bodyClassName}`}>
+                <p className="font-[800]">Reason:</p>
+                <RichTextContent
+                  value={displayRevisionRequestReason}
+                  className="mt-0.5 break-words"
+                />
+              </div>
+            ) : null}
             <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-semibold uppercase tracking-wide text-[#6c776e]">
               <span>{displayAuthor}</span>
             </div>
@@ -3781,6 +3794,7 @@ export function ProjectChatWorkspace({
       if (message.kind === "system") {
         addSegment("title", message.title ?? "Project activity");
         addSegment("body", getVisibleSystemBody(message));
+        addSegment("revisionRequestReason", message.revisionRequestReason);
         return segments;
       }
 
@@ -7502,9 +7516,8 @@ export function ProjectChatWorkspace({
               authorId: currentUserId,
               authorAvatarSrc: currentUserAvatarSrc,
               role: currentUserRoleLabel,
-              body: revisionReasonText
-                ? `${currentUserDisplayName} requested a revision for ${reviewRevisionLabel}.\n\nReason: ${revisionReasonText}`
-                : `${currentUserDisplayName} requested a revision for ${reviewRevisionLabel}.`,
+              body: `${currentUserDisplayName} requested a revision for ${reviewRevisionLabel}.`,
+              revisionRequestReason: revisionReasonText,
               createdAt: "Just now",
               localCreatedAtMs,
             },
@@ -8466,6 +8479,14 @@ export function ProjectChatWorkspace({
                   "body",
                   systemBody,
                 );
+                const translatedRevisionRequestReason =
+                  message.revisionRequestReason
+                    ? getTranslatedStageChatText(
+                        message.id,
+                        "revisionRequestReason",
+                        message.revisionRequestReason,
+                      )
+                    : null;
                 const action = isInvoiceUploadedMessage && !showInvoiceUploadedNextAction
                   ? renderStageInvoiceActions({
                       includeCompleteAction: isProjectOwner || canReviewSubmissions,
@@ -8483,6 +8504,7 @@ export function ProjectChatWorkspace({
                     )}
                     titleOverride={translatedSystemTitle}
                     bodyOverride={translatedSystemBody}
+                    revisionRequestReasonOverride={translatedRevisionRequestReason}
                     action={action}
                     currentUserDisplayName={currentUserDisplayName}
                     activityLabelOverride={

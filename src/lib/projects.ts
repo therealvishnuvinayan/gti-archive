@@ -322,6 +322,7 @@ export type ProjectChatEntry = {
   title?: string;
   revisionStatus?: ProjectRevisionStatus | null;
   rejectionReason?: string | null;
+  revisionRequestReason?: string | null;
   reviewedBy?: string | null;
   reviewedAt?: string | null;
   authorId?: string;
