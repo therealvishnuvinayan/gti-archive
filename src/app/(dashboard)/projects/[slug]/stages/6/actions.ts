@@ -194,6 +194,13 @@ export async function completeStageSixAction(input: { projectId: string }) {
   try {
     const result = await completeStageSix(user, input);
     revalidateStageSix(input.projectId);
+    if (!("error" in result)) {
+      publishStageSixChange({
+        projectId: input.projectId,
+        actorId: user.id,
+        changedEntityId: input.projectId,
+      });
+    }
     return result;
   } catch (error) {
     console.error("[stage-six] completion failed", error);

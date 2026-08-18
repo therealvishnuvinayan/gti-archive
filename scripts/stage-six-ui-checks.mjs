@@ -48,6 +48,7 @@ const [
   authenticatedHandoverDownloadRoute,
   notificationService,
   sharedFieldValue,
+  confirmationDialog,
 ] = await Promise.all([
     readFile("src/lib/archives.ts", "utf8"),
     readFile(
@@ -72,6 +73,7 @@ const [
     ),
     readFile("src/lib/notification-center/service.ts", "utf8"),
     readFile("src/components/projects/production-shared-field-value.tsx", "utf8"),
+    readFile("src/components/ui/confirmation-dialog.tsx", "utf8"),
   ]);
 
 for (const content of [
@@ -317,6 +319,21 @@ assert(
 );
 assert(service.includes("isGlobalProjectAdministrator(user)"), "Stage 6 management must grant business administrators global authority.");
 assert(actions.includes("completeStageSixAction") && actions.includes("handoverProductionUnitAction"), "Stage 6 server actions must expose real workflow mutations.");
+assert(
+  workspace.includes("const [completing, setCompleting] = useState(false)") &&
+    workspace.includes("const [completionSucceeded, setCompletionSucceeded] = useState(false)") &&
+    workspace.includes("pageData.stageCompleted || completionSucceeded") &&
+    workspace.includes("setCompletionSucceeded(true)") &&
+    workspace.includes("Stage 6 completed. Stage 7 is now available.") &&
+    workspace.includes('aria-live="polite"') &&
+    workspace.includes('pendingLabel="Completing Stage 6..."') &&
+    confirmationDialog.includes("<Loader2") &&
+    confirmationDialog.includes("animate-spin") &&
+    confirmationDialog.includes("aria-busy={pending}") &&
+    actions.includes("publishStageSixChange({") &&
+    actions.includes("changedEntityId: input.projectId"),
+  "Stage 6 completion must expose immediate progress, optimistically show the completed state, and reconcile other open project views.",
+);
 assert(
   workspace.includes("StageSixArchiveDialog") &&
     workspace.includes("Save to Archives") &&

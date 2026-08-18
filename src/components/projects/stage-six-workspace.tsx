@@ -1439,7 +1439,9 @@ export function StageSixWorkspace({
     useState<StageSixArchivePreparation | null>(null);
   const [archiveError, setArchiveError] = useState("");
   const [preparingArchive, startPreparingArchive] = useTransition();
-  const [completing, startCompleting] = useTransition();
+  const [completing, setCompleting] = useState(false);
+  const [completionSucceeded, setCompletionSucceeded] = useState(false);
+  const stageCompleted = pageData.stageCompleted || completionSucceeded;
   const activeUnit = useMemo(() => pageData.units.find((unit) => unit.id === activeUnitId) ?? pageData.units[0], [activeUnitId, pageData.units]);
 
   useEffect(() => {
@@ -1461,20 +1463,33 @@ export function StageSixWorkspace({
     setActiveUnitId(id);
     router.replace(`/projects/${project.id}/stages/6?unit=${encodeURIComponent(id)}`, { scroll: false });
   }
-  function complete() {
+  async function complete() {
+    if (completing) return;
+
     setCompletionError("");
-    startCompleting(async () => {
+    setCompleting(true);
+
+    try {
       const result = await completeStageSixAction({ projectId: project.id });
       if ("error" in result) {
         setCompletionError(result.error ?? "Unable to complete Stage 6.");
         return;
       }
+      setCompletionSucceeded(true);
       setCompletionDialog(false);
       showSuccessToast(
         "Stage 6 completed. Save the final files to Archives or continue to Stage 7.",
       );
       router.refresh();
-    });
+    } catch (error) {
+      setCompletionError(
+        error instanceof Error
+          ? error.message
+          : "Unable to complete Stage 6 right now.",
+      );
+    } finally {
+      setCompleting(false);
+    }
   }
 
   function openArchiveDialog() {
@@ -1504,6 +1519,16 @@ export function StageSixWorkspace({
           <p className="mt-2 text-[13px] leading-5 text-[#6f7a72]">Manage production files, sequential yes/no approvals, and final delivery per Production Unit.</p>
           <ProjectStageSummary project={project} />
           <StageSummary data={pageData} />
+          {stageCompleted ? (
+            <div
+              className="mt-4 flex items-center gap-2 rounded-[13px] border border-[#cde3d3] bg-[#eff9f2] px-4 py-3 text-[11px] font-[700] text-[#2d6f4a]"
+              role="status"
+              aria-live="polite"
+            >
+              <Check className="h-4 w-4 shrink-0" />
+              Stage 6 completed. Stage 7 is now available.
+            </div>
+          ) : null}
           {pageData.units.length ? <div className="mt-5"><UnitSwitcher units={pageData.units} activeUnitId={activeUnit?.id ?? ""} onSelect={selectUnit} /></div> : null}
         </div>
 
@@ -1517,7 +1542,7 @@ export function StageSixWorkspace({
               onRefresh={refresh}
             />
             <ProductionDetails unit={activeUnit} />
-            <ApprovalSection projectId={project.id} unit={activeUnit} canManage={pageData.canManage} stageCompleted={pageData.stageCompleted} onOpenDialog={setApproverDialog} onRefresh={refresh} />
+            <ApprovalSection projectId={project.id} unit={activeUnit} canManage={pageData.canManage} stageCompleted={stageCompleted} onOpenDialog={setApproverDialog} onRefresh={refresh} />
             <HandoverSection unit={activeUnit} canManage={pageData.canManage} onOpen={() => setHandoverDialog(true)} />
           </div>
         ) : (
@@ -1526,7 +1551,7 @@ export function StageSixWorkspace({
 
         <div className="flex flex-col-reverse gap-3 border-t border-[#e7ece7] bg-white px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-7 lg:px-9">
           <Button asChild type="button" variant="outline" className="min-w-[160px]"><Link href={`/projects/${project.id}`}><ListChecks className="h-4 w-4" /> All Stages</Link></Button>
-          {pageData.stageCompleted ? (
+          {stageCompleted ? (
             <div className="flex flex-col items-stretch gap-2 sm:items-end">
               <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
                 {pageData.canSaveArchive ? (
@@ -1627,7 +1652,7 @@ export function StageSixWorkspace({
           onSaved={refresh}
         />
       ) : null}
-      <ConfirmationDialog isOpen={completionDialog} title="Complete Stage 6" description="All Production Units are ready. Complete Stage 6 and unlock Stage 7? Approval-not-required units and optional handovers can proceed without a decision record." confirmLabel="Complete Stage 6" pending={completing} error={completionError || undefined} onConfirm={complete} onClose={() => { if (!completing) setCompletionDialog(false); }} />
+      <ConfirmationDialog isOpen={completionDialog} title="Complete Stage 6" description="All Production Units are ready. Complete Stage 6 and unlock Stage 7? Approval-not-required units and optional handovers can proceed without a decision record." confirmLabel="Complete Stage 6" pendingLabel="Completing Stage 6..." pending={completing} error={completionError || undefined} onConfirm={() => void complete()} onClose={() => { if (!completing) setCompletionDialog(false); }} />
     </section>
   );
 }

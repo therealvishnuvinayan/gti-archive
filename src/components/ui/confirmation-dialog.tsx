@@ -1,6 +1,6 @@
 "use client";
 
-import { X } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 import { createPortal } from "react-dom";
 
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ type ConfirmationDialogProps = {
   title: string;
   description: string;
   confirmLabel?: string;
+  pendingLabel?: string;
   cancelLabel?: string;
   tone?: "default" | "destructive";
   pending?: boolean;
@@ -25,6 +26,7 @@ export function ConfirmationDialog({
   title,
   description,
   confirmLabel = "Confirm",
+  pendingLabel = "Working...",
   cancelLabel = "Cancel",
   tone = "default",
   pending = false,
@@ -43,6 +45,7 @@ export function ConfirmationDialog({
       role="dialog"
       aria-modal="true"
       aria-label={title}
+      aria-busy={pending}
     >
       <Card className="w-full max-w-[520px] rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
         <CardHeader className="flex-row items-start justify-between gap-4 space-y-0 p-6 sm:p-7">
@@ -91,7 +94,12 @@ export function ConfirmationDialog({
               disabled={pending || confirmDisabled}
               className="sm:min-w-[148px]"
             >
-              {pending ? "Working..." : confirmLabel}
+              {pending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  {pendingLabel}
+                </>
+              ) : confirmLabel}
             </Button>
           </div>
         </CardContent>
