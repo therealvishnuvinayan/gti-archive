@@ -390,15 +390,17 @@ export async function getPermissionProfileSnapshotForUser(
 ): Promise<PermissionProfileSnapshot> {
   const [roleProfile, archiveAccess] = await Promise.all([
     getCachedRoleProfile(user.role as PermissionRole),
-    prisma.userArchiveAccess.findUnique({
-      where: {
-        userId: user.id,
-      },
-      select: {
-        id: true,
-        level: true,
-      },
-    }),
+    withPrismaRetry(() =>
+      prisma.userArchiveAccess.findUnique({
+        where: {
+          userId: user.id,
+        },
+        select: {
+          id: true,
+          level: true,
+        },
+      }),
+    ),
   ]);
 
   const rolePermissions = getEnabledPermissionSet(roleProfile.state);

@@ -2,6 +2,7 @@ import { Prisma, PrismaClient } from "@prisma/client";
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
+  prismaReconnectPromise?: Promise<void>;
   prismaPerformanceMetrics?: {
     queryCount: number;
     databaseDurationMs: number;
@@ -113,6 +114,28 @@ function sleep(milliseconds: number) {
   });
 }
 
+async function reconnectPrismaClient() {
+  const pendingReconnect = globalForPrisma.prismaReconnectPromise;
+
+  if (pendingReconnect) {
+    return pendingReconnect;
+  }
+
+  const reconnectPromise = (async () => {
+    await sleep(500);
+    await prisma.$connect();
+  })();
+  globalForPrisma.prismaReconnectPromise = reconnectPromise;
+
+  try {
+    await reconnectPromise;
+  } finally {
+    if (globalForPrisma.prismaReconnectPromise === reconnectPromise) {
+      delete globalForPrisma.prismaReconnectPromise;
+    }
+  }
+}
+
 export function isPrismaConnectionError(error: unknown) {
   if (
     error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -143,9 +166,11 @@ export async function withPrismaRetry<T>(
       throw error;
     }
 
-    await prisma.$disconnect().catch(() => undefined);
-    await sleep(500);
-    await prisma.$connect();
+    // This client is shared by parallel React server renders. Disconnecting it
+    // here would abort unrelated queries and surface "Engine is not yet
+    // connected" errors. A shared reconnect lets in-flight work finish while
+    // ensuring concurrent retries wait on the same recovery attempt.
+    await reconnectPrismaClient();
 
     return withPrismaRetry(operation, attempts - 1);
   }
