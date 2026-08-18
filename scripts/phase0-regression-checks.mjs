@@ -211,12 +211,10 @@ assertIncludes(
   "isAllowedComparisonSubmissionFile",
   "comparison server submission validator",
 );
-assert(
-  !comparison.includes("\"jpg\"") &&
-    !comparison.includes("\"jpeg\"") &&
-    !comparison.includes("\"image/jpeg\"") &&
-    !comparison.includes("\"image/webp\""),
-  "Comparison server validation must not allow legacy JPG/JPEG/WebP artwork submissions.",
+assertIncludes(
+  comparison,
+  "Only supported image stage submissions can be compared. Please upload a PNG, JPG, WebP, or GIF submission.",
+  "comparison server supported-image validation message",
 );
 
 const comparisonUtils = read("src/lib/comparison-utils.ts");
@@ -225,12 +223,10 @@ assertIncludes(
   "isAllowedComparisonSubmissionFile",
   "comparison candidate submission validator",
 );
-assert(
-  !comparisonUtils.includes("\"jpg\"") &&
-    !comparisonUtils.includes("\"jpeg\"") &&
-    !comparisonUtils.includes("\"image/jpeg\"") &&
-    !comparisonUtils.includes("\"image/webp\""),
-  "Comparison candidates must not allow legacy JPG/JPEG/WebP artwork submissions.",
+assertIncludes(
+  comparisonUtils,
+  "PNG, JPG, WebP, and GIF submissions can be compared. Pinned captions remain available for PNG submissions.",
+  "comparison candidate supported-image help text",
 );
 
 const uploadValidation = read("src/lib/upload-validation.ts");
@@ -241,8 +237,13 @@ assertIncludes(
 );
 assertIncludes(
   uploadValidation,
-  "export const COMPARISON_SUBMISSION_ALLOWED_EXTENSIONS = [\"png\"] as const;",
-  "PNG-only comparison submission extension rule",
+  'export const COMPARISON_SUBMISSION_ALLOWED_EXTENSIONS = [\n  "png",\n  "jpg",\n  "jpeg",\n  "webp",\n  "gif",\n] as const;',
+  "supported-image comparison submission extension rule",
+);
+assertIncludes(
+  uploadValidation,
+  'export const COMPARISON_SUBMISSION_ALLOWED_MIME_TYPES = [\n  "image/png",\n  "image/jpeg",\n  "image/webp",\n  "image/gif",\n] as const;',
+  "supported-image comparison submission MIME rule",
 );
 assertIncludes(
   uploadValidation,
@@ -378,8 +379,8 @@ assertIncludes(
 const helpCenter = read("src/lib/help-center.ts");
 assertIncludes(
   helpCenter,
-  "Stage submissions support standard project file formats. PNG submissions can also be compared or captioned.",
-  "stage upload and PNG comparison help text",
+  "PNG, JPG, WebP, and GIF submissions can be compared. Pinned captions remain available for PNG submissions.",
+  "stage upload image comparison help text",
 );
 
 console.log("Phase 0/1/2 regression checks passed.");

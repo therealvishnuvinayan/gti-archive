@@ -28,7 +28,7 @@ export type SubmissionCaptionRecord = {
 };
 
 export const stageSubmissionCaptionHelpText =
-  "Stage submissions support standard project file formats. PNG submissions can also be compared or captioned.";
+  "PNG, JPG, WebP, and GIF submissions can be compared. Pinned captions remain available for PNG submissions.";
 
 function hasComparableSubmissionType(
   attachment: ProjectAttachmentRecord,

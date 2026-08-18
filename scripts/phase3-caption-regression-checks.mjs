@@ -95,7 +95,7 @@ for (const snippet of [
 const comparisonUtils = read("src/lib/comparison-utils.ts");
 assertIncludes(
   comparisonUtils,
-  "Stage submissions support standard project file formats. PNG submissions can also be compared or captioned.",
+  "PNG, JPG, WebP, and GIF submissions can be compared. Pinned captions remain available for PNG submissions.",
   "required caption/comparison help text",
 );
 assertIncludes(

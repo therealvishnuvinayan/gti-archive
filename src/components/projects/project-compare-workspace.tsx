@@ -1179,7 +1179,7 @@ export function ProjectCompareWorkspace({
   const hasEnoughSubmissions = submissions.length >= 2;
   const insufficientSubmissionMessage =
     submissions.length === 0
-      ? "No valid PNG stage submissions available for comparison."
+      ? "No supported image stage submissions available for comparison."
       : submissions.length === 1
         ? "Upload another valid submission to compare changes."
         : null;

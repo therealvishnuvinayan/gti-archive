@@ -32,7 +32,7 @@ async function runExistingPhaseChecks() {
 await runExistingPhaseChecks();
 
 const comparisonHelpText =
-  "Stage submissions support standard project file formats. PNG submissions can also be compared or captioned.";
+  "PNG, JPG, WebP, and GIF submissions can be compared. Pinned captions remain available for PNG submissions.";
 
 const resolver = read("src/lib/permissions/resolver.ts");
 assertIncludesAll(
@@ -207,12 +207,13 @@ assertIncludesAll(
   uploadValidation,
   [
     "PROJECT_ASSET_ALLOWED_EXTENSIONS;",
-    "export const COMPARISON_SUBMISSION_ALLOWED_EXTENSIONS = [\"png\"] as const;",
+    'export const COMPARISON_SUBMISSION_ALLOWED_EXTENSIONS = [\n  "png",\n  "jpg",\n  "jpeg",\n  "webp",\n  "gif",\n] as const;',
+    'export const COMPARISON_SUBMISSION_ALLOWED_MIME_TYPES = [\n  "image/png",\n  "image/jpeg",\n  "image/webp",\n  "image/gif",\n] as const;',
     "return STAGE_SUBMISSION_ALLOWED_EXTENSIONS;",
     "stageSubmissionAllowedExtensionSet",
     "isAllowedComparisonSubmissionFile",
   ],
-  "standard stage upload and PNG comparison validation",
+  "standard stage upload and image comparison validation",
 );
 
 const comparisonUtils = read("src/lib/comparison-utils.ts");
@@ -234,7 +235,7 @@ assertIncludesAll(
 assertIncludesAll(
   comparison,
   [
-    "Only valid PNG stage submissions can be compared.",
+    "Only supported image stage submissions can be compared. Please upload a PNG, JPG, WebP, or GIF submission.",
     "Only valid PNG stage submissions can be captioned.",
     "attachments.some((attachment) =>",
     "!isComparableSubmissionAttachment",
@@ -269,11 +270,11 @@ assertIncludesAll(
   compareWorkspace,
   [
     "stageSubmissionCaptionHelpText",
-    "No valid PNG stage submissions available for comparison.",
+    "No supported image stage submissions available for comparison.",
     "isCaptionableStageSubmissionAttachment",
     "canAddCaptions={canAddCaptions}",
   ],
-  "compare UI PNG-only and caption wiring",
+  "compare UI supported-image and PNG caption wiring",
 );
 assertIncludesAll(
   captionDialog,
@@ -287,7 +288,7 @@ assertIncludesAll(
 );
 assertIncludes(helpCenter, comparisonHelpText, "help center comparison format copy");
 
-const activePngOnlyFlowSources = [
+const activeSubmissionFlowSources = [
   ["upload-validation", uploadValidation],
   ["comparison", comparison],
   ["comparison-utils", comparisonUtils],
@@ -297,7 +298,7 @@ const activePngOnlyFlowSources = [
   ["submission-caption-dialog", captionDialog],
   ["help-center", helpCenter],
 ];
-for (const [label, source] of activePngOnlyFlowSources) {
+for (const [label, source] of activeSubmissionFlowSources) {
   assert(
     !/VIDEO_STAGE_SUBMISSION|isVideoProjectCategory|project category is video|Video-category projects|PNG or video files only|configured video submission formats|video submission caption support|video\/(mp4|quicktime|webm|x-m4v)/i.test(
       source,

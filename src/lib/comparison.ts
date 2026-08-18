@@ -105,7 +105,7 @@ function isCaptionableSubmissionAttachment(input: {
 }
 
 function getUnsupportedComparisonSubmissionMessage() {
-  return "Only valid PNG stage submissions can be compared. Please upload a PNG submission.";
+  return "Only supported image stage submissions can be compared. Please upload a PNG, JPG, WebP, or GIF submission.";
 }
 
 function getUnsupportedCaptionSubmissionMessage() {

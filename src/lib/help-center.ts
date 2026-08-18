@@ -406,7 +406,7 @@ export const recommendedGuides: HelpGuide[] = [
     title: "How to compare submissions",
     description: "Compare image revisions from the same stage with opacity controls and pinned captions.",
     sectionId: "submissions-revisions",
-    keywords: ["compare submissions", "comparison", "opacity", "image revision", "png"],
+    keywords: ["compare submissions", "comparison", "opacity", "image revision", "png", "jpg", "webp", "gif"],
   },
   {
     id: "guide-final-archive",
@@ -912,7 +912,7 @@ export const helpSections: HelpSection[] = [
         title: "Compare Submissions",
         items: [
           "Compare Submissions is used to compare stage submission images within the selected stage only.",
-          "Stage submissions support standard project file formats. PNG submissions can also be compared or captioned.",
+          "PNG, JPG, WebP, and GIF submissions can be compared. Pinned captions remain available for PNG submissions.",
           "At least two image submissions are needed for comparison.",
           "If there are no image submissions, the compare page shows an empty state.",
           "If there is only one image submission, upload another image revision before comparing changes.",

@@ -46,9 +46,20 @@ export const SUBMISSION_IMAGE_ALLOWED_MIME_TYPES = [
 export const STAGE_SUBMISSION_ALLOWED_EXTENSIONS =
   PROJECT_ASSET_ALLOWED_EXTENSIONS;
 
-export const COMPARISON_SUBMISSION_ALLOWED_EXTENSIONS = ["png"] as const;
+export const COMPARISON_SUBMISSION_ALLOWED_EXTENSIONS = [
+  "png",
+  "jpg",
+  "jpeg",
+  "webp",
+  "gif",
+] as const;
 
-export const COMPARISON_SUBMISSION_ALLOWED_MIME_TYPES = ["image/png"] as const;
+export const COMPARISON_SUBMISSION_ALLOWED_MIME_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+] as const;
 
 export const PROFILE_IMAGE_ALLOWED_EXTENSIONS = [
   "png",
