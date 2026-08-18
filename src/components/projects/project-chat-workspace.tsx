@@ -4600,7 +4600,9 @@ export function ProjectChatWorkspace({
     !isStageCompleted &&
     !isProjectCompleted;
   const showLatestRevisionActionBar =
-    Boolean(latestRevisionMessage) && !isStageCompleted && !isProjectCompleted;
+    Boolean(latestRevisionMessage) &&
+    ((!isStageCompleted && !isProjectCompleted) ||
+      (isConceptMode && canCompareSubmissions));
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {

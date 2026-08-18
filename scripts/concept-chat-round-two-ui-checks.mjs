@@ -154,6 +154,12 @@ assert(
   "Reviewer comparison must remain available in the composer action bar when the responsive sidebar is hidden.",
 );
 assert(
+  workspace.includes(
+    "(!isStageCompleted && !isProjectCompleted) ||\n      (isConceptMode && canCompareSubmissions)",
+  ),
+  "Completed/read-only concept stages must keep the comparison action bar visible when at least two submissions can be compared.",
+);
+assert(
   workspace.includes("ProjectExecutorsPanel") &&
     workspace.includes("ProjectCollaboratorsPanel") &&
     workspace.includes("{conceptMode ? (") &&
