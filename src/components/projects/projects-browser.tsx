@@ -18,7 +18,6 @@ import {
   MotionSection,
   MotionStaggerGroup,
 } from "@/components/motion/motion-primitives";
-import { FlexibleProjectsBrowser } from "@/components/projects/flexible-projects-browser";
 import { ProjectCard, type ProjectCardItem } from "@/components/projects/project-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -260,7 +259,7 @@ export function ProjectsBrowser({
       </MotionSection>
 
       {activeProjectView === "flexible" ? (
-        <FlexibleProjectsBrowser canCreateProject={canCreateProject} />
+        <ProjectsGridSkeleton />
       ) : (
         <div className="space-y-5">
       <MotionSection>

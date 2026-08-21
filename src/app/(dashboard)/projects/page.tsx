@@ -3,8 +3,13 @@ import { redirect } from "next/navigation";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { ProjectsBrowser } from "@/components/projects/projects-browser";
+import { FlexibleProjectsRouteWorkspace } from "@/components/projects/flexible-projects-route-workspace";
 import { UserProjectsBrowser } from "@/components/projects/user-projects-browser";
 import { requireUser } from "@/lib/auth";
+import {
+  getFlexibleProjectsList,
+  getFlexibleProjectUserOptions,
+} from "@/lib/flexible-projects";
 import {
   PROJECT_LIST_ROLES,
   PROJECT_LIST_STATUSES,
@@ -99,6 +104,25 @@ export default async function ProjectsPage({
     redirect("/no-access");
   }
 
+  if (resolvedSearchParams.view === "flexible") {
+    const canCreateProject = canCreateProjects(user);
+    const [flexibleProjects, flexibleUsers] = await Promise.all([
+      getFlexibleProjectsList(user),
+      canCreateProject ? getFlexibleProjectUserOptions() : Promise.resolve([]),
+    ]);
+
+    return (
+      <DashboardLayout>
+        <FlexibleProjectsRouteWorkspace
+          projects={flexibleProjects}
+          users={flexibleUsers}
+          currentUserId={user.id}
+          canCreateProject={canCreateProject}
+        />
+      </DashboardLayout>
+    );
+  }
+
   if (user.role === UserRole.USER) {
     const activeFilter = normalizeUserFilter(resolvedSearchParams.status);
     const activeSort = normalizeUserSort(resolvedSearchParams.sort);
@@ -166,6 +190,7 @@ export default async function ProjectsPage({
 }
 
 type ProjectSearchParams = {
+  view?: string;
   status?: string;
   q?: string;
   sort?: string;

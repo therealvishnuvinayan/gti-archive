@@ -20,9 +20,11 @@ const projectPage = read("src/app/(dashboard)/projects/new/page.tsx");
 const projectCandidates = read("src/lib/project-owner-candidates.ts");
 const projectGrants = read("src/lib/project-collaborator-permissions.ts");
 const usersWorkspace = read("src/components/users/users-workspace.tsx");
-const projectsBrowser = read("src/components/projects/projects-browser.tsx");
 const flexibleProjectsBrowser = read(
   "src/components/projects/flexible-projects-browser.tsx",
+);
+const flexibleProjectsRouteWorkspace = read(
+  "src/components/projects/flexible-projects-route-workspace.tsx",
 );
 const userPermissions = read("src/lib/user-permissions.ts");
 const schema = read("prisma/schema.prisma");
@@ -82,8 +84,8 @@ assertIncludes(
   "managed-user Create Project switch",
 );
 assertIncludes(
-  projectsBrowser,
-  "<FlexibleProjectsBrowser canCreateProject={canCreateProject} />",
+  flexibleProjectsRouteWorkspace,
+  "canCreateProject={canCreateProject}",
   "Flexible Project creation permission propagation",
 );
 assertIncludes(

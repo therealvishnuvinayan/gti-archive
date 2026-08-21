@@ -3,10 +3,10 @@ import { notFound, redirect } from "next/navigation";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { FlexibleMilestoneWorkspace } from "@/components/projects/flexible-milestone-workspace";
 import { requireUser } from "@/lib/auth";
-import { getFlexibleMilestoneFixture } from "@/lib/flexible-project-ui-fixtures";
+import { getFlexibleMilestoneDetail } from "@/lib/flexible-projects";
 import { canUseProjects } from "@/lib/permissions/resolver";
 
-export default async function FlexibleMilestonePrototypePage({
+export default async function FlexibleMilestonePage({
   params,
 }: {
   params: Promise<{ projectSlug: string; milestoneId: string }>;
@@ -17,14 +17,14 @@ export default async function FlexibleMilestonePrototypePage({
     redirect("/no-access");
   }
 
-  const fixture = getFlexibleMilestoneFixture(projectSlug, milestoneId);
-  if (!fixture) notFound();
+  const detail = await getFlexibleMilestoneDetail(projectSlug, milestoneId, user);
+  if (!detail) notFound();
 
   return (
     <DashboardLayout>
       <FlexibleMilestoneWorkspace
-        project={fixture.project}
-        milestone={fixture.milestone}
+        project={detail.project}
+        milestone={detail.milestone}
       />
     </DashboardLayout>
   );

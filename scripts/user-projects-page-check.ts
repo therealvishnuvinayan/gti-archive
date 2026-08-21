@@ -156,11 +156,13 @@ for (const forbidden of [
   "Tech",
   "Concepts",
   "+ New Project",
-  "Flexible Projects",
-  "Artwork Projects",
 ]) {
   assert.ok(!browser.includes(forbidden), `USER Projects UI leaked: ${forbidden}`);
 }
+
+assert.match(browser, /Artwork Projects/);
+assert.match(browser, /Flexible Projects/);
+assert.match(browser, /href="\/projects\?view=flexible"/);
 
 assert.match(browser, /gti:user-projects:view/);
 assert.match(browser, /slice\(0, 5\)/);
