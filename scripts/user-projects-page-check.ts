@@ -115,6 +115,11 @@ const browser = read("src/components/projects/user-projects-browser.tsx");
 const query = read("src/lib/user-projects.ts");
 const managerBrowser = read("src/components/projects/projects-browser.tsx");
 const managerCard = read("src/components/projects/project-card.tsx");
+const tasksPage = read("src/app/(dashboard)/tasks/page.tsx");
+const tasksWorkspace = read("src/components/tasks/user-tasks-workspace.tsx");
+const tasksService = read("src/lib/user-tasks.ts");
+const dashboardLayout = read("src/app/(dashboard)/layout.tsx");
+const sidebar = read("src/components/layout/sidebar.tsx");
 
 assert.match(page, /user\.role === UserRole\.USER/);
 assert.match(page, /<UserProjectsBrowser/);
@@ -183,5 +188,21 @@ assert.match(query, /compareProjectsByPriority/);
 assert.match(query, /isCompleted: left\.status === "COMPLETED"/);
 assert.doesNotMatch(query, /inquiry:/);
 assert.doesNotMatch(query, /researchWorkspaces:/);
+
+assert.match(tasksPage, /user\.role !== UserRole\.USER/);
+assert.match(tasksPage, /getUserTasksPageData\(user\)/);
+assert.match(tasksWorkspace, /My Tasks/);
+assert.match(tasksWorkspace, /Executor Workspace/);
+assert.match(tasksWorkspace, /Open a project folder/);
+assert.match(tasksWorkspace, /Open task/);
+assert.match(tasksWorkspace, /Stage \{task\.stageNumber\}/);
+assert.match(tasksWorkspace, /Search project folders or tasks/);
+assert.match(tasksService, /assignedExecutorId: user\.id/);
+assert.match(tasksService, /ProjectWorkflowStageKey\.CONCEPT_CREATION/);
+assert.match(tasksService, /ProjectWorkflowStageKey\.PROJECT_DEVELOPMENT/);
+assert.match(tasksService, /returnTo=%2Ftasks/);
+assert.match(dashboardLayout, /tasks: taskBadgeCount > 0/);
+assert.match(sidebar, /label: "Tasks", href: "\/tasks"/);
+assert.match(sidebar, /item\.href === "\/tasks"/);
 
 console.log("USER My Projects display-state and UI isolation checks passed.");

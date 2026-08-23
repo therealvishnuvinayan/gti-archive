@@ -13,10 +13,12 @@ export async function ConceptChatRoute({
   projectId,
   folderId,
   stageKey,
+  backHref,
 }: {
   projectId: string;
   folderId: string;
   stageKey: ConceptWorkflowStageKey;
+  backHref?: string;
 }) {
   const user = await requireUser();
   const context = await getProjectConceptChatContext(user, {
@@ -37,7 +39,8 @@ export async function ConceptChatRoute({
       ? {
           ...context.chatMode,
           stageNeutral: true,
-          backHref: `/projects/${encodeURIComponent(projectId)}`,
+          backHref: backHref ?? `/projects/${encodeURIComponent(projectId)}`,
+          backLabel: backHref === "/tasks" ? "Back to Tasks" : "Back to Workspace",
         }
       : context.chatMode;
 

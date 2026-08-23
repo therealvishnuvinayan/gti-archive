@@ -135,6 +135,7 @@ export type ProjectConceptChatMode = {
   startingReference: ProjectConceptStartingReference | null;
   availableStageThreeReferences: ProjectConceptStageThreeReference[];
   backHref: string;
+  backLabel?: string;
   compareHref: string;
 };
 

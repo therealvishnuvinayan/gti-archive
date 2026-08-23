@@ -14,6 +14,7 @@ type DashboardAppFrameProps = {
   children: React.ReactNode;
   user?: DashboardUserView | null;
   projectBadgeCount?: number;
+  taskBadgeCount?: number;
   sidebarVisibility: SidebarVisibility;
   backNavigation?: {
     href: string;
@@ -67,6 +68,7 @@ export function DashboardAppFrame({
   children,
   user,
   projectBadgeCount,
+  taskBadgeCount,
   sidebarVisibility,
   backNavigation,
 }: DashboardAppFrameProps) {
@@ -92,6 +94,7 @@ export function DashboardAppFrame({
       <DashboardShell
         user={user}
         projectBadgeCount={projectBadgeCount}
+        taskBadgeCount={taskBadgeCount}
         sidebarVisibility={sidebarVisibility}
         topbarProps={getTopbarProps(pathname, searchParams, backNavigation)}
       >

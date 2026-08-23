@@ -15,6 +15,7 @@ import {
   Handshake,
   HelpCircle,
   LayoutDashboard,
+  ListTodo,
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
@@ -46,6 +47,7 @@ const sidebarSections: SidebarSection[] = [
       { label: "Dashboard", href: "/", icon: LayoutDashboard, visibilityKey: "dashboard" },
       { label: "Flux AI", href: "/flux-ai", icon: Sparkles, visibilityKey: "fluxAi" },
       { label: "Projects", href: "/projects", icon: Folder, visibilityKey: "projects" },
+      { label: "Tasks", href: "/tasks", icon: ListTodo, visibilityKey: "tasks" },
       { label: "Calendar", href: "/calendar", icon: CalendarDays, visibilityKey: "calendar" },
       {
         label: "Collaboration",
@@ -143,6 +145,7 @@ type SidebarProps = {
   onClose: () => void;
   onToggleCollapsed: () => void;
   projectBadgeCount?: number;
+  taskBadgeCount?: number;
   visibility: SidebarVisibility;
 };
 
@@ -290,6 +293,7 @@ export function Sidebar({
   onClose,
   onToggleCollapsed,
   projectBadgeCount,
+  taskBadgeCount,
   visibility,
 }: SidebarProps) {
   const pathname = usePathname();
@@ -438,6 +442,8 @@ export function Sidebar({
                   const badge =
                     item.href === "/projects" && typeof resolvedProjectBadgeCount === "number"
                       ? String(resolvedProjectBadgeCount)
+                      : item.href === "/tasks" && typeof taskBadgeCount === "number"
+                        ? String(taskBadgeCount)
                       : item.href === "/notifications"
                         ? unreadCount > 0
                           ? String(unreadCount)

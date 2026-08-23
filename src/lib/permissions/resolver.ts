@@ -39,6 +39,7 @@ export type SidebarVisibility = {
   dashboard: boolean;
   fluxAi: boolean;
   projects: boolean;
+  tasks: boolean;
   projectCounts: boolean;
   calendar: boolean;
   collaboration: boolean;
@@ -239,6 +240,7 @@ export function getSidebarVisibility(user: PermissionUser): SidebarVisibility {
     dashboard: hasPermission(user, "dashboard.view"),
     fluxAi: canUseFluxAi(user),
     projects,
+    tasks: false,
     projectCounts:
       projects && hasPermission(user, "dashboard.viewProjectCounts"),
     calendar: hasPermission(user, "calendar.view"),

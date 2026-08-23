@@ -194,6 +194,7 @@ assert.deepEqual(
     dashboard: false,
     fluxAi: true,
     projects: false,
+    tasks: false,
     projectCounts: false,
     calendar: true,
     collaboration: false,
