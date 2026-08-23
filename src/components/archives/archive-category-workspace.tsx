@@ -6,6 +6,7 @@ import { ChevronDown, ChevronUp, Download, Pencil, X } from "lucide-react";
 import {
   ArchiveCategoryIconGlyph,
   ArchiveFileTypeIcon,
+  formatArchiveCategoryPassportTitle,
   getArchiveCategoryIconImageSrc,
 } from "@/components/archives/archive-data";
 import { ArchiveItemDialog } from "@/components/archives/archive-item-dialog";
@@ -323,8 +324,8 @@ export function ArchiveCategoryWorkspace({
                   />
                 )}
               </div>
-              <h1 className="text-[42px] font-[600] leading-none tracking-[-0.05em] text-[#0f1411] sm:text-[56px]">
-                {categoryTitle}
+              <h1 className="text-[28px] font-[600] leading-none tracking-[-0.035em] text-[#0f1411] sm:text-[32px]">
+                {formatArchiveCategoryPassportTitle(categoryTitle)}
               </h1>
             </div>
             <RichTextContent value={categoryDescription} fallback="Allowed users can view, edit information for, or download archived files in this category." className="mt-3 max-w-[760px] text-[15px] leading-6 text-[#5f695f]" />
