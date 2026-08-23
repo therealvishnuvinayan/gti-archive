@@ -65,6 +65,7 @@ const filters: Array<{ label: string; value: UserProjectFilter }> = [
 ];
 
 const sortOptions: Array<{ label: string; value: UserProjectSort }> = [
+  { label: "Priority", value: "priority" },
   { label: "Recently Updated", value: "updated" },
   { label: "Name A–Z", value: "name-asc" },
   { label: "Name Z–A", value: "name-desc" },
@@ -425,7 +426,7 @@ export function UserProjectsBrowser({
 
     if (searchQuery) params.set("q", searchQuery);
     if (filter !== "ALL") params.set("status", filter);
-    if (sort !== "updated") params.set("sort", sort);
+    if (sort !== "priority") params.set("sort", sort);
     if (page > 1) params.set("page", String(page));
 
     const href = params.size > 0 ? `${pathname}?${params}` : pathname;

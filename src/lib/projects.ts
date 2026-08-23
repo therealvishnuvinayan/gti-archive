@@ -21,6 +21,7 @@ import type {
 } from "@prisma/client";
 
 import {
+  compareProjectsByPriority,
   DEFAULT_PROJECT_PRIORITY,
   formatProjectPriority,
 } from "@/lib/project-priority";
@@ -171,6 +172,7 @@ type ProjectCardProject = Pick<
   | "completedAt"
   | "ownerId"
   | "isPinned"
+  | "priority"
 > & {
   owner: Pick<User, "id" | "name" | "email"> | null;
   closure: { id: string } | null;
@@ -447,7 +449,7 @@ export type DashboardProjectCounts = {
 export type ProjectsListFilter = {
   status?: ProjectListStatus;
   query?: string;
-  sort?: "updated" | "newest" | "oldest" | "name-asc" | "name-desc";
+  sort?: "priority" | "updated" | "newest" | "oldest" | "name-asc" | "name-desc";
   page?: number;
   stage?: number;
   ownerId?: string;
@@ -2244,15 +2246,17 @@ export async function getProjectsList(
 
   const page = Math.max(1, Math.floor(filter.page ?? 1));
   const skip = (page - 1) * PROJECT_LIST_PAGE_SIZE;
+  const activeSort = filter.sort ?? "priority";
+  const isPrioritySort = activeSort === "priority";
   const orderBy: Prisma.ProjectOrderByWithRelationInput[] = [
     { isPinned: "desc" },
-    ...(filter.sort === "oldest"
+    ...(activeSort === "oldest"
       ? [{ createdAt: "asc" as const }]
-      : filter.sort === "newest"
+      : activeSort === "newest"
         ? [{ createdAt: "desc" as const }]
-        : filter.sort === "name-asc"
+        : activeSort === "name-asc"
           ? [{ name: "asc" as const }]
-          : filter.sort === "name-desc"
+          : activeSort === "name-desc"
             ? [{ name: "desc" as const }]
             : [{ updatedAt: "desc" as const }]),
     { id: "asc" },
@@ -2260,65 +2264,137 @@ export async function getProjectsList(
 
   const queryStartedAt = performance.now();
   const where = { AND: [accessibleWhere, filterWhere] };
-  const [projects, total] = await unstable_cache(
+  const projectCardSelect = {
+    id: true,
+    name: true,
+    priority: true,
+    updatedAt: true,
+    completedAt: true,
+    ownerId: true,
+    isPinned: true,
+    owner: {
+      select: { id: true, name: true, email: true },
+    },
+    closure: {
+      select: { id: true },
+    },
+    workflowStages: {
+      select: {
+        stageKey: true,
+        status: true,
+        unlockedAt: true,
+        completedAt: true,
+      },
+    },
+    coOwners: {
+      select: { userId: true },
+    },
+    executors: {
+      orderBy: { createdAt: "asc" as const },
+      select: {
+        userId: true,
+        user: {
+          select: { id: true, name: true, email: true },
+        },
+      },
+    },
+    collaborators: {
+      select: { userId: true },
+    },
+  } satisfies Prisma.ProjectSelect;
+  const { projects, total } = await unstable_cache(
     async () =>
-      withPrismaRetry(() =>
-        Promise.all([
-          prisma.project.findMany({
-            where,
-            select: {
-              id: true,
-              name: true,
-              updatedAt: true,
-              completedAt: true,
-              ownerId: true,
-              isPinned: true,
-              owner: {
-                select: { id: true, name: true, email: true },
-              },
-              closure: {
-                select: { id: true },
-              },
-              workflowStages: {
-                select: {
-                  stageKey: true,
-                  status: true,
-                  unlockedAt: true,
-                  completedAt: true,
-                },
-              },
-              coOwners: {
-                select: { userId: true },
-              },
-              executors: {
-                orderBy: { createdAt: "asc" },
-                select: {
-                  userId: true,
-                  user: {
-                    select: { id: true, name: true, email: true },
-                  },
-                },
-              },
-              collaborators: {
-                select: { userId: true },
+      withPrismaRetry(async () => {
+        if (!isPrioritySort) {
+          const [projects, total] = await Promise.all([
+            prisma.project.findMany({
+              where,
+              select: projectCardSelect,
+              orderBy,
+              skip,
+              take: PROJECT_LIST_PAGE_SIZE,
+            }),
+            prisma.project.count({ where }),
+          ]);
+          return { projects, total };
+        }
+
+        const candidates = await prisma.project.findMany({
+          where,
+          select: {
+            id: true,
+            name: true,
+            priority: true,
+            updatedAt: true,
+            isPinned: true,
+            workflowStages: {
+              select: {
+                stageKey: true,
+                status: true,
+                unlockedAt: true,
+                completedAt: true,
               },
             },
-            orderBy,
-            skip,
-            take: PROJECT_LIST_PAGE_SIZE,
+          },
+        });
+        const pageIds = candidates
+          .map((project) => ({
+            project,
+            isCompleted:
+              deriveProjectListWorkflowState(project).businessStatus === "COMPLETED",
+          }))
+          .sort((left, right) =>
+            compareProjectsByPriority(
+              {
+                id: left.project.id,
+                name: left.project.name,
+                priority: left.project.priority,
+                isCompleted: left.isCompleted,
+                isPinned: left.project.isPinned,
+                updatedAt: left.project.updatedAt,
+              },
+              {
+                id: right.project.id,
+                name: right.project.name,
+                priority: right.project.priority,
+                isCompleted: right.isCompleted,
+                isPinned: right.project.isPinned,
+                updatedAt: right.project.updatedAt,
+              },
+            ),
+          )
+          .slice(skip, skip + PROJECT_LIST_PAGE_SIZE)
+          .map(({ project }) => project.id);
+
+        if (pageIds.length === 0) {
+          return { projects: [], total: candidates.length };
+        }
+
+        const pageRecords = await prisma.project.findMany({
+          where: { id: { in: pageIds } },
+          select: projectCardSelect,
+        });
+        const pageRecordById = new Map(
+          pageRecords.map((project) => [project.id, project] as const),
+        );
+
+        return {
+          projects: pageIds.flatMap((id) => {
+            const project = pageRecordById.get(id);
+            return project ? [project] : [];
           }),
-          prisma.project.count({ where }),
-        ]),
-      ),
+          total: candidates.length,
+        };
+      }),
     [
-      "projects-list-v2-dashboard",
+      "projects-list-v3-priority-dashboard",
       filter.status ?? "all",
       filter.query?.trim().toLowerCase() ?? "",
       String(filter.stage ?? "all"),
       filter.ownerId?.trim() ?? "",
       filter.executorId?.trim() ?? "",
       filter.myRole ?? "all",
-      filter.sort ?? "updated",
+      activeSort,
       String(page),
       String(PROJECT_LIST_PAGE_SIZE),
       currentUser.id,

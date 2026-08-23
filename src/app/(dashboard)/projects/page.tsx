@@ -32,6 +32,7 @@ import {
 } from "@/lib/user-projects";
 
 type ProjectSortValue =
+  | "priority"
   | "updated"
   | "newest"
   | "oldest"
@@ -72,12 +73,14 @@ function normalizeStage(value: string | undefined) {
 }
 
 function normalizeSort(value: string | undefined): ProjectSortValue {
-  return value === "newest" ||
+  return value === "priority" ||
+    value === "updated" ||
+    value === "newest" ||
     value === "oldest" ||
     value === "name-asc" ||
     value === "name-desc"
     ? value
-    : "updated";
+    : "priority";
 }
 
 function normalizeUserFilter(value: string | undefined): UserProjectFilter {
@@ -89,7 +92,7 @@ function normalizeUserFilter(value: string | undefined): UserProjectFilter {
 function normalizeUserSort(value: string | undefined): UserProjectSort {
   return USER_PROJECT_SORTS.includes(value as UserProjectSort)
     ? (value as UserProjectSort)
-    : "updated";
+    : "priority";
 }
 
 export default async function ProjectsPage({

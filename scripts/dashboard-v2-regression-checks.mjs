@@ -133,8 +133,12 @@ for (const deepLink of [
   assert(service.includes(deepLink), `Action deep link is missing: ${deepLink}`);
 }
 assert(
-  service.includes("/projects?status=ACTIVE&stage=${stage.number}&sort=updated"),
+  service.includes("/projects?status=ACTIVE&stage=${stage.number}"),
   "Stage distribution must use the Projects V2 stage filter convention.",
+);
+assert(
+  !service.includes("sort=updated"),
+  "Dashboard project links must preserve the default priority ordering.",
 );
 assert(
   service.includes("summaries.length + flexibleProjects.length") &&

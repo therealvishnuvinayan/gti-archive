@@ -485,7 +485,7 @@ function buildKpis(input: {
       href:
         flexibleProjects.length > 0
           ? "/projects"
-          : "/projects?status=ACTIVE&sort=updated",
+          : "/projects?status=ACTIVE",
       icon: "active" as const,
       tone: "green" as const,
     },
@@ -507,7 +507,7 @@ function buildKpis(input: {
       href:
         flexibleProjects.length > 0
           ? "/projects"
-          : "/projects?status=COMPLETED&sort=updated",
+          : "/projects?status=COMPLETED",
       icon: "completed" as const,
       tone: "green" as const,
     },
@@ -1235,7 +1235,7 @@ export async function getDashboardSnapshot(
         !project.archivedAt &&
         workflow.currentStageNumber === stage.number,
     ).length,
-    href: `/projects?status=ACTIVE&stage=${stage.number}&sort=updated`,
+    href: `/projects?status=ACTIVE&stage=${stage.number}`,
   }));
 
   const flexibleProjectCards = flexibleProjects.slice(0, 3).map((project) => {

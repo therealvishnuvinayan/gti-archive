@@ -11,6 +11,7 @@ import {
 
 import { canCreateProjects, canUseProjects, hasPermission, isGlobalProjectAdministrator, type PermissionUser } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { compareProjectsByPriority } from "@/lib/project-priority";
 import { sanitizeRichText } from "@/lib/rich-text";
 
 export const FLEXIBLE_PROJECTS_CACHE_TAG = "flexible-projects";
@@ -398,6 +399,7 @@ export async function getFlexibleProjectsList(user: PermissionUser) {
         description: true,
         status: true,
         priority: true,
+        updatedAt: true,
         scope: true,
         deadline: true,
         owner: { select: { id: true, name: true, email: true, role: true, avatarUrl: true } },
@@ -405,7 +407,26 @@ export async function getFlexibleProjectsList(user: PermissionUser) {
       },
     }),
   );
-  return projects.map(mapProjectSummary);
+  return projects
+    .sort((left, right) =>
+      compareProjectsByPriority(
+        {
+          id: left.id,
+          name: left.name,
+          priority: left.priority,
+          isCompleted: left.status === FlexibleProjectStatus.COMPLETED,
+          updatedAt: left.updatedAt,
+        },
+        {
+          id: right.id,
+          name: right.name,
+          priority: right.priority,
+          isCompleted: right.status === FlexibleProjectStatus.COMPLETED,
+          updatedAt: right.updatedAt,
+        },
+      ),
+    )
+    .map(mapProjectSummary);
 }
 
 export async function getFlexibleProjectDetail(slug: string, user: PermissionUser) {

@@ -4,6 +4,7 @@ import {
   AttachmentAssetType,
   AttachmentStatus,
   ProjectRevisionStatus,
+  ProjectPriority,
   ProjectWorkflowStageKey,
   ProjectWorkflowStageStatus,
   StageStatus,
@@ -62,6 +63,7 @@ async function createProject(input: {
   executorIds: string[];
   collaboratorIds?: string[];
   description?: string;
+  priority?: ProjectPriority;
 }) {
   const result = await createProjectV2(
     { id: input.ownerId },
@@ -76,7 +78,10 @@ async function createProject(input: {
   check(!isError(result), `project creation failed for ${input.name}`);
   await prisma.project.update({
     where: { id: result.projectId },
-    data: { description: input.description ?? null },
+    data: {
+      description: input.description ?? null,
+      priority: input.priority ?? ProjectPriority.MEDIUM,
+    },
   });
   await unlockConceptWork(result.projectId);
   return result.projectId;
@@ -193,6 +198,7 @@ async function main() {
       ownerId: ids.owner,
       name: "USER Portfolio Alpha",
       description: "Assigned packaging concepts for USER 1.",
+      priority: ProjectPriority.HIGH,
       executorIds: [ids.userOne, ids.userTwo],
     });
     projectIds.push(mixedProjectId);
@@ -210,6 +216,7 @@ async function main() {
     const zeroTaskProjectId = await createProject({
       ownerId: ids.owner,
       name: "USER Zero Tasks",
+      priority: ProjectPriority.LOW,
       executorIds: [ids.userTwo],
       collaboratorIds: [ids.userOne],
     });
@@ -218,6 +225,7 @@ async function main() {
     const completedProjectId = await createProject({
       ownerId: ids.owner,
       name: "USER Completed Work",
+      priority: ProjectPriority.URGENT,
       executorIds: [ids.userOne],
     });
     projectIds.push(completedProjectId);
@@ -240,6 +248,7 @@ async function main() {
     const activeProjectId = await createProject({
       ownerId: ids.owner,
       name: "USER Active Work",
+      priority: ProjectPriority.MEDIUM,
       executorIds: [ids.userOne],
     });
     projectIds.push(activeProjectId);
@@ -259,6 +268,16 @@ async function main() {
     );
     check(all.total === 4, "USER 1 must receive exactly four related projects");
     check(!all.projects.some((project) => project.id === unrelatedProjectId), "unrelated project leaked to USER 1");
+
+    const prioritySorted = await getUserProjectsList(
+      { filter: "ALL", query: "", sort: "priority", page: 1 },
+      userOne,
+    );
+    check(
+      prioritySorted.projects.map(({ id }) => id).join(",") ===
+        [mixedProjectId, activeProjectId, zeroTaskProjectId, completedProjectId].join(","),
+      "Priority sort must rank active High, Medium, and Low work before a completed Urgent project",
+    );
 
     const mixed = all.projects.find((project) => project.id === mixedProjectId);
     check(mixed, "mixed assignment project is missing");

@@ -128,6 +128,7 @@ for (const copy of [
   "Your workspace for assigned work and deliverables.",
   "Needs Attention",
   "Search projects...",
+  "Priority",
   "Recently Updated",
   "Name A–Z",
   "Name Z–A",
@@ -178,6 +179,8 @@ assert.match(query, /plannedDueAt: true/);
 assert.match(query, /revisions: \{/);
 assert.match(query, /workflowStages: \{/);
 assert.match(query, /deriveProjectListWorkflowState\(project\)/);
+assert.match(query, /compareProjectsByPriority/);
+assert.match(query, /isCompleted: left\.status === "COMPLETED"/);
 assert.doesNotMatch(query, /inquiry:/);
 assert.doesNotMatch(query, /researchWorkspaces:/);
 

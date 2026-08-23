@@ -33,6 +33,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { ProjectListRole, ProjectListStatus } from "@/lib/project-list-workflow";
 
 type ProjectSortValue =
+  | "priority"
   | "updated"
   | "newest"
   | "oldest"
@@ -77,6 +78,7 @@ const roleOptions: Array<{ value: ProjectListRole; label: string }> = [
 ];
 
 const sortOptions: Array<{ value: ProjectSortValue; label: string }> = [
+  { value: "priority", label: "Priority" },
   { value: "updated", label: "Recently Updated" },
   { value: "newest", label: "Newest" },
   { value: "oldest", label: "Oldest" },
@@ -190,7 +192,7 @@ export function ProjectsBrowser({
 
     if (searchQuery) params.set("q", searchQuery);
     if (status !== "ALL") params.set("status", status);
-    if (sort !== "updated") params.set("sort", sort);
+    if (sort !== "priority") params.set("sort", sort);
     if (stage) params.set("stage", String(stage));
     if (ownerId) params.set("ownerId", ownerId);
     if (executorId) params.set("executorId", executorId);
@@ -208,7 +210,7 @@ export function ProjectsBrowser({
 
   function clearFilters() {
     const params = new URLSearchParams();
-    if (activeSort !== "updated") params.set("sort", activeSort);
+    if (activeSort !== "priority") params.set("sort", activeSort);
     const nextHref = params.size > 0 ? `${pathname}?${params}` : pathname;
     startTransition(() => router.push(nextHref, { scroll: false }));
   }

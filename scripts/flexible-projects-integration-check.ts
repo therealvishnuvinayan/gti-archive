@@ -240,6 +240,20 @@ async function main() {
     const crossProjectMutation = await updateFlexibleMilestone(admin, second.projectId, milestoneOne.milestoneId, { name: "Cross-project edit" });
     check(isError(crossProjectMutation), "cross-project milestone mutation succeeded");
 
+    await prisma.flexibleProject.update({
+      where: { id: created.projectId },
+      data: {
+        priority: ProjectPriority.URGENT,
+        status: "COMPLETED",
+      },
+    });
+    const prioritySortedProjects = await getFlexibleProjectsList(superAdmin);
+    check(
+      prioritySortedProjects.slice(0, 2).map(({ id }) => id).join(",") ===
+        [second.projectId, created.projectId].join(","),
+      "Priority sorting must keep the active Medium project ahead of the completed Urgent project",
+    );
+
     check(!isError(await setFlexibleMilestoneCompleted(owner, created.projectId, milestoneOne.milestoneId, false)), "reopen failed");
     detail = await getFlexibleProjectDetail(created.slug, owner);
     check(detail?.progress === 0, "progress did not recalculate after reopen");

@@ -12,6 +12,11 @@ import {
   type ProjectBusinessStatus,
 } from "@/lib/project-list-workflow";
 import {
+  compareProjectsByPriority,
+  normalizeProjectPriority,
+  type ProjectPriorityValue,
+} from "@/lib/project-priority";
+import {
   buildAccessibleProjectsWhere,
   type ProjectAccessUser,
 } from "@/lib/projects";
@@ -27,6 +32,7 @@ export const USER_PROJECT_FILTERS = [
 export type UserProjectFilter = (typeof USER_PROJECT_FILTERS)[number];
 
 export const USER_PROJECT_SORTS = [
+  "priority",
   "updated",
   "name-asc",
   "name-desc",
@@ -71,6 +77,7 @@ export type UserProjectListItem = {
   } | null;
   status: UserProjectDisplayStatus;
   statusLabel: string;
+  priority: ProjectPriorityValue;
   tasks: Array<{
     key: string;
     name: string;
@@ -276,6 +283,7 @@ export async function getUserProjectsList(
           id: true,
           name: true,
           description: true,
+          priority: true,
           updatedAt: true,
           owner: {
             select: { id: true, name: true, email: true },
@@ -353,6 +361,7 @@ export async function getUserProjectsList(
         : null,
       status,
       statusLabel: getUserProjectStatusLabel(status),
+      priority: normalizeProjectPriority(project.priority),
       tasks: project.conceptFolders.map((task, index) => ({
         key: `${project.id}-task-${index + 1}`,
         name: task.name,
@@ -368,6 +377,24 @@ export async function getUserProjectsList(
   );
 
   filtered.sort((left, right) => {
+    if (input.sort === "priority") {
+      return compareProjectsByPriority(
+        {
+          id: left.id,
+          name: left.title,
+          priority: left.priority,
+          isCompleted: left.status === "COMPLETED",
+          updatedAt: left.updatedAt,
+        },
+        {
+          id: right.id,
+          name: right.title,
+          priority: right.priority,
+          isCompleted: right.status === "COMPLETED",
+          updatedAt: right.updatedAt,
+        },
+      );
+    }
     if (input.sort === "name-asc") {
       return left.title.localeCompare(right.title, undefined, { sensitivity: "base" });
     }
