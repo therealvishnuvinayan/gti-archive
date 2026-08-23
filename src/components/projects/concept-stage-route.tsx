@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { FolderKanban } from "lucide-react";
+import { ListTodo } from "lucide-react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import {
@@ -94,7 +94,7 @@ async function ConceptStageContent({
             ? `Browse and manage Stage ${stageNumber} concept folders.`
             : "Create and manage concept taskers."
         }
-        icon={<FolderKanban className="h-4 w-4" />}
+        icon={<ListTodo className="h-4 w-4" />}
       />
       <Suspense fallback={<StageSectionLoadingShell rows={3} />}>
         <ConceptStageDataContent

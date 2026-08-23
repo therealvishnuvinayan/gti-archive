@@ -7,8 +7,7 @@ import {
   ArrowRight,
   CalendarClock,
   ChevronRight,
-  Folder,
-  FolderKanban,
+  ListTodo,
   Loader2,
   MoreVertical,
   Paperclip,
@@ -787,7 +786,7 @@ export function ConceptStageWorkspace({
 
       {showChrome ? <header>
         <div className="flex items-center gap-2 text-[11px] font-[780] uppercase tracking-[0.12em] text-[#2f8057]">
-          <FolderKanban className="h-4 w-4" />
+          <ListTodo className="h-4 w-4" />
           Concept Workspace
         </div>
         <h1 className="mt-4 text-[30px] font-[790] leading-[1.12] tracking-[-0.045em] text-[#111713] sm:text-[38px]">
@@ -808,7 +807,7 @@ export function ConceptStageWorkspace({
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
             <span className="grid size-10 shrink-0 place-items-center rounded-[12px] bg-[#eaf4ed] text-[#2e8057]">
-              <Folder className="h-5 w-5" />
+              <ListTodo className="h-5 w-5" />
             </span>
             <div>
               <h2
@@ -940,7 +939,7 @@ export function ConceptStageWorkspace({
               />
               <CardContent className="flex min-h-[126px] items-center gap-4 p-5">
                 <span className="grid size-12 shrink-0 place-items-center rounded-[14px] bg-[#e7f2ea] text-[#30845a]">
-                  <Folder className="h-7 w-7 fill-current" />
+                  <ListTodo className="h-7 w-7" />
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[15px] font-[740] text-[#202a23]">{folder.name}</span>

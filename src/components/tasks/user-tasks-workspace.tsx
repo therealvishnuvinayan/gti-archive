@@ -237,7 +237,7 @@ export function UserTasksWorkspace({ data }: { data: UserTasksPageData }) {
           </div>
           <div className="flex w-fit items-center gap-3 rounded-[16px] border border-[#d7e5da] bg-white/80 px-4 py-3 shadow-[0_10px_26px_rgba(27,67,43,0.05)]">
             <span className="grid size-10 place-items-center rounded-[13px] bg-[#e7f3ea] text-[#2d8056]">
-              <FolderKanban className="size-5" />
+              <ListTodo className="size-5" />
             </span>
             <span>
               <span className="block text-[10px] font-[700] text-[#7a857d]">Assigned work</span>

@@ -6,6 +6,7 @@ import {
   File,
   Folder,
   FolderKey,
+  ListTodo,
   LockKeyhole,
   ShieldCheck,
   UserRound,
@@ -305,7 +306,7 @@ export function UserProjectWorkspace({
                 />
                 <CardContent className="flex min-h-[136px] items-center gap-4 p-5">
                   <span className="grid size-12 shrink-0 place-items-center rounded-[14px] bg-[#e7f2ea] text-[#30845a]">
-                    <Folder className="h-7 w-7 fill-current" />
+                    <ListTodo className="h-7 w-7" />
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[15px] font-[740] text-[#202a23]">
