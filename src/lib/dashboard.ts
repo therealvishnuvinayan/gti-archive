@@ -1,4 +1,6 @@
 import {
+  FlexibleMilestoneStatus,
+  FlexibleProjectStatus,
   ProductionApprovalStepStatus,
   ProductionDispatchStatus,
   ProductionHandoverDeliveryStatus,
@@ -10,15 +12,24 @@ import {
   StageStatus,
   UserRole,
   type Prisma,
+  type ProjectExecutionType,
+  type ProjectPriority,
   type User,
 } from "@prisma/client";
 
+import {
+  calculateFlexibleProjectProgress,
+  canManageFlexibleMilestones,
+  canManageFlexibleProject,
+  getFlexibleProjectAccessWhere,
+} from "@/lib/flexible-projects";
 import {
   deriveProjectListWorkflowState,
   type ProjectListWorkflowState,
 } from "@/lib/project-list-workflow";
 import { PROJECT_WORKFLOW_STAGE_DEFINITIONS } from "@/lib/project-workflow";
 import {
+  canUseProjects,
   hasPermission,
   hasProjectPermission,
   isGlobalProjectAdministrator,
@@ -102,6 +113,23 @@ export type DashboardRecentProject = {
   updatedLabel: string;
 };
 
+export type DashboardFlexibleProject = {
+  id: string;
+  name: string;
+  href: string;
+  status: FlexibleProjectStatus;
+  priority: ProjectPriority;
+  scope: ProjectExecutionType;
+  progress: number;
+  completedMilestones: number;
+  totalMilestones: number;
+  ownerName: string;
+  ownerInitials: string;
+  deadlineLabel: string;
+  deadlineStatusLabel: string | null;
+  deadlineTone: "critical" | "warning" | "standard" | "muted";
+};
+
 export type DashboardSnapshot = {
   kpis: DashboardKpi[];
   attention: DashboardAttentionItem[];
@@ -109,6 +137,11 @@ export type DashboardSnapshot = {
   deadlines: DashboardDeadlineItem[];
   stages: DashboardStageSummary[];
   myWork: DashboardWorkSummaryItem[];
+  flexibleProjects: DashboardFlexibleProject[];
+  flexibleProjectCount: number;
+  flexibleActiveCount: number;
+  flexibleCompletedCount: number;
+  canViewFlexibleProjects: boolean;
   recentProjects: DashboardRecentProject[];
   canViewRecentProjects: boolean;
   scopeLabel: string;
@@ -148,6 +181,34 @@ const projectSelect = {
 } satisfies Prisma.ProjectSelect;
 
 type DashboardProject = Prisma.ProjectGetPayload<{ select: typeof projectSelect }>;
+
+const flexibleProjectSelect = {
+  id: true,
+  slug: true,
+  name: true,
+  status: true,
+  priority: true,
+  scope: true,
+  deadline: true,
+  ownerId: true,
+  updatedAt: true,
+  owner: { select: { name: true, email: true } },
+  collaborators: { select: { userId: true } },
+  milestones: {
+    orderBy: { sortOrder: "asc" },
+    select: {
+      id: true,
+      name: true,
+      status: true,
+      deadline: true,
+      responsibleUserId: true,
+    },
+  },
+} satisfies Prisma.FlexibleProjectSelect;
+
+type DashboardFlexibleProjectRecord = Prisma.FlexibleProjectGetPayload<{
+  select: typeof flexibleProjectSelect;
+}>;
 
 type ProjectSummary = {
   project: DashboardProject;
@@ -261,6 +322,27 @@ function formatRecentTime(value: Date | string | number, now: Date) {
   });
 }
 
+function formatFlexibleProjectDeadline(value: Date | null, now: Date) {
+  if (!value) {
+    return {
+      deadlineLabel: "No deadline",
+      deadlineStatusLabel: null,
+      deadlineTone: "muted" as const,
+    };
+  }
+
+  const formatted = formatDeadline(value, now);
+  return {
+    deadlineLabel: value.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }),
+    deadlineStatusLabel: formatted.statusLabel,
+    deadlineTone: formatted.tone,
+  };
+}
+
 function displayName(person: { name: string | null; email: string } | null) {
   return person?.name?.trim() || person?.email || "Unassigned";
 }
@@ -305,29 +387,40 @@ function addAttention(
 function buildKpis(input: {
   user: DashboardUser;
   summaries: ProjectSummary[];
+  flexibleProjects: DashboardFlexibleProjectRecord[];
   attentionCount: number;
   assignedConceptCount: number;
   openRequestCount: number;
   completedRequestCount: number;
 }) {
-  const { user, summaries } = input;
-  const active = summaries.filter(
+  const { user, summaries, flexibleProjects } = input;
+  const activeArtwork = summaries.filter(
     (item) =>
       item.workflow.businessStatus === "ACTIVE" && !item.project.archivedAt,
   ).length;
-  const completed = summaries.filter(
+  const completedArtwork = summaries.filter(
     (item) => item.workflow.businessStatus === "COMPLETED",
   ).length;
+  const activeFlexible = flexibleProjects.filter(
+    (project) => project.status === FlexibleProjectStatus.ACTIVE,
+  ).length;
+  const completedFlexible = flexibleProjects.filter(
+    (project) => project.status === FlexibleProjectStatus.COMPLETED,
+  ).length;
+  const active = activeArtwork + activeFlexible;
+  const completed = completedArtwork + completedFlexible;
   const isGlobalAdministrator = isGlobalProjectAdministrator(user);
   const isManager = summaries.some(
     ({ project }) =>
       project.ownerId === user.id ||
       project.coOwners.some((coOwner) => coOwner.userId === user.id),
-  );
+  ) || flexibleProjects.some((project) => project.ownerId === user.id);
   const isExecutor = summaries.some(({ project }) =>
     project.executors.some((executor) => executor.userId === user.id),
   );
   const isCollaborator = summaries.some(({ project }) =>
+    project.collaborators.some((collaborator) => collaborator.userId === user.id),
+  ) || flexibleProjects.some((project) =>
     project.collaborators.some((collaborator) => collaborator.userId === user.id),
   );
   const relationshipCount = [isManager, isExecutor, isCollaborator].filter(Boolean).length;
@@ -352,12 +445,20 @@ function buildKpis(input: {
     activeNote = "You own or co-own";
     completedLabel = "Completed";
     completedNote = "Delivered projects";
-  } else if (relationshipCount === 1 && isExecutor) {
+  } else if (
+    relationshipCount === 1 &&
+    isExecutor &&
+    flexibleProjects.length === 0
+  ) {
     activeLabel = "Active Assignments";
     activeValue = input.assignedConceptCount;
     activeNote = "Concept briefs and revisions";
     completedNote = "Finished project assignments";
-  } else if (relationshipCount === 1 && isCollaborator) {
+  } else if (
+    relationshipCount === 1 &&
+    isCollaborator &&
+    flexibleProjects.length === 0
+  ) {
     activeLabel = "Open Requests";
     activeValue = input.openRequestCount;
     activeNote = "Waiting for your response";
@@ -369,11 +470,11 @@ function buildKpis(input: {
   return [
     {
       label: totalLabel,
-      value: summaries.length,
+      value: summaries.length + flexibleProjects.length,
       note: isGlobalAdministrator
-        ? "Global V2 portfolio"
-        : "Based on your relationships",
-      href: "/projects?status=ALL&sort=updated",
+        ? "Artwork + flexible portfolio"
+        : "Based on your project relationships",
+      href: "/projects",
       icon: "projects" as const,
       tone: "green" as const,
     },
@@ -381,7 +482,10 @@ function buildKpis(input: {
       label: activeLabel,
       value: activeValue,
       note: activeNote,
-      href: "/projects?status=ACTIVE&sort=updated",
+      href:
+        flexibleProjects.length > 0
+          ? "/projects"
+          : "/projects?status=ACTIVE&sort=updated",
       icon: "active" as const,
       tone: "green" as const,
     },
@@ -400,7 +504,10 @@ function buildKpis(input: {
       label: completedLabel,
       value: completedValue,
       note: completedNote,
-      href: "/projects?status=COMPLETED&sort=updated",
+      href:
+        flexibleProjects.length > 0
+          ? "/projects"
+          : "/projects?status=COMPLETED&sort=updated",
       icon: "completed" as const,
       tone: "green" as const,
     },
@@ -408,9 +515,9 @@ function buildKpis(input: {
 }
 
 /**
- * Builds the V2 operational dashboard from the same workflow rows used by the
- * project workspaces. Business administrators receive a global portfolio;
- * standard users remain relationship-scoped.
+ * Builds the operational dashboard from the fixed artwork workflow and the
+ * milestone-based flexible workflow. Business administrators receive a global
+ * portfolio; standard users remain relationship-scoped in both project types.
  */
 export async function getDashboardSnapshot(
   user: DashboardUser,
@@ -420,13 +527,23 @@ export async function getDashboardSnapshot(
     user,
     "dashboard.viewRecentProjects",
   );
-  const projects = await withPrismaRetry(() =>
-    prisma.project.findMany({
-      where: dashboardProjectWhere(user),
-      select: projectSelect,
-      orderBy: { updatedAt: "desc" },
-    }),
-  );
+  const canViewFlexibleProjects = canUseProjects(user);
+  const [projects, flexibleProjects] = await Promise.all([
+    withPrismaRetry(() =>
+      prisma.project.findMany({
+        where: dashboardProjectWhere(user),
+        select: projectSelect,
+        orderBy: { updatedAt: "desc" },
+      }),
+    ),
+    withPrismaRetry(() =>
+      prisma.flexibleProject.findMany({
+        where: getFlexibleProjectAccessWhere(user),
+        select: flexibleProjectSelect,
+        orderBy: [{ updatedAt: "desc" }, { name: "asc" }],
+      }),
+    ),
+  ]);
   const summaries: ProjectSummary[] = projects.map((project) => ({
     project,
     workflow: deriveProjectListWorkflowState(project),
@@ -563,6 +680,108 @@ export async function getDashboardSnapshot(
   let assignedConceptCount = 0;
   let openRequestCount = 0;
   let completedRequestCount = 0;
+
+  for (const project of flexibleProjects) {
+    if (project.status !== FlexibleProjectStatus.ACTIVE) continue;
+
+    const projectHref = `/projects/flexible/${project.slug}`;
+    const accessContext = {
+      ownerId: project.ownerId,
+      collaborators: project.collaborators,
+    };
+    const canManageProject = canManageFlexibleProject(user, accessContext);
+    const canManageMilestones = canManageFlexibleMilestones(user, accessContext);
+
+    if (project.deadline) {
+      const dueAt = toDate(project.deadline);
+      deadlineCandidates.push({
+        id: `flexible-project:${project.id}:deadline`,
+        projectName: project.name,
+        detail: "Project deadline",
+        stageLabel: "Flexible project",
+        href: projectHref,
+        dueAt: dueAt.toISOString(),
+        dueAtDate: dueAt,
+      });
+
+      if (
+        canManageProject &&
+        dueAt.getTime() < startOfDay(now).getTime()
+      ) {
+        addAttention(attention, {
+          id: `flexible-project-overdue:${project.id}`,
+          severity: "critical",
+          kind: "deadline",
+          title: "Flexible project deadline overdue",
+          detail: "Review the milestone timeline and project deadline.",
+          projectName: project.name,
+          href: projectHref,
+          actionLabel: "Open timeline",
+          sortAt: dueAt.toISOString(),
+        });
+        addWork(work, {
+          id: "overdue",
+          label: "Overdue deadlines",
+          count: 1,
+          href: projectHref,
+          tone: "red",
+        });
+      }
+    }
+
+    for (const milestone of project.milestones) {
+      if (milestone.status === FlexibleMilestoneStatus.COMPLETED) continue;
+
+      const milestoneHref = `${projectHref}/milestones/${milestone.id}`;
+      const isAssigned = milestone.responsibleUserId === user.id;
+
+      if (isAssigned) {
+        addWork(work, {
+          id: "flexible-milestones",
+          label: "Flexible milestones assigned",
+          count: 1,
+          href: milestoneHref,
+          tone: "green",
+        });
+      }
+
+      if (!milestone.deadline) continue;
+      const dueAt = toDate(milestone.deadline);
+      deadlineCandidates.push({
+        id: `flexible-milestone:${milestone.id}:deadline`,
+        projectName: project.name,
+        detail: milestone.name,
+        stageLabel: "Flexible milestone",
+        href: milestoneHref,
+        dueAt: dueAt.toISOString(),
+        dueAtDate: dueAt,
+      });
+
+      if (
+        (isAssigned || canManageMilestones) &&
+        dueAt.getTime() < startOfDay(now).getTime()
+      ) {
+        addAttention(attention, {
+          id: `flexible-milestone-overdue:${milestone.id}`,
+          severity: "critical",
+          kind: "deadline",
+          title: "Flexible milestone overdue",
+          detail: milestone.name,
+          projectName: project.name,
+          href: milestoneHref,
+          actionLabel: isAssigned ? "Open milestone" : "Review timeline",
+          sortAt: dueAt.toISOString(),
+        });
+        addWork(work, {
+          id: "overdue",
+          label: "Overdue deadlines",
+          count: 1,
+          href: milestoneHref,
+          tone: "red",
+        });
+      }
+    }
+  }
 
   for (const { project, workflow } of summaries) {
     if (
@@ -1019,6 +1238,35 @@ export async function getDashboardSnapshot(
     href: `/projects?status=ACTIVE&stage=${stage.number}&sort=updated`,
   }));
 
+  const flexibleProjectCards = flexibleProjects.slice(0, 3).map((project) => {
+    const totalMilestones = project.milestones.length;
+    const completedMilestones = project.milestones.filter(
+      (milestone) => milestone.status === FlexibleMilestoneStatus.COMPLETED,
+    ).length;
+    const ownerName = displayName(project.owner);
+    const deadline = formatFlexibleProjectDeadline(project.deadline, now);
+    return {
+      id: project.id,
+      name: project.name,
+      href: `/projects/flexible/${project.slug}`,
+      status: project.status,
+      priority: project.priority,
+      scope: project.scope,
+      progress: calculateFlexibleProjectProgress(
+        completedMilestones,
+        totalMilestones,
+      ),
+      completedMilestones,
+      totalMilestones,
+      ownerName,
+      ownerInitials: initials(ownerName),
+      ...deadline,
+      ...(project.status === FlexibleProjectStatus.COMPLETED
+        ? { deadlineStatusLabel: null, deadlineTone: "muted" as const }
+        : {}),
+    };
+  });
+
   const recentProjects = canViewRecentProjects
     ? summaries
         .filter(
@@ -1052,6 +1300,7 @@ export async function getDashboardSnapshot(
     kpis: buildKpis({
       user,
       summaries,
+      flexibleProjects,
       attentionCount: attention.length,
       assignedConceptCount,
       openRequestCount,
@@ -1064,6 +1313,15 @@ export async function getDashboardSnapshot(
     myWork: Array.from(work.values())
       .filter((item) => item.count > 0)
       .slice(0, 5),
+    flexibleProjects: flexibleProjectCards,
+    flexibleProjectCount: flexibleProjects.length,
+    flexibleActiveCount: flexibleProjects.filter(
+      (project) => project.status === FlexibleProjectStatus.ACTIVE,
+    ).length,
+    flexibleCompletedCount: flexibleProjects.filter(
+      (project) => project.status === FlexibleProjectStatus.COMPLETED,
+    ).length,
+    canViewFlexibleProjects,
     recentProjects,
     canViewRecentProjects,
     scopeLabel:

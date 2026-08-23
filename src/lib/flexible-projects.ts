@@ -276,7 +276,7 @@ function buildSlug(name: string) {
   return `${base}-${randomUUID().slice(0, 8)}`;
 }
 
-function getFlexibleProjectAccessWhere(user: PermissionUser): Prisma.FlexibleProjectWhereInput {
+export function getFlexibleProjectAccessWhere(user: PermissionUser): Prisma.FlexibleProjectWhereInput {
   if (!canUseProjects(user)) return { id: "__permission_denied__" };
   if (isGlobalProjectAdministrator(user)) return {};
   return {

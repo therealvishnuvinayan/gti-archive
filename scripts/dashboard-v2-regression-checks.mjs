@@ -1,13 +1,22 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [page, workspace, service, stats, projectWorkflow, schema] =
+const [
+  page,
+  workspace,
+  service,
+  stats,
+  projectWorkflow,
+  flexibleProjectsService,
+  schema,
+] =
   await Promise.all([
     readFile("src/app/(dashboard)/page.tsx", "utf8"),
     readFile("src/components/dashboard/dashboard-workspace.tsx", "utf8"),
     readFile("src/lib/dashboard.ts", "utf8"),
     readFile("src/components/dashboard/stat-card.tsx", "utf8"),
     readFile("src/lib/project-list-workflow.ts", "utf8"),
+    readFile("src/lib/flexible-projects.ts", "utf8"),
     readFile("prisma/schema.prisma", "utf8"),
   ]);
 
@@ -41,6 +50,7 @@ for (const panel of [
   "Upcoming Deadlines",
   "Projects by Stage",
   "My Work",
+  "Flexible Projects",
   "Recent Projects",
 ]) {
   assert(workspace.includes(panel), `Dashboard panel is missing: ${panel}`);
@@ -82,6 +92,14 @@ assert(
   "Dashboard scope must be global for business administrators and relationship-based for standard users.",
 );
 assert(
+  flexibleProjectsService.includes("export function getFlexibleProjectAccessWhere") &&
+    flexibleProjectsService.includes("if (isGlobalProjectAdministrator(user)) return {};") &&
+    flexibleProjectsService.includes("{ ownerId: user.id }") &&
+    flexibleProjectsService.includes("collaborators: { some: { userId: user.id } }") &&
+    service.includes("where: getFlexibleProjectAccessWhere(user)"),
+  "Flexible dashboard projects must reuse the global-admin and owner/collaborator access scope.",
+);
+assert(
   service.includes("projectId: { in: activeProjectIds }"),
   "Operational dashboard queries must begin from authorized active project IDs.",
 );
@@ -117,6 +135,26 @@ for (const deepLink of [
 assert(
   service.includes("/projects?status=ACTIVE&stage=${stage.number}&sort=updated"),
   "Stage distribution must use the Projects V2 stage filter convention.",
+);
+assert(
+  service.includes("summaries.length + flexibleProjects.length") &&
+    service.includes("activeArtwork + activeFlexible") &&
+    service.includes("completedArtwork + completedFlexible"),
+  "Portfolio KPIs must include both artwork and flexible projects.",
+);
+assert(
+  service.includes('stageLabel: "Flexible milestone"') &&
+    service.includes('title: "Flexible milestone overdue"') &&
+    service.includes('label: "Flexible milestones assigned"'),
+  "Flexible milestones must participate in dashboard deadlines, attention, and assigned work.",
+);
+assert(
+  workspace.includes("snapshot.canViewFlexibleProjects ?") &&
+    workspace.includes("snapshot.flexibleProjects") &&
+    workspace.includes('href="/projects?view=flexible"') &&
+    workspace.includes("project.progress") &&
+    workspace.includes("project.deadlineLabel"),
+  "The Flexible Projects panel must be permission-bounded and expose milestone progress and deadlines.",
 );
 
 assert(

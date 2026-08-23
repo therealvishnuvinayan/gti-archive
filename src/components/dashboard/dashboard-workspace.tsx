@@ -9,6 +9,7 @@ import {
   FilePenLine,
   Inbox,
   MessageSquareWarning,
+  Milestone,
   ShieldAlert,
   TriangleAlert,
   type LucideIcon,
@@ -365,6 +366,164 @@ function MyWork({ items }: { items: DashboardSnapshot["myWork"] }) {
   );
 }
 
+const flexiblePriorityStyles = {
+  URGENT: "border-[#f4c6c2] bg-[#fff0ef] text-[#b93831]",
+  HIGH: "border-[#f1d1ad] bg-[#fff5e9] text-[#aa5d14]",
+  MEDIUM: "border-[#c9dbce] bg-[#f1f8f3] text-[#367552]",
+  LOW: "border-[#dde3de] bg-[#f7f9f7] text-[#68716b]",
+} as const;
+
+function FlexibleProjectsOverview({
+  projects,
+  total,
+  active,
+  completed,
+}: {
+  projects: DashboardSnapshot["flexibleProjects"];
+  total: number;
+  active: number;
+  completed: number;
+}) {
+  return (
+    <Panel>
+      <header className="flex flex-col gap-4 border-b border-[#e8eee9] bg-[linear-gradient(118deg,#f8fcf9_0%,#ffffff_58%,#f2f8f4_100%)] px-5 py-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 items-center gap-3.5">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px] bg-[linear-gradient(145deg,#389866,#176b43)] text-white shadow-[0_9px_20px_rgba(37,126,82,0.22)]">
+            <Milestone className="h-5 w-5" />
+          </span>
+          <div className="min-w-0">
+            <h2 className="text-[16px] font-bold text-[#171d19]">
+              Flexible Projects
+            </h2>
+            <p className="mt-0.5 text-[11px] leading-4 text-[#6d766f]">
+              Milestone-based work outside the fixed artwork workflow
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-[#dbe8de] bg-white px-3 py-1.5 text-[10px] font-semibold text-[#536058] shadow-sm">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#2d8e5c]" />
+            {active} active
+          </span>
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-[#e1e6e2] bg-white px-3 py-1.5 text-[10px] font-semibold text-[#68716b] shadow-sm">
+            <CheckCircle2 className="h-3 w-3 text-[#5c7f68]" />
+            {completed} completed
+          </span>
+          <Link
+            href="/projects?view=flexible"
+            className="ml-auto inline-flex items-center gap-1 text-[11px] font-semibold text-[#197848] transition-colors hover:text-[#0e5b34] sm:ml-1"
+          >
+            View all {total}
+            <ChevronRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+      </header>
+
+      {projects.length === 0 ? (
+        <EmptyState
+          icon={Milestone}
+          title="No flexible projects"
+          description="Flexible projects you own or collaborate on will appear here."
+        />
+      ) : (
+        <div className="grid gap-3 p-4 sm:p-5 lg:grid-cols-3">
+          {projects.map((project) => (
+            <Link
+              key={project.id}
+              href={project.href}
+              className="group flex min-w-0 flex-col overflow-hidden rounded-[17px] border border-[#e0e7e1] bg-white p-4 shadow-[0_8px_22px_rgba(29,51,37,0.04)] transition duration-200 hover:-translate-y-0.5 hover:border-[#bad6c3] hover:shadow-[0_13px_28px_rgba(29,79,48,0.09)]"
+            >
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="inline-flex rounded-md border border-[#dce7df] bg-[#f3f8f4] px-2 py-1 text-[9px] font-bold uppercase tracking-[0.06em] text-[#347151]">
+                  {project.scope === "INTERNAL" ? "Internal" : "External"}
+                </span>
+                <span
+                  className={`inline-flex rounded-md border px-2 py-1 text-[9px] font-bold capitalize ${flexiblePriorityStyles[project.priority]}`}
+                >
+                  {project.priority.toLowerCase()}
+                </span>
+                <span className="ml-auto inline-flex items-center gap-1 text-[9px] font-semibold text-[#667069]">
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      project.status === "COMPLETED"
+                        ? "bg-[#718078]"
+                        : "bg-[#2c925e]"
+                    }`}
+                  />
+                  {project.status === "COMPLETED" ? "Completed" : "Active"}
+                </span>
+              </div>
+
+              <h3 className="mt-3 truncate text-[14px] font-bold text-[#1b231d] transition-colors group-hover:text-[#176e43]">
+                {project.name}
+              </h3>
+
+              <div className="mt-4 rounded-[13px] bg-[#f7faf7] p-3">
+                <div className="flex items-end justify-between gap-3">
+                  <span className="text-[10px] font-semibold text-[#68716b]">
+                    Milestone progress
+                  </span>
+                  <span className="text-[18px] font-bold leading-none tracking-[-0.03em] text-[#176d42]">
+                    {project.progress}%
+                  </span>
+                </div>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#dfe8e1]">
+                  <span
+                    className="block h-full rounded-full bg-[linear-gradient(90deg,#3aa06b,#176b43)] transition-[width]"
+                    style={{ width: `${project.progress}%` }}
+                  />
+                </div>
+                <p className="mt-2 text-[10px] text-[#748078]">
+                  {project.completedMilestones} of {project.totalMilestones}{" "}
+                  milestones complete
+                </p>
+              </div>
+
+              <div className="mt-4 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-[#edf1ed] pt-3">
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#e6d4c4] text-[8px] font-bold text-[#805a3c]">
+                    {project.ownerInitials}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-[9px] font-medium text-[#8a928c]">
+                      Owner
+                    </span>
+                    <span className="block truncate text-[10px] font-semibold text-[#3a433d]">
+                      {project.ownerName}
+                    </span>
+                  </span>
+                </span>
+                <span className="text-right">
+                  <span className="block text-[9px] font-medium text-[#8a928c]">
+                    Deadline
+                  </span>
+                  <span
+                    className={`block text-[10px] font-semibold ${
+                      project.deadlineTone === "critical"
+                        ? "text-[#cf3d35]"
+                        : project.deadlineTone === "warning"
+                          ? "text-[#cb6d12]"
+                          : "text-[#3f4942]"
+                    }`}
+                    title={project.deadlineStatusLabel ?? undefined}
+                  >
+                    {project.deadlineLabel}
+                  </span>
+                </span>
+              </div>
+
+              <span className="mt-3 inline-flex items-center justify-end gap-1 text-[10px] font-semibold text-[#267d50]">
+                Open timeline
+                <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
+              </span>
+            </Link>
+          ))}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
 function RecentProjects({
   projects,
 }: {
@@ -468,6 +627,14 @@ export function DashboardWorkspace({
         <ProjectsByStage stages={snapshot.stages} />
         <MyWork items={snapshot.myWork} />
       </div>
+      {snapshot.canViewFlexibleProjects ? (
+        <FlexibleProjectsOverview
+          projects={snapshot.flexibleProjects}
+          total={snapshot.flexibleProjectCount}
+          active={snapshot.flexibleActiveCount}
+          completed={snapshot.flexibleCompletedCount}
+        />
+      ) : null}
       {snapshot.canViewRecentProjects ? (
         <RecentProjects projects={snapshot.recentProjects} />
       ) : null}
