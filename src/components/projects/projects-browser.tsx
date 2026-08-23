@@ -268,7 +268,7 @@ export function ProjectsBrowser({
         <header className="space-y-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <h1 className="text-[38px] font-[700] leading-none tracking-[-0.045em] text-[#0f1411] sm:text-[44px]">
+              <h1 className="text-[25px] font-[700] leading-none tracking-[-0.045em] text-[#0f1411] sm:text-[29px]">
                 Projects
               </h1>
               <p className="mt-2 text-[14px] text-[#737b74]">
