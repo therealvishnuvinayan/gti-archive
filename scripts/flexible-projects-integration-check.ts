@@ -11,8 +11,10 @@ import {
 import { createProjectV2 } from "../src/lib/project-creation";
 import {
   createFlexibleMilestone,
+  createFlexibleMilestoneNote,
   createFlexibleProject,
   deleteFlexibleMilestone,
+  deleteFlexibleMilestoneNote,
   duplicateFlexibleMilestone,
   getFlexibleMilestoneDetail,
   getFlexibleProjectDetail,
@@ -145,6 +147,47 @@ async function main() {
     check(
       milestoneBrief?.project.milestones.find(({ id }) => id === milestoneTwo.milestoneId)?.attachments.length === 0,
       "milestone attachment leaked into another timeline entry",
+    );
+
+    const ownerNote = await createFlexibleMilestoneNote(owner, created.projectId, milestoneOne.milestoneId, {
+      content: "Confirm the final brief with the client.",
+    });
+    const collaboratorNote = await createFlexibleMilestoneNote(collaborator, created.projectId, milestoneOne.milestoneId, {
+      content: "Schedule the internal review.",
+    });
+    check(!isError(ownerNote) && !isError(collaboratorNote), "milestone note creation failed");
+    check(
+      isError(await createFlexibleMilestoneNote(owner, created.projectId, milestoneOne.milestoneId, { content: "   " })),
+      "blank milestone note was accepted",
+    );
+    check(
+      isError(await createFlexibleMilestoneNote(unrelated, created.projectId, milestoneOne.milestoneId, { content: "Hidden note" })),
+      "unrelated user added a milestone note",
+    );
+
+    const ownerNoteView = await getFlexibleMilestoneDetail(created.slug, milestoneOne.milestoneId, owner);
+    check(ownerNoteView?.milestone.notes.length === 2, "milestone notes did not appear in the brief");
+    check(ownerNoteView?.milestone.notes.every(({ canDelete }) => canDelete), "project owner cannot delete milestone notes");
+    const collaboratorNoteView = await getFlexibleMilestoneDetail(created.slug, milestoneOne.milestoneId, collaborator);
+    check(
+      collaboratorNoteView?.milestone.notes.find(({ id }) => id === collaboratorNote.noteId)?.canDelete === true,
+      "note author cannot delete their own note",
+    );
+    check(
+      collaboratorNoteView?.milestone.notes.find(({ id }) => id === ownerNote.noteId)?.canDelete === false,
+      "collaborator can delete another user's note",
+    );
+    check(
+      isError(await deleteFlexibleMilestoneNote(collaborator, created.projectId, milestoneOne.milestoneId, ownerNote.noteId)),
+      "collaborator deleted another user's note",
+    );
+    check(
+      !isError(await deleteFlexibleMilestoneNote(collaborator, created.projectId, milestoneOne.milestoneId, collaboratorNote.noteId)),
+      "note author could not delete their own note",
+    );
+    check(
+      (await getFlexibleMilestoneDetail(created.slug, milestoneOne.milestoneId, owner))?.milestone.notes.length === 1,
+      "deleted milestone note remained in the brief",
     );
 
     const invalidResponsible = await createFlexibleMilestone(owner, created.projectId, {

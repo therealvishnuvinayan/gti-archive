@@ -26,6 +26,7 @@ const FLEXIBLE_PROJECT_SCOPES = new Set<ProjectExecutionType>([
 ]);
 const NAME_MAX_LENGTH = 160;
 const CATEGORY_MAX_LENGTH = 80;
+const NOTE_MAX_LENGTH = 2_000;
 
 export type FlexibleProjectUserOption = {
   id: string;
@@ -61,6 +62,7 @@ export type FlexibleMilestoneRecord = {
   status: FlexibleMilestoneStatus;
   completedAt: string | null;
   attachments: FlexibleMilestoneAttachmentRecord[];
+  notes: FlexibleMilestoneNoteRecord[];
 };
 
 export type FlexibleMilestoneAttachmentRecord = {
@@ -70,6 +72,14 @@ export type FlexibleMilestoneAttachmentRecord = {
   fileSize: number;
   uploadedBy: { id: string; name: string };
   createdAt: string;
+};
+
+export type FlexibleMilestoneNoteRecord = {
+  id: string;
+  content: string;
+  author: { id: string; name: string };
+  createdAt: string;
+  canDelete: boolean;
 };
 
 export type FlexibleProjectDetailRecord = FlexibleProjectListItem & {
@@ -119,6 +129,16 @@ export type FlexibleMilestoneFieldErrors = Partial<
 export type FlexibleMilestoneMutationResult =
   | { milestoneId: string }
   | { error: string; fieldErrors?: FlexibleMilestoneFieldErrors };
+
+export type FlexibleMilestoneNoteInput = {
+  content: string;
+};
+
+export type FlexibleMilestoneNoteFieldErrors = Partial<Record<"content", string>>;
+
+export type FlexibleMilestoneNoteMutationResult =
+  | { noteId: string }
+  | { error: string; fieldErrors?: FlexibleMilestoneNoteFieldErrors };
 
 type FlexibleProjectAccessContext = {
   ownerId: string;
@@ -431,6 +451,15 @@ export async function getFlexibleProjectDetail(slug: string, user: PermissionUse
                 uploadedBy: { select: { id: true, name: true, email: true } },
               },
             },
+            notes: {
+              orderBy: { createdAt: "desc" },
+              select: {
+                id: true,
+                content: true,
+                createdAt: true,
+                author: { select: { id: true, name: true, email: true } },
+              },
+            },
           },
         },
       },
@@ -452,9 +481,11 @@ export async function getFlexibleProjectDetail(slug: string, user: PermissionUse
       role: participant.role,
       avatarSrc: participant.avatarUrl
         ? `/api/users/${encodeURIComponent(participant.id)}/avatar?v=${encodeURIComponent(participant.avatarUrl)}`
-        : null,
+      : null,
     }),
   );
+  const canManageProjectAccess = canManageFlexibleProject(user, accessContext);
+  const canManageMilestoneAccess = canManageFlexibleMilestones(user, accessContext);
 
   return {
     ...summary,
@@ -484,13 +515,22 @@ export async function getFlexibleProjectDetail(slug: string, user: PermissionUse
         uploadedBy: { id: attachment.uploadedBy.id, name: getUserName(attachment.uploadedBy) },
         createdAt: attachment.createdAt.toISOString(),
       })),
+      notes: milestone.notes.map((note) => ({
+        id: note.id,
+        content: note.content,
+        author: { id: note.author.id, name: getUserName(note.author) },
+        createdAt: note.createdAt.toISOString(),
+        canDelete:
+          canManageMilestoneAccess &&
+          (note.author.id === user.id || canManageProjectAccess),
+      })),
     })),
     participantOptions,
-    canManageProject: canManageFlexibleProject(user, accessContext),
-    canManageMilestones: canManageFlexibleMilestones(user, accessContext),
+    canManageProject: canManageProjectAccess,
+    canManageMilestones: canManageMilestoneAccess,
     canUploadAttachments: canUploadFlexibleMilestoneAttachments(user, accessContext),
     canDeleteAttachments:
-      canManageFlexibleProject(user, accessContext) && hasPermission(user, "file.delete"),
+      canManageProjectAccess && hasPermission(user, "file.delete"),
   } satisfies FlexibleProjectDetailRecord;
 }
 
@@ -690,6 +730,75 @@ export async function updateFlexibleMilestone(
     await tx.flexibleMilestone.update({ where: { id: milestone.id }, data: parsed.data! });
     return { milestoneId: milestone.id };
   });
+}
+
+export async function createFlexibleMilestoneNote(
+  actor: PermissionUser,
+  projectId: string,
+  milestoneId: string,
+  input: FlexibleMilestoneNoteInput,
+): Promise<FlexibleMilestoneNoteMutationResult> {
+  const project = await loadProjectAccessContext(projectId);
+  if (!project) return { error: "Flexible Project not found." };
+  if (!canManageFlexibleMilestones(actor, project)) {
+    return { error: "You are not allowed to add notes to this milestone." };
+  }
+
+  const content = input.content?.trim() ?? "";
+  if (!content) {
+    return { error: "Enter a note before saving.", fieldErrors: { content: "Note is required." } };
+  }
+  if (content.length > NOTE_MAX_LENGTH) {
+    return {
+      error: "The note is too long.",
+      fieldErrors: { content: `Note must be ${NOTE_MAX_LENGTH.toLocaleString()} characters or fewer.` },
+    };
+  }
+
+  const milestone = await withPrismaRetry(() =>
+    prisma.flexibleMilestone.findFirst({
+      where: { id: milestoneId, projectId },
+      select: { id: true },
+    }),
+  );
+  if (!milestone) return { error: "Milestone not found." };
+
+  const note = await withPrismaRetry(() =>
+    prisma.flexibleMilestoneNote.create({
+      data: { milestoneId: milestone.id, authorId: actor.id, content },
+      select: { id: true },
+    }),
+  );
+  return { noteId: note.id };
+}
+
+export async function deleteFlexibleMilestoneNote(
+  actor: PermissionUser,
+  projectId: string,
+  milestoneId: string,
+  noteId: string,
+): Promise<FlexibleMilestoneNoteMutationResult> {
+  const project = await loadProjectAccessContext(projectId);
+  if (!project) return { error: "Flexible Project not found." };
+  if (!canManageFlexibleMilestones(actor, project)) {
+    return { error: "You are not allowed to delete notes from this milestone." };
+  }
+
+  const note = await withPrismaRetry(() =>
+    prisma.flexibleMilestoneNote.findFirst({
+      where: { id: noteId, milestoneId, milestone: { projectId } },
+      select: { id: true, authorId: true },
+    }),
+  );
+  if (!note) return { error: "Note not found." };
+  if (note.authorId !== actor.id && !canManageFlexibleProject(actor, project)) {
+    return { error: "You can only delete notes that you added." };
+  }
+
+  await withPrismaRetry(() =>
+    prisma.flexibleMilestoneNote.delete({ where: { id: note.id } }),
+  );
+  return { noteId: note.id };
 }
 
 export async function setFlexibleMilestoneCompleted(

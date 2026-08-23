@@ -497,6 +497,7 @@ model User {
   addedFlexibleProjectCollaborations  FlexibleProjectCollaborator[]        @relation("FlexibleProjectCollaboratorAdder")
   responsibleFlexibleMilestones       FlexibleMilestone[]                  @relation("FlexibleMilestoneResponsibleUser")
   completedFlexibleMilestones         FlexibleMilestone[]                  @relation("FlexibleMilestoneCompletedBy")
+  authoredFlexibleMilestoneNotes      FlexibleMilestoneNote[]              @relation("FlexibleMilestoneNoteAuthor")
   uploadedFlexibleProjectAttachments  FlexibleProjectAttachment[]          @relation("FlexibleProjectAttachmentUploader")
   createdAt                           DateTime                             @default(now())
   updatedAt                           DateTime                             @updatedAt
@@ -693,6 +694,7 @@ model FlexibleMilestone {
   completedById     String?
   completedBy       User?                       @relation("FlexibleMilestoneCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
   attachments       FlexibleProjectAttachment[]
+  notes             FlexibleMilestoneNote[]
   createdAt         DateTime                    @default(now())
   updatedAt         DateTime                    @updatedAt
 
@@ -700,6 +702,20 @@ model FlexibleMilestone {
   @@index([projectId, status])
   @@index([responsibleUserId])
   @@index([completedById])
+}
+
+model FlexibleMilestoneNote {
+  id          String            @id @default(cuid())
+  milestoneId String
+  milestone   FlexibleMilestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User              @relation("FlexibleMilestoneNoteAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  content     String
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([milestoneId, createdAt])
+  @@index([authorId])
 }
 
 model FlexibleProjectAttachment {
