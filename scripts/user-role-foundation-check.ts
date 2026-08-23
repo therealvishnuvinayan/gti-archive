@@ -16,6 +16,7 @@ import {
   canCreateProjects,
   canUseArchives,
   canUseProjects,
+  canViewProjectTypeSwitcher,
   getSidebarVisibility,
   hasPermission,
   hasProjectPermission,
@@ -80,6 +81,35 @@ assert.equal(isProtectedRootRole(UserRole.SUPER_ADMIN), true);
 assert.equal(isStandardUserRole(UserRole.USER), true);
 assert.equal(isStandardUserRole(UserRole.ADMIN), false);
 assert.equal(getUserRoleLabel(UserRole.USER), "User");
+
+assert.equal(
+  canViewProjectTypeSwitcher(
+    { role: UserRole.ADMIN },
+    { isProjectOwner: false, isProjectCoOwner: false },
+  ),
+  true,
+);
+assert.equal(
+  canViewProjectTypeSwitcher(
+    { role: UserRole.USER },
+    { isProjectOwner: false, isProjectCoOwner: false },
+  ),
+  false,
+);
+assert.equal(
+  canViewProjectTypeSwitcher(
+    { role: UserRole.USER },
+    { isProjectOwner: true, isProjectCoOwner: false },
+  ),
+  true,
+);
+assert.equal(
+  canViewProjectTypeSwitcher(
+    { role: UserRole.USER },
+    { isProjectOwner: false, isProjectCoOwner: true },
+  ),
+  true,
+);
 
 assert.deepEqual(defaultRolePermissions.USER, expectedUserPermissions);
 assert.equal(defaultRolePermissions.USER.includes("project.create"), false);

@@ -120,6 +120,8 @@ const tasksWorkspace = read("src/components/tasks/user-tasks-workspace.tsx");
 const tasksService = read("src/lib/user-tasks.ts");
 const dashboardLayout = read("src/app/(dashboard)/layout.tsx");
 const sidebar = read("src/components/layout/sidebar.tsx");
+const permissions = read("src/lib/permissions/resolver.ts");
+const flexibleRoute = read("src/components/projects/flexible-projects-route-workspace.tsx");
 
 assert.match(page, /user\.role === UserRole\.USER/);
 assert.match(page, /<UserProjectsBrowser/);
@@ -169,6 +171,11 @@ for (const forbidden of [
 assert.match(browser, /Artwork Projects/);
 assert.match(browser, /Flexible Projects/);
 assert.match(browser, /href="\/projects\?view=flexible"/);
+assert.match(browser, /showProjectTypeSwitcher \? \(/);
+assert.match(flexibleRoute, /showProjectTypeSwitcher \? \(/);
+assert.match(page, /getProjectTypeSwitcherVisibility\(user\)/);
+assert.match(page, /showProjectTypeSwitcher=\{showProjectTypeSwitcher\}/);
+assert.match(permissions, /canViewProjectTypeSwitcher/);
 
 assert.match(browser, /gti:user-projects:view/);
 assert.match(browser, /slice\(0, 5\)/);

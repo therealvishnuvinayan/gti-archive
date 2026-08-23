@@ -180,6 +180,22 @@ export function canUseProjects(user: PermissionUser) {
   );
 }
 
+export type ProjectTypeSwitcherAuthority = {
+  isProjectOwner: boolean;
+  isProjectCoOwner: boolean;
+};
+
+export function canViewProjectTypeSwitcher(
+  user: Pick<PermissionUser, "role">,
+  authority: ProjectTypeSwitcherAuthority,
+) {
+  return (
+    isGlobalProjectAdministrator(user) ||
+    authority.isProjectOwner ||
+    authority.isProjectCoOwner
+  );
+}
+
 export function assertCanUseArchives(
   user: PermissionUser,
   message = "You do not have permission to view archives.",

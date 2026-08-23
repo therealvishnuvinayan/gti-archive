@@ -21,6 +21,7 @@ import {
   getDashboardProjectCounts,
   getProjectListFilterOptions,
   getProjectsList,
+  getProjectTypeSwitcherVisibility,
 } from "@/lib/projects";
 import { canCreateProjects, canUseProjects } from "@/lib/permissions/resolver";
 import {
@@ -107,6 +108,8 @@ export default async function ProjectsPage({
     redirect("/no-access");
   }
 
+  const showProjectTypeSwitcher = await getProjectTypeSwitcherVisibility(user);
+
   if (resolvedSearchParams.view === "flexible") {
     const canCreateProject = canCreateProjects(user);
     const [flexibleProjects, flexibleUsers] = await Promise.all([
@@ -121,6 +124,7 @@ export default async function ProjectsPage({
           users={flexibleUsers}
           currentUserId={user.id}
           canCreateProject={canCreateProject}
+          showProjectTypeSwitcher={showProjectTypeSwitcher}
         />
       </DashboardLayout>
     );
@@ -155,6 +159,7 @@ export default async function ProjectsPage({
           activeFilter={activeFilter}
           activeSort={activeSort}
           query={query}
+          showProjectTypeSwitcher={showProjectTypeSwitcher}
         />
       </DashboardLayout>
     );
@@ -173,6 +178,7 @@ export default async function ProjectsPage({
         currentPage={data.currentPage}
         hasAnyProjects={data.hasAnyProjects}
         canCreateProject={data.canCreateProject}
+        showProjectTypeSwitcher={showProjectTypeSwitcher}
         activeStatus={data.activeStatus}
         activeSort={data.activeSort}
         activeStage={data.activeStage}

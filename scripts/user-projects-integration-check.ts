@@ -17,6 +17,7 @@ import {
 } from "../src/lib/project-concepts";
 import { createProjectV2 } from "../src/lib/project-creation";
 import { prisma } from "../src/lib/prisma";
+import { getProjectTypeSwitcherVisibility } from "../src/lib/projects";
 import { getUserProjectWorkspace } from "../src/lib/user-project-workspace";
 import { getUserProjectsList } from "../src/lib/user-projects";
 import {
@@ -417,6 +418,26 @@ async function main() {
       owner,
     );
     check(deniedAdminResult.total === 0, "USER query helper must not serve the ADMIN management path");
+
+    check(
+      await getProjectTypeSwitcherVisibility(owner),
+      "ADMIN must see the artwork/flexible project switcher",
+    );
+    check(
+      !(await getProjectTypeSwitcherVisibility(userOne)),
+      "an executor/collaborator must not see the artwork/flexible project switcher",
+    );
+    await prisma.projectCoOwner.create({
+      data: {
+        projectId: zeroTaskProjectId,
+        userId: userOne.id,
+        addedById: owner.id,
+      },
+    });
+    check(
+      await getProjectTypeSwitcherVisibility(userOne),
+      "a project co-owner must see the artwork/flexible project switcher",
+    );
 
     console.log("USER My Projects relationship, task-scope, filter, and status integration checks passed.");
   } finally {

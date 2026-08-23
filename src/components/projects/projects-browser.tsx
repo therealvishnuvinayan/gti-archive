@@ -52,6 +52,7 @@ type ProjectsBrowserProps = {
   currentPage: number;
   hasAnyProjects: boolean;
   canCreateProject: boolean;
+  showProjectTypeSwitcher: boolean;
   activeStatus: ProjectListStatus;
   activeSort: ProjectSortValue;
   activeStage: number | null;
@@ -126,6 +127,7 @@ export function ProjectsBrowser({
   currentPage,
   hasAnyProjects,
   canCreateProject,
+  showProjectTypeSwitcher,
   activeStatus,
   activeSort,
   activeStage,
@@ -225,12 +227,13 @@ export function ProjectsBrowser({
 
   return (
     <div className="space-y-5">
-      <MotionSection>
-        <div
-          role="tablist"
-          aria-label="Project type"
-          className="inline-flex max-w-full gap-1 overflow-x-auto rounded-[15px] border border-[#d5ded6] bg-white p-1 shadow-[0_8px_22px_rgba(18,34,25,0.035)]"
-        >
+      {showProjectTypeSwitcher ? (
+        <MotionSection>
+          <div
+            role="tablist"
+            aria-label="Project type"
+            className="inline-flex max-w-full gap-1 overflow-x-auto rounded-[15px] border border-[#d5ded6] bg-white p-1 shadow-[0_8px_22px_rgba(18,34,25,0.035)]"
+          >
           <button
             type="button"
             role="tab"
@@ -257,8 +260,9 @@ export function ProjectsBrowser({
           >
             <PanelsTopLeft className="size-4" /> Flexible Projects
           </button>
-        </div>
-      </MotionSection>
+          </div>
+        </MotionSection>
+      ) : null}
 
       {activeProjectView === "flexible" ? (
         <ProjectsGridSkeleton />

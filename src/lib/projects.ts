@@ -43,6 +43,7 @@ import {
 import { getFavoriteAttachmentIdSetForUser } from "@/lib/file-favorite-queries";
 import {
   canUseProjects,
+  canViewProjectTypeSwitcher,
   getAccessibleProjectsWhere,
   hasPermission,
   hasProjectPermission,
@@ -2060,6 +2061,49 @@ export async function getProjectListFilterOptions(
   });
   logProjectTiming("filter options total", startedAt);
   return options;
+}
+
+export async function getProjectTypeSwitcherVisibility(
+  currentUser: ProjectAccessUser,
+) {
+  const noProjectAuthority = {
+    isProjectOwner: false,
+    isProjectCoOwner: false,
+  };
+
+  if (canViewProjectTypeSwitcher(currentUser, noProjectAuthority)) {
+    return true;
+  }
+
+  const [artworkProject, flexibleProject] = await withPrismaRetry(() =>
+    Promise.all([
+      prisma.project.findFirst({
+        where: {
+          OR: [
+            { ownerId: currentUser.id },
+            { coOwners: { some: { userId: currentUser.id } } },
+          ],
+        },
+        select: {
+          ownerId: true,
+          coOwners: {
+            where: { userId: currentUser.id },
+            select: { userId: true },
+          },
+        },
+      }),
+      prisma.flexibleProject.findFirst({
+        where: { ownerId: currentUser.id },
+        select: { id: true },
+      }),
+    ]),
+  );
+
+  return canViewProjectTypeSwitcher(currentUser, {
+    isProjectOwner:
+      artworkProject?.ownerId === currentUser.id || Boolean(flexibleProject),
+    isProjectCoOwner: Boolean(artworkProject?.coOwners.length),
+  });
 }
 
 function sortProjectListUserFilterOptions(
