@@ -79,6 +79,14 @@ assert.match(workspaceQuery, /ProjectResearchFolderSystemKey\.TECH/);
 assert.doesNotMatch(workspaceQuery, /MARKET_COMPETITION|VENDORS|FINANCE|LEGAL|PITCH/);
 assert.match(workspaceQuery, /deriveUserTaskDisplayState/);
 assert.match(workspaceQuery, /buildAccessibleProjectsWhere\(currentUser\)/);
+assert.match(workspaceQuery, /where: \{ ownerUserId: currentUser\.id \}/);
+assert.match(workspaceQuery, /isGlobalProjectAdministrator\(currentUser\)/);
+assert.match(workspaceQuery, /isProjectOwner\(currentUser, project\)/);
+assert.match(workspaceQuery, /isProjectCoOwner\(currentUser, project\)/);
+assert.match(workspaceQuery, /const classifiedFolders = canViewClassifiedFolders/);
+assert.match(workspaceQuery, /: \[\];/);
+assert.match(workspace, /Only your private folder is visible to you\./);
+assert.match(workspace, /data\.canViewClassifiedFolders/);
 
 assert.match(privateFolders, /ownerUserId: user\.id/);
 assert.match(privateFolders, /activeParticipantWhere\(user\.id\)/);
@@ -93,7 +101,7 @@ assert.match(researchAccess, /ProjectResearchFolderSystemKey\.BRIEF/);
 assert.match(researchAccess, /ProjectResearchFolderSystemKey\.TECH/);
 assert.match(
   researchAccess,
-  /canWrite: isCanonicalWorkspace && stageAvailable && isGlobalAdministrator/,
+  /canWrite:\s*isCanonicalWorkspace &&\s*stageAvailable &&\s*isGlobalAdministrator/,
 );
 assert.match(stageTwoPage, /!isBusinessAdministratorRole\(user\.role\)/);
 assert.match(stageTwoPage, /redirect\(`\/projects\/\$\{slug\}`\)/);
@@ -104,7 +112,7 @@ assert.match(conceptRoute, /backHref: `\/projects\/\$\{encodeURIComponent\(proje
 assert.match(chatWorkspace, /isStageNeutralConceptMode/);
 assert.match(chatWorkspace, /Back to Workspace/);
 assert.match(chatWorkspace, /Concept Activity/);
-assert.match(chatWorkspace, /stageNeutral=\{isStageNeutralConceptMode\}/);
+assert.match(chatWorkspace, /stageNeutral: conceptMode\.stageNeutral/);
 assert.match(chatWorkspace, /Read-only approved concept reference/);
 
 assert.match(schema, /model ProjectPrivateFolder/);
