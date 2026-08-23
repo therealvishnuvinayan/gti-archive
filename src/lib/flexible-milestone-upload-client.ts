@@ -1,8 +1,14 @@
 import { getUploadErrorMessage } from "@/lib/upload-validation";
 
-export async function uploadFlexibleProjectAttachments(projectId: string, files: File[]) {
+export async function uploadFlexibleMilestoneAttachments(
+  projectId: string,
+  milestoneId: string,
+  files: File[],
+) {
+  const milestonePath = `/api/flexible-projects/${encodeURIComponent(projectId)}/milestones/${encodeURIComponent(milestoneId)}/attachments`;
+
   for (const file of files) {
-    const preparationResponse = await fetch(`/api/flexible-projects/${encodeURIComponent(projectId)}/attachments/upload-url`, {
+    const preparationResponse = await fetch(`${milestonePath}/upload-url`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -33,7 +39,7 @@ export async function uploadFlexibleProjectAttachments(projectId: string, files:
       failed = true;
       throw error;
     } finally {
-      const completionResponse = await fetch(`/api/flexible-projects/${encodeURIComponent(projectId)}/attachments/complete`, {
+      const completionResponse = await fetch(`${milestonePath}/complete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ attachmentId: preparation.attachmentId, failed }),

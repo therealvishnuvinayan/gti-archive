@@ -678,22 +678,23 @@ model FlexibleProjectCollaborator {
 }
 
 model FlexibleMilestone {
-  id                String                  @id @default(cuid())
+  id                String                      @id @default(cuid())
   projectId         String
-  project           FlexibleProject         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project           FlexibleProject             @relation(fields: [projectId], references: [id], onDelete: Cascade)
   name              String
   description       String?
   category          String?
   responsibleUserId String?
-  responsibleUser   User?                   @relation("FlexibleMilestoneResponsibleUser", fields: [responsibleUserId], references: [id], onDelete: SetNull)
+  responsibleUser   User?                       @relation("FlexibleMilestoneResponsibleUser", fields: [responsibleUserId], references: [id], onDelete: SetNull)
   deadline          DateTime?
   sortOrder         Int
-  status            FlexibleMilestoneStatus @default(PENDING)
+  status            FlexibleMilestoneStatus     @default(PENDING)
   completedAt       DateTime?
   completedById     String?
-  completedBy       User?                   @relation("FlexibleMilestoneCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
-  createdAt         DateTime                @default(now())
-  updatedAt         DateTime                @updatedAt
+  completedBy       User?                       @relation("FlexibleMilestoneCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
+  attachments       FlexibleProjectAttachment[]
+  createdAt         DateTime                    @default(now())
+  updatedAt         DateTime                    @updatedAt
 
   @@unique([projectId, sortOrder])
   @@index([projectId, status])
@@ -702,22 +703,25 @@ model FlexibleMilestone {
 }
 
 model FlexibleProjectAttachment {
-  id               String           @id @default(cuid())
+  id               String             @id @default(cuid())
   projectId        String
-  project          FlexibleProject  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project          FlexibleProject    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneId      String?
+  milestone        FlexibleMilestone? @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
   uploadedById     String
-  uploadedBy       User             @relation("FlexibleProjectAttachmentUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  uploadedBy       User               @relation("FlexibleProjectAttachmentUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
   fileName         String
   originalFileName String
   mimeType         String
   fileSize         Int
   bucket           String
-  storageKey       String           @unique
-  status           AttachmentStatus @default(UPLOADING)
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
+  storageKey       String             @unique
+  status           AttachmentStatus   @default(UPLOADING)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
 
   @@index([projectId, createdAt])
+  @@index([milestoneId, createdAt])
   @@index([uploadedById])
   @@index([status])
 }

@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
-import { requestFlexibleProjectAttachmentUpload } from "@/lib/flexible-project-attachments";
+import { requestFlexibleMilestoneAttachmentUpload } from "@/lib/flexible-project-attachments";
 
 export async function POST(
   request: Request,
-  { params }: { params: Promise<{ projectId: string }> },
+  { params }: { params: Promise<{ projectId: string; milestoneId: string }> },
 ) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
@@ -18,9 +18,10 @@ export async function POST(
   if (!payload.originalFileName || typeof payload.fileSize !== "number") {
     return NextResponse.json({ error: "Missing required upload fields." }, { status: 400 });
   }
-  const { projectId } = await params;
-  const result = await requestFlexibleProjectAttachmentUpload(user, {
+  const { projectId, milestoneId } = await params;
+  const result = await requestFlexibleMilestoneAttachmentUpload(user, {
     projectId,
+    milestoneId,
     originalFileName: payload.originalFileName,
     mimeType: payload.mimeType || "application/octet-stream",
     fileSize: payload.fileSize,

@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
-import { FileText, Loader2, Paperclip, X } from "lucide-react";
+import { useMemo, useState, useTransition } from "react";
+import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -21,12 +21,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { uploadFlexibleProjectAttachments } from "@/lib/flexible-project-upload-client";
 import type {
   FlexibleProjectFieldErrors,
   FlexibleProjectUserOption,
 } from "@/lib/flexible-projects";
-import { showSuccessToast, showWarningToast } from "@/lib/toast";
+import { showSuccessToast } from "@/lib/toast";
 
 type EditableFlexibleProject = {
   id: string;
@@ -62,11 +61,6 @@ function FieldError({ children }: { children?: string }) {
   return children ? <p className="mt-1.5 text-[11px] text-[#b5483f]">{children}</p> : null;
 }
 
-function formatBytes(bytes: number) {
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
-}
-
 export function FlexibleProjectDialog({
   mode,
   users,
@@ -75,7 +69,6 @@ export function FlexibleProjectDialog({
   onClose,
 }: FlexibleProjectDialogProps) {
   const router = useRouter();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [pending, startTransition] = useTransition();
   const [name, setName] = useState(initialProject?.name ?? "");
   const [description, setDescription] = useState(initialProject?.description ?? "");
@@ -86,7 +79,6 @@ export function FlexibleProjectDialog({
   const [deadline, setDeadline] = useState(initialProject?.deadline?.slice(0, 10) ?? "");
   const [priority, setPriority] = useState<"HIGH" | "MEDIUM" | "LOW">(initialProject?.priority ?? "MEDIUM");
   const [scope, setScope] = useState<"INTERNAL" | "EXTERNAL">(initialProject?.scope ?? "INTERNAL");
-  const [files, setFiles] = useState<File[]>([]);
   const [errors, setErrors] = useState<FlexibleProjectFieldErrors>({});
   const [formError, setFormError] = useState("");
   const ownerId = ownerIds[0] ?? "";
@@ -100,15 +92,6 @@ export function FlexibleProjectDialog({
     setOwnerIds(nextOwnerId ? [nextOwnerId] : []);
     setCollaboratorIds((current) => current.filter((id) => id !== nextOwnerId));
     setErrors((current) => ({ ...current, ownerId: undefined, collaboratorIds: undefined }));
-  }
-
-  function addFiles(nextFiles: FileList | null) {
-    if (!nextFiles) return;
-    setFiles((current) => {
-      const byKey = new Map(current.map((file) => [`${file.name}:${file.size}:${file.lastModified}`, file]));
-      for (const file of Array.from(nextFiles)) byKey.set(`${file.name}:${file.size}:${file.lastModified}`, file);
-      return [...byKey.values()];
-    });
   }
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -139,17 +122,6 @@ export function FlexibleProjectDialog({
         setFormError(result.error);
         setErrors(result.fieldErrors ?? {});
         return;
-      }
-
-      if (mode === "create" && files.length) {
-        try {
-          await uploadFlexibleProjectAttachments(result.projectId, files);
-        } catch (error) {
-          showWarningToast(
-            "Project created, but an attachment could not be uploaded.",
-            error instanceof Error ? error.message : "The project was saved without that file.",
-          );
-        }
       }
 
       showSuccessToast(mode === "create" ? "Flexible Project created." : "Flexible Project updated.");
@@ -233,30 +205,6 @@ export function FlexibleProjectDialog({
           </Select>
         </div>
 
-        {mode === "create" ? (
-          <div className="sm:col-span-2">
-            <FieldLabel>Attachments</FieldLabel>
-            <input ref={fileInputRef} type="file" multiple className="sr-only" onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
-            <button type="button" onClick={() => fileInputRef.current?.click()} className="flex min-h-20 w-full items-center justify-center gap-3 rounded-[16px] border border-dashed border-[#bfcfc3] bg-white px-4 text-[13px] font-[650] text-[#47715a] transition hover:border-[#72a484] hover:bg-[#f7fbf7]">
-              <Paperclip className="size-4" /> Add attachments
-            </button>
-            {files.length ? (
-              <div className="mt-3 space-y-2">
-                {files.map((file) => {
-                  const key = `${file.name}:${file.size}:${file.lastModified}`;
-                  return (
-                    <div key={key} className="flex items-center gap-3 rounded-[13px] border border-[#e1e7e1] bg-white px-3 py-2.5">
-                      <FileText className="size-4 text-[#287e53]" />
-                      <span className="min-w-0 flex-1 truncate text-[12px] font-[650] text-[#344039]">{file.name}</span>
-                      <span className="text-[10px] text-[#7b857e]">{formatBytes(file.size)}</span>
-                      <button type="button" onClick={() => setFiles((current) => current.filter((item) => `${item.name}:${item.size}:${item.lastModified}` !== key))} aria-label={`Remove ${file.name}`} className="grid size-7 place-items-center rounded-full text-[#7a847c] hover:bg-[#f1f4f1]"><X className="size-3.5" /></button>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
       </form>
     </FlexibleDialog>
   );

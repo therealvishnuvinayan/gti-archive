@@ -2,7 +2,7 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
-import { deleteFlexibleProjectAttachment } from "@/lib/flexible-project-attachments";
+import { deleteFlexibleMilestoneAttachment } from "@/lib/flexible-project-attachments";
 import { FLEXIBLE_PROJECTS_CACHE_TAG } from "@/lib/flexible-projects";
 
 export async function DELETE(
@@ -13,7 +13,7 @@ export async function DELETE(
   if (!user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   try {
     const { attachmentId } = await params;
-    await deleteFlexibleProjectAttachment(user, attachmentId);
+    await deleteFlexibleMilestoneAttachment(user, attachmentId);
     revalidatePath("/projects");
     revalidateTag(FLEXIBLE_PROJECTS_CACHE_TAG, "max");
     return NextResponse.json({ success: true });

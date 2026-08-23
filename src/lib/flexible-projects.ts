@@ -60,9 +60,10 @@ export type FlexibleMilestoneRecord = {
   deadline: string | null;
   status: FlexibleMilestoneStatus;
   completedAt: string | null;
+  attachments: FlexibleMilestoneAttachmentRecord[];
 };
 
-export type FlexibleProjectAttachmentRecord = {
+export type FlexibleMilestoneAttachmentRecord = {
   id: string;
   originalFileName: string;
   mimeType: string;
@@ -75,10 +76,10 @@ export type FlexibleProjectDetailRecord = FlexibleProjectListItem & {
   collaboratorIds: string[];
   collaborators: Array<{ id: string; name: string; email: string }>;
   milestones: FlexibleMilestoneRecord[];
-  attachments: FlexibleProjectAttachmentRecord[];
   participantOptions: FlexibleProjectUserOption[];
   canManageProject: boolean;
   canManageMilestones: boolean;
+  canUploadAttachments: boolean;
   canDeleteAttachments: boolean;
 };
 
@@ -299,6 +300,17 @@ export function canManageFlexibleMilestones(
   );
 }
 
+export function canUploadFlexibleMilestoneAttachments(
+  user: PermissionUser,
+  project: FlexibleProjectAccessContext,
+) {
+  return (
+    hasFlexibleProjectAccess(user, project) &&
+    (hasPermission(user, "file.uploadAttachment") ||
+      canManageFlexibleProject(user, project))
+  );
+}
+
 export function calculateFlexibleProjectProgress(completed: number, total: number) {
   if (total <= 0) return 0;
   return Math.round((Math.max(0, completed) / total) * 100);
@@ -407,18 +419,18 @@ export async function getFlexibleProjectDetail(slug: string, user: PermissionUse
             status: true,
             completedAt: true,
             responsibleUser: { select: { id: true, name: true, email: true } },
-          },
-        },
-        attachments: {
-          where: { status: "READY" },
-          orderBy: { createdAt: "asc" },
-          select: {
-            id: true,
-            originalFileName: true,
-            mimeType: true,
-            fileSize: true,
-            createdAt: true,
-            uploadedBy: { select: { id: true, name: true, email: true } },
+            attachments: {
+              where: { status: "READY" },
+              orderBy: { createdAt: "asc" },
+              select: {
+                id: true,
+                originalFileName: true,
+                mimeType: true,
+                fileSize: true,
+                createdAt: true,
+                uploadedBy: { select: { id: true, name: true, email: true } },
+              },
+            },
           },
         },
       },
@@ -464,18 +476,19 @@ export async function getFlexibleProjectDetail(slug: string, user: PermissionUse
       deadline: milestone.deadline?.toISOString() ?? null,
       status: milestone.status,
       completedAt: milestone.completedAt?.toISOString() ?? null,
-    })),
-    attachments: project.attachments.map((attachment) => ({
-      id: attachment.id,
-      originalFileName: attachment.originalFileName,
-      mimeType: attachment.mimeType,
-      fileSize: attachment.fileSize,
-      uploadedBy: { id: attachment.uploadedBy.id, name: getUserName(attachment.uploadedBy) },
-      createdAt: attachment.createdAt.toISOString(),
+      attachments: milestone.attachments.map((attachment) => ({
+        id: attachment.id,
+        originalFileName: attachment.originalFileName,
+        mimeType: attachment.mimeType,
+        fileSize: attachment.fileSize,
+        uploadedBy: { id: attachment.uploadedBy.id, name: getUserName(attachment.uploadedBy) },
+        createdAt: attachment.createdAt.toISOString(),
+      })),
     })),
     participantOptions,
     canManageProject: canManageFlexibleProject(user, accessContext),
     canManageMilestones: canManageFlexibleMilestones(user, accessContext),
+    canUploadAttachments: canUploadFlexibleMilestoneAttachments(user, accessContext),
     canDeleteAttachments:
       canManageFlexibleProject(user, accessContext) && hasPermission(user, "file.delete"),
   } satisfies FlexibleProjectDetailRecord;

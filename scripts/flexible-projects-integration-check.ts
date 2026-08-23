@@ -14,6 +14,7 @@ import {
   createFlexibleProject,
   deleteFlexibleMilestone,
   duplicateFlexibleMilestone,
+  getFlexibleMilestoneDetail,
   getFlexibleProjectDetail,
   getFlexibleProjectsList,
   moveFlexibleMilestone,
@@ -105,21 +106,6 @@ async function main() {
     check((await getFlexibleProjectDetail(created.slug, unrelated)) === null, "unrelated USER can open the project");
     check((await getFlexibleProjectDetail("missing-project", owner)) === null, "missing slug did not return null");
 
-    await prisma.flexibleProjectAttachment.create({
-      data: {
-        projectId: created.projectId,
-        uploadedById: ids.owner,
-        fileName: "persisted.pdf",
-        originalFileName: "persisted.pdf",
-        mimeType: "application/pdf",
-        fileSize: 512,
-        bucket: "flexible-projects-integration",
-        storageKey: `flexible-projects/${created.projectId}/attachments/persisted.pdf`,
-        status: AttachmentStatus.READY,
-      },
-    });
-    check((await getFlexibleProjectDetail(created.slug, owner))?.attachments.length === 1, "attachment did not appear on detail");
-
     const milestoneOne = await createFlexibleMilestone(owner, created.projectId, {
       name: "Brief",
       category: "Planning",
@@ -139,6 +125,27 @@ async function main() {
       responsibleUserId: ids.owner,
     });
     check(!isError(milestoneOne) && !isError(milestoneTwo) && !isError(milestoneThree), "milestone creation failed");
+
+    await prisma.flexibleProjectAttachment.create({
+      data: {
+        projectId: created.projectId,
+        milestoneId: milestoneOne.milestoneId,
+        uploadedById: ids.owner,
+        fileName: "persisted.pdf",
+        originalFileName: "persisted.pdf",
+        mimeType: "application/pdf",
+        fileSize: 512,
+        bucket: "flexible-projects-integration",
+        storageKey: `flexible-projects/${created.projectId}/milestones/${milestoneOne.milestoneId}/attachments/persisted.pdf`,
+        status: AttachmentStatus.READY,
+      },
+    });
+    const milestoneBrief = await getFlexibleMilestoneDetail(created.slug, milestoneOne.milestoneId, owner);
+    check(milestoneBrief?.milestone.attachments.length === 1, "attachment did not appear in the milestone brief");
+    check(
+      milestoneBrief?.project.milestones.find(({ id }) => id === milestoneTwo.milestoneId)?.attachments.length === 0,
+      "milestone attachment leaked into another timeline entry",
+    );
 
     const invalidResponsible = await createFlexibleMilestone(owner, created.projectId, {
       name: "Invalid assignment",

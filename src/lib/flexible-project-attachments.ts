@@ -4,6 +4,7 @@ import { AttachmentStatus } from "@prisma/client";
 
 import {
   canManageFlexibleProject,
+  canUploadFlexibleMilestoneAttachments,
   hasFlexibleProjectAccess,
 } from "@/lib/flexible-projects";
 import { hasPermission, type PermissionUser } from "@/lib/permissions/resolver";
@@ -28,6 +29,7 @@ import {
 
 export type FlexibleAttachmentUploadInput = {
   projectId: string;
+  milestoneId: string;
   originalFileName: string;
   mimeType: string;
   fileSize: number;
@@ -43,28 +45,27 @@ export type FlexibleAttachmentUploadResult =
       uploadExpectedHeaders: { "Content-Type": string };
     };
 
-async function getAttachmentProjectContext(projectId: string) {
+async function getAttachmentMilestoneContext(projectId: string, milestoneId: string) {
   return withPrismaRetry(() =>
-    prisma.flexibleProject.findUnique({
-      where: { id: projectId },
+    prisma.flexibleMilestone.findFirst({
+      where: { id: milestoneId, projectId },
       select: {
         id: true,
-        slug: true,
-        ownerId: true,
-        collaborators: { select: { userId: true } },
+        projectId: true,
+        project: {
+          select: {
+            id: true,
+            slug: true,
+            ownerId: true,
+            collaborators: { select: { userId: true } },
+          },
+        },
       },
     }),
   );
 }
 
-function canUpload(user: PermissionUser, project: NonNullable<Awaited<ReturnType<typeof getAttachmentProjectContext>>>) {
-  return (
-    hasFlexibleProjectAccess(user, project) &&
-    (hasPermission(user, "file.uploadAttachment") || canManageFlexibleProject(user, project))
-  );
-}
-
-export async function requestFlexibleProjectAttachmentUpload(
+export async function requestFlexibleMilestoneAttachmentUpload(
   user: PermissionUser,
   input: FlexibleAttachmentUploadInput,
 ): Promise<FlexibleAttachmentUploadResult> {
@@ -81,17 +82,20 @@ export async function requestFlexibleProjectAttachmentUpload(
   if (!Number.isFinite(input.fileSize) || input.fileSize <= 0) return { error: "File size is invalid." };
   if (input.fileSize > getMaxAssetUploadBytes()) return { error: "This file exceeds the allowed size limit." };
 
-  const project = await getAttachmentProjectContext(input.projectId);
-  if (!project) return { error: "Flexible Project not found." };
-  if (!canUpload(user, project)) return { error: "You are not allowed to upload files to this Flexible Project." };
+  const milestone = await getAttachmentMilestoneContext(input.projectId, input.milestoneId);
+  if (!milestone) return { error: "Milestone not found." };
+  if (!canUploadFlexibleMilestoneAttachments(user, milestone.project)) {
+    return { error: "You are not allowed to upload files to this milestone." };
+  }
 
   const fileName = `${Date.now()}-${randomUUID().slice(0, 8)}-${sanitizeFileName(originalFileName)}`;
-  const storageKey = `flexible-projects/${project.id}/attachments/${fileName}`;
+  const storageKey = `flexible-projects/${milestone.projectId}/milestones/${milestone.id}/attachments/${fileName}`;
   const bucket = getS3BucketName();
   const attachment = await withPrismaRetry(() =>
     prisma.flexibleProjectAttachment.create({
       data: {
-        projectId: project.id,
+        projectId: milestone.projectId,
+        milestoneId: milestone.id,
         uploadedById: user.id,
         fileName,
         originalFileName,
@@ -117,18 +121,20 @@ export async function requestFlexibleProjectAttachmentUpload(
   };
 }
 
-export async function completeFlexibleProjectAttachmentUpload(
+export async function completeFlexibleMilestoneAttachmentUpload(
   user: PermissionUser,
   projectId: string,
+  milestoneId: string,
   attachmentId: string,
   failed = false,
 ) {
   const attachment = await withPrismaRetry(() =>
     prisma.flexibleProjectAttachment.findFirst({
-      where: { id: attachmentId, projectId },
+      where: { id: attachmentId, projectId, milestoneId },
       select: {
         id: true,
         projectId: true,
+        milestoneId: true,
         uploadedById: true,
         bucket: true,
         storageKey: true,
@@ -142,8 +148,15 @@ export async function completeFlexibleProjectAttachmentUpload(
     }),
   );
   if (!attachment || attachment.uploadedById !== user.id) throw new Error("Attachment not found.");
-  if (!canUpload(user, attachment.project)) throw new Error("You are not allowed to complete this upload.");
-  if (!attachment.storageKey.startsWith(`flexible-projects/${attachment.projectId}/attachments/`)) {
+  if (!canUploadFlexibleMilestoneAttachments(user, attachment.project)) {
+    throw new Error("You are not allowed to complete this upload.");
+  }
+  if (
+    !attachment.milestoneId ||
+    !attachment.storageKey.startsWith(
+      `flexible-projects/${attachment.projectId}/milestones/${attachment.milestoneId}/attachments/`,
+    )
+  ) {
     throw new Error("Attachment upload context is invalid.");
   }
   if (attachment.status === AttachmentStatus.READY && !failed) return attachment.project.slug;
@@ -213,7 +226,7 @@ export async function getFlexibleAttachmentUrl(
     : createPresignedDownloadUrl(input);
 }
 
-export async function deleteFlexibleProjectAttachment(user: PermissionUser, attachmentId: string) {
+export async function deleteFlexibleMilestoneAttachment(user: PermissionUser, attachmentId: string) {
   const attachment = await getReadyAttachment(user, attachmentId);
   if (!canManageFlexibleProject(user, attachment.project) || !hasPermission(user, "file.delete")) {
     throw new Error("You do not have permission to delete this attachment.");

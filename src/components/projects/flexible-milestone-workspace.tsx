@@ -3,7 +3,19 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { ArrowLeft, CalendarDays, CheckCircle2, Loader2, Pencil, RotateCcw, UserRound } from "lucide-react";
+import {
+  ArrowLeft,
+  CalendarDays,
+  CheckCircle2,
+  Download,
+  Eye,
+  FileText,
+  Loader2,
+  Pencil,
+  RotateCcw,
+  Trash2,
+  UserRound,
+} from "lucide-react";
 
 import {
   setFlexibleMilestoneCompletedAction,
@@ -14,9 +26,11 @@ import { FlexibleMilestoneDialog, type FlexibleMilestoneFormValue } from "@/comp
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { RichTextContent } from "@/components/ui/rich-text-editor";
+import { uploadFlexibleMilestoneAttachments } from "@/lib/flexible-milestone-upload-client";
 import type { FlexibleMilestoneRecord, FlexibleProjectDetailRecord } from "@/lib/flexible-projects";
-import { showErrorToast, showSuccessToast } from "@/lib/toast";
+import { showErrorToast, showSuccessToast, showWarningToast } from "@/lib/toast";
 
 function formatDate(value: string | null) {
   if (!value) return "Not set";
@@ -26,6 +40,11 @@ function formatDate(value: string | null) {
     year: "numeric",
     timeZone: "UTC",
   }).format(new Date(value));
+}
+
+function formatBytes(bytes: number) {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
 export function FlexibleMilestoneWorkspace({
@@ -38,6 +57,7 @@ export function FlexibleMilestoneWorkspace({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [editOpen, setEditOpen] = useState(false);
+  const [deleteAttachmentId, setDeleteAttachmentId] = useState<string | null>(null);
 
   function toggleCompleted() {
     startTransition(async () => {
@@ -53,12 +73,41 @@ export function FlexibleMilestoneWorkspace({
   }
 
   async function save(value: FlexibleMilestoneFormValue) {
-    const result = await updateFlexibleMilestoneAction(project.id, milestone.id, value);
+    const { files, ...input } = value;
+    const result = await updateFlexibleMilestoneAction(project.id, milestone.id, input);
     if ("error" in result) return result;
+    if (files.length) {
+      try {
+        await uploadFlexibleMilestoneAttachments(project.id, milestone.id, files);
+      } catch (error) {
+        showWarningToast(
+          "Milestone saved, but an attachment could not be uploaded.",
+          error instanceof Error ? error.message : "The milestone was saved without that file.",
+        );
+      }
+    }
     setEditOpen(false);
     showSuccessToast("Milestone updated.");
     router.refresh();
     return {};
+  }
+
+  function confirmAttachmentDelete() {
+    if (!deleteAttachmentId) return;
+    startTransition(async () => {
+      const response = await fetch(
+        `/api/flexible-project-attachments/${encodeURIComponent(deleteAttachmentId)}`,
+        { method: "DELETE" },
+      );
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        showErrorToast(payload.error || "Unable to delete the attachment.");
+        return;
+      }
+      setDeleteAttachmentId(null);
+      showSuccessToast("Attachment deleted.");
+      router.refresh();
+    });
   }
 
   return (
@@ -102,7 +151,58 @@ export function FlexibleMilestoneWorkspace({
         </Card>
       </MotionItem>
 
-      {editOpen ? <FlexibleMilestoneDialog mode="edit" users={project.participantOptions} initialMilestone={milestone} onClose={() => setEditOpen(false)} onSave={save} /> : null}
+      <MotionItem y={8}>
+        <Card className="rounded-[26px] border border-[#dce4dc] bg-white shadow-[0_18px_50px_rgba(23,39,28,0.055)]">
+          <CardContent className="p-5 sm:p-7 lg:p-8">
+            <div>
+              <h2 className="text-[23px] font-[780] tracking-[-0.035em] text-[#111712] sm:text-[27px]">Attachments</h2>
+              <p className="mt-1 text-[13px] text-[#6e7770]">Files attached to this milestone brief.</p>
+            </div>
+            {milestone.attachments.length ? (
+              <div className="mt-5 divide-y divide-[#e8ece8] rounded-[18px] border border-[#e0e6e0]">
+                {milestone.attachments.map((attachment) => (
+                  <div key={attachment.id} className="flex flex-wrap items-center gap-3 px-4 py-3.5">
+                    <span className="grid size-10 place-items-center rounded-[12px] bg-[#eef6f0] text-[#287e53]">
+                      <FileText className="size-4.5" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13px] font-[700] text-[#303a33]">{attachment.originalFileName}</p>
+                      <p className="mt-0.5 text-[10px] text-[#7a837c]">{formatBytes(attachment.fileSize)} · Added by {attachment.uploadedBy.name}</p>
+                    </div>
+                    <Button asChild variant="ghost" size="icon" aria-label={`Preview ${attachment.originalFileName}`}>
+                      <a href={`/api/flexible-project-attachments/${attachment.id}/preview`} target="_blank" rel="noreferrer"><Eye className="size-4" /></a>
+                    </Button>
+                    <Button asChild variant="ghost" size="icon" aria-label={`Download ${attachment.originalFileName}`}>
+                      <a href={`/api/flexible-project-attachments/${attachment.id}/download`}><Download className="size-4" /></a>
+                    </Button>
+                    {project.canDeleteAttachments ? (
+                      <Button type="button" variant="ghost" size="icon" onClick={() => setDeleteAttachmentId(attachment.id)} aria-label={`Delete ${attachment.originalFileName}`} className="text-[#b54e46]">
+                        <Trash2 className="size-4" />
+                      </Button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-5 rounded-[17px] border border-dashed border-[#cdd6ce] bg-[#fafcf9] px-5 py-9 text-center text-[12px] text-[#7a837c]">
+                No attachments added to this milestone.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </MotionItem>
+
+      {editOpen ? <FlexibleMilestoneDialog mode="edit" users={project.participantOptions} canUploadAttachments={project.canUploadAttachments} initialMilestone={milestone} onClose={() => setEditOpen(false)} onSave={save} /> : null}
+      <ConfirmationDialog
+        isOpen={Boolean(deleteAttachmentId)}
+        title="Delete attachment?"
+        description="This file will be removed from the milestone brief and its stored object will be cleaned up."
+        confirmLabel="Delete Attachment"
+        pending={pending}
+        tone="destructive"
+        onClose={() => setDeleteAttachmentId(null)}
+        onConfirm={confirmAttachmentDelete}
+      />
     </section>
   );
 }
