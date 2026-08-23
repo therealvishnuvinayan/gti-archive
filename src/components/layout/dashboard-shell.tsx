@@ -34,6 +34,7 @@ type DashboardShellProps = {
   topbarProps?: DashboardShellTopbarProps;
   user: DashboardUserView;
   projectBadgeCount?: number;
+  taskBadgeCount?: number;
   sidebarVisibility: SidebarVisibility;
 };
 
@@ -42,6 +43,7 @@ export function DashboardShell({
   topbarProps,
   user,
   projectBadgeCount,
+  taskBadgeCount,
   sidebarVisibility,
 }: DashboardShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -89,6 +91,7 @@ export function DashboardShell({
           onClose={() => setSidebarOpen(false)}
           onToggleCollapsed={toggleSidebarCollapsed}
           projectBadgeCount={projectBadgeCount}
+          taskBadgeCount={taskBadgeCount}
           visibility={sidebarVisibility}
         />
 

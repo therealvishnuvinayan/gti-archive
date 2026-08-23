@@ -1,94 +1,63 @@
 "use client";
 
 import Link from "next/link";
-import { type FormEvent, useState } from "react";
-import {
-  ArrowRight,
-  CalendarDays,
-  Milestone,
-  Paperclip,
-  Plus,
-} from "lucide-react";
+import { useState } from "react";
+import { ArrowRight, CalendarDays, Milestone, PanelsTopLeft, Plus } from "lucide-react";
 
-import { AppDatePicker } from "@/components/calendar/app-date-picker";
-import {
-  MotionItem,
-  MotionSection,
-  MotionStaggerGroup,
-} from "@/components/motion/motion-primitives";
-import { FlexiblePrototypeDialog } from "@/components/projects/flexible-prototype-dialog";
+import { MotionItem, MotionSection, MotionStaggerGroup } from "@/components/motion/motion-primitives";
+import { FlexibleProjectDialog } from "@/components/projects/flexible-project-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { RichTextContent, RichTextEditor } from "@/components/ui/rich-text-editor";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  FLEXIBLE_PROJECT_FIXTURES,
-  type FlexibleProjectFixture,
-} from "@/lib/flexible-project-ui-fixtures";
-import { showInfoToast } from "@/lib/toast";
-
-const inputClassName =
-  "h-11 rounded-[14px] border border-[#d9e1d9] bg-white shadow-none";
-
-function FieldLabel({ children, required }: { children: React.ReactNode; required?: boolean }) {
-  return (
-    <span className="mb-2 block text-[12px] font-[700] text-[#3c4740]">
-      {children} {required ? <span className="text-[#b5483f]">*</span> : null}
-    </span>
-  );
-}
+import { RichTextContent } from "@/components/ui/rich-text-editor";
+import type { FlexibleProjectListItem, FlexibleProjectUserOption } from "@/lib/flexible-projects";
+import { formatProjectPriority } from "@/lib/project-priority";
 
 function initials(name: string) {
-  return name
-    .split(/\s+/)
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+  return name.split(/\s+/).filter(Boolean).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "U";
 }
 
-function FlexibleProjectCard({ project }: { project: FlexibleProjectFixture }) {
+function formatDate(value: string | null) {
+  if (!value) return "Not set";
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(value));
+}
+
+function FlexibleProjectCard({ project }: { project: FlexibleProjectListItem }) {
   return (
     <Card className="h-full overflow-hidden rounded-[22px] border border-[#dfe6df] bg-white shadow-[0_14px_36px_rgba(23,39,28,0.045)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_42px_rgba(23,39,28,0.08)]">
       <CardContent className="flex h-full flex-col p-5 sm:p-6">
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="secondary" className="border-[#d8e9dc] bg-[#f0f8f2] text-[#277a50]">
-            {project.type}
+            {project.scope === "INTERNAL" ? "Internal" : "External"}
           </Badge>
           <Badge variant="muted" className="border-[#dfe5df] bg-[#f7f8f7] text-[#4e5851]">
-            <span className="mr-1.5 size-1.5 rounded-full bg-[#2f8d5d]" />
-            {project.status}
+            <span className={`mr-1.5 size-1.5 rounded-full ${project.status === "COMPLETED" ? "bg-[#708078]" : "bg-[#2f8d5d]"}`} />
+            {project.status === "COMPLETED" ? "Completed" : "Active"}
           </Badge>
           <span className="ml-auto text-[11px] font-[700] text-[#768078]">
-            {project.priority} priority
+            {formatProjectPriority(project.priority)} priority
           </span>
         </div>
 
-        <h2 className="mt-5 text-[21px] font-[750] leading-[1.2] tracking-[-0.03em] text-[#111712]">
-          {project.name}
-        </h2>
-        <RichTextContent value={project.description} className="mt-2 line-clamp-3 min-h-[63px] text-[13px] leading-[21px] text-[#6d756f]" />
+        <h2 className="mt-5 text-[21px] font-[750] leading-[1.2] tracking-[-0.03em] text-[#111712]">{project.name}</h2>
+        {project.description ? (
+          <RichTextContent value={project.description} className="mt-2 line-clamp-3 min-h-[63px] text-[13px] leading-[21px] text-[#6d756f]" />
+        ) : (
+          <p className="mt-2 min-h-[63px] text-[13px] leading-[21px] text-[#929a94]">No description added.</p>
+        )}
 
         <div className="mt-5 rounded-[17px] border border-[#e4e9e3] bg-[#fafcf9] p-4">
           <div className="flex items-center justify-between gap-4">
             <span className="text-[12px] font-[700] text-[#39433c]">Progress</span>
-            <span className="text-[19px] font-[750] tracking-[-0.03em] text-[#176d42]">
-              {project.progress}%
-            </span>
+            <span className="text-[19px] font-[750] tracking-[-0.03em] text-[#176d42]">{project.progress}%</span>
           </div>
           <div className="mt-2.5 h-2 overflow-hidden rounded-full bg-[#e7ece7]">
-            <div
-              className="h-full rounded-full bg-[linear-gradient(90deg,#329462,#176b43)]"
-              style={{ width: `${project.progress}%` }}
-            />
+            <div className="h-full rounded-full bg-[linear-gradient(90deg,#329462,#176b43)]" style={{ width: `${project.progress}%` }} />
           </div>
           <p className="mt-2.5 flex items-center gap-2 text-[11px] text-[#6e776f]">
             <Milestone className="size-3.5 text-[#38865c]" />
@@ -98,33 +67,23 @@ function FlexibleProjectCard({ project }: { project: FlexibleProjectFixture }) {
 
         <div className="mt-5 grid gap-3 border-t border-[#edf0ed] pt-4 sm:grid-cols-2">
           <div className="flex min-w-0 items-center gap-2.5">
-            <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[#287e53] text-[9px] font-[750] text-white">
-              {initials(project.owner.name)}
-            </span>
+            <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[#287e53] text-[9px] font-[750] text-white">{initials(project.owner.name)}</span>
             <div className="min-w-0">
               <p className="text-[10px] font-[600] text-[#838b85]">Owner</p>
               <p className="truncate text-[12px] font-[650] text-[#333d36]">{project.owner.name}</p>
             </div>
           </div>
           <div className="flex min-w-0 items-center gap-2.5">
-            <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[#f0f4f0] text-[#427058]">
-              <CalendarDays className="size-4" />
-            </span>
+            <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[#f0f4f0] text-[#427058]"><CalendarDays className="size-4" /></span>
             <div className="min-w-0">
               <p className="text-[10px] font-[600] text-[#838b85]">Deadline</p>
-              <p className="truncate text-[12px] font-[650] text-[#333d36]">{project.deadline}</p>
+              <p className="truncate text-[12px] font-[650] text-[#333d36]">{formatDate(project.deadline)}</p>
             </div>
           </div>
         </div>
 
-        <Button
-          asChild
-          variant="outline"
-          className="mt-5 h-11 w-full rounded-[12px] border-[#c6d9cc] bg-white text-[12px] font-[750] text-[#176b43] hover:bg-[#f3faf5]"
-        >
-          <Link href={`/projects/flexible/${project.slug}`}>
-            View Project <ArrowRight className="ml-auto size-4" />
-          </Link>
+        <Button asChild variant="outline" className="mt-5 h-11 w-full rounded-[12px] border-[#c6d9cc] bg-white text-[12px] font-[750] text-[#176b43] hover:bg-[#f3faf5]">
+          <Link href={`/projects/flexible/${project.slug}`}>View Project <ArrowRight className="ml-auto size-4" /></Link>
         </Button>
       </CardContent>
     </Card>
@@ -133,169 +92,50 @@ function FlexibleProjectCard({ project }: { project: FlexibleProjectFixture }) {
 
 export function FlexibleProjectsBrowser({
   canCreateProject,
+  projects,
+  users,
+  currentUserId,
 }: {
   canCreateProject: boolean;
+  projects: FlexibleProjectListItem[];
+  users: FlexibleProjectUserOption[];
+  currentUserId: string;
 }) {
   const [createOpen, setCreateOpen] = useState(false);
-  const [deadline, setDeadline] = useState("");
-  const [owner, setOwner] = useState("sarah-ahmed");
-  const [description, setDescription] = useState("");
-
-  function handleCreate(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!canCreateProject) return;
-    setCreateOpen(false);
-    setDeadline("");
-    setOwner("sarah-ahmed");
-    setDescription("");
-    showInfoToast(
-      "UI prototype only",
-      "Flexible Project creation is not connected yet.",
-    );
-  }
-
   return (
     <div className="space-y-5">
       <MotionSection>
         <div className="flex flex-col gap-4 rounded-[22px] border border-[#dfe6df] bg-white px-5 py-5 shadow-[0_12px_34px_rgba(23,39,28,0.04)] sm:px-6 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-[25px] font-[750] tracking-[-0.035em] text-[#101611] sm:text-[29px]">
-                Flexible Projects
-              </h2>
-              <Badge variant="outline" className="hidden sm:inline-flex">UI prototype</Badge>
-            </div>
-            <p className="mt-1.5 max-w-2xl text-[13px] leading-5 text-[#6f7871]">
-              Custom work organized with user-defined milestones rather than the fixed artwork stages.
-            </p>
+            <h2 className="text-[25px] font-[750] tracking-[-0.035em] text-[#101611] sm:text-[29px]">Flexible Projects</h2>
+            <p className="mt-1.5 max-w-2xl text-[13px] leading-5 text-[#6f7871]">Custom work organized with user-defined milestones rather than the fixed artwork stages.</p>
           </div>
           {canCreateProject ? (
-            <Button
-              type="button"
-              onClick={() => setCreateOpen(true)}
-              className="h-12 self-start rounded-full px-6 text-[14px] lg:self-auto"
-            >
+            <Button type="button" onClick={() => setCreateOpen(true)} className="h-12 self-start rounded-full px-6 text-[14px] lg:self-auto">
               <Plus className="size-4" /> New Flexible Project
             </Button>
           ) : null}
         </div>
       </MotionSection>
 
-      <MotionStaggerGroup
-        className="grid grid-cols-1 gap-5 md:grid-cols-2 2xl:grid-cols-3"
-        stagger={0.05}
-      >
-        {FLEXIBLE_PROJECT_FIXTURES.map((project) => (
-          <MotionItem key={project.id} y={8} layout>
-            <FlexibleProjectCard project={project} />
-          </MotionItem>
-        ))}
-      </MotionStaggerGroup>
-
-      <FlexiblePrototypeDialog
-        open={canCreateProject && createOpen}
-        title="New Flexible Project"
-        description="Prototype the project setup. Nothing entered here will be saved."
-        onClose={() => setCreateOpen(false)}
-        footer={
-          <>
-            <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" form="flexible-project-form">
-              Create Project
-            </Button>
-          </>
-        }
-      >
-        <form id="flexible-project-form" onSubmit={handleCreate} className="grid gap-5 sm:grid-cols-2">
-          <label className="sm:col-span-2">
-            <FieldLabel required>Project Name</FieldLabel>
-            <Input required placeholder="e.g. Annual Retail Conference" className={inputClassName} />
-          </label>
-
-          <div className="sm:col-span-2">
-            <FieldLabel>Description / Brief</FieldLabel>
-            <RichTextEditor
-              value={description}
-              onChange={setDescription}
-              placeholder="What should this project deliver?"
-              minHeightClassName="min-h-28"
-              ariaLabel="Project description and brief"
-            />
+      {projects.length ? (
+        <MotionStaggerGroup className="grid grid-cols-1 gap-5 md:grid-cols-2 2xl:grid-cols-3" stagger={0.05}>
+          {projects.map((project) => (
+            <MotionItem key={project.id} y={8} layout><FlexibleProjectCard project={project} /></MotionItem>
+          ))}
+        </MotionStaggerGroup>
+      ) : (
+        <MotionSection>
+          <div className="rounded-[24px] border border-dashed border-[#cbd6cc] bg-white px-6 py-16 text-center shadow-[0_12px_34px_rgba(23,39,28,0.03)]">
+            <PanelsTopLeft className="mx-auto size-9 text-[#75a086]" />
+            <h3 className="mt-4 text-[18px] font-[750] text-[#202a23]">No flexible projects yet</h3>
+            <p className="mt-1 text-[13px] text-[#717a73]">Projects you own or collaborate on will appear here.</p>
+            {canCreateProject ? <Button type="button" onClick={() => setCreateOpen(true)} className="mt-5"><Plus className="size-4" /> New Flexible Project</Button> : null}
           </div>
+        </MotionSection>
+      )}
 
-          <div>
-            <FieldLabel required>Owner</FieldLabel>
-            <Select value={owner} onValueChange={setOwner} required>
-              <SelectTrigger className={`${inputClassName} w-full px-4`}>
-                <SelectValue placeholder="Select an owner" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="sarah-ahmed">Sarah Ahmed</SelectItem>
-                <SelectItem value="admin-user">Admin User</SelectItem>
-                <SelectItem value="collaborator-01">Collaborator 01</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <label>
-            <FieldLabel>Collaborators</FieldLabel>
-            <Input placeholder="Optional — search people" className={inputClassName} />
-          </label>
-
-          <div>
-            <FieldLabel>Deadline</FieldLabel>
-            <AppDatePicker
-              value={deadline}
-              onChange={setDeadline}
-              placeholder="Select deadline"
-              triggerClassName={`${inputClassName} w-full justify-between px-4 font-normal shadow-none hover:bg-white`}
-            />
-          </div>
-
-          <div>
-            <FieldLabel>Priority</FieldLabel>
-            <Select defaultValue="medium">
-              <SelectTrigger className={`${inputClassName} w-full px-4`}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="high">High</SelectItem>
-                <SelectItem value="medium">Medium</SelectItem>
-                <SelectItem value="low">Low</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div>
-            <FieldLabel>Internal / External</FieldLabel>
-            <Select defaultValue="internal">
-              <SelectTrigger className={`${inputClassName} w-full px-4`}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="internal">Internal</SelectItem>
-                <SelectItem value="external">External</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="sm:col-span-2">
-            <FieldLabel>Attachments</FieldLabel>
-            <button
-              type="button"
-              onClick={() =>
-                showInfoToast("Attachments are visual only", "File upload is not connected in this prototype.")
-              }
-              className="flex min-h-20 w-full items-center justify-center gap-3 rounded-[16px] border border-dashed border-[#bfcfc3] bg-white px-4 text-[13px] font-[650] text-[#47715a] transition hover:border-[#72a484] hover:bg-[#f7fbf7]"
-            >
-              <Paperclip className="size-4" /> Add attachment
-              <span className="text-[11px] font-[500] text-[#889189]">(prototype only)</span>
-            </button>
-          </div>
-        </form>
-      </FlexiblePrototypeDialog>
+      {createOpen ? <FlexibleProjectDialog mode="create" users={users} currentUserId={currentUserId} onClose={() => setCreateOpen(false)} /> : null}
     </div>
   );
 }

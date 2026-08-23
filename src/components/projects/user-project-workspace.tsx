@@ -6,6 +6,7 @@ import {
   File,
   Folder,
   FolderKey,
+  ListTodo,
   LockKeyhole,
   ShieldCheck,
   UserRound,
@@ -212,7 +213,11 @@ export function UserProjectWorkspace({
         <SectionHeading
           icon={<FolderKey className="h-5 w-5" />}
           title="Private Folders"
-          description="Your files are yours alone. Other member folders are classified."
+          description={
+            data.canViewClassifiedFolders
+              ? "Your files are yours alone. Other member folders are classified."
+              : "Only your private folder is visible to you."
+          }
         />
         <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {data.myPrivateFolder ? (
@@ -251,30 +256,32 @@ export function UserProjectWorkspace({
             </Card>
           )}
 
-          {data.classifiedFolders.map((folder) => (
-            <Card
-              key={folder.key}
-              title={`Classified — only ${folder.ownerName} can access this folder.`}
-              className="cursor-default rounded-[20px] border-[#e0e3e0] bg-[#f8f9f8] shadow-none"
-            >
-              <CardContent className="flex min-h-[148px] items-center gap-4 p-5">
-                <span className="grid size-14 shrink-0 place-items-center rounded-[16px] bg-[#e8ebe9] text-[#69736c]">
-                  <LockKeyhole className="h-8 w-8" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[14px] font-[740] text-[#353d37]">
-                    {folder.ownerName}&apos;s Folder
-                  </span>
-                  <span className="mt-1 block truncate text-[10px] text-[#858e87]">
-                    {folder.role}
-                  </span>
-                  <span className="mt-2 inline-flex rounded-full bg-[#e4e7e5] px-2.5 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] text-[#59625c]">
-                    Classified
-                  </span>
-                </span>
-              </CardContent>
-            </Card>
-          ))}
+          {data.canViewClassifiedFolders
+            ? data.classifiedFolders.map((folder) => (
+                <Card
+                  key={folder.key}
+                  title={`Classified — only ${folder.ownerName} can access this folder.`}
+                  className="cursor-default rounded-[20px] border-[#e0e3e0] bg-[#f8f9f8] shadow-none"
+                >
+                  <CardContent className="flex min-h-[148px] items-center gap-4 p-5">
+                    <span className="grid size-14 shrink-0 place-items-center rounded-[16px] bg-[#e8ebe9] text-[#69736c]">
+                      <LockKeyhole className="h-8 w-8" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[14px] font-[740] text-[#353d37]">
+                        {folder.ownerName}&apos;s Folder
+                      </span>
+                      <span className="mt-1 block truncate text-[10px] text-[#858e87]">
+                        {folder.role}
+                      </span>
+                      <span className="mt-2 inline-flex rounded-full bg-[#e4e7e5] px-2.5 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] text-[#59625c]">
+                        Classified
+                      </span>
+                    </span>
+                  </CardContent>
+                </Card>
+              ))
+            : null}
         </div>
       </section>
 
@@ -299,7 +306,7 @@ export function UserProjectWorkspace({
                 />
                 <CardContent className="flex min-h-[136px] items-center gap-4 p-5">
                   <span className="grid size-12 shrink-0 place-items-center rounded-[14px] bg-[#e7f2ea] text-[#30845a]">
-                    <Folder className="h-7 w-7 fill-current" />
+                    <ListTodo className="h-7 w-7" />
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[15px] font-[740] text-[#202a23]">

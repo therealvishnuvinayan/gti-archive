@@ -11,6 +11,7 @@ import {
 import {
   getInitialProjectWorkflowStageData,
 } from "../src/lib/project-workflow";
+import { compareProjectsByPriority } from "../src/lib/project-priority";
 
 const baseProject = {
   id: "workflow-state-test",
@@ -133,5 +134,42 @@ assert.equal(invalidCompletedTimestamp.workflowHealth, "INVALID");
 const activeWhere = JSON.stringify(buildProjectListStatusWhere("ACTIVE"));
 assert(activeWhere.includes("unlockedAt"));
 assert(activeWhere.includes("completedAt"));
+
+const priorityOrderedProjects = [
+  {
+    id: "completed-urgent",
+    name: "Completed urgent",
+    priority: "URGENT",
+    isCompleted: true,
+    updatedAt: "2026-08-23T12:00:00.000Z",
+  },
+  {
+    id: "active-low",
+    name: "Active low",
+    priority: "LOW",
+    isCompleted: false,
+    updatedAt: "2026-08-23T12:00:00.000Z",
+  },
+  {
+    id: "active-high",
+    name: "Active high",
+    priority: "HIGH",
+    isCompleted: false,
+    updatedAt: "2026-08-22T12:00:00.000Z",
+  },
+  {
+    id: "active-default",
+    name: "Active default",
+    priority: null,
+    isCompleted: false,
+    updatedAt: "2026-08-23T12:00:00.000Z",
+  },
+].sort(compareProjectsByPriority);
+
+assert.deepEqual(
+  priorityOrderedProjects.map((project) => project.id),
+  ["active-high", "active-default", "active-low", "completed-urgent"],
+  "Priority sorting must rank active work first, normalize missing priority to Medium, and put completed work last.",
+);
 
 console.log("Project list workflow business-state and legacy-health checks passed.");

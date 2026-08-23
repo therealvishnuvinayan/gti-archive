@@ -3,8 +3,13 @@ import { redirect } from "next/navigation";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { ProjectsBrowser } from "@/components/projects/projects-browser";
+import { FlexibleProjectsRouteWorkspace } from "@/components/projects/flexible-projects-route-workspace";
 import { UserProjectsBrowser } from "@/components/projects/user-projects-browser";
 import { requireUser } from "@/lib/auth";
+import {
+  getFlexibleProjectsList,
+  getFlexibleProjectUserOptions,
+} from "@/lib/flexible-projects";
 import {
   PROJECT_LIST_ROLES,
   PROJECT_LIST_STATUSES,
@@ -16,6 +21,7 @@ import {
   getDashboardProjectCounts,
   getProjectListFilterOptions,
   getProjectsList,
+  getProjectTypeSwitcherVisibility,
 } from "@/lib/projects";
 import { canCreateProjects, canUseProjects } from "@/lib/permissions/resolver";
 import {
@@ -27,6 +33,7 @@ import {
 } from "@/lib/user-projects";
 
 type ProjectSortValue =
+  | "priority"
   | "updated"
   | "newest"
   | "oldest"
@@ -67,12 +74,14 @@ function normalizeStage(value: string | undefined) {
 }
 
 function normalizeSort(value: string | undefined): ProjectSortValue {
-  return value === "newest" ||
+  return value === "priority" ||
+    value === "updated" ||
+    value === "newest" ||
     value === "oldest" ||
     value === "name-asc" ||
     value === "name-desc"
     ? value
-    : "updated";
+    : "priority";
 }
 
 function normalizeUserFilter(value: string | undefined): UserProjectFilter {
@@ -84,7 +93,7 @@ function normalizeUserFilter(value: string | undefined): UserProjectFilter {
 function normalizeUserSort(value: string | undefined): UserProjectSort {
   return USER_PROJECT_SORTS.includes(value as UserProjectSort)
     ? (value as UserProjectSort)
-    : "updated";
+    : "priority";
 }
 
 export default async function ProjectsPage({
@@ -97,6 +106,28 @@ export default async function ProjectsPage({
 
   if (!canUseProjects(user)) {
     redirect("/no-access");
+  }
+
+  const showProjectTypeSwitcher = await getProjectTypeSwitcherVisibility(user);
+
+  if (resolvedSearchParams.view === "flexible") {
+    const canCreateProject = canCreateProjects(user);
+    const [flexibleProjects, flexibleUsers] = await Promise.all([
+      getFlexibleProjectsList(user),
+      canCreateProject ? getFlexibleProjectUserOptions() : Promise.resolve([]),
+    ]);
+
+    return (
+      <DashboardLayout>
+        <FlexibleProjectsRouteWorkspace
+          projects={flexibleProjects}
+          users={flexibleUsers}
+          currentUserId={user.id}
+          canCreateProject={canCreateProject}
+          showProjectTypeSwitcher={showProjectTypeSwitcher}
+        />
+      </DashboardLayout>
+    );
   }
 
   if (user.role === UserRole.USER) {
@@ -128,6 +159,7 @@ export default async function ProjectsPage({
           activeFilter={activeFilter}
           activeSort={activeSort}
           query={query}
+          showProjectTypeSwitcher={showProjectTypeSwitcher}
         />
       </DashboardLayout>
     );
@@ -146,6 +178,7 @@ export default async function ProjectsPage({
         currentPage={data.currentPage}
         hasAnyProjects={data.hasAnyProjects}
         canCreateProject={data.canCreateProject}
+        showProjectTypeSwitcher={showProjectTypeSwitcher}
         activeStatus={data.activeStatus}
         activeSort={data.activeSort}
         activeStage={data.activeStage}
@@ -166,6 +199,7 @@ export default async function ProjectsPage({
 }
 
 type ProjectSearchParams = {
+  view?: string;
   status?: string;
   q?: string;
   sort?: string;

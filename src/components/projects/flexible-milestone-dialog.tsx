@@ -1,182 +1,208 @@
 "use client";
 
-import { type FormEvent, useState } from "react";
+import { useRef, useState, useTransition } from "react";
+import { FileText, Loader2, Paperclip, X } from "lucide-react";
 
 import { AppDatePicker } from "@/components/calendar/app-date-picker";
-import { FlexiblePrototypeDialog } from "@/components/projects/flexible-prototype-dialog";
+import { FlexibleDialog } from "@/components/projects/flexible-dialog";
+import { ProjectUserSelector } from "@/components/projects/project-user-selector";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import type { FlexibleMilestoneFixture } from "@/lib/flexible-project-ui-fixtures";
+import type {
+  FlexibleMilestoneFieldErrors,
+  FlexibleMilestoneRecord,
+  FlexibleProjectUserOption,
+} from "@/lib/flexible-projects";
 
 export type FlexibleMilestoneFormValue = {
   name: string;
   category: string;
-  responsible: string;
+  responsibleUserId: string;
   deadline: string;
-  approvalRequired: boolean;
   description: string;
+  files: File[];
+};
+
+type SaveResult = {
+  error?: string;
+  fieldErrors?: FlexibleMilestoneFieldErrors;
 };
 
 type FlexibleMilestoneDialogProps = {
   mode: "add" | "edit";
-  initialMilestone?: FlexibleMilestoneFixture;
+  users: FlexibleProjectUserOption[];
+  canUploadAttachments: boolean;
+  initialMilestone?: FlexibleMilestoneRecord;
   onClose: () => void;
-  onSave: (value: FlexibleMilestoneFormValue) => void;
+  onSave: (value: FlexibleMilestoneFormValue) => Promise<SaveResult>;
 };
 
-const inputClassName =
-  "h-11 rounded-[14px] border border-[#d9e1d9] bg-white shadow-none";
+const inputClassName = "h-11 rounded-[14px] border border-[#d9e1d9] bg-white shadow-none";
+
+function formatBytes(bytes: number) {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
 
 function Label({ children, required }: { children: React.ReactNode; required?: boolean }) {
-  return (
-    <span className="mb-2 block text-[12px] font-[700] text-[#3c4740]">
-      {children} {required ? <span className="text-[#b5483f]">*</span> : null}
-    </span>
-  );
+  return <span className="mb-2 block text-[12px] font-[700] text-[#3c4740]">{children} {required ? <span className="text-[#b5483f]">*</span> : null}</span>;
+}
+
+function FieldError({ children }: { children?: string }) {
+  return children ? <p className="mt-1.5 text-[11px] text-[#b5483f]">{children}</p> : null;
 }
 
 export function FlexibleMilestoneDialog({
   mode,
+  users,
+  canUploadAttachments,
   initialMilestone,
   onClose,
   onSave,
 }: FlexibleMilestoneDialogProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pending, startTransition] = useTransition();
   const [name, setName] = useState(initialMilestone?.name ?? "");
   const [category, setCategory] = useState(initialMilestone?.category ?? "Standard");
-  const [responsible, setResponsible] = useState(initialMilestone?.responsible ?? "Vishnu");
-  const [deadline, setDeadline] = useState("");
-  const [approvalRequired, setApprovalRequired] = useState(
-    initialMilestone?.approvalRequired ?? false,
+  const [responsibleIds, setResponsibleIds] = useState<string[]>(
+    initialMilestone?.responsibleUser ? [initialMilestone.responsibleUser.id] : [],
   );
+  const [deadline, setDeadline] = useState(initialMilestone?.deadline?.slice(0, 10) ?? "");
   const [description, setDescription] = useState(initialMilestone?.description ?? "");
+  const [files, setFiles] = useState<File[]>([]);
+  const [errors, setErrors] = useState<FlexibleMilestoneFieldErrors>({});
+  const [formError, setFormError] = useState("");
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function addFiles(nextFiles: FileList | null) {
+    if (!nextFiles) return;
+    setFiles((current) => {
+      const byKey = new Map(
+        current.map((file) => [`${file.name}:${file.size}:${file.lastModified}`, file]),
+      );
+      for (const file of Array.from(nextFiles)) {
+        byKey.set(`${file.name}:${file.size}:${file.lastModified}`, file);
+      }
+      return [...byKey.values()];
+    });
+  }
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!name.trim()) return;
-
-    onSave({
-      name: name.trim(),
-      category,
-      responsible,
-      deadline,
-      approvalRequired,
-      description,
+    if (pending) return;
+    if (!name.trim()) {
+      setErrors({ name: "Milestone name is required." });
+      return;
+    }
+    startTransition(async () => {
+      const result = await onSave({
+        name,
+        category,
+        responsibleUserId: responsibleIds[0] ?? "",
+        deadline,
+        description,
+        files,
+      });
+      if (result.error) {
+        setFormError(result.error);
+        setErrors(result.fieldErrors ?? {});
+      }
     });
   }
 
   return (
-    <FlexiblePrototypeDialog
+    <FlexibleDialog
       open
       title={mode === "add" ? "Add Milestone" : "Edit Milestone"}
-      description="Changes stay in local browser state and are not saved."
-      onClose={onClose}
+      description="Keep the milestone focused on one clear outcome."
+      onClose={pending ? () => undefined : onClose}
       footer={
         <>
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" form="flexible-milestone-form">
-            {mode === "add" ? "Add Milestone" : "Save Changes"}
+          <Button type="button" variant="secondary" onClick={onClose} disabled={pending}>Cancel</Button>
+          <Button type="submit" form="flexible-milestone-form" disabled={pending}>
+            {pending ? <Loader2 className="size-4 animate-spin" /> : null}
+            {pending ? "Saving..." : mode === "add" ? "Add Milestone" : "Save Changes"}
           </Button>
         </>
       }
     >
       <form id="flexible-milestone-form" onSubmit={handleSubmit} className="grid gap-5 sm:grid-cols-2">
+        {formError ? <div className="sm:col-span-2 rounded-[14px] border border-[#f0c9c7] bg-[#fff2f1] px-4 py-3 text-[13px] text-[#a9423d]">{formError}</div> : null}
         <label className="sm:col-span-2">
           <Label required>Milestone Name</Label>
-          <Input
-            required
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="e.g. Production Readiness"
-            className={inputClassName}
-          />
+          <Input required maxLength={160} value={name} onChange={(event) => { setName(event.target.value); setErrors((current) => ({ ...current, name: undefined })); }} placeholder="e.g. Production Readiness" className={inputClassName} />
+          <FieldError>{errors.name}</FieldError>
         </label>
-
-        <div>
+        <label>
           <Label>Category</Label>
-          <Select value={category} onValueChange={setCategory}>
-            <SelectTrigger className={`${inputClassName} w-full px-4`}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Standard">Standard</SelectItem>
-              <SelectItem value="Creative">Creative</SelectItem>
-              <SelectItem value="UX Planning">UX Planning</SelectItem>
-              <SelectItem value="Design">Design</SelectItem>
-              <SelectItem value="Vendor Sourcing">Vendor Sourcing</SelectItem>
-              <SelectItem value="Vendor Comparison">Vendor Comparison</SelectItem>
-              <SelectItem value="Design Review">Design Review</SelectItem>
-              <SelectItem value="Sample Review">Sample Review</SelectItem>
-              <SelectItem value="Review">Review</SelectItem>
-              <SelectItem value="Review & Inspection">Review & Inspection</SelectItem>
-              <SelectItem value="Website / App">Website / App</SelectItem>
-              <SelectItem value="Event / Exhibition">Event / Exhibition</SelectItem>
-              <SelectItem value="Handover">Handover</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
+          <Input maxLength={80} value={category} onChange={(event) => setCategory(event.target.value)} placeholder="e.g. Review" className={inputClassName} />
+          <FieldError>{errors.category}</FieldError>
+        </label>
         <div>
           <Label>Responsible Person</Label>
-          <Select value={responsible} onValueChange={setResponsible}>
-            <SelectTrigger className={`${inputClassName} w-full px-4`}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Vishnu">Vishnu</SelectItem>
-              <SelectItem value="Sarah Ahmed">Sarah Ahmed</SelectItem>
-              <SelectItem value="Admin User">Admin User</SelectItem>
-              <SelectItem value="Collaborator 01">Collaborator 01</SelectItem>
-            </SelectContent>
-          </Select>
+          <ProjectUserSelector users={users} selectedIds={responsibleIds} onChange={setResponsibleIds} mode="single" placeholder="Search project users..." ariaLabel="Responsible person" error={errors.responsibleUserId} />
+          <FieldError>{errors.responsibleUserId}</FieldError>
         </div>
-
         <div>
           <Label>Deadline</Label>
-          <AppDatePicker
-            value={deadline}
-            onChange={setDeadline}
-            placeholder={initialMilestone?.dateLabel ?? "Select deadline"}
-            triggerClassName={`${inputClassName} w-full justify-between px-4 font-normal shadow-none hover:bg-white`}
-          />
+          <AppDatePicker value={deadline} onChange={setDeadline} placeholder="Select deadline" triggerClassName={`${inputClassName} w-full justify-between px-4 font-normal shadow-none hover:bg-white`} />
+          <FieldError>{errors.deadline}</FieldError>
         </div>
-
-        <div>
-          <Label>Approval Required</Label>
-          <Select
-            value={approvalRequired ? "yes" : "no"}
-            onValueChange={(value) => setApprovalRequired(value === "yes")}
-          >
-            <SelectTrigger className={`${inputClassName} w-full px-4`}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="no">No</SelectItem>
-              <SelectItem value="yes">Yes</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
         <div className="sm:col-span-2">
           <Label>Description / Notes</Label>
-          <RichTextEditor
-            value={description}
-            onChange={setDescription}
-            placeholder="Add context, expected outcomes, or handover notes."
-            minHeightClassName="min-h-28"
-            ariaLabel="Milestone description and notes"
-          />
+          <RichTextEditor value={description} onChange={setDescription} placeholder="Add context, expected outcomes, or handover notes." minHeightClassName="min-h-28" ariaLabel="Milestone description and notes" />
+          <FieldError>{errors.description}</FieldError>
         </div>
+        {canUploadAttachments ? (
+          <div className="sm:col-span-2">
+            <Label>Attachments</Label>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="sr-only"
+              onChange={(event) => {
+                addFiles(event.target.files);
+                event.target.value = "";
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="flex min-h-20 w-full items-center justify-center gap-3 rounded-[16px] border border-dashed border-[#bfcfc3] bg-white px-4 text-[13px] font-[650] text-[#47715a] transition hover:border-[#72a484] hover:bg-[#f7fbf7]"
+            >
+              <Paperclip className="size-4" /> Attach files to this milestone
+            </button>
+            {files.length ? (
+              <div className="mt-3 space-y-2">
+                {files.map((file) => {
+                  const key = `${file.name}:${file.size}:${file.lastModified}`;
+                  return (
+                    <div key={key} className="flex items-center gap-3 rounded-[13px] border border-[#e1e7e1] bg-white px-3 py-2.5">
+                      <FileText className="size-4 text-[#287e53]" />
+                      <span className="min-w-0 flex-1 truncate text-[12px] font-[650] text-[#344039]">{file.name}</span>
+                      <span className="text-[10px] text-[#7b857e]">{formatBytes(file.size)}</span>
+                      <button
+                        type="button"
+                        onClick={() => setFiles((current) => current.filter((item) => `${item.name}:${item.size}:${item.lastModified}` !== key))}
+                        aria-label={`Remove ${file.name}`}
+                        className="grid size-7 place-items-center rounded-full text-[#7a847c] hover:bg-[#f1f4f1]"
+                      >
+                        <X className="size-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+            {mode === "edit" && initialMilestone?.attachments.length ? (
+              <p className="mt-2 text-[11px] text-[#788179]">
+                Existing files remain available in the milestone brief.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </form>
-    </FlexiblePrototypeDialog>
+    </FlexibleDialog>
   );
 }

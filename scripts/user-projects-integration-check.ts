@@ -4,17 +4,25 @@ import {
   AttachmentAssetType,
   AttachmentStatus,
   ProjectRevisionStatus,
+  ProjectPriority,
   ProjectWorkflowStageKey,
   ProjectWorkflowStageStatus,
   StageStatus,
   UserRole,
 } from "@prisma/client";
 
-import { createProjectConceptFolder } from "../src/lib/project-concepts";
+import {
+  createProjectConceptFolder,
+  type ConceptWorkflowStageKey,
+} from "../src/lib/project-concepts";
 import { createProjectV2 } from "../src/lib/project-creation";
 import { prisma } from "../src/lib/prisma";
+import { getProjectTypeSwitcherVisibility } from "../src/lib/projects";
 import { getUserProjectWorkspace } from "../src/lib/user-project-workspace";
 import { getUserProjectsList } from "../src/lib/user-projects";
+import {
+  getUserTasksPageData,
+} from "../src/lib/user-tasks";
 
 function check(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`USER Projects integration failed: ${message}`);
@@ -56,12 +64,42 @@ async function unlockConceptWork(projectId: string) {
   });
 }
 
+async function unlockFinalConceptWork(projectId: string) {
+  const now = new Date();
+  await prisma.projectWorkflowStage.update({
+    where: {
+      projectId_stageKey: {
+        projectId,
+        stageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+      },
+    },
+    data: {
+      status: ProjectWorkflowStageStatus.COMPLETED,
+      unlockedAt: now,
+      completedAt: now,
+    },
+  });
+  await prisma.projectWorkflowStage.update({
+    where: {
+      projectId_stageKey: {
+        projectId,
+        stageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+      },
+    },
+    data: {
+      status: ProjectWorkflowStageStatus.AVAILABLE,
+      unlockedAt: now,
+    },
+  });
+}
+
 async function createProject(input: {
   ownerId: string;
   name: string;
   executorIds: string[];
   collaboratorIds?: string[];
   description?: string;
+  priority?: ProjectPriority;
 }) {
   const result = await createProjectV2(
     { id: input.ownerId },
@@ -76,7 +114,10 @@ async function createProject(input: {
   check(!isError(result), `project creation failed for ${input.name}`);
   await prisma.project.update({
     where: { id: result.projectId },
-    data: { description: input.description ?? null },
+    data: {
+      description: input.description ?? null,
+      priority: input.priority ?? ProjectPriority.MEDIUM,
+    },
   });
   await unlockConceptWork(result.projectId);
   return result.projectId;
@@ -88,6 +129,7 @@ async function createConcept(input: {
   executorId: string;
   name: string;
   dueInDays: number;
+  stageKey?: ConceptWorkflowStageKey;
 }) {
   const attachmentId = randomUUID();
   await prisma.projectAttachment.create({
@@ -109,7 +151,7 @@ async function createConcept(input: {
   const deadline = new Date(Date.now() + input.dueInDays * 24 * 60 * 60 * 1_000);
   const result = await createProjectConceptFolder(input.owner, {
     projectId: input.projectId,
-    stageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+    stageKey: input.stageKey ?? ProjectWorkflowStageKey.CONCEPT_CREATION,
     name: input.name,
     assignedExecutorId: input.executorId,
     deadline: deadline.toISOString(),
@@ -193,6 +235,7 @@ async function main() {
       ownerId: ids.owner,
       name: "USER Portfolio Alpha",
       description: "Assigned packaging concepts for USER 1.",
+      priority: ProjectPriority.HIGH,
       executorIds: [ids.userOne, ids.userTwo],
     });
     projectIds.push(mixedProjectId);
@@ -210,6 +253,7 @@ async function main() {
     const zeroTaskProjectId = await createProject({
       ownerId: ids.owner,
       name: "USER Zero Tasks",
+      priority: ProjectPriority.LOW,
       executorIds: [ids.userTwo],
       collaboratorIds: [ids.userOne],
     });
@@ -218,6 +262,7 @@ async function main() {
     const completedProjectId = await createProject({
       ownerId: ids.owner,
       name: "USER Completed Work",
+      priority: ProjectPriority.URGENT,
       executorIds: [ids.userOne],
     });
     projectIds.push(completedProjectId);
@@ -240,10 +285,19 @@ async function main() {
     const activeProjectId = await createProject({
       ownerId: ids.owner,
       name: "USER Active Work",
+      priority: ProjectPriority.MEDIUM,
       executorIds: [ids.userOne],
     });
     projectIds.push(activeProjectId);
-    const activeConcept = await createConcept({ owner, projectId: activeProjectId, executorId: ids.userOne, name: "Active USER Task", dueInDays: 6 });
+    await unlockFinalConceptWork(activeProjectId);
+    const activeConcept = await createConcept({
+      owner,
+      projectId: activeProjectId,
+      executorId: ids.userOne,
+      name: "Active USER Task",
+      dueInDays: 6,
+      stageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+    });
     await setTaskState({ projectId: activeProjectId, taskerStageId: activeConcept.taskerStageId, executorId: ids.userOne, state: "IN_PROGRESS" });
 
     const unrelatedProjectId = await createProject({
@@ -259,6 +313,37 @@ async function main() {
     );
     check(all.total === 4, "USER 1 must receive exactly four related projects");
     check(!all.projects.some((project) => project.id === unrelatedProjectId), "unrelated project leaked to USER 1");
+
+    const prioritySorted = await getUserProjectsList(
+      { filter: "ALL", query: "", sort: "priority", page: 1 },
+      userOne,
+    );
+    check(
+      prioritySorted.projects.map(({ id }) => id).join(",") ===
+        [mixedProjectId, activeProjectId, zeroTaskProjectId, completedProjectId].join(","),
+      "Priority sort must rank active High, Medium, and Low work before a completed Urgent project",
+    );
+
+    const userTasks = await getUserTasksPageData(userOne);
+    check(userTasks.summary.total === 5, "USER task page must include all five assigned concept taskers");
+    check(userTasks.summary.open === 4, "USER task page open count is incorrect");
+    check(userTasks.summary.needsAttention === 1, "USER task page attention count is incorrect");
+    check(userTasks.summary.waitingForReview === 1, "USER task page review count is incorrect");
+    check(userTasks.summary.completed === 1, "USER task page completed count is incorrect");
+    check(userTasks.projects.length === 3, "USER task page must group assignments into three project folders");
+    check(userTasks.projects[0]?.id === mixedProjectId, "project folder with changes requested must sort first");
+    check(userTasks.projects.at(-1)?.id === completedProjectId, "completed project folder must sort last");
+    const stageFourTask = userTasks.projects
+      .flatMap(({ tasks }) => tasks)
+      .find(({ id }) => id === activeConcept.id);
+    check(stageFourTask?.stageNumber === 4, "Stage 4 executor task was not identified correctly");
+    check(
+      stageFourTask?.href.includes(`/stages/4/concepts/${activeConcept.id}?returnTo=%2Ftasks`),
+      "Stage 4 task does not link directly to its workspace and back to Tasks",
+    );
+    const userTwoTasks = await getUserTasksPageData(userTwo);
+    check(userTwoTasks.summary.total === 1, "USER task page leaked another executor's assignments");
+    check((await getUserTasksPageData(owner)).summary.total === 0, "ADMIN accounts received the executor Tasks page data");
 
     const mixed = all.projects.find((project) => project.id === mixedProjectId);
     check(mixed, "mixed assignment project is missing");
@@ -333,6 +418,26 @@ async function main() {
       owner,
     );
     check(deniedAdminResult.total === 0, "USER query helper must not serve the ADMIN management path");
+
+    check(
+      await getProjectTypeSwitcherVisibility(owner),
+      "ADMIN must see the artwork/flexible project switcher",
+    );
+    check(
+      !(await getProjectTypeSwitcherVisibility(userOne)),
+      "an executor/collaborator must not see the artwork/flexible project switcher",
+    );
+    await prisma.projectCoOwner.create({
+      data: {
+        projectId: zeroTaskProjectId,
+        userId: userOne.id,
+        addedById: owner.id,
+      },
+    });
+    check(
+      await getProjectTypeSwitcherVisibility(userOne),
+      "a project co-owner must see the artwork/flexible project switcher",
+    );
 
     console.log("USER My Projects relationship, task-scope, filter, and status integration checks passed.");
   } finally {

@@ -115,6 +115,13 @@ const browser = read("src/components/projects/user-projects-browser.tsx");
 const query = read("src/lib/user-projects.ts");
 const managerBrowser = read("src/components/projects/projects-browser.tsx");
 const managerCard = read("src/components/projects/project-card.tsx");
+const tasksPage = read("src/app/(dashboard)/tasks/page.tsx");
+const tasksWorkspace = read("src/components/tasks/user-tasks-workspace.tsx");
+const tasksService = read("src/lib/user-tasks.ts");
+const dashboardLayout = read("src/app/(dashboard)/layout.tsx");
+const sidebar = read("src/components/layout/sidebar.tsx");
+const permissions = read("src/lib/permissions/resolver.ts");
+const flexibleRoute = read("src/components/projects/flexible-projects-route-workspace.tsx");
 
 assert.match(page, /user\.role === UserRole\.USER/);
 assert.match(page, /<UserProjectsBrowser/);
@@ -128,6 +135,7 @@ for (const copy of [
   "Your workspace for assigned work and deliverables.",
   "Needs Attention",
   "Search projects...",
+  "Priority",
   "Recently Updated",
   "Name A–Z",
   "Name Z–A",
@@ -156,11 +164,18 @@ for (const forbidden of [
   "Tech",
   "Concepts",
   "+ New Project",
-  "Flexible Projects",
-  "Artwork Projects",
 ]) {
   assert.ok(!browser.includes(forbidden), `USER Projects UI leaked: ${forbidden}`);
 }
+
+assert.match(browser, /Artwork Projects/);
+assert.match(browser, /Flexible Projects/);
+assert.match(browser, /href="\/projects\?view=flexible"/);
+assert.match(browser, /showProjectTypeSwitcher \? \(/);
+assert.match(flexibleRoute, /showProjectTypeSwitcher \? \(/);
+assert.match(page, /getProjectTypeSwitcherVisibility\(user\)/);
+assert.match(page, /showProjectTypeSwitcher=\{showProjectTypeSwitcher\}/);
+assert.match(permissions, /canViewProjectTypeSwitcher/);
 
 assert.match(browser, /gti:user-projects:view/);
 assert.match(browser, /slice\(0, 5\)/);
@@ -176,7 +191,25 @@ assert.match(query, /plannedDueAt: true/);
 assert.match(query, /revisions: \{/);
 assert.match(query, /workflowStages: \{/);
 assert.match(query, /deriveProjectListWorkflowState\(project\)/);
+assert.match(query, /compareProjectsByPriority/);
+assert.match(query, /isCompleted: left\.status === "COMPLETED"/);
 assert.doesNotMatch(query, /inquiry:/);
 assert.doesNotMatch(query, /researchWorkspaces:/);
+
+assert.match(tasksPage, /user\.role !== UserRole\.USER/);
+assert.match(tasksPage, /getUserTasksPageData\(user\)/);
+assert.match(tasksWorkspace, /My Tasks/);
+assert.match(tasksWorkspace, /Executor Workspace/);
+assert.match(tasksWorkspace, /Open a project folder/);
+assert.match(tasksWorkspace, /Open task/);
+assert.match(tasksWorkspace, /Stage \{task\.stageNumber\}/);
+assert.match(tasksWorkspace, /Search project folders or tasks/);
+assert.match(tasksService, /assignedExecutorId: user\.id/);
+assert.match(tasksService, /ProjectWorkflowStageKey\.CONCEPT_CREATION/);
+assert.match(tasksService, /ProjectWorkflowStageKey\.PROJECT_DEVELOPMENT/);
+assert.match(tasksService, /returnTo=%2Ftasks/);
+assert.match(dashboardLayout, /tasks: taskBadgeCount > 0/);
+assert.match(sidebar, /label: "Tasks", href: "\/tasks"/);
+assert.match(sidebar, /item\.href === "\/tasks"/);
 
 console.log("USER My Projects display-state and UI isolation checks passed.");

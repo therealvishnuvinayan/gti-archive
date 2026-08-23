@@ -5,7 +5,12 @@ import {
   UserRole,
 } from "@prisma/client";
 
-import { canUseProjects } from "@/lib/permissions/resolver";
+import {
+  canUseProjects,
+  isGlobalProjectAdministrator,
+  isProjectCoOwner,
+  isProjectOwner,
+} from "@/lib/permissions/resolver";
 import {
   buildAccessibleProjectsWhere,
   type ProjectAccessUser,
@@ -34,6 +39,7 @@ export type UserProjectWorkspaceData = {
     id: string;
     href: string;
   } | null;
+  canViewClassifiedFolders: boolean;
   classifiedFolders: Array<{
     key: string;
     ownerName: string;
@@ -138,6 +144,7 @@ export async function getUserProjectWorkspace(
           },
         },
         privateFolders: {
+          where: { ownerUserId: currentUser.id },
           select: { id: true, ownerUserId: true },
         },
         conceptFolders: {
@@ -239,22 +246,21 @@ export async function getUserProjectWorkspace(
     }
   }
 
-  const privateFolderByOwnerId = new Map(
-    project.privateFolders.map((folder) => [folder.ownerUserId, folder] as const),
-  );
-  const ownPrivateFolder = privateFolderByOwnerId.get(currentUser.id);
-  const classifiedFolders = [...participantById.values()]
-    .filter(
-      (participant) =>
-        participant.userId !== currentUser.id &&
-        privateFolderByOwnerId.has(participant.userId),
-    )
-    .sort((left, right) => left.name.localeCompare(right.name))
-    .map((participant, index) => ({
-      key: `classified-${index + 1}`,
-      ownerName: participant.name,
-      role: participant.role,
-    }));
+  const ownPrivateFolder = project.privateFolders[0] ?? null;
+  const canViewClassifiedFolders =
+    isGlobalProjectAdministrator(currentUser) ||
+    isProjectOwner(currentUser, project) ||
+    isProjectCoOwner(currentUser, project);
+  const classifiedFolders = canViewClassifiedFolders
+    ? [...participantById.values()]
+        .filter((participant) => participant.userId !== currentUser.id)
+        .sort((left, right) => left.name.localeCompare(right.name))
+        .map((participant, index) => ({
+          key: `classified-${index + 1}`,
+          ownerName: participant.name,
+          role: participant.role,
+        }))
+    : [];
 
   const assignedConcepts = project.conceptFolders
     .map((folder) => {
@@ -311,6 +317,7 @@ export async function getUserProjectWorkspace(
           href: `/projects/${project.id}/workspace/private/${ownPrivateFolder.id}`,
         }
       : null,
+    canViewClassifiedFolders,
     classifiedFolders,
     assignedConcepts,
   };

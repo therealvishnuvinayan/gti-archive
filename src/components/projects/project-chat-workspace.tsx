@@ -7822,9 +7822,10 @@ export function ProjectChatWorkspace({
             >
               <Link href={conceptMode.backHref}>
                 <ArrowLeft className="h-3.5 w-3.5" />
-                {isStageNeutralConceptMode
-                  ? "Back to Workspace"
-                  : `Back to Stage ${conceptMode.stageNumber}`}
+                {conceptMode.backLabel ??
+                  (isStageNeutralConceptMode
+                    ? "Back to Workspace"
+                    : `Back to Stage ${conceptMode.stageNumber}`)}
               </Link>
             </Button>
             <dl
@@ -9297,9 +9298,10 @@ export function ProjectChatWorkspace({
                     >
                       <Link href={conceptMode.backHref}>
                         <ArrowLeft className="h-4 w-4" />
-                        {isStageNeutralConceptMode
-                          ? "Back to Workspace"
-                          : "Back to Concept Taskers"}
+                        {conceptMode.backLabel ??
+                          (isStageNeutralConceptMode
+                            ? "Back to Workspace"
+                            : "Back to Concept Taskers")}
                       </Link>
                     </Button>
                   ) : null}
@@ -9337,9 +9339,10 @@ export function ProjectChatWorkspace({
                   >
                     <Link href={conceptMode.backHref}>
                       <ArrowLeft className="h-4 w-4" />
-                      {isStageNeutralConceptMode
-                        ? "Back to Workspace"
-                        : "Back to Concept Taskers"}
+                      {conceptMode.backLabel ??
+                        (isStageNeutralConceptMode
+                          ? "Back to Workspace"
+                          : "Back to Concept Taskers")}
                     </Link>
                   </Button>
                 ) : null}
@@ -9594,7 +9597,11 @@ export function ProjectChatWorkspace({
                       <Link href={conceptMode.backHref}>
                         <ArrowLeft className="h-4 w-4" />
                         <span>
-                          {isStageNeutralConceptMode ? "Workspace" : "Taskers"}
+                          {conceptMode.backLabel === "Back to Tasks"
+                            ? "Tasks"
+                            : isStageNeutralConceptMode
+                              ? "Workspace"
+                              : "Taskers"}
                         </span>
                       </Link>
                     </Button>

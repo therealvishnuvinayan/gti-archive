@@ -39,6 +39,7 @@ export type SidebarVisibility = {
   dashboard: boolean;
   fluxAi: boolean;
   projects: boolean;
+  tasks: boolean;
   projectCounts: boolean;
   calendar: boolean;
   collaboration: boolean;
@@ -179,6 +180,22 @@ export function canUseProjects(user: PermissionUser) {
   );
 }
 
+export type ProjectTypeSwitcherAuthority = {
+  isProjectOwner: boolean;
+  isProjectCoOwner: boolean;
+};
+
+export function canViewProjectTypeSwitcher(
+  user: Pick<PermissionUser, "role">,
+  authority: ProjectTypeSwitcherAuthority,
+) {
+  return (
+    isGlobalProjectAdministrator(user) ||
+    authority.isProjectOwner ||
+    authority.isProjectCoOwner
+  );
+}
+
 export function assertCanUseArchives(
   user: PermissionUser,
   message = "You do not have permission to view archives.",
@@ -239,6 +256,7 @@ export function getSidebarVisibility(user: PermissionUser): SidebarVisibility {
     dashboard: hasPermission(user, "dashboard.view"),
     fluxAi: canUseFluxAi(user),
     projects,
+    tasks: false,
     projectCounts:
       projects && hasPermission(user, "dashboard.viewProjectCounts"),
     calendar: hasPermission(user, "calendar.view"),

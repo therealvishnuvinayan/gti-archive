@@ -18,7 +18,6 @@ import {
   MotionSection,
   MotionStaggerGroup,
 } from "@/components/motion/motion-primitives";
-import { FlexibleProjectsBrowser } from "@/components/projects/flexible-projects-browser";
 import { ProjectCard, type ProjectCardItem } from "@/components/projects/project-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -34,6 +33,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { ProjectListRole, ProjectListStatus } from "@/lib/project-list-workflow";
 
 type ProjectSortValue =
+  | "priority"
   | "updated"
   | "newest"
   | "oldest"
@@ -52,6 +52,7 @@ type ProjectsBrowserProps = {
   currentPage: number;
   hasAnyProjects: boolean;
   canCreateProject: boolean;
+  showProjectTypeSwitcher: boolean;
   activeStatus: ProjectListStatus;
   activeSort: ProjectSortValue;
   activeStage: number | null;
@@ -78,6 +79,7 @@ const roleOptions: Array<{ value: ProjectListRole; label: string }> = [
 ];
 
 const sortOptions: Array<{ value: ProjectSortValue; label: string }> = [
+  { value: "priority", label: "Priority" },
   { value: "updated", label: "Recently Updated" },
   { value: "newest", label: "Newest" },
   { value: "oldest", label: "Oldest" },
@@ -125,6 +127,7 @@ export function ProjectsBrowser({
   currentPage,
   hasAnyProjects,
   canCreateProject,
+  showProjectTypeSwitcher,
   activeStatus,
   activeSort,
   activeStage,
@@ -191,7 +194,7 @@ export function ProjectsBrowser({
 
     if (searchQuery) params.set("q", searchQuery);
     if (status !== "ALL") params.set("status", status);
-    if (sort !== "updated") params.set("sort", sort);
+    if (sort !== "priority") params.set("sort", sort);
     if (stage) params.set("stage", String(stage));
     if (ownerId) params.set("ownerId", ownerId);
     if (executorId) params.set("executorId", executorId);
@@ -209,7 +212,7 @@ export function ProjectsBrowser({
 
   function clearFilters() {
     const params = new URLSearchParams();
-    if (activeSort !== "updated") params.set("sort", activeSort);
+    if (activeSort !== "priority") params.set("sort", activeSort);
     const nextHref = params.size > 0 ? `${pathname}?${params}` : pathname;
     startTransition(() => router.push(nextHref, { scroll: false }));
   }
@@ -224,12 +227,13 @@ export function ProjectsBrowser({
 
   return (
     <div className="space-y-5">
-      <MotionSection>
-        <div
-          role="tablist"
-          aria-label="Project type"
-          className="inline-flex max-w-full gap-1 overflow-x-auto rounded-[15px] border border-[#d5ded6] bg-white p-1 shadow-[0_8px_22px_rgba(18,34,25,0.035)]"
-        >
+      {showProjectTypeSwitcher ? (
+        <MotionSection>
+          <div
+            role="tablist"
+            aria-label="Project type"
+            className="inline-flex max-w-full gap-1 overflow-x-auto rounded-[15px] border border-[#d5ded6] bg-white p-1 shadow-[0_8px_22px_rgba(18,34,25,0.035)]"
+          >
           <button
             type="button"
             role="tab"
@@ -256,18 +260,19 @@ export function ProjectsBrowser({
           >
             <PanelsTopLeft className="size-4" /> Flexible Projects
           </button>
-        </div>
-      </MotionSection>
+          </div>
+        </MotionSection>
+      ) : null}
 
       {activeProjectView === "flexible" ? (
-        <FlexibleProjectsBrowser canCreateProject={canCreateProject} />
+        <ProjectsGridSkeleton />
       ) : (
         <div className="space-y-5">
       <MotionSection>
         <header className="space-y-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <h1 className="text-[38px] font-[700] leading-none tracking-[-0.045em] text-[#0f1411] sm:text-[44px]">
+              <h1 className="text-[25px] font-[700] leading-none tracking-[-0.045em] text-[#0f1411] sm:text-[29px]">
                 Projects
               </h1>
               <p className="mt-2 text-[14px] text-[#737b74]">

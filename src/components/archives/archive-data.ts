@@ -37,6 +37,13 @@ const archiveCategoryIconMap = new Map<string, LucideIcon>(
   archiveCategoryIconOptions.map((option) => [option.key, option.icon]),
 );
 
+export function formatArchiveCategoryPassportTitle(value: string) {
+  const title = value.trim();
+
+  if (!title) return "Passport";
+  return /\s+passport$/i.test(title) ? title : `${title} Passport`;
+}
+
 export function getArchiveCategoryIcon(iconKey: string | null | undefined) {
   return archiveCategoryIconMap.get(iconKey?.trim() ?? "") ?? Archive;
 }

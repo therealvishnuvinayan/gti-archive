@@ -127,6 +127,10 @@ export function getDashboardBackNavigation(
       );
     }
 
+    if (searchParams.get("returnTo") === "/tasks") {
+      return topbar("/tasks", "Tasks", "Back to Tasks");
+    }
+
     return topbar(
       `/projects/${projectId}/stages/${stageNumber}/concepts`,
       "Concept Folders",

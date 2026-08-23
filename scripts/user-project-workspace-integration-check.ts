@@ -371,8 +371,40 @@ async function main() {
     check(!workspace.assignedConcepts.some((concept) => concept.name === "Concept D"), "another USER's concept leaked");
     check(workspace.assignedConcepts[0]?.display.status === "NEEDS_ATTENTION", "Needs Attention concepts must sort first");
     check(workspace.assignedConcepts.some((concept) => concept.id === conceptA.id && concept.display.status === "IN_PROGRESS"), "In Progress status must reuse the USER task helper");
-    check(workspace.classifiedFolders.length === 4, "other participant private folders must appear as classified placeholders");
+    check(
+      workspace.classifiedFolders.length === 0 &&
+        !workspace.canViewClassifiedFolders,
+      "an executor must receive only their own private folder",
+    );
     check(workspace.myPrivateFolder, "current USER private folder must be available");
+    const collaboratorWorkspace = await getUserProjectWorkspace(
+      projectId,
+      users.collaborator,
+    );
+    check(
+      collaboratorWorkspace?.myPrivateFolder &&
+        collaboratorWorkspace.classifiedFolders.length === 0 &&
+        !collaboratorWorkspace.canViewClassifiedFolders,
+      "a collaborator must receive their own private folder without other participant placeholders",
+    );
+    const userRoleOwnerWorkspace = await getUserProjectWorkspace(projectId, {
+      ...users.owner,
+      role: UserRole.USER,
+    });
+    const userRoleCoOwnerWorkspace = await getUserProjectWorkspace(projectId, {
+      ...users.coOwner,
+      role: UserRole.USER,
+    });
+    check(
+      userRoleOwnerWorkspace?.canViewClassifiedFolders &&
+        userRoleOwnerWorkspace.classifiedFolders.length === 4,
+      "a project owner must retain the classified private-folder directory",
+    );
+    check(
+      userRoleCoOwnerWorkspace?.canViewClassifiedFolders &&
+        userRoleCoOwnerWorkspace.classifiedFolders.length === 4,
+      "a project co-owner must retain the classified private-folder directory",
+    );
     const workflowAfter = await prisma.projectWorkflowStage.findMany({
       where: { projectId },
       orderBy: { stageKey: "asc" },

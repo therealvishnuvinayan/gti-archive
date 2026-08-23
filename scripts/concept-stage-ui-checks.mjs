@@ -67,9 +67,12 @@ for (const label of [
 assert(
   route.includes('"Create and manage concept taskers."') &&
     workspace.includes("Manage your concept taskers.") &&
+    route.includes('import { ListTodo } from "lucide-react"') &&
+    workspace.includes('<ListTodo className="h-7 w-7" />') &&
+    !workspace.includes('<Folder className="h-7 w-7 fill-current" />') &&
     !workspace.includes("Create Concept") &&
     !workspace.includes("Concept Folders"),
-  "Stage 3/4 must present concept containers as taskers and label creation as Create Task.",
+  "Stage 3/4 must present concept containers as taskers with task icons and label creation as Create Task.",
 );
 assert(
   concepts.includes("createdById: true") &&

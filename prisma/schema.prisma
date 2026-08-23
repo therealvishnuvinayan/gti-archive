@@ -33,6 +33,16 @@ enum ProjectPriority {
   URGENT
 }
 
+enum FlexibleProjectStatus {
+  ACTIVE
+  COMPLETED
+}
+
+enum FlexibleMilestoneStatus {
+  PENDING
+  COMPLETED
+}
+
 enum ProjectWorkflowStageKey {
   PROJECT_INQUIRY
   PROJECT_RESEARCH_AND_PLANNING
@@ -481,6 +491,14 @@ model User {
   configuredRequestReminders          RequestReminder[]                    @relation("RequestReminderConfiguredBy")
   projectClosures                     ProjectClosure[]                     @relation("ProjectClosureCloser")
   projectFormDrafts                   ProjectFormDraft[]                   @relation("ProjectFormDraftOwner")
+  createdFlexibleProjects             FlexibleProject[]                    @relation("FlexibleProjectCreator")
+  ownedFlexibleProjects               FlexibleProject[]                    @relation("FlexibleProjectOwner")
+  flexibleProjectCollaborations       FlexibleProjectCollaborator[]        @relation("FlexibleProjectCollaboratorUser")
+  addedFlexibleProjectCollaborations  FlexibleProjectCollaborator[]        @relation("FlexibleProjectCollaboratorAdder")
+  responsibleFlexibleMilestones       FlexibleMilestone[]                  @relation("FlexibleMilestoneResponsibleUser")
+  completedFlexibleMilestones         FlexibleMilestone[]                  @relation("FlexibleMilestoneCompletedBy")
+  authoredFlexibleMilestoneNotes      FlexibleMilestoneNote[]              @relation("FlexibleMilestoneNoteAuthor")
+  uploadedFlexibleProjectAttachments  FlexibleProjectAttachment[]          @relation("FlexibleProjectAttachmentUploader")
   createdAt                           DateTime                             @default(now())
   updatedAt                           DateTime                             @updatedAt
 }
@@ -619,6 +637,109 @@ model Project {
   @@index([isPinned])
   @@index([createdAt])
   @@index([createdById])
+}
+
+model FlexibleProject {
+  id            String                        @id @default(cuid())
+  slug          String                        @unique
+  name          String
+  description   String?
+  status        FlexibleProjectStatus         @default(ACTIVE)
+  priority      ProjectPriority               @default(MEDIUM)
+  scope         ProjectExecutionType          @default(INTERNAL)
+  deadline      DateTime?
+  ownerId       String
+  owner         User                          @relation("FlexibleProjectOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  createdById   String
+  createdBy     User                          @relation("FlexibleProjectCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  collaborators FlexibleProjectCollaborator[]
+  milestones    FlexibleMilestone[]
+  attachments   FlexibleProjectAttachment[]
+  completedAt   DateTime?
+  createdAt     DateTime                      @default(now())
+  updatedAt     DateTime                      @updatedAt
+
+  @@index([ownerId, updatedAt])
+  @@index([createdById])
+  @@index([status, updatedAt])
+}
+
+model FlexibleProjectCollaborator {
+  projectId String
+  project   FlexibleProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User            @relation("FlexibleProjectCollaboratorUser", fields: [userId], references: [id], onDelete: Cascade)
+  addedById String?
+  addedBy   User?           @relation("FlexibleProjectCollaboratorAdder", fields: [addedById], references: [id], onDelete: SetNull)
+  createdAt DateTime        @default(now())
+
+  @@id([projectId, userId])
+  @@index([userId, projectId])
+  @@index([addedById])
+}
+
+model FlexibleMilestone {
+  id                String                      @id @default(cuid())
+  projectId         String
+  project           FlexibleProject             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name              String
+  description       String?
+  category          String?
+  responsibleUserId String?
+  responsibleUser   User?                       @relation("FlexibleMilestoneResponsibleUser", fields: [responsibleUserId], references: [id], onDelete: SetNull)
+  deadline          DateTime?
+  sortOrder         Int
+  status            FlexibleMilestoneStatus     @default(PENDING)
+  completedAt       DateTime?
+  completedById     String?
+  completedBy       User?                       @relation("FlexibleMilestoneCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
+  attachments       FlexibleProjectAttachment[]
+  notes             FlexibleMilestoneNote[]
+  createdAt         DateTime                    @default(now())
+  updatedAt         DateTime                    @updatedAt
+
+  @@unique([projectId, sortOrder])
+  @@index([projectId, status])
+  @@index([responsibleUserId])
+  @@index([completedById])
+}
+
+model FlexibleMilestoneNote {
+  id          String            @id @default(cuid())
+  milestoneId String
+  milestone   FlexibleMilestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User              @relation("FlexibleMilestoneNoteAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  content     String
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([milestoneId, createdAt])
+  @@index([authorId])
+}
+
+model FlexibleProjectAttachment {
+  id               String             @id @default(cuid())
+  projectId        String
+  project          FlexibleProject    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneId      String?
+  milestone        FlexibleMilestone? @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  uploadedById     String
+  uploadedBy       User               @relation("FlexibleProjectAttachmentUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  fileName         String
+  originalFileName String
+  mimeType         String
+  fileSize         Int
+  bucket           String
+  storageKey       String             @unique
+  status           AttachmentStatus   @default(UPLOADING)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  @@index([projectId, createdAt])
+  @@index([milestoneId, createdAt])
+  @@index([uploadedById])
+  @@index([status])
 }
 
 model ProjectFormDraft {

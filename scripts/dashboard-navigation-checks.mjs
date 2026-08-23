@@ -59,6 +59,12 @@ expectNavigation("/projects/project-1/stages/3/concepts/concept-1", {
   label: "Concept Folders",
   ariaLabel: "Back to Stage 3 Concept Folders",
 });
+expectNavigation("/projects/project-1/stages/3/concepts/concept-1", {
+  owner: "topbar",
+  href: "/tasks",
+  label: "Tasks",
+  ariaLabel: "Back to Tasks",
+}, "returnTo=%2Ftasks");
 expectNavigation("/projects/project-1/stages/4/concepts/concept-1", {
   owner: "topbar",
   href: "/projects/project-1/stages/4/concepts",
@@ -159,8 +165,9 @@ assert(
 assert(
   !conceptChat.includes("ProjectBackButton") &&
     conceptChat.includes("stageNeutral: true") &&
-    conceptChat.includes("backHref: `/projects/${encodeURIComponent(projectId)}`"),
-  "USER concept chat must return to the stage-neutral project workspace without adding a duplicate page-level control.",
+    conceptChat.includes("backHref: backHref ?? `/projects/${encodeURIComponent(projectId)}`") &&
+    conceptChat.includes('backLabel: backHref === "/tasks" ? "Back to Tasks" : "Back to Workspace"'),
+  "USER concept chat must preserve its stage-neutral return context without adding a duplicate page-level control.",
 );
 assert(
   backButton.includes('aria-label={ariaLabel ?? label}') &&

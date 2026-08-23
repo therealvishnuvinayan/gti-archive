@@ -3,6 +3,7 @@ import { requireUser, getUserDisplayName, getUserInitials } from "@/lib/auth";
 import {
   getSidebarVisibility,
 } from "@/lib/permissions/resolver";
+import { getUserTaskSidebarCount } from "@/lib/user-tasks";
 
 export default async function DashboardRoutesLayout({
   children,
@@ -11,7 +12,11 @@ export default async function DashboardRoutesLayout({
 }) {
   const user = await requireUser();
   const displayName = getUserDisplayName(user);
-  const sidebarVisibility = getSidebarVisibility(user);
+  const taskBadgeCount = await getUserTaskSidebarCount(user);
+  const sidebarVisibility = {
+    ...getSidebarVisibility(user),
+    tasks: taskBadgeCount > 0,
+  };
 
   return (
     <DashboardAppFrame
@@ -24,6 +29,7 @@ export default async function DashboardRoutesLayout({
           ? `/api/profile/avatar?v=${encodeURIComponent(user.avatarUrl)}`
           : null,
       }}
+      taskBadgeCount={taskBadgeCount}
       sidebarVisibility={sidebarVisibility}
     >
       {children}

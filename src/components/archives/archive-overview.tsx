@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import {
   ArchiveCategoryIconGlyph,
+  formatArchiveCategoryPassportTitle,
   getArchiveCategoryIconImageSrc,
 } from "@/components/archives/archive-data";
 import { ArchiveUploadButton } from "@/components/dashboard/upload-assets-button";
@@ -87,7 +88,7 @@ export function ArchiveOverview({
                           )}
                         </div>
                         <h3 className="text-center text-[16px] font-[700] text-[#141915]">
-                          {category.title}
+                          {formatArchiveCategoryPassportTitle(category.title)}
                         </h3>
                         {category.description ? <RichTextContent value={category.description} className="mt-2 line-clamp-2 text-center text-[12px] leading-5 text-[#718072]" /> : null}
                         <div className="mt-5 rounded-[18px] border border-[#e1e8e1] bg-[#f9fbf9] px-4 py-3 text-center">

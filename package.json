@@ -27,6 +27,7 @@
     "projects:v2-check": "node scripts/projects-v2-dashboard-checks.mjs",
     "projects:user-check": "tsc --project scripts/tsconfig.user-projects.json && COMPILED_ALIAS_ROOT=.tmp/user-projects node -r ./scripts/register-compiled-alias.cjs .tmp/user-projects/scripts/user-projects-page-check.js",
     "projects:user-integration-check": "tsc --project scripts/tsconfig.user-projects-integration.json && COMPILED_ALIAS_ROOT=.tmp/user-projects-integration node -r ./scripts/register-compiled-alias.cjs .tmp/user-projects-integration/scripts/user-projects-integration-check.js",
+    "projects:flexible-integration-check": "tsc --project scripts/tsconfig.flexible-projects-integration.json && node scripts/run-flexible-projects-isolated-integration.mjs",
     "project-workspace:user-check": "node scripts/user-project-workspace-checks.mjs",
     "project-workspace:user-integration-check": "tsc --project scripts/tsconfig.user-project-workspace-integration.json && COMPILED_ALIAS_ROOT=.tmp/user-project-workspace-integration node -r ./scripts/register-compiled-alias.cjs .tmp/user-project-workspace-integration/scripts/user-project-workspace-integration-check.js",
     "project-list:workflow-check": "tsc --project scripts/tsconfig.project-list-workflow.json && COMPILED_ALIAS_ROOT=.tmp/project-list-workflow node -r ./scripts/register-compiled-alias.cjs .tmp/project-list-workflow/scripts/project-list-workflow-check.js",
