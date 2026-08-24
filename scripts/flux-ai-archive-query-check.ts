@@ -24,7 +24,7 @@ for (const [input, expected] of [
   ["find Merci AppleMint", "Merci AppleMint"],
   ["find the archive for Merci AppleMint", "Merci AppleMint"],
   ["search archive AppleMint", "AppleMint"],
-  ["Can you find Abhijith file", "Abhijith"],
+  ["Can you find Slavomir's file", "Slavomir"],
   ["can u find ChatGPT Image Jun 12, 2026, 07_30_15 PM (1).png", "ChatGPT Image Jun 12, 2026, 07_30_15 PM (1).png"],
   ["find the file named final-master-carton.pdf", "final-master-carton.pdf"],
   ["show archived project Premium Rebrand", "Premium Rebrand"],
@@ -41,7 +41,7 @@ for (const [input, expected] of [
   ["asset tag: Campaign Launch", "Campaign Launch"],
   ["project: test3", "test3"],
   ["I need to find the file for test3 project", "test3"],
-  ["do you have Abhijith's file?", "Abhijith"],
+  ["do you have Slavomir's file?", "Slavomir"],
   ["Flux metadata fixture", "Flux metadata fixture"],
 ]) {
   checkParsed(input, expected);
