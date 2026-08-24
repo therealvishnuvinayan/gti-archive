@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { Prisma } from "@prisma/client";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { after, NextResponse } from "next/server";
 
@@ -14,6 +15,25 @@ import {
   publishStageChatTimelineUpdatedAfterResponse,
   runStageChatRealtimeTaskAfterResponse,
 } from "@/lib/realtime/server";
+
+const UPLOAD_COMPLETION_ERROR =
+  "Unable to complete the upload right now. Please try again.";
+
+function getUploadCompletionError(error: unknown) {
+  const isPrismaError =
+    error instanceof Prisma.PrismaClientKnownRequestError ||
+    error instanceof Prisma.PrismaClientUnknownRequestError ||
+    error instanceof Prisma.PrismaClientRustPanicError ||
+    error instanceof Prisma.PrismaClientInitializationError ||
+    error instanceof Prisma.PrismaClientValidationError ||
+    (error instanceof Error && error.name.startsWith("PrismaClient"));
+
+  if (isPrismaError || !(error instanceof Error)) {
+    return { message: UPLOAD_COMPLETION_ERROR, status: 500 };
+  }
+
+  return { message: error.message, status: 400 };
+}
 
 export async function POST(request: Request) {
   const user = await getCurrentUser();
@@ -108,14 +128,12 @@ export async function POST(request: Request) {
           : null,
     });
   } catch (error) {
+    console.error("Unable to complete project asset upload.", error);
+    const response = getUploadCompletionError(error);
+
     return NextResponse.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unable to complete the upload right now.",
-      },
-      { status: 400 },
+      { error: response.message },
+      { status: response.status },
     );
   }
 }
