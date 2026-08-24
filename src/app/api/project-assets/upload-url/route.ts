@@ -50,6 +50,7 @@ export async function POST(request: Request) {
     fileSize: payload.fileSize,
     assetType: payload.assetType,
     assetTagIds: Array.isArray(payload.assetTagIds) ? payload.assetTagIds : [],
+    stageFiveDirectSource: payload.stageFiveDirectSource === true,
     uploadEndpointMode: isUploadEndpointMode(payload.uploadEndpointMode)
       ? payload.uploadEndpointMode
       : undefined,

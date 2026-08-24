@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { revalidateTag } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { after, NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
@@ -26,6 +26,7 @@ export async function POST(request: Request) {
     attachmentId?: string;
     failed?: boolean;
     projectId?: string;
+    stageFiveDirectSource?: boolean;
     metadata?: LibraryUploadMetadata;
   } = {};
 
@@ -45,9 +46,15 @@ export async function POST(request: Request) {
       payload.attachmentId,
       Boolean(payload.failed),
       payload.metadata,
+      payload.stageFiveDirectSource === true
+        ? { stageFiveDirectSource: true }
+        : undefined,
     );
     after(() => {
       revalidateTag(PROJECTS_CACHE_TAG, "max");
+      if (result && "stageFiveSource" in result && result.stageFiveSource) {
+        revalidatePath(`/projects/${result.projectId}/stages/5`);
+      }
     });
     if (result?.invoiceCommentId && result.stageId && !payload.failed) {
       runStageChatRealtimeTaskAfterResponse("stage-chat.invoice-uploaded", async () => {
@@ -95,6 +102,10 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       invoiceCommentId: result?.invoiceCommentId ?? null,
+      stageFiveSource:
+        result && "stageFiveSource" in result
+          ? result.stageFiveSource
+          : null,
     });
   } catch (error) {
     return NextResponse.json(

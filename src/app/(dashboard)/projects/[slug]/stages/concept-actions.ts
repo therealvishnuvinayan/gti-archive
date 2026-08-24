@@ -387,9 +387,20 @@ export async function completeStageFourConceptsAction(input: {
           notifyStageFiveActivated({
             projectId: input.projectId,
             finalFileCount: result.finalApprovedCount,
+            skippedStageFour: result.skipped,
             actorId: user.id,
           }),
         );
+      }
+
+      if (result.skipped) {
+        publishProjectActivityUpdatedAfterResponse({
+          projectId: input.projectId,
+          stageId: null,
+          eventType: "timeline_updated",
+          changedEntityId: input.projectId,
+          actorId: user.id,
+        });
       }
     }
 

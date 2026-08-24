@@ -10,6 +10,7 @@ import {
   ProjectFileChecklistRequestWorkflowStatus,
   ProjectFileChecklistResponseSource,
   ProjectWorkflowStageKey,
+  ProjectWorkflowStageStatus,
   UserRole,
 } from "@prisma/client";
 
@@ -46,6 +47,7 @@ import {
   createPresignedPreviewUrl,
 } from "@/lib/storage/s3";
 import { getStageFiveCompletionState } from "@/lib/stage-six";
+import { STAGE_FIVE_SOURCE_WORKFLOW_STAGE_KEYS } from "@/lib/stage-five-lineage";
 import {
   buildRequestReminderCreateData,
   isRequestReminderInterval,
@@ -91,6 +93,7 @@ export type StageFiveChecklistItemRecord = {
 export type StageFiveFileRecord = {
   handoffId: string;
   checklistId: string;
+  sourceOrigin: "STAGE_FOUR" | "DIRECT_STAGE_FIVE";
   sourceAttachment: StageFiveAttachmentRecord;
   handedOffAt: string;
   items: StageFiveChecklistItemRecord[];
@@ -107,6 +110,7 @@ export type StageFiveWorkspaceData = {
   files: StageFiveFileRecord[];
   participants: StageFiveParticipantRecord[];
   canEdit: boolean;
+  canUploadSource: boolean;
   canComplete: boolean;
   stageCompleted: boolean;
   pendingRequestCount: number;
@@ -372,7 +376,9 @@ export async function getStageFiveWorkspaceData(
     prisma.projectStageFileHandoff.findMany({
       where: {
         projectId,
-        sourceWorkflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+        sourceWorkflowStageKey: {
+          in: [...STAGE_FIVE_SOURCE_WORKFLOW_STAGE_KEYS],
+        },
         targetWorkflowStageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
       },
       relationLoadStrategy: "join",
@@ -380,6 +386,7 @@ export async function getStageFiveWorkspaceData(
       select: {
         id: true,
         handedOffAt: true,
+        sourceWorkflowStageKey: true,
         sourceAttachment: { select: attachmentSelect },
         checklist: { select: { id: true } },
       },
@@ -420,6 +427,10 @@ export async function getStageFiveWorkspaceData(
     return {
       handoffId: handoff.id,
       checklistId: checklist?.id ?? handoff.checklist?.id ?? "",
+      sourceOrigin:
+        handoff.sourceWorkflowStageKey === ProjectWorkflowStageKey.FINAL_LAYOUT
+          ? "DIRECT_STAGE_FIVE"
+          : "STAGE_FOUR",
       sourceAttachment: mapAttachment(handoff.sourceAttachment),
       handedOffAt: handoff.handedOffAt.toISOString(),
       items:
@@ -459,11 +470,15 @@ export async function getStageFiveWorkspaceData(
   });
 
   const completionState = await getStageFiveCompletionState(user, projectId);
+  const stageFiveIsAvailable =
+    stageStatus(project, ProjectWorkflowStageKey.FINAL_LAYOUT) ===
+    ProjectWorkflowStageStatus.AVAILABLE;
 
   return {
     files,
     participants: getParticipants(project).filter((participant) => participant.id !== user.id),
-    canEdit: true,
+    canEdit: stageFiveIsAvailable,
+    canUploadSource: stageFiveIsAvailable,
     canComplete: completionState?.canComplete ?? false,
     stageCompleted: completionState?.completed ?? false,
     pendingRequestCount: completionState?.pendingRequestCount ?? 0,
@@ -550,21 +565,12 @@ export async function saveStageFiveChecklist(
   if (!project || !canManageStageFive(user, project)) {
     return { error: "You do not have permission to edit this file checklist." } as const;
   }
-
-  const checklist = await withPrismaRetry(() =>
-    prisma.projectFileChecklist.findFirst({
-      where: {
-        projectId: input.projectId,
-        handoffId: input.handoffId,
-        handoff: {
-          projectId: input.projectId,
-          targetWorkflowStageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
-        },
-      },
-      select: { id: true },
-    }),
-  );
-  if (!checklist) return { error: "The selected Stage 5 file was not found." } as const;
+  if (
+    stageStatus(project, ProjectWorkflowStageKey.FINAL_LAYOUT) !==
+    ProjectWorkflowStageStatus.AVAILABLE
+  ) {
+    return { error: "This file checklist is locked because Stage 5 is completed." } as const;
+  }
 
   const inputByField = new Map(input.items.map((item) => [item.fieldKey, item]));
   if (inputByField.size !== input.items.length) return { error: "Duplicate checklist fields are not allowed." } as const;
@@ -606,6 +612,22 @@ export async function saveStageFiveChecklist(
   const savedItems = await withPrismaRetry(() =>
     prisma.$transaction(
       async (tx) => {
+        const [checklist] = await tx.$queryRaw<Array<{ id: string }>>(
+          Prisma.sql`
+            SELECT checklist."id"
+            FROM "ProjectFileChecklist" AS checklist
+            INNER JOIN "ProjectStageFileHandoff" AS handoff
+              ON handoff."id" = checklist."handoffId"
+            WHERE checklist."projectId" = ${input.projectId}
+              AND checklist."handoffId" = ${input.handoffId}
+              AND handoff."projectId" = ${input.projectId}
+              AND handoff."targetWorkflowStageKey" =
+                ${ProjectWorkflowStageKey.FINAL_LAYOUT}::"ProjectWorkflowStageKey"
+            FOR UPDATE OF checklist, handoff
+          `,
+        );
+        if (!checklist) return null;
+
         const existing = await tx.projectFileChecklistItem.findMany({
           where: { checklistId: checklist.id },
           select: { fieldKey: true, status: true },
@@ -715,6 +737,10 @@ export async function saveStageFiveChecklist(
       { maxWait: 5_000, timeout: 25_000 },
     ),
   );
+
+  if (!savedItems) {
+    return { error: "The selected Stage 5 file was not found." } as const;
+  }
 
   return { items: savedItems } as const;
 }

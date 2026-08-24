@@ -5,6 +5,11 @@ export type StageFiveUploadedAttachment = {
   size: number;
 };
 
+export type StageFiveDirectSourceUpload = StageFiveUploadedAttachment & {
+  handoffId: string;
+  checklistId: string;
+};
+
 type UploadPreparation = {
   attachmentId?: string;
   uploadUrl?: string;
@@ -99,6 +104,113 @@ export async function uploadStageFiveChecklistAttachment(
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ attachmentId, projectId, failed: true }),
+      }).catch(() => undefined);
+    }
+    throw error;
+  }
+}
+
+export async function uploadStageFiveDirectSource(
+  projectId: string,
+  file: File,
+  onProgress?: (progress: number) => void,
+): Promise<StageFiveDirectSourceUpload> {
+  let attachmentId: string | undefined;
+  let finalizationUncertain = false;
+  let definitiveFinalizationFailure = false;
+
+  try {
+    onProgress?.(0.01);
+    const response = await fetch("/api/project-assets/upload-url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        originalFileName: file.name,
+        mimeType: file.type || "application/octet-stream",
+        fileSize: file.size,
+        assetType: "GENERAL_PROJECT_ASSET",
+        stageFiveDirectSource: true,
+      }),
+    });
+    const preparation = (await response.json()) as UploadPreparation;
+    if (!response.ok || !preparation.attachmentId || !preparation.uploadUrl) {
+      throw new Error(
+        preparation.error || "Unable to prepare the final-file upload.",
+      );
+    }
+    attachmentId = preparation.attachmentId;
+
+    await putFile(
+      preparation.uploadUrl,
+      file,
+      preparation.uploadExpectedHeaders ?? {
+        "Content-Type": file.type || "application/octet-stream",
+      },
+      (progress) => onProgress?.(0.02 + progress * 0.9),
+    );
+
+    let lastNetworkError: unknown;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const completeResponse = await fetch("/api/project-assets/complete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            attachmentId,
+            projectId,
+            stageFiveDirectSource: true,
+          }),
+        });
+        const completed = (await completeResponse.json()) as {
+          error?: string;
+          stageFiveSource?: {
+            handoffId: string;
+            checklistId: string;
+          } | null;
+        };
+        if (!completeResponse.ok || !completed.stageFiveSource) {
+          definitiveFinalizationFailure = true;
+          throw new Error(
+            completed.error || "Unable to finish the final-file upload.",
+          );
+        }
+
+        onProgress?.(1);
+        return {
+          id: attachmentId,
+          name: file.name,
+          mimeType: file.type || "application/octet-stream",
+          size: file.size,
+          handoffId: completed.stageFiveSource.handoffId,
+          checklistId: completed.stageFiveSource.checklistId,
+        };
+      } catch (error) {
+        if (definitiveFinalizationFailure) {
+          throw error;
+        }
+        lastNetworkError = error;
+      }
+    }
+
+    finalizationUncertain = true;
+    throw (
+      lastNetworkError ??
+      new Error(
+        "The upload finished, but its Stage 5 status could not be confirmed. Refresh before trying again.",
+      )
+    );
+  } catch (error) {
+    if (attachmentId && !finalizationUncertain) {
+      await fetch("/api/project-assets/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          attachmentId,
+          projectId,
+          failed: true,
+          stageFiveDirectSource: true,
+        }),
       }).catch(() => undefined);
     }
     throw error;

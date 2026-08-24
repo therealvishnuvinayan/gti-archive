@@ -251,6 +251,7 @@ export async function notifyStageFourConceptsActivated(input: {
 export async function notifyStageFiveActivated(input: {
   projectId: string;
   finalFileCount: number;
+  skippedStageFour?: boolean;
   actorId: string;
 }) {
   const project = await withPrismaRetry(() =>
@@ -278,7 +279,9 @@ export async function notifyStageFiveActivated(input: {
     recipientUserIds,
     type: "NEXT_STAGE_ACTIVATED",
     title: "Stage 5 available",
-    message: `${input.finalFileCount} final approved file${input.finalFileCount === 1 ? " is" : "s are"} ready for file checklists in ${project.name}.`,
+    message: input.skippedStageFour
+      ? `Stage 4 was skipped in ${project.name}. Upload the final file directly in Stage 5 to start its checklist.`
+      : `${input.finalFileCount} final approved file${input.finalFileCount === 1 ? " is" : "s are"} ready for file checklists in ${project.name}.`,
     entityType: "PROJECT",
     entityId: project.id,
     projectId: project.id,

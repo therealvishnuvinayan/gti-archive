@@ -568,8 +568,9 @@ export function ConceptStageWorkspace({
   const allConceptsApproved =
     completionConcepts.length > 0 && unapprovedConcepts.length === 0;
   const isEmptyStageThree = stageNumber === 3 && completionConcepts.length === 0;
+  const isEmptyStageFour = stageNumber === 4 && completionConcepts.length === 0;
   const stageCompletionReady =
-    stageNumber === 3 ? isEmptyStageThree || allConceptsApproved : allConceptsApproved;
+    isEmptyStageThree || isEmptyStageFour || allConceptsApproved;
 
   function completeCurrentStage() {
     if (!canCompleteStage) {
@@ -588,7 +589,7 @@ export function ConceptStageWorkspace({
       return;
     }
 
-    if (stageNumber === 4 && !allConceptsApproved) {
+    if (stageNumber === 4 && !isEmptyStageFour && !allConceptsApproved) {
       setCompletionError(
         "Every Stage 4 concept must receive Final Approval before Stage 4 can be completed.",
       );
@@ -617,7 +618,9 @@ export function ConceptStageWorkspace({
         router.push(`/projects/${project.id}/stages/4`);
       } else if (stageNumber === 4 && "finalApprovedCount" in result) {
         showSuccessToast(
-          `Stage 4 completed. ${result.finalApprovedCount} final approved file${result.finalApprovedCount === 1 ? "" : "s"} moved to Stage 5.`,
+          result.skipped
+            ? "Stage 4 skipped. Upload the final file directly in Stage 5 to continue."
+            : `Stage 4 completed. ${result.finalApprovedCount} final approved file${result.finalApprovedCount === 1 ? "" : "s"} moved to Stage 5.`,
         );
         router.push(`/projects/${project.id}/stages/5`);
       }
@@ -897,7 +900,9 @@ export function ConceptStageWorkspace({
                   ? isEmptyStageThree
                     ? "Skip Stage 3"
                     : "Continue to Stage 4"
-                  : "Continue to Stage 5"}
+                  : isEmptyStageFour
+                    ? "Skip Stage 4"
+                    : "Continue to Stage 5"}
               </Button>
             ) : null}
             {canManageConcepts && !managementLocked ? (
@@ -1192,7 +1197,9 @@ export function ConceptStageWorkspace({
             ? isEmptyStageThree
               ? "Skip Stage 3?"
               : "Continue to Stage 4?"
-            : "Continue to Stage 5?"
+            : isEmptyStageFour
+              ? "Skip Stage 4?"
+              : "Continue to Stage 5?"
         }
         description={
           stageNumber === 3
@@ -1201,8 +1208,8 @@ export function ConceptStageWorkspace({
               : unapprovedConcepts.length > 0
                 ? `Every Stage 3 concept must have an Approved Concept before completion. Pending: ${unapprovedConcepts.map((concept) => concept.name).join(", ")}.`
                 : `Stage 3 will be closed with ${approvedConceptCount} approved concept${approvedConceptCount === 1 ? "" : "s"}. Stage 4 will open without automatically creating any taskers.`
-            : approvedConceptCount === 0
-              ? "At least one concept must have a Final Approved File before Stage 4 can be completed."
+            : isEmptyStageFour
+              ? "No Stage 4 concepts have been created. Skip Final Concept and continue directly to Stage 5? A final file will need to be uploaded directly in Stage 5."
               : unapprovedConcepts.length > 0
                 ? `Every Stage 4 concept must receive Final Approval before completion. Pending: ${unapprovedConcepts.map((concept) => concept.name).join(", ")}.`
                 : `${approvedConceptCount} final approved file${approvedConceptCount === 1 ? "" : "s"} will continue to Stage 5, and Stage 4 concept management will be locked.`
@@ -1212,7 +1219,9 @@ export function ConceptStageWorkspace({
             ? isEmptyStageThree
               ? "Skip and Continue"
               : "Continue to Stage 4"
-            : "Continue to Stage 5"
+            : isEmptyStageFour
+              ? "Skip and Continue"
+              : "Continue to Stage 5"
         }
         cancelLabel="Cancel"
         pending={isCompleting}

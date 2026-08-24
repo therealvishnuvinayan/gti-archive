@@ -307,6 +307,8 @@ export type RequestUploadInput = {
   assetType: AttachmentAssetType;
   assetTagIds?: string[];
   uploadEndpointMode?: S3UploadEndpointMode;
+  /** Publicly declared upload purpose; all Stage 5 authority is revalidated server-side. */
+  stageFiveDirectSource?: boolean;
   /** Server-only context. Public upload routes must never forward this field. */
   researchFolderId?: string;
   /** Server-only request scope used by the authenticated Stage 5 response route. */
@@ -5255,6 +5257,46 @@ async function hasStageSevenEvidenceUploadAccess(
   );
 }
 
+function getDirectStageFiveSourceAccessError(
+  user: AccessUser,
+  project: ProjectPermissionContext & {
+    status: Parameters<typeof isProjectStatusCompleted>[0];
+    archivedAt: Date | null;
+    workflowStages: Array<{
+      stageKey: ProjectWorkflowStageKey;
+      status: ProjectWorkflowStageStatus;
+    }>;
+  },
+) {
+  if (
+    !isGlobalProjectAdministrator(user) ||
+    !hasProjectPermission(user, project, "file.uploadAttachment")
+  ) {
+    return "You do not have permission to upload a Stage 5 final file.";
+  }
+
+  if (isProjectStatusCompleted(project.status) || project.archivedAt) {
+    return "This project no longer accepts Stage 5 final files.";
+  }
+
+  const stageFour = project.workflowStages.find(
+    (stage) =>
+      stage.stageKey === ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+  );
+  const stageFive = project.workflowStages.find(
+    (stage) => stage.stageKey === ProjectWorkflowStageKey.FINAL_LAYOUT,
+  );
+
+  if (
+    stageFour?.status !== ProjectWorkflowStageStatus.COMPLETED ||
+    stageFive?.status !== ProjectWorkflowStageStatus.AVAILABLE
+  ) {
+    return "Direct final-file uploads are available only while Stage 5 is active.";
+  }
+
+  return null;
+}
+
 export async function requestAttachmentUpload(
   user: AccessUser,
   input: RequestUploadInput,
@@ -5273,6 +5315,14 @@ export async function requestAttachmentUpload(
     input.assetType === AttachmentAssetType.PROJECT_PRIVATE_FILE;
   const isStageSevenEvidence =
     input.assetType === AttachmentAssetType.SAMPLE_ROUND_EVIDENCE;
+
+  if (
+    input.stageFiveDirectSource &&
+    (input.assetType !== AttachmentAssetType.GENERAL_PROJECT_ASSET ||
+      Boolean(input.stageId || input.revisionId || input.commentId))
+  ) {
+    return { error: "A direct Stage 5 source must be a standalone project asset." };
+  }
 
   if (isProjectPrivateFile) {
     return { error: "Use the private folder upload endpoint." };
@@ -5875,6 +5925,16 @@ export async function requestAttachmentUpload(
       return { error: getUploadPermissionErrorMessage(input.assetType) };
     }
 
+    if (input.stageFiveDirectSource) {
+      const directSourceAccessError = getDirectStageFiveSourceAccessError(
+        user,
+        accessProject,
+      );
+      if (directSourceAccessError) {
+        return { error: directSourceAccessError };
+      }
+    }
+
     if (
       input.assetType !== AttachmentAssetType.FINAL_ARCHIVE &&
       isProjectStatusCompleted(project.status)
@@ -5986,12 +6046,273 @@ export async function requestAttachmentUpload(
   };
 }
 
+async function completeDirectStageFiveSourceUpload(
+  user: AccessUser,
+  input: { attachmentId: string; failed: boolean; notify: boolean },
+) {
+  const result = await withPrismaRetry(() =>
+    prisma.$transaction(
+      async (tx) => {
+        const attachment = await tx.projectAttachment.findUnique({
+          where: { id: input.attachmentId },
+          select: {
+            id: true,
+            projectId: true,
+            stageId: true,
+            revisionId: true,
+            commentId: true,
+            uploadedById: true,
+            assetType: true,
+            status: true,
+            originalFileName: true,
+            storageKey: true,
+            project: {
+              select: {
+                ownerId: true,
+                coOwners: { select: { userId: true } },
+                collaborators: {
+                  where: { userId: user.id },
+                  select: projectCollaboratorPermissionSelect,
+                },
+                status: { select: projectStatusSelect },
+                archivedAt: true,
+                workflowStages: {
+                  select: { stageKey: true, status: true },
+                },
+              },
+            },
+          },
+        });
+
+        if (
+          !attachment ||
+          attachment.uploadedById !== user.id ||
+          attachment.assetType !== AttachmentAssetType.GENERAL_PROJECT_ASSET ||
+          attachment.stageId ||
+          attachment.revisionId ||
+          attachment.commentId
+        ) {
+          throw new Error("The direct Stage 5 upload is invalid.");
+        }
+
+        const accessError = getDirectStageFiveSourceAccessError(
+          user,
+          attachment.project,
+        );
+
+        const existingHandoff = await tx.projectStageFileHandoff.findUnique({
+          where: {
+            projectId_sourceAttachmentId_targetWorkflowStageKey: {
+              projectId: attachment.projectId,
+              sourceAttachmentId: attachment.id,
+              targetWorkflowStageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
+            },
+          },
+          select: {
+            id: true,
+            projectId: true,
+            sourceAttachmentId: true,
+            sourceWorkflowStageKey: true,
+            targetWorkflowStageKey: true,
+            checklist: {
+              select: {
+                id: true,
+                projectId: true,
+                sourceAttachmentId: true,
+              },
+            },
+          },
+        });
+
+        if (input.failed) {
+          if (existingHandoff?.checklist) {
+            return {
+              projectId: attachment.projectId,
+              handoffId: existingHandoff.id,
+              checklistId: existingHandoff.checklist.id,
+              created: false,
+              failed: false,
+            } as const;
+          }
+
+          await tx.projectAttachment.updateMany({
+            where: {
+              id: attachment.id,
+              status: AttachmentStatus.UPLOADING,
+            },
+            data: { status: AttachmentStatus.FAILED },
+          });
+          return {
+            projectId: attachment.projectId,
+            handoffId: null,
+            checklistId: null,
+            created: false,
+            failed: true,
+          } as const;
+        }
+
+        if (accessError) {
+          throw new Error(accessError);
+        }
+
+        if (
+          attachment.status !== AttachmentStatus.UPLOADING &&
+          attachment.status !== AttachmentStatus.READY
+        ) {
+          throw new Error("Attachment cannot be completed.");
+        }
+
+        if (existingHandoff) {
+          if (
+            existingHandoff.projectId !== attachment.projectId ||
+            existingHandoff.sourceAttachmentId !== attachment.id ||
+            existingHandoff.sourceWorkflowStageKey !==
+              ProjectWorkflowStageKey.FINAL_LAYOUT ||
+            existingHandoff.targetWorkflowStageKey !==
+              ProjectWorkflowStageKey.FINAL_LAYOUT ||
+            !existingHandoff.checklist ||
+            existingHandoff.checklist.projectId !== attachment.projectId ||
+            existingHandoff.checklist.sourceAttachmentId !== attachment.id
+          ) {
+            throw new Error(
+              "The existing Stage 5 source lineage conflicts with this upload.",
+            );
+          }
+
+          return {
+            projectId: attachment.projectId,
+            handoffId: existingHandoff.id,
+            checklistId: existingHandoff.checklist.id,
+            created: false,
+            failed: false,
+          } as const;
+        }
+
+        const wasUploading = attachment.status === AttachmentStatus.UPLOADING;
+        if (wasUploading) {
+          const finalized = await tx.projectAttachment.updateMany({
+            where: {
+              id: attachment.id,
+              status: AttachmentStatus.UPLOADING,
+            },
+            data: { status: AttachmentStatus.READY },
+          });
+          if (finalized.count !== 1) {
+            throw new Error("The Stage 5 source upload changed before completion.");
+          }
+        }
+
+        const handoff = await tx.projectStageFileHandoff.upsert({
+          where: {
+            projectId_sourceAttachmentId_targetWorkflowStageKey: {
+              projectId: attachment.projectId,
+              sourceAttachmentId: attachment.id,
+              targetWorkflowStageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
+            },
+          },
+          update: {},
+          create: {
+            projectId: attachment.projectId,
+            sourceWorkflowStageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
+            sourceAttachmentId: attachment.id,
+            targetWorkflowStageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
+            handedOffById: user.id,
+          },
+          select: { id: true, sourceWorkflowStageKey: true },
+        });
+        if (
+          handoff.sourceWorkflowStageKey !==
+          ProjectWorkflowStageKey.FINAL_LAYOUT
+        ) {
+          throw new Error(
+            "The existing Stage 5 source lineage conflicts with this upload.",
+          );
+        }
+        const checklist = await tx.projectFileChecklist.upsert({
+          where: { handoffId: handoff.id },
+          update: {},
+          create: {
+            projectId: attachment.projectId,
+            handoffId: handoff.id,
+            sourceAttachmentId: attachment.id,
+          },
+          select: {
+            id: true,
+            projectId: true,
+            sourceAttachmentId: true,
+          },
+        });
+        if (
+          checklist.projectId !== attachment.projectId ||
+          checklist.sourceAttachmentId !== attachment.id
+        ) {
+          throw new Error(
+            "The existing Stage 5 checklist conflicts with this upload.",
+          );
+        }
+
+        if (wasUploading) {
+          await tx.projectActivityLog.create({
+            data: {
+              projectId: attachment.projectId,
+              actorId: user.id,
+              action: ActivityLogAction.ASSET_UPLOADED,
+              metadata: {
+                attachmentId: attachment.id,
+                fileName: attachment.originalFileName,
+                storageKey: attachment.storageKey,
+                source: "stage_five_direct_upload",
+                handoffId: handoff.id,
+                checklistId: checklist.id,
+              },
+            },
+          });
+        }
+
+        return {
+          projectId: attachment.projectId,
+          handoffId: handoff.id,
+          checklistId: checklist.id,
+          created: true,
+          failed: false,
+        } as const;
+      },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        maxWait: 5_000,
+        timeout: 20_000,
+      },
+    ),
+  );
+
+  if (result.created && input.notify) {
+    runNotificationTaskAfterResponse("file-uploaded", () =>
+      notifyFileUploaded({
+        actorId: user.id,
+        actorName: getDisplayName(user),
+        projectId: result.projectId,
+        stageId: null,
+        attachmentId: input.attachmentId,
+        assetType: AttachmentAssetType.GENERAL_PROJECT_ASSET,
+      }),
+    );
+  }
+
+  return result;
+}
+
 export async function completeAttachmentUpload(
   user: AccessUser,
   attachmentId: string,
   failed = false,
   uploadMetadata?: LibraryUploadMetadata,
-  options?: { researchFolderId?: string; checklistRequestId?: string },
+  options?: {
+    researchFolderId?: string;
+    checklistRequestId?: string;
+    stageFiveDirectSource?: boolean;
+    /** Integration-only escape hatch for service calls outside a Next request. */
+    suppressUploadNotification?: boolean;
+  },
 ) {
   const attachment = await withPrismaRetry(() =>
     prisma.projectAttachment.findUnique({
@@ -6034,6 +6355,12 @@ export async function completeAttachmentUpload(
             },
             archivedAt: true,
             executionType: true,
+            workflowStages: {
+              select: {
+                stageKey: true,
+                status: true,
+              },
+            },
           },
         },
         stage: {
@@ -6157,6 +6484,41 @@ export async function completeAttachmentUpload(
     !hasProjectPermission(user, project, getUploadPermissionKey(attachment.assetType))
   ) {
     throw new Error("You do not have permission to complete this upload.");
+  }
+
+  if (options?.stageFiveDirectSource) {
+    if (
+      attachment.uploadedById !== user.id ||
+      attachment.assetType !== AttachmentAssetType.GENERAL_PROJECT_ASSET ||
+      attachment.stageId ||
+      attachment.revisionId ||
+      attachment.commentId
+    ) {
+      throw new Error("The direct Stage 5 upload is invalid.");
+    }
+    if (!isGlobalProjectAdministrator(user)) {
+      throw new Error(
+        "You do not have permission to upload a Stage 5 final file.",
+      );
+    }
+
+    const directSource = await completeDirectStageFiveSourceUpload(user, {
+      attachmentId: attachment.id,
+      failed,
+      notify: options.suppressUploadNotification !== true,
+    });
+    return {
+      projectId: attachment.projectId,
+      stageId: null,
+      assetType: attachment.assetType,
+      invoiceCommentId: null,
+      stageFiveSource: directSource.failed
+        ? null
+        : {
+            handoffId: directSource.handoffId!,
+            checklistId: directSource.checklistId!,
+          },
+    };
   }
 
   if (
@@ -6701,6 +7063,7 @@ export async function deleteAttachmentForUser(
         createdAt: true,
         approvedConceptFolder: { select: { id: true } },
         conceptStartingReference: { select: { id: true } },
+        stageFileHandoffs: { select: { id: true }, take: 1 },
         sourceProductionUnits: { select: { id: true }, take: 1 },
         productionUnitFile: { select: { id: true } },
         fileChecklistItems: {
@@ -6777,6 +7140,12 @@ export async function deleteAttachmentForUser(
   if (attachment.approvedConceptFolder || attachment.conceptStartingReference) {
     throw new Error(
       "This file is locked because it is an Approved Concept or a Stage 4 starting reference.",
+    );
+  }
+
+  if (attachment.stageFileHandoffs.length > 0) {
+    throw new Error(
+      "This file is locked because it is the source of a Stage 5 checklist.",
     );
   }
 

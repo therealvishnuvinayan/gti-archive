@@ -56,6 +56,7 @@ async function main() {
   const runId = randomUUID();
   const projectId = `concept-round-four-${runId}`;
   const foreignProjectId = `concept-round-four-foreign-${runId}`;
+  const skipProjectId = `concept-round-four-skip-${runId}`;
   const userSpecs = [
     ["super", UserRole.SUPER_ADMIN],
     ["owner", UserRole.ADMIN],
@@ -132,6 +133,109 @@ async function main() {
         },
       },
     });
+    await prisma.project.create({
+      data: {
+        id: skipProjectId,
+        name: `Concept Round 4 Skip ${runId}`,
+        ownerId: owner.id,
+        createdById: superAdmin.id,
+        workflowStages: {
+          create: getInitialProjectWorkflowStageData().map((stage) => ({
+            ...stage,
+            status:
+              stage.stageKey === ProjectWorkflowStageKey.PROJECT_INQUIRY ||
+              stage.stageKey ===
+                ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING ||
+              stage.stageKey === ProjectWorkflowStageKey.CONCEPT_CREATION
+                ? ProjectWorkflowStageStatus.COMPLETED
+                : stage.stageKey ===
+                    ProjectWorkflowStageKey.PROJECT_DEVELOPMENT
+                  ? ProjectWorkflowStageStatus.AVAILABLE
+                  : ProjectWorkflowStageStatus.LOCKED,
+            completedAt:
+              stage.stageKey === ProjectWorkflowStageKey.PROJECT_INQUIRY ||
+              stage.stageKey ===
+                ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING ||
+              stage.stageKey === ProjectWorkflowStageKey.CONCEPT_CREATION
+                ? now
+                : null,
+            unlockedAt:
+              stage.stageKey === ProjectWorkflowStageKey.FINAL_LAYOUT ||
+              stage.stageKey ===
+                ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER ||
+              stage.stageKey ===
+                ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION
+                ? null
+                : now,
+          })),
+        },
+      },
+    });
+
+    check(
+      isError(
+        await completeStageFourConcepts(executor, {
+          projectId: skipProjectId,
+        }),
+      ),
+      "an unauthorized user must not skip an empty Stage 4",
+    );
+    const skippedStageFour = await completeStageFourConcepts(owner, {
+      projectId: skipProjectId,
+    });
+    check(
+      !isError(skippedStageFour) &&
+        skippedStageFour.skipped &&
+        skippedStageFour.finalApprovedCount === 0 &&
+        skippedStageFour.handoffs.length === 0,
+      "an authorized owner must skip an empty available Stage 4 without fake handoffs",
+    );
+    const skippedWorkflow = await prisma.projectWorkflowStage.findMany({
+      where: {
+        projectId: skipProjectId,
+        stageKey: {
+          in: [
+            ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+            ProjectWorkflowStageKey.FINAL_LAYOUT,
+          ],
+        },
+      },
+      select: { stageKey: true, status: true },
+    });
+    const skippedWorkspace = await getStageFiveWorkspaceData(
+      owner,
+      skipProjectId,
+    );
+    check(
+      skippedWorkflow.find(
+        (stage) =>
+          stage.stageKey === ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+      )?.status === ProjectWorkflowStageStatus.COMPLETED &&
+        skippedWorkflow.find(
+          (stage) => stage.stageKey === ProjectWorkflowStageKey.FINAL_LAYOUT,
+        )?.status === ProjectWorkflowStageStatus.AVAILABLE &&
+        skippedWorkspace?.files.length === 0 &&
+        skippedWorkspace.canUploadSource &&
+        (await prisma.projectAttachment.count({
+          where: { projectId: skipProjectId },
+        })) === 0 &&
+        (await prisma.projectStageFileHandoff.count({
+          where: { projectId: skipProjectId },
+        })) === 0 &&
+        (await prisma.projectActivityLog.count({
+          where: {
+            projectId: skipProjectId,
+            action: "STAGE_SKIPPED",
+          },
+        })) === 1,
+      "Stage 4 skip must complete Stage 4, unlock an empty Stage 5, and record one audit event",
+    );
+    check(
+      isError(
+        await completeStageFourConcepts(owner, { projectId: skipProjectId }),
+      ),
+      "Stage 4 skip must be accepted only from AVAILABLE state",
+    );
     await prisma.project.create({
       data: {
         id: foreignProjectId,
@@ -1262,7 +1366,7 @@ async function main() {
     );
   } finally {
     await prisma.project.deleteMany({
-      where: { id: { in: [projectId, foreignProjectId] } },
+      where: { id: { in: [projectId, foreignProjectId, skipProjectId] } },
     });
     await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   }

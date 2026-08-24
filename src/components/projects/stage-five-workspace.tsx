@@ -35,6 +35,7 @@ import {
   Sparkles,
   Stamp,
   ToggleLeft,
+  Upload,
   X,
   Download,
 } from "lucide-react";
@@ -79,7 +80,10 @@ import {
   STAGE_FIVE_FIELD_KEYS,
   type StageFiveFieldDefinition,
 } from "@/lib/stage-five-fields";
-import { uploadStageFiveChecklistAttachment } from "@/lib/stage-five-upload-client";
+import {
+  uploadStageFiveChecklistAttachment,
+  uploadStageFiveDirectSource,
+} from "@/lib/stage-five-upload-client";
 import { showErrorToast, showSuccessToast, showWarningToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import {
@@ -1103,6 +1107,9 @@ export function StageFiveWorkspace({
   const [isCompleting, startCompleting] = useTransition();
   const [showCompletionDialog, setShowCompletionDialog] = useState(false);
   const [completionError, setCompletionError] = useState("");
+  const [isUploadingSource, setIsUploadingSource] = useState(false);
+  const [sourceUploadProgress, setSourceUploadProgress] = useState(0);
+  const sourceFileInputRef = useRef<HTMLInputElement>(null);
   const [requestField, setRequestField] = useState<ChecklistDefinition | null>(null);
   const activeFile = pageData.files.find((file) => file.handoffId === selectedHandoffId);
   const activeDraft = drafts[selectedHandoffId];
@@ -1310,6 +1317,36 @@ export function StageFiveWorkspace({
     params.set("mode", nextMode);
     if (selectedHandoffId) params.set("file", selectedHandoffId);
     router.replace(`/projects/${project.id}/stages/5?${params.toString()}`, { scroll: false });
+  }
+
+  async function uploadDirectSource(file: File) {
+    if (!pageData.canUploadSource || isUploadingSource) return;
+    setIsUploadingSource(true);
+    setSourceUploadProgress(0);
+    try {
+      const uploaded = await uploadStageFiveDirectSource(
+        project.id,
+        file,
+        setSourceUploadProgress,
+      );
+      showSuccessToast("Final file uploaded. Its File Checklist is ready.");
+      router.replace(
+        `/projects/${project.id}/stages/5?file=${encodeURIComponent(uploaded.handoffId)}&mode=edit`,
+      );
+      router.refresh();
+    } catch (error) {
+      showErrorToast(
+        "Unable to upload the final file.",
+        error instanceof Error ? error.message : "Please try again.",
+      );
+      router.refresh();
+    } finally {
+      setIsUploadingSource(false);
+      setSourceUploadProgress(0);
+      if (sourceFileInputRef.current) {
+        sourceFileInputRef.current.value = "";
+      }
+    }
   }
 
   function updateActiveDraft(
@@ -1770,6 +1807,17 @@ export function StageFiveWorkspace({
 
   return (
     <section className="mx-auto w-full max-w-[1420px] pb-6">
+      <input
+        ref={sourceFileInputRef}
+        type="file"
+        className="hidden"
+        aria-label="Upload Stage 5 final file"
+        disabled={!pageData.canUploadSource || isUploadingSource}
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) void uploadDirectSource(file);
+        }}
+      />
       {showChrome ? (
         <ProjectAccessRealtimeGuard projectId={project.id} currentUserId={currentUserId} />
       ) : null}
@@ -1858,6 +1906,19 @@ export function StageFiveWorkspace({
                       ))}
                     </SelectContent>
                   </Select>
+                  {pageData.canUploadSource ? (
+                    <button
+                      type="button"
+                      className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-[700] text-[#2f7652] hover:text-[#205e40] disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={isUploadingSource}
+                      onClick={() => sourceFileInputRef.current?.click()}
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      {isUploadingSource
+                        ? `Uploading ${Math.round(sourceUploadProgress * 100)}%`
+                        : "Add Another Final File"}
+                    </button>
+                  ) : null}
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
                   <a
@@ -1885,6 +1946,11 @@ export function StageFiveWorkspace({
                       {CHECKLIST_ITEMS.filter((item) => getItemStatus(item) === ProjectFileChecklistItemStatus.FILLED).length} / {CHECKLIST_ITEMS.length} filled
                     </p>
                     <p className="mt-1 text-[10px] text-[#7b867e]">{pageData.files.length} final {pageData.files.length === 1 ? "file" : "files"}</p>
+                    {activeFile.sourceOrigin === "DIRECT_STAGE_FIVE" ? (
+                      <p className="mt-1 text-[10px] font-[650] text-[#4d765d]">
+                        Uploaded directly in Stage 5
+                      </p>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -1896,10 +1962,44 @@ export function StageFiveWorkspace({
               <span className="mx-auto grid size-14 place-items-center rounded-full bg-[#eaf4ed] text-[#2f8057]">
                 <FileCheck2 className="h-6 w-6" />
               </span>
-              <h2 className="mt-4 text-[18px] font-[750] text-[#1b261f]">No final files have been handed over from Stage 4 yet.</h2>
+              <h2 className="mt-4 text-[18px] font-[750] text-[#1b261f]">No final file available</h2>
               <p className="mx-auto mt-2 max-w-[520px] text-[12px] leading-5 text-[#77827a]">
-                An authorized project owner can designate existing Stage 4 files from the Final Concept workspace.
+                Stage 4 was skipped or no final file was handed over. Upload the final file here to start the File Checklist.
               </p>
+              {pageData.canUploadSource ? (
+                <div className="mt-5">
+                  <Button
+                    type="button"
+                    className="min-w-[180px] rounded-[12px]"
+                    disabled={isUploadingSource}
+                    onClick={() => sourceFileInputRef.current?.click()}
+                  >
+                    <Upload className="h-4 w-4" />
+                    {isUploadingSource
+                      ? `Uploading ${Math.round(sourceUploadProgress * 100)}%`
+                      : "Upload Final File"}
+                  </Button>
+                  {isUploadingSource ? (
+                    <div
+                      role="progressbar"
+                      aria-label="Final file upload progress"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={Math.round(sourceUploadProgress * 100)}
+                      className="mx-auto mt-3 h-1.5 max-w-[260px] overflow-hidden rounded-full bg-[#e2e9e3]"
+                    >
+                      <div
+                        className="h-full rounded-full bg-[#2f8057] transition-[width]"
+                        style={{ width: `${Math.round(sourceUploadProgress * 100)}%` }}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              ) : pageData.stageCompleted ? null : (
+                <p className="mt-4 text-[11px] font-[650] text-[#77827a]">
+                  An authorized Stage 5 manager must upload the final file.
+                </p>
+              )}
             </section>
           ) : mode === "view" ? (
             <StageFiveReadOnlyView
@@ -2038,7 +2138,12 @@ export function StageFiveWorkspace({
                 <Button
                   type="button"
                   className="min-w-[180px] rounded-[13px]"
-                  disabled={isSaving || isCompleting || hasUnsavedChecklistChanges}
+                  disabled={
+                    isSaving ||
+                    isCompleting ||
+                    hasUnsavedChecklistChanges ||
+                    pageData.files.length === 0
+                  }
                   onClick={() => {
                     setCompletionError("");
                     setShowCompletionDialog(true);
