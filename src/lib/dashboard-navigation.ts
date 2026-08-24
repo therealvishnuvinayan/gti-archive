@@ -51,6 +51,24 @@ export function getDashboardBackNavigation(
   if (segments[0] !== "projects") return { owner: "none" };
   if (segments.length === 1) return { owner: "none" };
 
+  if (segments[1] === "flexible") {
+    const projectSlug = segments[2];
+
+    if (!projectSlug || segments.length === 3) {
+      return topbar(
+        "/projects?view=flexible",
+        "Flexible Projects",
+        "Back to Flexible Projects",
+      );
+    }
+
+    return topbar(
+      `/projects/flexible/${projectSlug}`,
+      "Project Overview",
+      "Back to Project Overview",
+    );
+  }
+
   const projectId = segments[1];
 
   if (segments.length === 2) {
