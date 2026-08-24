@@ -150,8 +150,16 @@ const latestRevisionActionBlock = workspace.slice(
 assert(
   latestRevisionActionBlock.includes("canCompareSubmissions && conceptMode") &&
     latestRevisionActionBlock.includes("conceptMode.compareHref") &&
-    latestRevisionActionBlock.includes("Compare Submissions"),
-  "Reviewer comparison must remain available in the composer action bar when the responsive sidebar is hidden.",
+    latestRevisionActionBlock.includes("Compare Submissions") &&
+    latestRevisionActionBlock.match(/href=\{conceptMode\.compareHref\}/g)?.length === 1,
+  "Concept comparison must expose exactly one canonical route-backed action in the latest-revision bar.",
+);
+assert(
+  !workspace
+    .slice(conceptBottomActionIndex, conceptLatestActionIndex)
+    .includes("conceptMode.compareHref") &&
+    !conceptStatusBlock.includes("conceptMode.compareHref"),
+  "Assigned USER submit-work controls and the wide concept sidebar must not duplicate the canonical comparison action.",
 );
 assert(
   workspace.includes(
