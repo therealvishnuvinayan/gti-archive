@@ -9195,14 +9195,6 @@ export function ProjectChatWorkspace({
                   {submitWorkDisabledReason ?? "Submit the next concept revision for review."}
                 </p>
                 <div className="flex shrink-0 flex-wrap gap-2">
-                  {canCompareSubmissions && conceptMode ? (
-                    <Button asChild variant="secondary" size="sm" className="rounded-full">
-                      <Link href={conceptMode.compareHref}>
-                        <GitCompare className="h-4 w-4" />
-                        Compare
-                      </Link>
-                    </Button>
-                  ) : null}
                   <Button
                     type="button"
                     size="sm"
@@ -9735,18 +9727,6 @@ export function ProjectChatWorkspace({
                       <dd className="font-[750]">{stageSubmissions.length}</dd>
                     </div>
                   </dl>
-                  {canCompareSubmissions ? (
-                    <Button asChild size="sm" variant="secondary" className="w-full rounded-full">
-                      <Link href={conceptMode.compareHref}>
-                        <GitCompare className="h-4 w-4" />
-                        Compare Submissions
-                      </Link>
-                    </Button>
-                  ) : canViewCompareSubmissions ? (
-                    <p className="rounded-[14px] bg-[#f7faf6] px-3 py-2 text-[11px] leading-4 text-[#6f786f]">
-                      Upload at least two valid submissions to compare.
-                    </p>
-                  ) : null}
                 </CardContent>
               </Card>
               <StageTimeRemainingCard

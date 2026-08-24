@@ -22,6 +22,7 @@ import type { SendEmailInput } from "../src/lib/email/resend";
 import {
   acceptStageFiveChecklistRequest,
   cancelStageFiveChecklistRequest,
+  completeStageFive,
   declineStageFiveChecklistRequest,
   getStageFiveChecklistRequestData,
   getStageFiveWorkspaceData,
@@ -30,6 +31,8 @@ import {
   saveStageFiveChecklist,
   submitStageFiveChecklistResponse,
 } from "../src/lib/stage-five";
+import { completeAttachmentUpload } from "../src/lib/project-history";
+import { getStageSixWorkspaceData } from "../src/lib/stage-six";
 import {
   declineExternalChecklistRequest,
   getExternalChecklistRequestData,
@@ -44,6 +47,16 @@ function check(condition: unknown, message: string): asserts condition {
 
 function isError(value: unknown): value is { error: string } {
   return Boolean(value && typeof value === "object" && "error" in value);
+}
+
+async function expectRejected(task: Promise<unknown>, message: string) {
+  let rejected = false;
+  try {
+    await task;
+  } catch {
+    rejected = true;
+  }
+  check(rejected, message);
 }
 
 function getExternalToken(email: SendEmailInput | null) {
@@ -149,6 +162,10 @@ async function main() {
   const foreignChecklistAttachmentId = `stage-five-checklist-foreign-${runId}`;
   const responseAttachmentId = `stage-five-response-file-${runId}`;
   const foreignResponseAttachmentId = `stage-five-response-foreign-${runId}`;
+  const directSourceId = `stage-five-direct-source-${runId}`;
+  const failedDirectSourceId = `stage-five-direct-failed-${runId}`;
+  const unauthorizedDirectSourceId = `stage-five-direct-unauthorized-${runId}`;
+  const completedStageDirectSourceId = `stage-five-direct-after-completion-${runId}`;
 
   try {
     await prisma.project.createMany({
@@ -310,6 +327,190 @@ async function main() {
     check(
       isError(forgedInformationRequest),
       "a project USER must not send Stage 5 manager information requests",
+    );
+
+    await prisma.projectAttachment.createMany({
+      data: [
+        {
+          id: directSourceId,
+          projectId: foreignProjectId,
+          uploadedById: owner.id,
+          fileName: "direct-final.ai",
+          originalFileName: "Direct_Final.ai",
+          mimeType: "application/postscript",
+          fileSize: 4096,
+          bucket: "stage-five-integration",
+          storageKey: `stage-five-integration/${directSourceId}`,
+          assetType: AttachmentAssetType.GENERAL_PROJECT_ASSET,
+          status: AttachmentStatus.UPLOADING,
+        },
+        {
+          id: failedDirectSourceId,
+          projectId,
+          uploadedById: owner.id,
+          fileName: "failed-direct-final.ai",
+          originalFileName: "Failed_Direct_Final.ai",
+          mimeType: "application/postscript",
+          fileSize: 4096,
+          bucket: "stage-five-integration",
+          storageKey: `stage-five-integration/${failedDirectSourceId}`,
+          assetType: AttachmentAssetType.GENERAL_PROJECT_ASSET,
+          status: AttachmentStatus.UPLOADING,
+        },
+        {
+          id: unauthorizedDirectSourceId,
+          projectId,
+          uploadedById: recipient.id,
+          fileName: "unauthorized-direct-final.ai",
+          originalFileName: "Unauthorized_Direct_Final.ai",
+          mimeType: "application/postscript",
+          fileSize: 4096,
+          bucket: "stage-five-integration",
+          storageKey: `stage-five-integration/${unauthorizedDirectSourceId}`,
+          assetType: AttachmentAssetType.GENERAL_PROJECT_ASSET,
+          status: AttachmentStatus.UPLOADING,
+        },
+      ],
+    });
+
+    const directUpload = await completeAttachmentUpload(
+      owner,
+      directSourceId,
+      false,
+      undefined,
+      { stageFiveDirectSource: true, suppressUploadNotification: true },
+    );
+    check(
+      directUpload &&
+        "stageFiveSource" in directUpload &&
+        Boolean(directUpload.stageFiveSource),
+      "a valid direct Stage 5 upload must create its handoff and checklist",
+    );
+    const repeatedDirectUpload = await completeAttachmentUpload(
+      owner,
+      directSourceId,
+      false,
+      undefined,
+      { stageFiveDirectSource: true, suppressUploadNotification: true },
+    );
+    check(
+      repeatedDirectUpload &&
+        "stageFiveSource" in repeatedDirectUpload &&
+        repeatedDirectUpload.stageFiveSource?.handoffId ===
+          directUpload.stageFiveSource?.handoffId &&
+        (await prisma.projectStageFileHandoff.count({
+          where: { projectId: foreignProjectId },
+        })) === 1 &&
+        (await prisma.projectFileChecklist.count({
+          where: { projectId: foreignProjectId },
+        })) === 1,
+      "retrying a direct upload must not duplicate its handoff or checklist",
+    );
+    const directWorkspace = await getStageFiveWorkspaceData(
+      owner,
+      foreignProjectId,
+    );
+    check(
+      directWorkspace?.files.length === 1 &&
+        directWorkspace.files[0].sourceOrigin === "DIRECT_STAGE_FIVE" &&
+        directWorkspace.files[0].items.length === 16,
+      "a direct Stage 5 source must load in the existing checklist workspace",
+    );
+
+    await completeAttachmentUpload(
+      owner,
+      failedDirectSourceId,
+      true,
+      undefined,
+      { stageFiveDirectSource: true, suppressUploadNotification: true },
+    );
+    check(
+      (await prisma.projectAttachment.findUnique({
+        where: { id: failedDirectSourceId },
+        select: { status: true, _count: { select: { stageFileHandoffs: true } } },
+      }))?.status === AttachmentStatus.FAILED &&
+        (await prisma.projectStageFileHandoff.count({
+          where: { sourceAttachmentId: failedDirectSourceId },
+        })) === 0,
+      "a failed direct upload must not create usable Stage 5 lineage",
+    );
+    await expectRejected(
+      completeAttachmentUpload(
+        recipient,
+        unauthorizedDirectSourceId,
+        false,
+        undefined,
+        { stageFiveDirectSource: true, suppressUploadNotification: true },
+      ),
+      "a USER must not finalize a direct Stage 5 source",
+    );
+
+    const directCompletion = await completeStageFive(owner, {
+      projectId: foreignProjectId,
+    });
+    check(
+      !isError(directCompletion) && directCompletion.productionUnitCount === 1,
+      "a direct Stage 5 source must complete through the normal Stage 5 path",
+    );
+    const directProductionUnit = await prisma.projectProductionUnit.findFirst({
+      where: { projectId: foreignProjectId },
+      select: {
+        sourceAttachmentId: true,
+        sourceHandoffId: true,
+        sourceChecklistId: true,
+      },
+    });
+    check(
+      directProductionUnit?.sourceAttachmentId === directSourceId &&
+        directProductionUnit.sourceHandoffId ===
+          directUpload.stageFiveSource?.handoffId &&
+        directProductionUnit.sourceChecklistId ===
+          directUpload.stageFiveSource?.checklistId &&
+        (await prisma.projectWorkflowStage.findUnique({
+          where: {
+            projectId_stageKey: {
+              projectId: foreignProjectId,
+              stageKey: ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER,
+            },
+          },
+          select: { status: true },
+        }))?.status === ProjectWorkflowStageStatus.AVAILABLE,
+      "direct source lineage must reach one Production Unit and unlock Stage 6",
+    );
+    const directStageSixWorkspace = await getStageSixWorkspaceData(
+      owner,
+      foreignProjectId,
+    );
+    check(
+      directStageSixWorkspace?.units.length === 1 &&
+        directStageSixWorkspace.units[0].sourceFile.id === directSourceId,
+      "Stage 6 must load and preview the direct Stage 5 source like a normal production source",
+    );
+
+    await prisma.projectAttachment.create({
+      data: {
+        id: completedStageDirectSourceId,
+        projectId: foreignProjectId,
+        uploadedById: owner.id,
+        fileName: "late-direct-final.ai",
+        originalFileName: "Late_Direct_Final.ai",
+        mimeType: "application/postscript",
+        fileSize: 4096,
+        bucket: "stage-five-integration",
+        storageKey: `stage-five-integration/${completedStageDirectSourceId}`,
+        assetType: AttachmentAssetType.GENERAL_PROJECT_ASSET,
+        status: AttachmentStatus.UPLOADING,
+      },
+    });
+    await expectRejected(
+      completeAttachmentUpload(
+        owner,
+        completedStageDirectSourceId,
+        false,
+        undefined,
+        { stageFiveDirectSource: true, suppressUploadNotification: true },
+      ),
+      "completed Stage 5 must reject new direct source uploads",
     );
 
     await prisma.projectAttachment.createMany({

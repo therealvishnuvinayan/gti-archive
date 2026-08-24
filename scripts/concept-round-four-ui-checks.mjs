@@ -130,6 +130,19 @@ assert(
   "Owner/co-owner/administrator Stage 4 completion must atomically hand off final files, unlock Stage 5, and leave Stage 6 untouched.",
 );
 
+assert(
+  workspace.includes('const isEmptyStageFour = stageNumber === 4 && completionConcepts.length === 0') &&
+    workspace.includes('"Skip Stage 4"') &&
+    workspace.includes('"Skip Stage 4?"') &&
+    workspace.includes("A final file will need to be uploaded directly in Stage 5.") &&
+    concepts.includes("const skipped = project.conceptFolders.length === 0") &&
+    concepts.includes("Stage 4 can be skipped only while it is available and Stage 5 is still locked.") &&
+    concepts.includes("action: ActivityLogAction.STAGE_SKIPPED") &&
+    concepts.includes("skipped: true") &&
+    concepts.includes("handoffs: []"),
+  "An empty available Stage 4 must expose a confirmed, audited skip that unlocks Stage 5 without fake source data.",
+);
+
 for (const label of [
   "Final Approved",
   "In Progress",
@@ -145,13 +158,14 @@ for (const label of [
 assert(
   workspace.includes("completeStageFourConceptsAction") &&
     workspace.includes("allConceptsApproved") &&
+    workspace.includes("isEmptyStageFour || allConceptsApproved") &&
     workspace.includes("canCompleteStage && !managementLocked && stageCompletionReady") &&
     workspace.includes("confirmDisabled={!stageCompletionReady}") &&
     concepts.includes("conceptsWithoutFinalFile.length > 0") &&
     concepts.includes("Every Stage 4 concept must receive Final Approval") &&
     !workspace.includes("Final files for Stage 5") &&
     !workspace.includes("Send to Stage 5"),
-  "Stage 4 completion must stay hidden until every concept is finally approved and retire the temporary file-picker handoff UI.",
+  "Stage 4 completion must require every created concept to be finally approved while allowing only an empty stage to skip.",
 );
 assert(
   workspace.includes("stageNumber === 4 && folder.approvedAttachment") &&

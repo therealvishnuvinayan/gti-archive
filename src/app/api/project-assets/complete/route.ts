@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { revalidateTag } from "next/cache";
+import { Prisma } from "@prisma/client";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { after, NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
@@ -15,6 +16,25 @@ import {
   runStageChatRealtimeTaskAfterResponse,
 } from "@/lib/realtime/server";
 
+const UPLOAD_COMPLETION_ERROR =
+  "Unable to complete the upload right now. Please try again.";
+
+function getUploadCompletionError(error: unknown) {
+  const isPrismaError =
+    error instanceof Prisma.PrismaClientKnownRequestError ||
+    error instanceof Prisma.PrismaClientUnknownRequestError ||
+    error instanceof Prisma.PrismaClientRustPanicError ||
+    error instanceof Prisma.PrismaClientInitializationError ||
+    error instanceof Prisma.PrismaClientValidationError ||
+    (error instanceof Error && error.name.startsWith("PrismaClient"));
+
+  if (isPrismaError || !(error instanceof Error)) {
+    return { message: UPLOAD_COMPLETION_ERROR, status: 500 };
+  }
+
+  return { message: error.message, status: 400 };
+}
+
 export async function POST(request: Request) {
   const user = await getCurrentUser();
 
@@ -26,6 +46,7 @@ export async function POST(request: Request) {
     attachmentId?: string;
     failed?: boolean;
     projectId?: string;
+    stageFiveDirectSource?: boolean;
     metadata?: LibraryUploadMetadata;
   } = {};
 
@@ -45,9 +66,15 @@ export async function POST(request: Request) {
       payload.attachmentId,
       Boolean(payload.failed),
       payload.metadata,
+      payload.stageFiveDirectSource === true
+        ? { stageFiveDirectSource: true }
+        : undefined,
     );
     after(() => {
       revalidateTag(PROJECTS_CACHE_TAG, "max");
+      if (result && "stageFiveSource" in result && result.stageFiveSource) {
+        revalidatePath(`/projects/${result.projectId}/stages/5`);
+      }
     });
     if (result?.invoiceCommentId && result.stageId && !payload.failed) {
       runStageChatRealtimeTaskAfterResponse("stage-chat.invoice-uploaded", async () => {
@@ -95,16 +122,18 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       invoiceCommentId: result?.invoiceCommentId ?? null,
+      stageFiveSource:
+        result && "stageFiveSource" in result
+          ? result.stageFiveSource
+          : null,
     });
   } catch (error) {
+    console.error("Unable to complete project asset upload.", error);
+    const response = getUploadCompletionError(error);
+
     return NextResponse.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unable to complete the upload right now.",
-      },
-      { status: 400 },
+      { error: response.message },
+      { status: response.status },
     );
   }
 }

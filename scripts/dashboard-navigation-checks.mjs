@@ -42,6 +42,18 @@ expectNavigation("/projects/project-1/edit", {
   label: "Project Overview",
   ariaLabel: "Back to Project Overview",
 });
+expectNavigation("/projects/flexible/flexible-project-1", {
+  owner: "topbar",
+  href: "/projects?view=flexible",
+  label: "Flexible Projects",
+  ariaLabel: "Back to Flexible Projects",
+});
+expectNavigation("/projects/flexible/flexible-project-1/milestones/milestone-1", {
+  owner: "topbar",
+  href: "/projects/flexible/flexible-project-1",
+  label: "Project Overview",
+  ariaLabel: "Back to Project Overview",
+});
 
 for (const stage of ["1", "2", "3", "4", "5", "6", "7"]) {
   expectNavigation(`/projects/project-1/stages/${stage}`, {

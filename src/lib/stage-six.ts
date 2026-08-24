@@ -47,6 +47,10 @@ import {
   STAGE_FIVE_FIELD_LABELS,
 } from "@/lib/stage-five-fields";
 import {
+  isStageFiveSourceWorkflowStageKey,
+  STAGE_FIVE_SOURCE_WORKFLOW_STAGE_KEYS,
+} from "@/lib/stage-five-lineage";
+import {
   STAGE_SIX_EMAIL_DELIVERY_ADDRESS,
   STAGE_SIX_FIRST_APPROVER,
 } from "@/lib/stage-six-constants";
@@ -222,6 +226,10 @@ const attachmentSelect = {
   storageKey: true,
   status: true,
   projectId: true,
+  assetType: true,
+  stageId: true,
+  revisionId: true,
+  commentId: true,
 } satisfies Prisma.ProjectAttachmentSelect;
 
 function displayName(user: { name: string | null; email: string }) {
@@ -749,7 +757,9 @@ export async function getStageFiveCompletionState(
       prisma.projectStageFileHandoff.count({
         where: {
           projectId,
-          sourceWorkflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+          sourceWorkflowStageKey: {
+            in: [...STAGE_FIVE_SOURCE_WORKFLOW_STAGE_KEYS],
+          },
           targetWorkflowStageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
         },
       }),
@@ -805,13 +815,16 @@ export async function completeStageFive(
               },
               stageFileHandoffs: {
                 where: {
-                  sourceWorkflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+                  sourceWorkflowStageKey: {
+                    in: [...STAGE_FIVE_SOURCE_WORKFLOW_STAGE_KEYS],
+                  },
                   targetWorkflowStageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
                 },
                 orderBy: [{ handedOffAt: "asc" }, { id: "asc" }],
                 select: {
                   id: true,
                   projectId: true,
+                  sourceWorkflowStageKey: true,
                   sourceAttachmentId: true,
                   sourceAttachment: { select: attachmentSelect },
                   checklist: {
@@ -878,10 +891,26 @@ export async function completeStageFive(
             const checklist = handoff.checklist;
             if (
               handoff.projectId !== project.id ||
+              !isStageFiveSourceWorkflowStageKey(
+                handoff.sourceWorkflowStageKey,
+              ) ||
               handoff.sourceAttachment.projectId !== project.id ||
               handoff.sourceAttachment.status !== AttachmentStatus.READY
             ) {
               return { error: "A Stage 5 source handoff is missing or corrupt." } as const;
+            }
+            if (
+              handoff.sourceWorkflowStageKey ===
+                ProjectWorkflowStageKey.FINAL_LAYOUT &&
+              (handoff.sourceAttachment.assetType !==
+                AttachmentAssetType.GENERAL_PROJECT_ASSET ||
+                handoff.sourceAttachment.stageId ||
+                handoff.sourceAttachment.revisionId ||
+                handoff.sourceAttachment.commentId)
+            ) {
+              return {
+                error: "A direct Stage 5 source has invalid provenance.",
+              } as const;
             }
             if (
               !checklist ||

@@ -52,6 +52,18 @@ const [externalPage, externalWorkspace, externalService, externalToken, secureTo
     readFile("next.config.ts", "utf8"),
   ]);
 
+const [projectHistory, stageSix, lineage, directMigration, projectAssetCompleteRoute] =
+  await Promise.all([
+    readFile("src/lib/project-history.ts", "utf8"),
+    readFile("src/lib/stage-six.ts", "utf8"),
+    readFile("src/lib/stage-five-lineage.ts", "utf8"),
+    readFile(
+      "prisma/migrations/20260824190000_stage_four_skip_and_direct_stage_five_source/migration.sql",
+      "utf8",
+    ),
+    readFile("src/app/api/project-assets/complete/route.ts", "utf8"),
+  ]);
+
 const checklistItems = [
   "Output Name",
   "Technical Drawing",
@@ -223,6 +235,41 @@ assert(
     workspace.includes("completedUploads") &&
     workspace.includes("totalUploads"),
   "Stage 5 saves must show real upload and overall completion progress.",
+);
+assert(
+  workspace.includes("No final file available") &&
+    workspace.includes("Upload Final File") &&
+    workspace.includes("Add Another Final File") &&
+    workspace.includes("Uploaded directly in Stage 5") &&
+    workspace.includes("pageData.canUploadSource") &&
+    workspace.includes("pageData.files.length === 0") &&
+    uploadClient.includes("uploadStageFiveDirectSource") &&
+    uploadClient.includes('assetType: "GENERAL_PROJECT_ASSET"') &&
+    uploadClient.includes("stageFiveDirectSource: true") &&
+    projectAssetCompleteRoute.includes("stageFiveSource"),
+  "An empty active Stage 5 must upload a primary final file through the existing project-asset pipeline and disable zero-file completion.",
+);
+assert(
+  lineage.includes("ProjectWorkflowStageKey.PROJECT_DEVELOPMENT") &&
+    lineage.includes("ProjectWorkflowStageKey.FINAL_LAYOUT") &&
+    service.includes("STAGE_FIVE_SOURCE_WORKFLOW_STAGE_KEYS") &&
+    service.includes('sourceOrigin:') &&
+    stageSix.includes("STAGE_FIVE_SOURCE_WORKFLOW_STAGE_KEYS") &&
+    stageSix.includes("isStageFiveSourceWorkflowStageKey") &&
+    stageSix.includes("A direct Stage 5 source has invalid provenance."),
+  "Stage 5 loading and Stage 5-to-6 completion must recognize both legitimate source origins through one lineage policy.",
+);
+assert(
+  projectHistory.includes("completeDirectStageFiveSourceUpload") &&
+    projectHistory.includes("TransactionIsolationLevel.Serializable") &&
+    projectHistory.includes("sourceWorkflowStageKey: ProjectWorkflowStageKey.FINAL_LAYOUT") &&
+    projectHistory.includes("projectStageFileHandoff.upsert") &&
+    projectHistory.includes("projectFileChecklist.upsert") &&
+    projectHistory.includes('source: "stage_five_direct_upload"') &&
+    directMigration.includes("'PROJECT_DEVELOPMENT'") &&
+    directMigration.includes("'FINAL_LAYOUT'") &&
+    directMigration.includes("ProjectStageFileHandoff_stage_pair_check"),
+  "Direct finalization must atomically create idempotent checklist lineage with honest, database-constrained Stage 5 provenance.",
 );
 assert(
   workspace.includes("failedUploads += 1") &&

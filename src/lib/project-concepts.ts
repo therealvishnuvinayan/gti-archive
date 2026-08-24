@@ -1,4 +1,5 @@
 import {
+  ActivityLogAction,
   AttachmentAssetType,
   AttachmentStatus,
   Prisma,
@@ -2501,6 +2502,7 @@ export async function completeStageThreeConcepts(
 
 type StageFourCompletionResult = {
   transitioned: boolean;
+  skipped: boolean;
   finalApprovedCount: number;
   conceptsWithoutFinalFile: Array<{ id: string; name: string }>;
   handoffs: Array<{
@@ -2534,6 +2536,12 @@ export async function completeStageFourConcepts(
                   completedAt: true,
                   unlockedAt: true,
                 },
+              },
+              stageFileHandoffs: {
+                where: {
+                  targetWorkflowStageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
+                },
+                select: { id: true },
               },
               conceptFolders: {
                 where: {
@@ -2599,6 +2607,83 @@ export async function completeStageFourConcepts(
 
           if (completionMode === "UNAVAILABLE") {
             return { error: "Stage 4 is not currently available." };
+          }
+
+          const skipped = project.conceptFolders.length === 0;
+
+          if (skipped) {
+            if (
+              stageFourWorkflow.status !==
+                ProjectWorkflowStageStatus.AVAILABLE ||
+              stageFiveWorkflow.status !== ProjectWorkflowStageStatus.LOCKED
+            ) {
+              return {
+                error:
+                  "Stage 4 can be skipped only while it is available and Stage 5 is still locked.",
+              };
+            }
+
+            if (project.stageFileHandoffs.length > 0) {
+              return {
+                error:
+                  "Stage 4 cannot be skipped because Stage 5 source files already exist.",
+              };
+            }
+
+            const completedAt = new Date();
+            const completed = await tx.projectWorkflowStage.updateMany({
+              where: {
+                id: stageFourWorkflow.id,
+                status: ProjectWorkflowStageStatus.AVAILABLE,
+              },
+              data: {
+                status: ProjectWorkflowStageStatus.COMPLETED,
+                completedAt,
+              },
+            });
+
+            if (completed.count !== 1) {
+              return { error: "Stage 4 changed before it could be skipped." };
+            }
+
+            const unlocked = await tx.projectWorkflowStage.updateMany({
+              where: {
+                id: stageFiveWorkflow.id,
+                status: ProjectWorkflowStageStatus.LOCKED,
+              },
+              data: {
+                status: ProjectWorkflowStageStatus.AVAILABLE,
+                unlockedAt: completedAt,
+              },
+            });
+
+            if (unlocked.count !== 1) {
+              throw new Error(
+                "Stage 5 changed before Stage 4 could be skipped safely.",
+              );
+            }
+
+            await tx.projectActivityLog.create({
+              data: {
+                projectId: project.id,
+                actorId: user.id,
+                action: ActivityLogAction.STAGE_SKIPPED,
+                metadata: {
+                  stageNumber: 4,
+                  workflowStageKey:
+                    ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+                  nextWorkflowStageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
+                },
+              },
+            });
+
+            return {
+              transitioned: true,
+              skipped: true,
+              finalApprovedCount: 0,
+              conceptsWithoutFinalFile: [],
+              handoffs: [],
+            };
           }
 
           const finalConcepts = project.conceptFolders.filter(
@@ -2789,6 +2874,7 @@ export async function completeStageFourConcepts(
 
           return {
             transitioned,
+            skipped: false,
             finalApprovedCount: finalConcepts.length,
             conceptsWithoutFinalFile,
             handoffs,
