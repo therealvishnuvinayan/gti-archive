@@ -37,8 +37,15 @@ function run(command, args, env) {
 
 const databaseUrl = readDatabaseUrl();
 const schemaName = `flexible_projects_test_${Date.now()}_${randomUUID().slice(0, 8)}`;
-const testUrl = new URL(databaseUrl);
+const directDatabaseUrl = new URL(databaseUrl);
+directDatabaseUrl.hostname = directDatabaseUrl.hostname.replace(/-pooler(?=\.)/, "");
+const testUrl = new URL(directDatabaseUrl);
 testUrl.searchParams.set("schema", schemaName);
+const connectionOptions = testUrl.searchParams.get("options");
+testUrl.searchParams.set(
+  "options",
+  [connectionOptions, `-c search_path=${schemaName}`].filter(Boolean).join(" "),
+);
 const testEnvironment = { ...process.env, DATABASE_URL: testUrl.toString() };
 const migrationRoot = mkdtempSync(join(tmpdir(), "gti-flexible-migrations-"));
 const temporaryPrismaDirectory = join(migrationRoot, "prisma");
@@ -73,7 +80,9 @@ try {
     { ...testEnvironment, COMPILED_ALIAS_ROOT: ".tmp/flexible-projects-integration" },
   );
 } finally {
-  const cleanup = new PrismaClient({ datasourceUrl: databaseUrl });
+  const cleanupUrl = new URL(directDatabaseUrl);
+  cleanupUrl.searchParams.set("schema", "public");
+  const cleanup = new PrismaClient({ datasourceUrl: cleanupUrl.toString() });
   try {
     await cleanup.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
   } finally {
