@@ -38,7 +38,7 @@ for (const copy of [
   "Private Folders",
   "My Private Folder",
   "Classified",
-  "My Assigned Concepts",
+  "My Assigned Tasks",
   "Shared project references and your assigned work.",
 ]) {
   assert.ok(workspace.includes(copy), `USER workspace is missing: ${copy}`);
@@ -66,7 +66,7 @@ for (const forbidden of [
 
 const classifiedSection = workspace.slice(
   workspace.indexOf("data.classifiedFolders.map"),
-  workspace.indexOf("My Assigned Concepts"),
+  workspace.indexOf("My Assigned Tasks"),
 );
 assert.ok(classifiedSection.includes("LockKeyhole"));
 assert.ok(!classifiedSection.includes("Read only"));
