@@ -17,6 +17,12 @@ function expectNavigation(pathname, expected, query = "") {
 }
 
 expectNavigation("/dashboard", { owner: "none" });
+expectNavigation("/project-tracker", {
+  owner: "topbar",
+  href: "/",
+  label: "Dashboard",
+  ariaLabel: "Back to Dashboard",
+});
 expectNavigation("/projects", { owner: "none" });
 expectNavigation("/projects/new", {
   owner: "topbar",
@@ -36,6 +42,12 @@ expectNavigation("/projects/project-1", {
   label: "Projects",
   ariaLabel: "Back to Projects",
 }, "returnTo=%2Fprojects%3Fview%3Dmine");
+expectNavigation("/projects/project-1", {
+  owner: "topbar",
+  href: "/project-tracker",
+  label: "Project Tracker",
+  ariaLabel: "Back to Project Tracker",
+}, "returnTo=%2Fproject-tracker");
 expectNavigation("/projects/project-1/edit", {
   owner: "topbar",
   href: "/projects/project-1",
@@ -48,6 +60,12 @@ expectNavigation("/projects/flexible/flexible-project-1", {
   label: "Flexible Projects",
   ariaLabel: "Back to Flexible Projects",
 });
+expectNavigation("/projects/flexible/flexible-project-1", {
+  owner: "topbar",
+  href: "/project-tracker",
+  label: "Project Tracker",
+  ariaLabel: "Back to Project Tracker",
+}, "returnTo=%2Fproject-tracker");
 expectNavigation("/projects/flexible/flexible-project-1/milestones/milestone-1", {
   owner: "topbar",
   href: "/projects/flexible/flexible-project-1",

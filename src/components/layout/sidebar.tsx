@@ -11,6 +11,7 @@ import {
   Bell,
   BookOpen,
   CalendarDays,
+  FileSpreadsheet,
   Folder,
   Handshake,
   HelpCircle,
@@ -47,6 +48,12 @@ const sidebarSections: SidebarSection[] = [
       { label: "Dashboard", href: "/", icon: LayoutDashboard, visibilityKey: "dashboard" },
       { label: "Flux AI", href: "/flux-ai", icon: Sparkles, visibilityKey: "fluxAi" },
       { label: "Projects", href: "/projects", icon: Folder, visibilityKey: "projects" },
+      {
+        label: "Project Tracker",
+        href: "/project-tracker",
+        icon: FileSpreadsheet,
+        visibilityKey: "projectTracker",
+      },
       { label: "Tasks", href: "/tasks", icon: ListTodo, visibilityKey: "tasks" },
       { label: "Calendar", href: "/calendar", icon: CalendarDays, visibilityKey: "calendar" },
       {

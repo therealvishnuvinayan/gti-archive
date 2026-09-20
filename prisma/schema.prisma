@@ -43,6 +43,31 @@ enum FlexibleMilestoneStatus {
   COMPLETED
 }
 
+enum ProjectTrackerColumnType {
+  TEXT
+  LONG_TEXT
+  NUMBER
+  CURRENCY
+  DATE
+  DATETIME
+  DROPDOWN
+  MULTI_SELECT
+  BOOLEAN
+  CHECKBOX
+  PERSON
+  CLIENT
+  VENDOR
+  PROJECT
+  BRAND
+  URL
+  FILE
+  STATUS
+  PRIORITY
+  PERCENTAGE
+  TAGS
+  NOTES
+}
+
 enum ProjectWorkflowStageKey {
   PROJECT_INQUIRY
   PROJECT_RESEARCH_AND_PLANNING
@@ -500,6 +525,8 @@ model User {
   completedFlexibleMilestones         FlexibleMilestone[]                  @relation("FlexibleMilestoneCompletedBy")
   authoredFlexibleMilestoneNotes      FlexibleMilestoneNote[]              @relation("FlexibleMilestoneNoteAuthor")
   uploadedFlexibleProjectAttachments  FlexibleProjectAttachment[]          @relation("FlexibleProjectAttachmentUploader")
+  createdProjectTrackers              ProjectTracker[]                     @relation("ProjectTrackerCreatedBy")
+  projectTrackerActivities            ProjectTrackerActivity[]             @relation("ProjectTrackerActivityActor")
   createdAt                           DateTime                             @default(now())
   updatedAt                           DateTime                             @updatedAt
 }
@@ -628,6 +655,7 @@ model Project {
   privateFolders         ProjectPrivateFolder[]
   conceptFolders         ProjectConceptFolder[]
   formDrafts             ProjectFormDraft[]
+  trackerRows            ProjectTrackerRow[]            @relation("ProjectTrackerStructuredProject")
   completedAt            DateTime?
   archivedAt             DateTime?
   createdAt              DateTime                       @default(now())
@@ -656,6 +684,7 @@ model FlexibleProject {
   collaborators FlexibleProjectCollaborator[]
   milestones    FlexibleMilestone[]
   attachments   FlexibleProjectAttachment[]
+  trackerRows   ProjectTrackerRow[]            @relation("ProjectTrackerFlexibleProject")
   completedAt   DateTime?
   createdAt     DateTime                      @default(now())
   updatedAt     DateTime                      @updatedAt
@@ -741,6 +770,100 @@ model FlexibleProjectAttachment {
   @@index([milestoneId, createdAt])
   @@index([uploadedById])
   @@index([status])
+}
+
+model ProjectTracker {
+  id          String                   @id @default(cuid())
+  name        String                   @default("Marketing Project Tracker")
+  settings    Json?
+  createdById String
+  createdBy   User                     @relation("ProjectTrackerCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  columns     ProjectTrackerColumn[]
+  rows        ProjectTrackerRow[]
+  activities  ProjectTrackerActivity[]
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
+
+  @@index([createdAt])
+  @@index([createdById])
+}
+
+model ProjectTrackerColumn {
+  id             String                   @id @default(cuid())
+  trackerId      String
+  tracker        ProjectTracker           @relation(fields: [trackerId], references: [id], onDelete: Cascade)
+  name           String
+  type           ProjectTrackerColumnType @default(TEXT)
+  sourceFieldKey String?
+  options        Json?
+  sortOrder      Int
+  width          Int                      @default(180)
+  hidden         Boolean                  @default(false)
+  frozen         Boolean                  @default(false)
+  cells          ProjectTrackerCell[]
+  activities     ProjectTrackerActivity[]
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  @@index([trackerId, sortOrder])
+  @@index([sourceFieldKey])
+}
+
+model ProjectTrackerRow {
+  id                  String                   @id @default(cuid())
+  trackerId           String
+  tracker             ProjectTracker           @relation(fields: [trackerId], references: [id], onDelete: Cascade)
+  sortOrder           Int
+  structuredProjectId String?
+  structuredProject   Project?                 @relation("ProjectTrackerStructuredProject", fields: [structuredProjectId], references: [id], onDelete: SetNull)
+  flexibleProjectId   String?
+  flexibleProject     FlexibleProject?         @relation("ProjectTrackerFlexibleProject", fields: [flexibleProjectId], references: [id], onDelete: SetNull)
+  cells               ProjectTrackerCell[]
+  activities          ProjectTrackerActivity[]
+  linkedAt            DateTime?
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+
+  @@index([trackerId, sortOrder])
+  @@index([structuredProjectId])
+  @@index([flexibleProjectId])
+}
+
+model ProjectTrackerCell {
+  id                String               @id @default(cuid())
+  rowId             String
+  row               ProjectTrackerRow    @relation(fields: [rowId], references: [id], onDelete: Cascade)
+  columnId          String
+  column            ProjectTrackerColumn @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  value             Json?
+  isLocalOverride   Boolean              @default(false)
+  lastSyncedValue   Json?
+  lastSyncedAt      DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  @@unique([rowId, columnId])
+  @@index([columnId])
+}
+
+model ProjectTrackerActivity {
+  id        String                @id @default(cuid())
+  trackerId String
+  tracker   ProjectTracker        @relation(fields: [trackerId], references: [id], onDelete: Cascade)
+  rowId     String?
+  row       ProjectTrackerRow?    @relation(fields: [rowId], references: [id], onDelete: SetNull)
+  columnId  String?
+  column    ProjectTrackerColumn? @relation(fields: [columnId], references: [id], onDelete: SetNull)
+  actorId   String?
+  actor     User?                 @relation("ProjectTrackerActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
+  action    String
+  details   Json?
+  createdAt DateTime              @default(now())
+
+  @@index([trackerId, createdAt])
+  @@index([rowId])
+  @@index([columnId])
+  @@index([actorId])
 }
 
 model ProjectFormDraft {
