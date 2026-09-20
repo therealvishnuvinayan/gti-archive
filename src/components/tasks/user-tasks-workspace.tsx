@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   CalendarClock,
@@ -18,6 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { useNotificationCenter } from "@/components/notifications/notification-center";
 import { formatProjectPriority } from "@/lib/project-priority";
 import type {
   UserTaskListItem,
@@ -134,7 +136,41 @@ function TaskRow({ task }: { task: UserTaskListItem }) {
   );
 }
 
+function AttentionRow({
+  item,
+}: {
+  item: UserTasksPageData["attentionItems"][number];
+}) {
+  return (
+    <Link
+      href={item.href}
+      className="group grid gap-4 rounded-[18px] border border-[#eadfd5] bg-white px-4 py-4 transition hover:-translate-y-0.5 hover:border-[#e4b993] hover:shadow-[0_14px_34px_rgba(98,54,21,0.08)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8662f] focus-visible:ring-offset-2 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center"
+    >
+      <span className="grid size-11 shrink-0 place-items-center rounded-[14px] bg-[#fff0e8] text-[#c75a29]">
+        <CircleAlert className="size-5" />
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate text-[14px] font-[760] text-[#1d2720] sm:text-[15px]">
+          {item.title}
+        </span>
+        <span className="mt-1 block truncate text-[11px] text-[#6f7972]">
+          <span className="font-[700] text-[#3f4942]">{item.projectName}</span>
+          <span className="px-1.5 text-[#a3aaa5]">•</span>
+          {item.detail}
+        </span>
+      </span>
+      <span className="inline-flex items-center gap-2 text-[11px] font-[760] text-[#25744e] md:justify-self-end">
+        {item.actionLabel}
+        <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+      </span>
+    </Link>
+  );
+}
+
 export function UserTasksWorkspace({ data }: { data: UserTasksPageData }) {
+  const router = useRouter();
+  const { refreshVersion } = useNotificationCenter();
+  const lastNotificationRefreshVersion = useRef(refreshVersion);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<TaskFilter>("ALL");
   const [expandedProjectIds, setExpandedProjectIds] = useState<Set<string>>(
@@ -160,6 +196,40 @@ export function UserTasksWorkspace({ data }: { data: UserTasksPageData }) {
         .filter((project) => project.tasks.length > 0),
     [data.projects, filter, normalizedQuery],
   );
+  const filteredAttentionItems = useMemo(
+    () =>
+      data.attentionItems.filter(
+        (item) =>
+          !normalizedQuery ||
+          item.title.toLocaleLowerCase().includes(normalizedQuery) ||
+          item.projectName.toLocaleLowerCase().includes(normalizedQuery) ||
+          item.detail.toLocaleLowerCase().includes(normalizedQuery),
+      ),
+    [data.attentionItems, normalizedQuery],
+  );
+
+  useEffect(() => {
+    if (refreshVersion === lastNotificationRefreshVersion.current) return;
+
+    lastNotificationRefreshVersion.current = refreshVersion;
+    router.refresh();
+  }, [refreshVersion, router]);
+
+  useEffect(() => {
+    const refreshTasks = () => router.refresh();
+    const refreshVisibleTasks = () => {
+      if (document.visibilityState === "visible") refreshTasks();
+    };
+
+    window.addEventListener("focus", refreshTasks);
+    document.addEventListener("visibilitychange", refreshVisibleTasks);
+
+    return () => {
+      window.removeEventListener("focus", refreshTasks);
+      document.removeEventListener("visibilitychange", refreshVisibleTasks);
+    };
+  }, [router]);
+
   function toggleProject(projectId: string) {
     setExpandedProjectIds((current) => {
       const next = new Set(current);
@@ -169,7 +239,7 @@ export function UserTasksWorkspace({ data }: { data: UserTasksPageData }) {
     });
   }
 
-  if (data.summary.total === 0) {
+  if (data.summary.total === 0 && data.attentionItems.length === 0) {
     return (
       <section className="mx-auto flex min-h-[520px] w-full max-w-[1180px] items-center justify-center pb-8">
         <Card className="w-full rounded-[26px] border border-dashed border-[#cbd8ce] bg-white shadow-[0_18px_50px_rgba(22,49,31,0.05)]">
@@ -194,6 +264,7 @@ export function UserTasksWorkspace({ data }: { data: UserTasksPageData }) {
       label: "All Tasks",
       value: data.summary.total,
       note: `${data.projects.length} project ${data.projects.length === 1 ? "folder" : "folders"}`,
+      filter: "ALL" as const,
       icon: ListTodo,
       tone: "bg-[#e9f4ed] text-[#267950]",
     },
@@ -201,13 +272,15 @@ export function UserTasksWorkspace({ data }: { data: UserTasksPageData }) {
       label: "Open",
       value: data.summary.open,
       note: "Ready for your work",
+      filter: "OPEN" as const,
       icon: Clock3,
       tone: "bg-[#edf4fb] text-[#3678a9]",
     },
     {
       label: "Needs Attention",
       value: data.summary.needsAttention,
-      note: "Changes requested",
+      note: "Actionable by you now",
+      filter: "NEEDS_ATTENTION" as const,
       icon: CircleAlert,
       tone: "bg-[#fff0e8] text-[#c75a29]",
     },
@@ -215,6 +288,7 @@ export function UserTasksWorkspace({ data }: { data: UserTasksPageData }) {
       label: "Completed",
       value: data.summary.completed,
       note: `${data.summary.waitingForReview} waiting for review`,
+      filter: "COMPLETED" as const,
       icon: CheckCircle2,
       tone: "bg-[#edf7f0] text-[#2c7a50]",
     },
@@ -253,20 +327,34 @@ export function UserTasksWorkspace({ data }: { data: UserTasksPageData }) {
         {summaryCards.map((card) => {
           const Icon = card.icon;
           return (
-            <Card key={card.label} className="rounded-[19px] border-[#e0e7e0] bg-white shadow-[0_12px_30px_rgba(24,52,34,0.04)]">
-              <CardContent className="flex items-center gap-4 p-4 sm:p-5">
-                <span className={`grid size-11 shrink-0 place-items-center rounded-[14px] ${card.tone}`}>
-                  <Icon className="size-5" />
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-[22px] font-[800] leading-none tracking-[-0.035em] text-[#172019]">
-                    {card.value}
+            <button
+              key={card.label}
+              type="button"
+              aria-pressed={filter === card.filter}
+              onClick={() => setFilter(card.filter)}
+              className="h-full rounded-[19px] text-left outline-none focus-visible:ring-2 focus-visible:ring-[#2d8258] focus-visible:ring-offset-2"
+            >
+              <Card
+                className={`h-full rounded-[19px] bg-white shadow-[0_12px_30px_rgba(24,52,34,0.04)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(24,52,34,0.08)] ${
+                  filter === card.filter
+                    ? "border-[#9bc4a7] ring-1 ring-[#c9dfcf]"
+                    : "border-[#e0e7e0]"
+                }`}
+              >
+                <CardContent className="flex items-center gap-4 p-4 sm:p-5">
+                  <span className={`grid size-11 shrink-0 place-items-center rounded-[14px] ${card.tone}`}>
+                    <Icon className="size-5" />
                   </span>
-                  <span className="mt-1.5 block text-[11px] font-[750] text-[#3e4941]">{card.label}</span>
-                  <span className="mt-0.5 block truncate text-[10px] text-[#879088]">{card.note}</span>
-                </span>
-              </CardContent>
-            </Card>
+                  <span className="min-w-0">
+                    <span className="block text-[22px] font-[800] leading-none tracking-[-0.035em] text-[#172019]">
+                      {card.value}
+                    </span>
+                    <span className="mt-1.5 block text-[11px] font-[750] text-[#3e4941]">{card.label}</span>
+                    <span className="mt-0.5 block truncate text-[10px] text-[#879088]">{card.note}</span>
+                  </span>
+                </CardContent>
+              </Card>
+            </button>
           );
         })}
       </div>
@@ -294,14 +382,40 @@ export function UserTasksWorkspace({ data }: { data: UserTasksPageData }) {
               type="search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search project folders or tasks..."
+              placeholder="Search project folders, tasks, or attention items..."
               className="h-12 rounded-[14px] border-[#d9e2da] bg-white pl-11 text-[12px] shadow-[0_8px_24px_rgba(22,48,31,0.035)]"
             />
           </label>
         </div>
 
         <div className="mt-5 space-y-3">
-          {filteredProjects.map((project) => {
+          {filter === "NEEDS_ATTENTION" ? (
+            <>
+              {filteredAttentionItems.map((item) => (
+                <AttentionRow key={item.id} item={item} />
+              ))}
+
+              {filteredAttentionItems.length === 0 ? (
+                <div className="rounded-[21px] border border-dashed border-[#cad6cc] bg-white px-6 py-12 text-center">
+                  <Search className="mx-auto size-7 text-[#6f9b7e]" />
+                  <h2 className="mt-3 text-[17px] font-[760] text-[#263129]">
+                    No matching attention items
+                  </h2>
+                  <p className="mt-1 text-[12px] text-[#78827a]">
+                    Nothing currently requires action for this search.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setQuery("")}
+                    className="mt-4 rounded-full"
+                  >
+                    Clear search
+                  </Button>
+                </div>
+              ) : null}
+            </>
+          ) : filteredProjects.map((project) => {
             const expanded = expandedProjectIds.has(project.id);
 
             return (
@@ -354,7 +468,7 @@ export function UserTasksWorkspace({ data }: { data: UserTasksPageData }) {
             );
           })}
 
-          {filteredProjects.length === 0 ? (
+          {filter !== "NEEDS_ATTENTION" && filteredProjects.length === 0 ? (
             <div className="rounded-[21px] border border-dashed border-[#cad6cc] bg-white px-6 py-12 text-center">
               <Search className="mx-auto size-7 text-[#6f9b7e]" />
               <h2 className="mt-3 text-[17px] font-[760] text-[#263129]">No matching tasks</h2>

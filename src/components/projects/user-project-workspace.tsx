@@ -288,8 +288,8 @@ export function UserProjectWorkspace({
       <section className="mt-8 border-t border-[#dfe6df] pt-6">
         <SectionHeading
           icon={<UserRound className="h-5 w-5" />}
-          title="My Assigned Concepts"
-          description="Concepts assigned directly to you."
+          title="My Assigned Tasks"
+          description="Tasks assigned directly to you."
         />
 
         {data.assignedConcepts.length > 0 ? (

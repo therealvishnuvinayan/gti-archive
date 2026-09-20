@@ -4,6 +4,10 @@ import {
 } from "@prisma/client";
 import { unstable_cache } from "next/cache";
 
+import {
+  getNeedsAttentionItems,
+  type DashboardAttentionItem,
+} from "@/lib/dashboard";
 import { canUseProjects, type PermissionUser } from "@/lib/permissions/resolver";
 import {
   compareProjectsByPriority,
@@ -45,6 +49,7 @@ export type UserTaskProjectGroup = {
 
 export type UserTasksPageData = {
   projects: UserTaskProjectGroup[];
+  attentionItems: DashboardAttentionItem[];
   summary: {
     total: number;
     open: number;
@@ -108,6 +113,7 @@ export async function getUserTasksPageData(
   if (!canListExecutorTasks(user)) {
     return {
       projects: [],
+      attentionItems: [],
       summary: {
         total: 0,
         open: 0,
@@ -118,48 +124,51 @@ export async function getUserTasksPageData(
     };
   }
 
-  const records = await withPrismaRetry(() =>
-    prisma.projectConceptFolder.findMany({
-      where: {
-        assignedExecutorId: user.id,
-        workflowStageKey: { in: [...conceptTaskStageKeys] },
-      },
-      select: {
-        id: true,
-        name: true,
-        workflowStageKey: true,
-        approvedAttachmentId: true,
-        updatedAt: true,
-        project: {
-          select: {
-            id: true,
-            name: true,
-            priority: true,
-            owner: {
-              select: { name: true, email: true },
+  const [records, attentionItems] = await Promise.all([
+    withPrismaRetry(() =>
+      prisma.projectConceptFolder.findMany({
+        where: {
+          assignedExecutorId: user.id,
+          workflowStageKey: { in: [...conceptTaskStageKeys] },
+        },
+        select: {
+          id: true,
+          name: true,
+          workflowStageKey: true,
+          approvedAttachmentId: true,
+          updatedAt: true,
+          project: {
+            select: {
+              id: true,
+              name: true,
+              priority: true,
+              owner: {
+                select: { name: true, email: true },
+              },
             },
           },
-        },
-        taskerStage: {
-          select: {
-            status: true,
-            actualStartedAt: true,
-            completedAt: true,
-            plannedDueAt: true,
-            updatedAt: true,
-            revisions: {
-              orderBy: [{ updatedAt: "desc" }, { revisionNumber: "desc" }],
-              take: 1,
-              select: {
-                status: true,
-                updatedAt: true,
+          taskerStage: {
+            select: {
+              status: true,
+              actualStartedAt: true,
+              completedAt: true,
+              plannedDueAt: true,
+              updatedAt: true,
+              revisions: {
+                orderBy: [{ updatedAt: "desc" }, { revisionNumber: "desc" }],
+                take: 1,
+                select: {
+                  status: true,
+                  updatedAt: true,
+                },
               },
             },
           },
         },
-      },
-    }),
-  );
+      }),
+    ),
+    getNeedsAttentionItems(user),
+  ]);
 
   const projectGroupById = new Map<
     string,
@@ -277,12 +286,11 @@ export async function getUserTasksPageData(
 
   return {
     projects,
+    attentionItems,
     summary: {
       total: tasks.length,
       open: tasks.filter((task) => task.display.status !== "COMPLETED").length,
-      needsAttention: tasks.filter(
-        (task) => task.display.status === "NEEDS_ATTENTION",
-      ).length,
+      needsAttention: attentionItems.length,
       waitingForReview: tasks.filter(
         (task) => task.display.status === "WAITING_FOR_REVIEW",
       ).length,

@@ -558,7 +558,7 @@ function mapRevisionEntry(
     role: getActorRole(revision.createdBy),
     body: revision.summary?.trim() || "Revision uploaded.",
     createdAt: formatHistoryTimestamp(revision.createdAt),
-    createdAtValue: revision.createdAt.toISOString(),
+    createdAtValue: toHistoryDate(revision.createdAt).toISOString(),
     attachments: revision.attachments
       .filter((attachment) => attachment.status === AttachmentStatus.READY)
       .map((attachment) =>
@@ -658,7 +658,7 @@ function mapCommentEntry(
       role: getActorRole(comment.author),
       body: DELETED_STAGE_CHAT_MESSAGE_TEXT,
       createdAt: formatHistoryTimestamp(comment.createdAt),
-      createdAtValue: comment.createdAt.toISOString(),
+      createdAtValue: toHistoryDate(comment.createdAt).toISOString(),
       deletedAt: toHistoryDate(comment.deletedAt).toISOString(),
       deletedByUserId: comment.deletedByUserId,
       mentions: [],
@@ -679,7 +679,7 @@ function mapCommentEntry(
       role: getActorRole(comment.author),
       body: `${actorName} accepted the project and stage brief and started work on this stage.`,
       createdAt: formatHistoryTimestamp(comment.createdAt),
-      createdAtValue: comment.createdAt.toISOString(),
+      createdAtValue: toHistoryDate(comment.createdAt).toISOString(),
       mentions: [],
       attachments: [],
     };
@@ -701,7 +701,7 @@ function mapCommentEntry(
       body: `${actorName} requested a revision for ${revisionRequestSystemDetails.revisionLabel}.`,
       revisionRequestReason: revisionRequestSystemDetails.reason,
       createdAt: formatHistoryTimestamp(comment.createdAt),
-      createdAtValue: comment.createdAt.toISOString(),
+      createdAtValue: toHistoryDate(comment.createdAt).toISOString(),
       mentions: [],
       attachments: [],
     };
@@ -720,7 +720,7 @@ function mapCommentEntry(
       role: getActorRole(comment.author),
       body: comment.body,
       createdAt: formatHistoryTimestamp(comment.createdAt),
-      createdAtValue: comment.createdAt.toISOString(),
+      createdAtValue: toHistoryDate(comment.createdAt).toISOString(),
       mentions: [],
       attachments: [],
     };
@@ -739,7 +739,7 @@ function mapCommentEntry(
       role: getActorRole(comment.author),
       body: comment.body,
       createdAt: formatHistoryTimestamp(comment.createdAt),
-      createdAtValue: comment.createdAt.toISOString(),
+      createdAtValue: toHistoryDate(comment.createdAt).toISOString(),
       mentions: [],
       attachments: [],
     };
@@ -755,7 +755,7 @@ function mapCommentEntry(
     role: getActorRole(comment.author),
     body: comment.body,
     createdAt: formatHistoryTimestamp(comment.createdAt),
-    createdAtValue: comment.createdAt.toISOString(),
+    createdAtValue: toHistoryDate(comment.createdAt).toISOString(),
     canDeleteUntil: isDeletableStageComment(comment)
       ? getStageChatDeleteExpiresAt(comment.createdAt).toISOString()
       : null,
@@ -818,7 +818,7 @@ function mapComparisonEntry(
       role: getActorRole(comparison.createdBy),
       body: `${authorName} added a caption on ${captionFileName}.`,
       createdAt: formatHistoryTimestamp(comparison.createdAt),
-      createdAtValue: comparison.createdAt.toISOString(),
+      createdAtValue: toHistoryDate(comparison.createdAt).toISOString(),
       attachments: [],
       caption: {
         id: comparison.id,
@@ -846,7 +846,7 @@ function mapComparisonEntry(
     role: getActorRole(comparison.createdBy),
     body: comparison.body,
     createdAt: formatHistoryTimestamp(comparison.createdAt),
-    createdAtValue: comparison.createdAt.toISOString(),
+    createdAtValue: toHistoryDate(comparison.createdAt).toISOString(),
     attachments: [],
     comparison: {
       baseAttachmentId: comparison.baseAttachmentId,
@@ -3634,7 +3634,7 @@ export async function createStageTextCommentFast(
     role: getActorRole(user),
     body: comment.body,
     createdAt: formatHistoryTimestamp(comment.createdAt),
-    createdAtValue: comment.createdAt.toISOString(),
+    createdAtValue: toHistoryDate(comment.createdAt).toISOString(),
     canDeleteUntil: isDeletableStageComment({
       body: comment.body,
       attachments: [],

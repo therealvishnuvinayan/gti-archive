@@ -2069,6 +2069,26 @@ async function revokeConceptApprovedAttachment(
               );
             }
 
+            const stageThreeFallbackHandoff =
+              await tx.projectStageFileHandoff.findFirst({
+                where: {
+                  projectId: input.projectId,
+                  sourceWorkflowStageKey:
+                    ProjectWorkflowStageKey.CONCEPT_CREATION,
+                  sourceAttachmentId: approvedAttachment.id,
+                  targetWorkflowStageKey:
+                    ProjectWorkflowStageKey.FINAL_LAYOUT,
+                },
+                select: { id: true },
+              });
+
+            if (stageThreeFallbackHandoff) {
+              await tx.projectStageFileHandoff.delete({
+                where: { id: stageThreeFallbackHandoff.id },
+              });
+              removedStageFiveHandoff = true;
+            }
+
             const promotedConcept = folder.promotedStage4Concept;
             if (promotedConcept) {
               const promotedApproval = promotedConcept.approvedAttachment;
@@ -2545,7 +2565,12 @@ export async function completeStageFourConcepts(
               },
               conceptFolders: {
                 where: {
-                  workflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+                  workflowStageKey: {
+                    in: [
+                      ProjectWorkflowStageKey.CONCEPT_CREATION,
+                      ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+                    ],
+                  },
                 },
                 orderBy: [
                   { sortOrder: "asc" },
@@ -2555,6 +2580,7 @@ export async function completeStageFourConcepts(
                 select: {
                   id: true,
                   name: true,
+                  workflowStageKey: true,
                   taskerStageId: true,
                   approvedAttachmentId: true,
                   approvedAttachment: {
@@ -2590,13 +2616,18 @@ export async function completeStageFourConcepts(
             (stage) =>
               stage.stageKey === ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
           );
+          const stageThreeWorkflow = project.workflowStages.find(
+            (stage) =>
+              stage.stageKey === ProjectWorkflowStageKey.CONCEPT_CREATION,
+          );
           const stageFiveWorkflow = project.workflowStages.find(
             (stage) => stage.stageKey === ProjectWorkflowStageKey.FINAL_LAYOUT,
           );
 
-          if (!stageFourWorkflow || !stageFiveWorkflow) {
+          if (!stageThreeWorkflow || !stageFourWorkflow || !stageFiveWorkflow) {
             return {
-              error: "Stage 4 and Stage 5 workflow records are required before completion.",
+              error:
+                "Stage 3, Stage 4, and Stage 5 workflow records are required before completion.",
             };
           }
 
@@ -2609,7 +2640,17 @@ export async function completeStageFourConcepts(
             return { error: "Stage 4 is not currently available." };
           }
 
-          const skipped = project.conceptFolders.length === 0;
+          const stageThreeConcepts = project.conceptFolders.filter(
+            (folder) =>
+              folder.workflowStageKey ===
+              ProjectWorkflowStageKey.CONCEPT_CREATION,
+          );
+          const stageFourConcepts = project.conceptFolders.filter(
+            (folder) =>
+              folder.workflowStageKey ===
+              ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+          );
+          const skipped = stageFourConcepts.length === 0;
 
           if (skipped) {
             if (
@@ -2628,6 +2669,101 @@ export async function completeStageFourConcepts(
                 error:
                   "Stage 4 cannot be skipped because Stage 5 source files already exist.",
               };
+            }
+
+            if (
+              stageThreeWorkflow.status !==
+              ProjectWorkflowStageStatus.COMPLETED
+            ) {
+              return {
+                error:
+                  "Stage 3 must be completed before its approved files can be carried into Stage 5.",
+              };
+            }
+
+            const approvedStageThreeConcepts = stageThreeConcepts.filter(
+              (folder) => Boolean(folder.approvedAttachmentId),
+            );
+            const stageThreeConceptsWithoutApprovedFile = stageThreeConcepts
+              .filter((folder) => !folder.approvedAttachmentId)
+              .map((folder) => folder.name);
+
+            if (stageThreeConceptsWithoutApprovedFile.length > 0) {
+              return {
+                error: `Every completed Stage 3 concept must have an Approved Concept before Stage 4 can be skipped. Missing: ${stageThreeConceptsWithoutApprovedFile.join(", ")}.`,
+              };
+            }
+
+            for (const concept of approvedStageThreeConcepts) {
+              const attachmentError = getFormalConceptAttachmentError({
+                attachment: concept.approvedAttachment,
+                projectId: project.id,
+                taskerStageId: concept.taskerStageId,
+                projectCategory: project.category,
+                workflowStageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+              });
+
+              if (attachmentError) {
+                return {
+                  error: `The Approved Concept for “${concept.name}” is no longer eligible for Stage 5. Reopen Stage 3 and select a valid formal file.`,
+                };
+              }
+            }
+
+            const handoffs: StageFourCompletionResult["handoffs"] = [];
+
+            for (const concept of approvedStageThreeConcepts) {
+              const sourceAttachmentId = concept.approvedAttachmentId!;
+              const handoff = await tx.projectStageFileHandoff.upsert({
+                where: {
+                  projectId_sourceAttachmentId_targetWorkflowStageKey: {
+                    projectId: project.id,
+                    sourceAttachmentId,
+                    targetWorkflowStageKey:
+                      ProjectWorkflowStageKey.FINAL_LAYOUT,
+                  },
+                },
+                update: {},
+                create: {
+                  projectId: project.id,
+                  sourceWorkflowStageKey:
+                    ProjectWorkflowStageKey.CONCEPT_CREATION,
+                  sourceAttachmentId,
+                  targetWorkflowStageKey:
+                    ProjectWorkflowStageKey.FINAL_LAYOUT,
+                  handedOffById: user.id,
+                },
+                select: { id: true, sourceAttachmentId: true },
+              });
+              const checklist = await tx.projectFileChecklist.upsert({
+                where: { handoffId: handoff.id },
+                update: {},
+                create: {
+                  projectId: project.id,
+                  handoffId: handoff.id,
+                  sourceAttachmentId,
+                },
+                select: {
+                  id: true,
+                  projectId: true,
+                  sourceAttachmentId: true,
+                },
+              });
+
+              if (
+                checklist.projectId !== project.id ||
+                checklist.sourceAttachmentId !== sourceAttachmentId
+              ) {
+                throw new Error(
+                  "Existing Stage 5 checklist does not match its Stage 3 source file.",
+                );
+              }
+
+              handoffs.push({
+                id: handoff.id,
+                sourceAttachmentId,
+                checklistId: checklist.id,
+              });
             }
 
             const completedAt = new Date();
@@ -2680,16 +2816,16 @@ export async function completeStageFourConcepts(
             return {
               transitioned: true,
               skipped: true,
-              finalApprovedCount: 0,
+              finalApprovedCount: approvedStageThreeConcepts.length,
               conceptsWithoutFinalFile: [],
-              handoffs: [],
+              handoffs,
             };
           }
 
-          const finalConcepts = project.conceptFolders.filter(
+          const finalConcepts = stageFourConcepts.filter(
             (folder) => Boolean(folder.approvedAttachmentId),
           );
-          const conceptsWithoutFinalFile = project.conceptFolders
+          const conceptsWithoutFinalFile = stageFourConcepts
             .filter((folder) => !folder.approvedAttachmentId)
             .map((folder) => ({ id: folder.id, name: folder.name }));
 

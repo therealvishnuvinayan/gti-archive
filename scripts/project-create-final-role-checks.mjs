@@ -28,6 +28,9 @@ const flexibleProjectsRouteWorkspace = read(
 );
 const userPermissions = read("src/lib/user-permissions.ts");
 const schema = read("prisma/schema.prisma");
+const defaultUserProjectCreationMigration = read(
+  "prisma/migrations/20260920160000_disable_existing_user_project_creation_access/migration.sql",
+);
 
 assertIncludes(definitions, 'USER: defaultUserWorkflowPermissions', "USER defaults");
 const userDefaults = definitions.slice(
@@ -63,6 +66,15 @@ assertIncludes(
   "projectCreationAccessGranted",
   "persisted per-user project creation access",
 );
+assert(
+  /projectCreationAccessGranted\s+Boolean\s+@default\(false\)/.test(schema),
+  "USER project creation access must default to disabled.",
+);
+assertIncludes(
+  defaultUserProjectCreationMigration,
+  'SET "projectCreationAccessGranted" = false',
+  "existing USER project creation access reset",
+);
 assertIncludes(
   resolver,
   "user.projectCreationAccessGranted === true",
@@ -82,6 +94,16 @@ assertIncludes(
   usersWorkspace,
   "Assigned per user",
   "managed-user Create Project switch",
+);
+assertIncludes(
+  usersWorkspace,
+  "min-h-0 flex-1 overflow-y-auto overscroll-contain",
+  "Edit User modal body-only scrolling",
+);
+assertIncludes(
+  usersWorkspace,
+  'projectCreationEnabled ? "left-6" : "left-1"',
+  "Create Project switch thumb positioning",
 );
 assertIncludes(
   flexibleProjectsRouteWorkspace,

@@ -57,6 +57,7 @@ async function main() {
   const projectId = `concept-round-four-${runId}`;
   const foreignProjectId = `concept-round-four-foreign-${runId}`;
   const skipProjectId = `concept-round-four-skip-${runId}`;
+  const stageThreeFallbackProjectId = `concept-round-four-stage-three-fallback-${runId}`;
   const userSpecs = [
     ["super", UserRole.SUPER_ADMIN],
     ["owner", UserRole.ADMIN],
@@ -365,6 +366,146 @@ async function main() {
           status: AttachmentStatus.READY,
         },
       });
+
+    await prisma.project.create({
+      data: {
+        id: stageThreeFallbackProjectId,
+        name: `Concept Round Four Stage 3 Fallback ${runId}`,
+        ownerId: owner.id,
+        createdById: superAdmin.id,
+        executors: {
+          create: [{ userId: executor.id, addedById: owner.id }],
+        },
+        workflowStages: {
+          create: getInitialProjectWorkflowStageData().map((stage) => ({
+            ...stage,
+            status:
+              stage.stageKey === ProjectWorkflowStageKey.PROJECT_INQUIRY ||
+              stage.stageKey ===
+                ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING ||
+              stage.stageKey === ProjectWorkflowStageKey.CONCEPT_CREATION
+                ? ProjectWorkflowStageStatus.COMPLETED
+                : stage.stageKey ===
+                    ProjectWorkflowStageKey.PROJECT_DEVELOPMENT
+                  ? ProjectWorkflowStageStatus.AVAILABLE
+                  : ProjectWorkflowStageStatus.LOCKED,
+            completedAt:
+              stage.stageKey === ProjectWorkflowStageKey.PROJECT_INQUIRY ||
+              stage.stageKey ===
+                ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING ||
+              stage.stageKey === ProjectWorkflowStageKey.CONCEPT_CREATION
+                ? now
+                : null,
+            unlockedAt:
+              stage.stageKey === ProjectWorkflowStageKey.FINAL_LAYOUT ||
+              stage.stageKey ===
+                ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER ||
+              stage.stageKey ===
+                ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION
+                ? null
+                : now,
+          })),
+        },
+      },
+    });
+    const stageThreeFallbackTasker = await prisma.projectStage.create({
+      data: {
+        projectId: stageThreeFallbackProjectId,
+        name: "Approved Stage 3 Fallback",
+        invoiceRequired: false,
+        isTasker: true,
+        actualStartedAt: now,
+        startedById: executor.id,
+        status: StageStatus.COMPLETED,
+        completedAt: now,
+        order: 30_001,
+      },
+    });
+    const stageThreeFallbackRevision = await prisma.projectRevision.create({
+      data: {
+        projectId: stageThreeFallbackProjectId,
+        stageId: stageThreeFallbackTasker.id,
+        createdById: executor.id,
+        revisionNumber: 1,
+        title: "Approved Stage 3 fallback source",
+        status: ProjectRevisionStatus.APPROVED,
+        reviewedById: owner.id,
+        reviewedAt: now,
+      },
+    });
+    const stageThreeFallbackFile = await createAttachment({
+      id: `round-four-stage-three-fallback-${runId}`,
+      targetProjectId: stageThreeFallbackProjectId,
+      stageId: stageThreeFallbackTasker.id,
+      revisionId: stageThreeFallbackRevision.id,
+      assetType: AttachmentAssetType.REVISION_ORIGINAL,
+      name: "approved-stage-three-fallback.png",
+    });
+    const stageThreeFallbackConcept = await prisma.projectConceptFolder.create({
+      data: {
+        projectId: stageThreeFallbackProjectId,
+        workflowStageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+        taskerStageId: stageThreeFallbackTasker.id,
+        assignedExecutorId: executor.id,
+        approvedAttachmentId: stageThreeFallbackFile.id,
+        approvedById: owner.id,
+        approvedAt: now,
+        name: "Approved Stage 3 Fallback",
+        normalizedName: "approved stage 3 fallback",
+        createdById: owner.id,
+      },
+    });
+
+    const stageThreeFallbackCompletion = await completeStageFourConcepts(
+      owner,
+      { projectId: stageThreeFallbackProjectId },
+    );
+    const stageThreeFallbackWorkspace = await getStageFiveWorkspaceData(
+      owner,
+      stageThreeFallbackProjectId,
+    );
+    const stageThreeFallbackHandoff =
+      await prisma.projectStageFileHandoff.findFirst({
+        where: { projectId: stageThreeFallbackProjectId },
+        select: {
+          sourceWorkflowStageKey: true,
+          sourceAttachmentId: true,
+          checklist: { select: { sourceAttachmentId: true } },
+        },
+      });
+    check(
+      !isError(stageThreeFallbackCompletion) &&
+        stageThreeFallbackCompletion.skipped &&
+        stageThreeFallbackCompletion.handoffs.length === 1 &&
+        stageThreeFallbackCompletion.finalApprovedCount === 1 &&
+        stageThreeFallbackWorkspace?.files.length === 1 &&
+        stageThreeFallbackWorkspace.files[0].sourceOrigin === "STAGE_THREE" &&
+        stageThreeFallbackWorkspace.files[0].sourceAttachment.id ===
+          stageThreeFallbackFile.id &&
+        stageThreeFallbackHandoff?.sourceWorkflowStageKey ===
+          ProjectWorkflowStageKey.CONCEPT_CREATION &&
+        stageThreeFallbackHandoff.sourceAttachmentId ===
+          stageThreeFallbackFile.id &&
+        stageThreeFallbackHandoff.checklist?.sourceAttachmentId ===
+          stageThreeFallbackFile.id,
+      "skipping Stage 4 after Stage 3 completion must carry approved Stage 3 files into Stage 5",
+    );
+    const revokedStageThreeFallback =
+      await revokeProjectConceptApprovedAttachment(owner, {
+        projectId: stageThreeFallbackProjectId,
+        folderId: stageThreeFallbackConcept.id,
+      });
+    check(
+      !isError(revokedStageThreeFallback) &&
+        revokedStageThreeFallback.removedStageFiveHandoff &&
+        (await prisma.projectStageFileHandoff.count({
+          where: { projectId: stageThreeFallbackProjectId },
+        })) === 0 &&
+        (await prisma.projectFileChecklist.count({
+          where: { projectId: stageThreeFallbackProjectId },
+        })) === 0,
+      "reopening Stage 3 must remove its fallback Stage 5 handoff and checklist",
+    );
 
     const sourceFile = await createAttachment({
       id: `round-four-source-${runId}`,
@@ -1366,7 +1507,16 @@ async function main() {
     );
   } finally {
     await prisma.project.deleteMany({
-      where: { id: { in: [projectId, foreignProjectId, skipProjectId] } },
+      where: {
+        id: {
+          in: [
+            projectId,
+            foreignProjectId,
+            skipProjectId,
+            stageThreeFallbackProjectId,
+          ],
+        },
+      },
     });
     await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   }

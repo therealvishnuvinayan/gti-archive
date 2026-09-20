@@ -93,7 +93,7 @@ export type StageFiveChecklistItemRecord = {
 export type StageFiveFileRecord = {
   handoffId: string;
   checklistId: string;
-  sourceOrigin: "STAGE_FOUR" | "DIRECT_STAGE_FIVE";
+  sourceOrigin: "STAGE_THREE" | "STAGE_FOUR" | "DIRECT_STAGE_FIVE";
   sourceAttachment: StageFiveAttachmentRecord;
   handedOffAt: string;
   items: StageFiveChecklistItemRecord[];
@@ -430,7 +430,10 @@ export async function getStageFiveWorkspaceData(
       sourceOrigin:
         handoff.sourceWorkflowStageKey === ProjectWorkflowStageKey.FINAL_LAYOUT
           ? "DIRECT_STAGE_FIVE"
-          : "STAGE_FOUR",
+          : handoff.sourceWorkflowStageKey ===
+              ProjectWorkflowStageKey.CONCEPT_CREATION
+            ? "STAGE_THREE"
+            : "STAGE_FOUR",
       sourceAttachment: mapAttachment(handoff.sourceAttachment),
       handedOffAt: handoff.handedOffAt.toISOString(),
       items:

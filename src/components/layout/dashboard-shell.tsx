@@ -17,6 +17,7 @@ const SIDEBAR_COLLAPSED_STORAGE_KEY = "gti-sidebar-collapsed";
 function isDenseWorkspaceRoute(pathname: string) {
   return (
     pathname.includes("/chat") ||
+    pathname === "/project-tracker" ||
     /^\/projects\/[^/]+\/stages\/[34]\/concepts\/[^/]+/.test(pathname) ||
     /^\/projects\/[^/]+\/(?:stages\/2\/folders|workspace\/(?:private|shared))\/[^/]+/.test(
       pathname,

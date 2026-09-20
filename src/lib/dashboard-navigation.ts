@@ -15,14 +15,22 @@ function getProjectsReturnHref(value: string | null) {
 
   try {
     const decodedValue = decodeURIComponent(value);
-    if (decodedValue === "/projects" || decodedValue.startsWith("/projects?")) {
+    if (
+      decodedValue === "/project-tracker" ||
+      decodedValue === "/projects" ||
+      decodedValue.startsWith("/projects?")
+    ) {
       return decodedValue;
     }
   } catch {
     // The un-decoded fallback below still enforces the same internal route boundary.
   }
 
-  if (value === "/projects" || value.startsWith("/projects?")) return value;
+  if (
+    value === "/project-tracker" ||
+    value === "/projects" ||
+    value.startsWith("/projects?")
+  ) return value;
   return "/projects";
 }
 
@@ -44,6 +52,10 @@ export function getDashboardBackNavigation(
     return topbar("/settings", "Settings", "Back to Settings");
   }
 
+  if (pathname === "/project-tracker") {
+    return topbar("/", "Dashboard", "Back to Dashboard");
+  }
+
   if (segments[0] === "archives" && segments.length >= 2) {
     return topbar("/archives", "Archives", "Back to Archives");
   }
@@ -54,11 +66,21 @@ export function getDashboardBackNavigation(
   if (segments[1] === "flexible") {
     const projectSlug = segments[2];
 
-    if (!projectSlug || segments.length === 3) {
+    if (!projectSlug) {
       return topbar(
         "/projects?view=flexible",
         "Flexible Projects",
         "Back to Flexible Projects",
+      );
+    }
+
+    if (segments.length === 3) {
+      const returnHref = getProjectsReturnHref(searchParams.get("returnTo"));
+      const returnsToTracker = returnHref === "/project-tracker";
+      return topbar(
+        returnsToTracker ? returnHref : "/projects?view=flexible",
+        returnsToTracker ? "Project Tracker" : "Flexible Projects",
+        returnsToTracker ? "Back to Project Tracker" : "Back to Flexible Projects",
       );
     }
 
@@ -72,10 +94,12 @@ export function getDashboardBackNavigation(
   const projectId = segments[1];
 
   if (segments.length === 2) {
+    const returnHref = getProjectsReturnHref(searchParams.get("returnTo"));
+    const returnsToTracker = returnHref === "/project-tracker";
     return topbar(
-      getProjectsReturnHref(searchParams.get("returnTo")),
-      "Projects",
-      "Back to Projects",
+      returnHref,
+      returnsToTracker ? "Project Tracker" : "Projects",
+      returnsToTracker ? "Back to Project Tracker" : "Back to Projects",
     );
   }
 

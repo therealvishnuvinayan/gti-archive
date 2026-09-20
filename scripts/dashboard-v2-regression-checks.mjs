@@ -118,9 +118,15 @@ for (const actionType of [
   assert(service.includes(actionType), `Attention source is missing: ${actionType}`);
 }
 assert(
-  service.includes("attentionCount: attention.length") &&
-    service.includes("attention: attention.slice(0, 6)"),
+  service.includes("attentionCount: attentionItems.length") &&
+    service.includes("attention: attentionItems.slice(0, 6)"),
   "Needs Attention KPI and panel must share the same normalized feed.",
+);
+assert(
+  service.includes("export async function getNeedsAttentionItems") &&
+    service.includes("dedupeKey: `concept:${folder.id}`") &&
+    service.includes("executorIsWaitingForReview"),
+  "Needs Attention must be reusable, deduplicated by work item, and limited to the next actor.",
 );
 
 for (const deepLink of [

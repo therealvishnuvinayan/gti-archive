@@ -256,6 +256,13 @@ assert(
   "Stage 3/4 comparison routes must resolve the concept tasker server-side.",
 );
 assert(
+  !/(?:revision|comment|comparison)\.createdAt\.toISOString\(\)/.test(history) &&
+    history.includes("createdAtValue: toHistoryDate(revision.createdAt).toISOString()") &&
+    history.includes("createdAtValue: toHistoryDate(comment.createdAt).toISOString()") &&
+    history.includes("createdAtValue: toHistoryDate(comparison.createdAt).toISOString()"),
+  "Cached stage-history timestamps must be rehydrated before concept comparison entries are mapped.",
+);
+assert(
   compareWorkspace.includes("conceptMode?.compareHref") &&
     compareWorkspace.includes("conceptMode.conceptName") &&
     compareWorkspace.includes("!conceptMode ?"),

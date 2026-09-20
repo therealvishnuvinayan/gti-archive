@@ -118,6 +118,10 @@ const managerCard = read("src/components/projects/project-card.tsx");
 const tasksPage = read("src/app/(dashboard)/tasks/page.tsx");
 const tasksWorkspace = read("src/components/tasks/user-tasks-workspace.tsx");
 const tasksService = read("src/lib/user-tasks.ts");
+const projectActions = read("src/app/(dashboard)/projects/actions.ts");
+const conceptActions = read(
+  "src/app/(dashboard)/projects/[slug]/stages/concept-actions.ts",
+);
 const dashboardLayout = read("src/app/(dashboard)/layout.tsx");
 const sidebar = read("src/components/layout/sidebar.tsx");
 const permissions = read("src/lib/permissions/resolver.ts");
@@ -203,11 +207,27 @@ assert.match(tasksWorkspace, /Executor Workspace/);
 assert.match(tasksWorkspace, /Open a project folder/);
 assert.match(tasksWorkspace, /Open task/);
 assert.match(tasksWorkspace, /Stage \{task\.stageNumber\}/);
-assert.match(tasksWorkspace, /Search project folders or tasks/);
+assert.match(tasksWorkspace, /Search project folders, tasks, or attention items/);
 assert.match(tasksService, /assignedExecutorId: user\.id/);
 assert.match(tasksService, /ProjectWorkflowStageKey\.CONCEPT_CREATION/);
 assert.match(tasksService, /ProjectWorkflowStageKey\.PROJECT_DEVELOPMENT/);
 assert.match(tasksService, /returnTo=%2Ftasks/);
+assert.match(tasksService, /getNeedsAttentionItems\(user\)/);
+assert.match(tasksService, /needsAttention: attentionItems\.length/);
+assert.match(tasksWorkspace, /data\.attentionItems/);
+assert.match(tasksWorkspace, /<AttentionRow key=\{item\.id\} item=\{item\} \/>/);
+assert.match(tasksWorkspace, /onClick=\{\(\) => setFilter\(card\.filter\)\}/);
+assert.match(tasksWorkspace, /useNotificationCenter\(\)/);
+assert.match(tasksWorkspace, /router\.refresh\(\)/);
+assert.match(tasksWorkspace, /visibilitychange/);
+assert.match(
+  projectActions,
+  /function revalidateProjectFlow\(\) \{[\s\S]*?revalidatePath\("\/tasks"\)/,
+);
+assert.match(
+  conceptActions,
+  /function revalidateConceptStage\([\s\S]*?revalidatePath\("\/tasks"\)/,
+);
 assert.match(dashboardLayout, /tasks: taskBadgeCount > 0/);
 assert.match(sidebar, /label: "Tasks", href: "\/tasks"/);
 assert.match(sidebar, /item\.href === "\/tasks"/);
