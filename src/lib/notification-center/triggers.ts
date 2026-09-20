@@ -280,7 +280,9 @@ export async function notifyStageFiveActivated(input: {
     type: "NEXT_STAGE_ACTIVATED",
     title: "Stage 5 available",
     message: input.skippedStageFour
-      ? `Stage 4 was skipped in ${project.name}. Upload the final file directly in Stage 5 to start its checklist.`
+      ? input.finalFileCount > 0
+        ? `Stage 4 was skipped in ${project.name}. ${input.finalFileCount} approved Stage 3 file${input.finalFileCount === 1 ? " is" : "s are"} ready for file checklists.`
+        : `Stage 4 was skipped in ${project.name}. Upload the final file directly in Stage 5 to start its checklist.`
       : `${input.finalFileCount} final approved file${input.finalFileCount === 1 ? " is" : "s are"} ready for file checklists in ${project.name}.`,
     entityType: "PROJECT",
     entityId: project.id,

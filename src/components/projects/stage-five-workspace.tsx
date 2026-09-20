@@ -1950,6 +1950,10 @@ export function StageFiveWorkspace({
                       <p className="mt-1 text-[10px] font-[650] text-[#4d765d]">
                         Uploaded directly in Stage 5
                       </p>
+                    ) : activeFile.sourceOrigin === "STAGE_THREE" ? (
+                      <p className="mt-1 text-[10px] font-[650] text-[#4d765d]">
+                        Carried forward from Stage 3
+                      </p>
                     ) : null}
                   </div>
                 </div>

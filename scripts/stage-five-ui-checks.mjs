@@ -52,7 +52,7 @@ const [externalPage, externalWorkspace, externalService, externalToken, secureTo
     readFile("next.config.ts", "utf8"),
   ]);
 
-const [projectHistory, stageSix, lineage, directMigration, projectAssetCompleteRoute] =
+const [projectHistory, stageSix, lineage, directMigration, stageThreeFallbackMigration, projectConcepts, projectAssetCompleteRoute] =
   await Promise.all([
     readFile("src/lib/project-history.ts", "utf8"),
     readFile("src/lib/stage-six.ts", "utf8"),
@@ -61,6 +61,11 @@ const [projectHistory, stageSix, lineage, directMigration, projectAssetCompleteR
       "prisma/migrations/20260824190000_stage_four_skip_and_direct_stage_five_source/migration.sql",
       "utf8",
     ),
+    readFile(
+      "prisma/migrations/20260920144500_stage_three_stage_five_fallback/migration.sql",
+      "utf8",
+    ),
+    readFile("src/lib/project-concepts.ts", "utf8"),
     readFile("src/app/api/project-assets/complete/route.ts", "utf8"),
   ]);
 
@@ -250,14 +255,31 @@ assert(
   "An empty active Stage 5 must upload a primary final file through the existing project-asset pipeline and disable zero-file completion.",
 );
 assert(
-  lineage.includes("ProjectWorkflowStageKey.PROJECT_DEVELOPMENT") &&
+  lineage.includes("ProjectWorkflowStageKey.CONCEPT_CREATION") &&
+    lineage.includes("ProjectWorkflowStageKey.PROJECT_DEVELOPMENT") &&
     lineage.includes("ProjectWorkflowStageKey.FINAL_LAYOUT") &&
     service.includes("STAGE_FIVE_SOURCE_WORKFLOW_STAGE_KEYS") &&
-    service.includes('sourceOrigin:') &&
+    service.includes('"STAGE_THREE"') &&
+    workspace.includes("Carried forward from Stage 3") &&
     stageSix.includes("STAGE_FIVE_SOURCE_WORKFLOW_STAGE_KEYS") &&
     stageSix.includes("isStageFiveSourceWorkflowStageKey") &&
     stageSix.includes("A direct Stage 5 source has invalid provenance."),
-  "Stage 5 loading and Stage 5-to-6 completion must recognize both legitimate source origins through one lineage policy.",
+  "Stage 5 loading and Stage 5-to-6 completion must recognize Stage 3 fallback, Stage 4, and direct Stage 5 sources through one lineage policy.",
+);
+assert(
+  projectConcepts.includes("approvedStageThreeConcepts") &&
+    projectConcepts.includes(
+      "sourceWorkflowStageKey:\n                    ProjectWorkflowStageKey.CONCEPT_CREATION",
+    ) &&
+    projectConcepts.includes("stageThreeFallbackHandoff") &&
+    stageThreeFallbackMigration.includes(
+      '"sourceWorkflowStageKey" = \'CONCEPT_CREATION\'',
+    ) &&
+    stageThreeFallbackMigration.includes('WITH "EligibleProjects" AS') &&
+    stageThreeFallbackMigration.includes(
+      'INSERT INTO "ProjectFileChecklist"',
+    ),
+  "Skipping Stage 4 must hand approved Stage 3 files to Stage 5, clean them up during Stage 3 rework, and backfill eligible existing projects.",
 );
 assert(
   projectHistory.includes("completeDirectStageFiveSourceUpload") &&
