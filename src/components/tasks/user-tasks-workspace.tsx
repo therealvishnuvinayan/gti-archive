@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   CalendarClock,
@@ -18,6 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { useNotificationCenter } from "@/components/notifications/notification-center";
 import { formatProjectPriority } from "@/lib/project-priority";
 import type {
   UserTaskListItem,
@@ -135,6 +137,9 @@ function TaskRow({ task }: { task: UserTaskListItem }) {
 }
 
 export function UserTasksWorkspace({ data }: { data: UserTasksPageData }) {
+  const router = useRouter();
+  const { refreshVersion } = useNotificationCenter();
+  const lastNotificationRefreshVersion = useRef(refreshVersion);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<TaskFilter>("ALL");
   const [expandedProjectIds, setExpandedProjectIds] = useState<Set<string>>(
@@ -160,6 +165,29 @@ export function UserTasksWorkspace({ data }: { data: UserTasksPageData }) {
         .filter((project) => project.tasks.length > 0),
     [data.projects, filter, normalizedQuery],
   );
+
+  useEffect(() => {
+    if (refreshVersion === lastNotificationRefreshVersion.current) return;
+
+    lastNotificationRefreshVersion.current = refreshVersion;
+    router.refresh();
+  }, [refreshVersion, router]);
+
+  useEffect(() => {
+    const refreshTasks = () => router.refresh();
+    const refreshVisibleTasks = () => {
+      if (document.visibilityState === "visible") refreshTasks();
+    };
+
+    window.addEventListener("focus", refreshTasks);
+    document.addEventListener("visibilitychange", refreshVisibleTasks);
+
+    return () => {
+      window.removeEventListener("focus", refreshTasks);
+      document.removeEventListener("visibilitychange", refreshVisibleTasks);
+    };
+  }, [router]);
+
   function toggleProject(projectId: string) {
     setExpandedProjectIds((current) => {
       const next = new Set(current);

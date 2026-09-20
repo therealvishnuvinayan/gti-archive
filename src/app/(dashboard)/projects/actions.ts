@@ -189,6 +189,7 @@ type ComparisonCommentInput = {
 
 function revalidateProjectFlow() {
   revalidateTag(PROJECTS_CACHE_TAG, { expire: 0 });
+  revalidatePath("/tasks");
 }
 
 function revalidateProjectFlowAfterResponse() {

@@ -39,6 +39,7 @@ function revalidateConceptStage(
   revalidatePath(
     `/projects/${projectId}/stages/${getConceptStageNumber(stageKey)}`,
   );
+  revalidatePath("/tasks");
   revalidateTag(PROJECTS_CACHE_TAG, "max");
 }
 
