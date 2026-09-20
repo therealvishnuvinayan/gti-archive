@@ -227,6 +227,12 @@ type WorkCounter = {
   tone: DashboardWorkSummaryItem["tone"];
 };
 
+type AttentionCandidate = {
+  dedupeKey: string;
+  priority: number;
+  item: DashboardAttentionItem;
+};
+
 const attentionRank: Record<DashboardAttentionItem["severity"], number> = {
   critical: 0,
   warning: 1,
@@ -378,10 +384,27 @@ function addWork(counter: Map<string, WorkCounter>, item: WorkCounter) {
 }
 
 function addAttention(
-  items: DashboardAttentionItem[],
+  items: AttentionCandidate[],
   item: DashboardAttentionItem,
+  options?: {
+    dedupeKey?: string;
+    priority?: number;
+  },
 ) {
-  if (!items.some((existing) => existing.id === item.id)) items.push(item);
+  const dedupeKey = options?.dedupeKey ?? item.id;
+  const priority = options?.priority ?? 0;
+  const existingIndex = items.findIndex(
+    (candidate) => candidate.dedupeKey === dedupeKey,
+  );
+
+  if (existingIndex === -1) {
+    items.push({ dedupeKey, priority, item });
+    return;
+  }
+
+  if (priority > items[existingIndex].priority) {
+    items[existingIndex] = { dedupeKey, priority, item };
+  }
 }
 
 function buildKpis(input: {
@@ -519,10 +542,10 @@ function buildKpis(input: {
  * milestone-based flexible workflow. Business administrators receive a global
  * portfolio; standard users remain relationship-scoped in both project types.
  */
-export async function getDashboardSnapshot(
+async function buildDashboardSnapshot(
   user: DashboardUser,
   now = new Date(),
-): Promise<DashboardSnapshot> {
+) {
   const canViewRecentProjects = hasPermission(
     user,
     "dashboard.viewRecentProjects",
@@ -674,7 +697,7 @@ export async function getDashboardSnapshot(
           ),
         ]);
 
-  const attention: DashboardAttentionItem[] = [];
+  const attention: AttentionCandidate[] = [];
   const deadlineCandidates: DeadlineCandidate[] = [];
   const work = new Map<string, WorkCounter>();
   let assignedConceptCount = 0;
@@ -850,18 +873,27 @@ export async function getDashboardSnapshot(
       });
     }
 
-    if (isAssigned && isOpen && !folder.taskerStage.actualStartedAt) {
-      addAttention(attention, {
-        id: `brief:${folder.id}`,
-        severity: "info",
-        kind: "request",
-        title: "Brief waiting to be accepted",
-        detail: `${folder.name} · Stage ${stageNumber}`,
-        projectName: project.name,
-        href,
-        actionLabel: "Review brief",
-        sortAt: project.updatedAt.toISOString(),
-      });
+    if (
+      isAssigned &&
+      isOpen &&
+      !folder.taskerStage.actualStartedAt &&
+      !latestRevision
+    ) {
+      addAttention(
+        attention,
+        {
+          id: `brief:${folder.id}`,
+          severity: "info",
+          kind: "request",
+          title: "Brief waiting to be accepted",
+          detail: `${folder.name} · Stage ${stageNumber}`,
+          projectName: project.name,
+          href,
+          actionLabel: "Review brief",
+          sortAt: project.updatedAt.toISOString(),
+        },
+        { dedupeKey: `concept:${folder.id}`, priority: 300 },
+      );
       addWork(work, {
         id: "briefs",
         label: "Briefs to accept",
@@ -876,19 +908,23 @@ export async function getDashboardSnapshot(
       isOpen &&
       latestRevision?.status === ProjectRevisionStatus.REJECTED
     ) {
-      addAttention(attention, {
-        id: `revision:${latestRevision.id}`,
-        severity: "warning",
-        kind: "revision",
-        title: "Changes requested",
-        detail:
-          latestRevision.rejectionReason?.trim() ||
-          `${folder.name} · Revision ${latestRevision.revisionNumber}`,
-        projectName: project.name,
-        href,
-        actionLabel: "Open revision",
-        sortAt: latestRevision.updatedAt.toISOString(),
-      });
+      addAttention(
+        attention,
+        {
+          id: `revision:${latestRevision.id}`,
+          severity: "warning",
+          kind: "revision",
+          title: "Changes requested",
+          detail:
+            latestRevision.rejectionReason?.trim() ||
+            `${folder.name} · Revision ${latestRevision.revisionNumber}`,
+          projectName: project.name,
+          href,
+          actionLabel: "Open revision",
+          sortAt: latestRevision.updatedAt.toISOString(),
+        },
+        { dedupeKey: `concept:${folder.id}`, priority: 400 },
+      );
       addWork(work, {
         id: "changes",
         label: "Changes requested",
@@ -903,17 +939,21 @@ export async function getDashboardSnapshot(
       isOpen &&
       latestRevision?.status === ProjectRevisionStatus.PENDING_REVIEW
     ) {
-      addAttention(attention, {
-        id: `review:${latestRevision.id}`,
-        severity: "info",
-        kind: "review",
-        title: "Revision awaiting review",
-        detail: `${folder.name} · Revision ${latestRevision.revisionNumber} by ${displayName(latestRevision.createdBy)}`,
-        projectName: project.name,
-        href,
-        actionLabel: "Review",
-        sortAt: latestRevision.createdAt.toISOString(),
-      });
+      addAttention(
+        attention,
+        {
+          id: `review:${latestRevision.id}`,
+          severity: "info",
+          kind: "review",
+          title: "Revision awaiting review",
+          detail: `${folder.name} · Revision ${latestRevision.revisionNumber} by ${displayName(latestRevision.createdBy)}`,
+          projectName: project.name,
+          href,
+          actionLabel: "Review",
+          sortAt: latestRevision.createdAt.toISOString(),
+        },
+        { dedupeKey: `concept:${folder.id}`, priority: 350 },
+      );
       addWork(work, {
         id: "reviews",
         label: "Revisions awaiting review",
@@ -952,18 +992,30 @@ export async function getDashboardSnapshot(
         dueAtDate: dueAt,
       });
 
-      if (dueAt.getTime() < startOfDay(now).getTime()) {
-        addAttention(attention, {
-          id: `concept-overdue:${folder.id}`,
-          severity: "critical",
-          kind: "deadline",
-          title: `Stage ${stageNumber} deadline overdue`,
-          detail: folder.name,
-          projectName: project.name,
-          href,
-          actionLabel: isAssigned ? "Open work" : "Review timeline",
-          sortAt: dueAt.toISOString(),
-        });
+      const executorIsWaitingForReview =
+        isAssigned &&
+        (latestRevision?.status === ProjectRevisionStatus.PENDING_REVIEW ||
+          latestRevision?.status === ProjectRevisionStatus.APPROVED);
+
+      if (
+        dueAt.getTime() < startOfDay(now).getTime() &&
+        !executorIsWaitingForReview
+      ) {
+        addAttention(
+          attention,
+          {
+            id: `concept-overdue:${folder.id}`,
+            severity: "critical",
+            kind: "deadline",
+            title: `Stage ${stageNumber} deadline overdue`,
+            detail: folder.name,
+            projectName: project.name,
+            href,
+            actionLabel: isAssigned ? "Open work" : "Review timeline",
+            sortAt: dueAt.toISOString(),
+          },
+          { dedupeKey: `concept:${folder.id}`, priority: 200 },
+        );
         addWork(work, {
           id: "overdue",
           label: "Overdue deadlines",
@@ -1213,10 +1265,14 @@ export async function getDashboardSnapshot(
   }
 
   attention.sort((left, right) => {
-    const severity = attentionRank[left.severity] - attentionRank[right.severity];
+    const severity =
+      attentionRank[left.item.severity] - attentionRank[right.item.severity];
     if (severity !== 0) return severity;
-    return toDate(left.sortAt).getTime() - toDate(right.sortAt).getTime();
+    return (
+      toDate(left.item.sortAt).getTime() - toDate(right.item.sortAt).getTime()
+    );
   });
+  const attentionItems = attention.map((candidate) => candidate.item);
 
   const deadlines = deadlineCandidates
     .sort((left, right) => left.dueAtDate.getTime() - right.dueAtDate.getTime())
@@ -1297,36 +1353,53 @@ export async function getDashboardSnapshot(
     : [];
 
   return {
-    kpis: buildKpis({
-      user,
-      summaries,
-      flexibleProjects,
-      attentionCount: attention.length,
-      assignedConceptCount,
-      openRequestCount,
-      completedRequestCount,
-    }),
-    attention: attention.slice(0, 6),
-    attentionCount: attention.length,
-    deadlines,
-    stages,
-    myWork: Array.from(work.values())
-      .filter((item) => item.count > 0)
-      .slice(0, 5),
-    flexibleProjects: flexibleProjectCards,
-    flexibleProjectCount: flexibleProjects.length,
-    flexibleActiveCount: flexibleProjects.filter(
-      (project) => project.status === FlexibleProjectStatus.ACTIVE,
-    ).length,
-    flexibleCompletedCount: flexibleProjects.filter(
-      (project) => project.status === FlexibleProjectStatus.COMPLETED,
-    ).length,
-    canViewFlexibleProjects,
-    recentProjects,
-    canViewRecentProjects,
-    scopeLabel:
-      isGlobalProjectAdministrator(user)
-        ? "Global portfolio"
-        : "Projects connected to you",
+    snapshot: {
+      kpis: buildKpis({
+        user,
+        summaries,
+        flexibleProjects,
+        attentionCount: attentionItems.length,
+        assignedConceptCount,
+        openRequestCount,
+        completedRequestCount,
+      }),
+      attention: attentionItems.slice(0, 6),
+      attentionCount: attentionItems.length,
+      deadlines,
+      stages,
+      myWork: Array.from(work.values())
+        .filter((item) => item.count > 0)
+        .slice(0, 5),
+      flexibleProjects: flexibleProjectCards,
+      flexibleProjectCount: flexibleProjects.length,
+      flexibleActiveCount: flexibleProjects.filter(
+        (project) => project.status === FlexibleProjectStatus.ACTIVE,
+      ).length,
+      flexibleCompletedCount: flexibleProjects.filter(
+        (project) => project.status === FlexibleProjectStatus.COMPLETED,
+      ).length,
+      canViewFlexibleProjects,
+      recentProjects,
+      canViewRecentProjects,
+      scopeLabel:
+        isGlobalProjectAdministrator(user)
+          ? "Global portfolio"
+          : "Projects connected to you",
+    } satisfies DashboardSnapshot,
+    attentionItems,
   };
+}
+
+export async function getDashboardSnapshot(
+  user: DashboardUser,
+  now = new Date(),
+): Promise<DashboardSnapshot> {
+  return (await buildDashboardSnapshot(user, now)).snapshot;
+}
+
+export async function getNeedsAttentionItems(
+  user: DashboardUser,
+  now = new Date(),
+): Promise<DashboardAttentionItem[]> {
+  return (await buildDashboardSnapshot(user, now)).attentionItems;
 }

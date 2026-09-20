@@ -16,6 +16,7 @@ import {
   type ConceptWorkflowStageKey,
 } from "../src/lib/project-concepts";
 import { createProjectV2 } from "../src/lib/project-creation";
+import { getDashboardSnapshot } from "../src/lib/dashboard";
 import { prisma } from "../src/lib/prisma";
 import { getProjectTypeSwitcherVisibility } from "../src/lib/projects";
 import { getUserProjectWorkspace } from "../src/lib/user-project-workspace";
@@ -325,11 +326,21 @@ async function main() {
     );
 
     const userTasks = await getUserTasksPageData(userOne);
+    const userDashboard = await getDashboardSnapshot(userOne);
     check(userTasks.summary.total === 5, "USER task page must include all five assigned concept taskers");
     check(userTasks.summary.open === 4, "USER task page open count is incorrect");
     check(userTasks.summary.needsAttention === 1, "USER task page attention count is incorrect");
     check(userTasks.summary.waitingForReview === 1, "USER task page review count is incorrect");
     check(userTasks.summary.completed === 1, "USER task page completed count is incorrect");
+    check(
+      userTasks.summary.needsAttention === userDashboard.attentionCount,
+      "Dashboard and Tasks Needs Attention counts must match",
+    );
+    check(
+      userTasks.attentionItems.map(({ id }) => id).join(",") ===
+        userDashboard.attention.map(({ id }) => id).join(","),
+      "Dashboard and Tasks must expose the same Needs Attention items",
+    );
     check(userTasks.projects.length === 3, "USER task page must group assignments into three project folders");
     check(userTasks.projects[0]?.id === mixedProjectId, "project folder with changes requested must sort first");
     check(userTasks.projects.at(-1)?.id === completedProjectId, "completed project folder must sort last");
