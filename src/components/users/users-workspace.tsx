@@ -609,19 +609,45 @@ function EditUserModal({
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isOpen]);
+
   if (!isOpen || !user || !form) {
     return null;
   }
 
+  const isAdministrator = isBusinessAdministratorRole(form.role);
+  const projectCreationEnabled =
+    isAdministrator || form.projectCreationAccessGranted;
+
   return (
-    <div className="fixed inset-0 z-50 bg-[#102116]/26 px-4 py-6 backdrop-blur-[2px]">
-      <div className="mx-auto flex h-full w-full max-w-[760px] flex-col overflow-y-auto rounded-[34px] border border-[#e8efe8] bg-white shadow-[0_30px_90px_rgba(19,36,27,0.18)]">
-        <div className="flex items-start justify-between gap-4 border-b border-[#edf2ed] px-6 pb-5 pt-6 sm:px-8">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-[#102116]/26 px-4 py-6 backdrop-blur-[2px]">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="edit-user-title"
+        aria-describedby="edit-user-description"
+        className="flex max-h-full w-full max-w-[760px] flex-col overflow-hidden rounded-[34px] border border-[#e8efe8] bg-white shadow-[0_30px_90px_rgba(19,36,27,0.18)]"
+      >
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[#edf2ed] bg-white px-6 pb-5 pt-6 sm:px-8">
           <div>
-            <h2 className="text-[40px] font-[700] leading-none tracking-[-0.05em] text-[#111712]">
+            <h2
+              id="edit-user-title"
+              className="text-[40px] font-[700] leading-none tracking-[-0.05em] text-[#111712]"
+            >
               Edit User
             </h2>
-            <p className="mt-3 text-[15px] text-[#707a71]">
+            <p id="edit-user-description" className="mt-3 text-[15px] text-[#707a71]">
               Update this account&apos;s profile photo, role, and access assignments.
             </p>
           </div>
@@ -638,7 +664,7 @@ function EditUserModal({
           </Button>
         </div>
 
-        <div className="flex-1 px-6 py-6 sm:px-8">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-6 sm:px-8">
           {error ? (
             <div className="mb-5 rounded-[18px] border border-[#f0c9c7] bg-[#fff2f1] px-4 py-3 text-[13px] text-[#bb4d49]">
               {error}
@@ -713,48 +739,50 @@ function EditUserModal({
 
           <div className="mt-5 rounded-[24px] border border-[#e8eee7] bg-[#fbfcfa] p-5">
             <div className="flex items-start justify-between gap-4">
-              <div>
+              <div className="min-w-0">
                 <p className="text-[16px] font-[700] text-[#18201a]">
                   Create Project
                 </p>
                 <p className="mt-1 text-[13px] leading-5 text-[#748074]">
-                  Allow this specific user to create and own new projects.
+                  Off by default for Users. Enable only when this specific user should
+                  create and own new projects.
                 </p>
               </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={
-                  isBusinessAdministratorRole(form.role) ||
-                  form.projectCreationAccessGranted
-                }
-                disabled={saving || isBusinessAdministratorRole(form.role)}
-                onClick={() =>
-                  onChange(
-                    "projectCreationAccessGranted",
-                    !form.projectCreationAccessGranted,
-                  )
-                }
-                className={cn(
-                  "relative mt-0.5 h-7 w-12 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60",
-                  isBusinessAdministratorRole(form.role) ||
-                    form.projectCreationAccessGranted
-                    ? "bg-[#2f8d5d]"
-                    : "bg-[#ccd6ce]",
-                )}
-              >
-                <span
+              <div className="mt-0.5 flex shrink-0 items-center gap-2.5">
+                <span className="text-[12px] font-[700] text-[#647066]">
+                  {isAdministrator
+                    ? "Included with role"
+                    : projectCreationEnabled
+                      ? "Enabled"
+                      : "Disabled"}
+                </span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-label="Allow this user to create projects"
+                  aria-checked={projectCreationEnabled}
+                  disabled={saving || isAdministrator}
+                  onClick={() =>
+                    onChange(
+                      "projectCreationAccessGranted",
+                      !form.projectCreationAccessGranted,
+                    )
+                  }
                   className={cn(
-                    "absolute top-1 size-5 rounded-full bg-white shadow-sm transition-transform",
-                    isBusinessAdministratorRole(form.role) ||
-                      form.projectCreationAccessGranted
-                      ? "translate-x-6"
-                      : "translate-x-1",
+                    "relative h-7 w-12 shrink-0 rounded-full p-0 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#2f8d5d]/35 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60",
+                    projectCreationEnabled ? "bg-[#2f8d5d]" : "bg-[#ccd6ce]",
                   )}
-                />
-              </button>
+                >
+                  <span
+                    className={cn(
+                      "absolute top-1 size-5 rounded-full bg-white shadow-sm transition-[left]",
+                      projectCreationEnabled ? "left-6" : "left-1",
+                    )}
+                  />
+                </button>
+              </div>
             </div>
-            {isBusinessAdministratorRole(form.role) ? (
+            {isAdministrator ? (
               <p className="mt-3 rounded-[14px] bg-[#f8fbff] px-4 py-3 text-[12px] leading-5 text-[#5f6c75]">
                 Administrators receive Create Project access through their role.
               </p>
@@ -843,7 +871,7 @@ function EditUserModal({
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 border-t border-[#edf2ed] px-6 py-5 sm:flex-row sm:items-center sm:justify-end sm:px-8">
+        <div className="flex shrink-0 flex-col gap-3 border-t border-[#edf2ed] bg-white px-6 py-5 sm:flex-row sm:items-center sm:justify-end sm:px-8">
           <Button
             type="button"
             variant="secondary"
