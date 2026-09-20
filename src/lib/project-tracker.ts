@@ -85,6 +85,14 @@ export type ProjectTrackerActivityRecord = {
   createdAt: string;
 };
 
+export type ProjectTrackerTrashItemRecord = {
+  id: string;
+  kind: "row" | "column";
+  name: string;
+  detail: string;
+  deletedAt: string;
+};
+
 export type ProjectTrackerWorkspaceRecord = {
   id: string;
   name: string;
@@ -580,8 +588,12 @@ async function loadTracker(trackerId: string) {
     prisma.projectTracker.findUniqueOrThrow({
       where: { id: trackerId },
       include: {
-        columns: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
+        columns: {
+          where: { deletedAt: null },
+          orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+        },
         rows: {
+          where: { deletedAt: null },
           orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
           include: { cells: true },
         },
@@ -675,9 +687,11 @@ function activitySummary(action: string, details: unknown) {
     COLUMN_ADDED: "Added a column",
     COLUMN_UPDATED: "Updated a column",
     COLUMN_DELETED: "Deleted a column",
+    COLUMN_RESTORED: "Restored a column from Bin",
     ROW_ADDED: "Added a row",
     ROW_DUPLICATED: "Duplicated a row",
     ROW_DELETED: "Deleted a row",
+    ROW_RESTORED: "Restored a row from Bin",
     PROJECT_LINKED: "Linked a Flux project",
     PROJECT_UNLINKED: "Disconnected a Flux project",
     CELL_UPDATED: "Updated a tracker value",
@@ -789,6 +803,77 @@ export async function getProjectTrackerWorkspace(
   };
 }
 
+export async function getProjectTrackerTrash(
+  user: PermissionUser,
+): Promise<ProjectTrackerTrashItemRecord[]> {
+  const tracker = await requireEditableTracker(user);
+  const [columns, rows] = await Promise.all([
+    withPrismaRetry(() =>
+      prisma.projectTrackerColumn.findMany({
+        where: { trackerId: tracker.id, deletedAt: { not: null } },
+        orderBy: { deletedAt: "desc" },
+        select: {
+          id: true,
+          name: true,
+          type: true,
+          deletedAt: true,
+          _count: { select: { cells: true } },
+        },
+      }),
+    ),
+    withPrismaRetry(() =>
+      prisma.projectTrackerRow.findMany({
+        where: { trackerId: tracker.id, deletedAt: { not: null } },
+        orderBy: { deletedAt: "desc" },
+        select: {
+          id: true,
+          deletedAt: true,
+          structuredProjectId: true,
+          flexibleProjectId: true,
+          cells: {
+            where: {
+              column: {
+                OR: [
+                  { sourceFieldKey: "project.name" },
+                  { type: ProjectTrackerColumnType.PROJECT },
+                ],
+              },
+            },
+            orderBy: { updatedAt: "desc" },
+            take: 1,
+            select: { value: true },
+          },
+          _count: { select: { cells: true } },
+        },
+      }),
+    ),
+  ]);
+
+  return [
+    ...columns.map((column) => ({
+      id: column.id,
+      kind: "column" as const,
+      name: column.name,
+      detail: `${column._count.cells} saved ${column._count.cells === 1 ? "value" : "values"} · ${column.type.toLowerCase().replaceAll("_", " ")}`,
+      deletedAt: column.deletedAt!.toISOString(),
+    })),
+    ...rows.map((row) => {
+      const projectValue = normalizeValue(row.cells[0]?.value);
+      const name = typeof projectValue === "string" && projectValue.trim()
+        ? projectValue.trim()
+        : "Tracker row";
+      const linked = Boolean(row.structuredProjectId || row.flexibleProjectId);
+      return {
+        id: row.id,
+        kind: "row" as const,
+        name,
+        detail: `${row._count.cells} saved ${row._count.cells === 1 ? "value" : "values"}${linked ? " · linked project" : ""}`,
+        deletedAt: row.deletedAt!.toISOString(),
+      };
+    }),
+  ].sort((left, right) => right.deletedAt.localeCompare(left.deletedAt));
+}
+
 export function canEditProjectTracker(user: PermissionUser) {
   return canUseProjects(user) && hasPermission(user, "project.update");
 }
@@ -851,7 +936,7 @@ export async function assertProjectOptionAccessible(
 export async function getTrackerColumnAndRow(trackerId: string, rowId: string, columnId: string) {
   const [row, column] = await Promise.all([
     prisma.projectTrackerRow.findFirst({
-      where: { id: rowId, trackerId },
+      where: { id: rowId, trackerId, deletedAt: null },
       select: {
         id: true,
         structuredProjectId: true,
@@ -860,7 +945,7 @@ export async function getTrackerColumnAndRow(trackerId: string, rowId: string, c
       },
     }),
     prisma.projectTrackerColumn.findFirst({
-      where: { id: columnId, trackerId },
+      where: { id: columnId, trackerId, deletedAt: null },
     }),
   ]);
   if (!row || !column) throw new Error("That tracker cell no longer exists.");

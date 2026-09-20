@@ -61,7 +61,9 @@ import {
   moveProjectTrackerRowAction,
   resetProjectTrackerToBlankAction,
   resolveProjectTrackerCellAction,
+  restoreProjectTrackerItemAction,
   saveProjectTrackerCellAction,
+  getProjectTrackerTrashAction,
   unlinkProjectTrackerRowAction,
   updateProjectTrackerColumnAction,
 } from "@/app/(dashboard)/project-tracker/actions";
@@ -82,6 +84,7 @@ import type {
   ProjectTrackerColumnRecord,
   ProjectTrackerProjectOption,
   ProjectTrackerRowRecord,
+  ProjectTrackerTrashItemRecord,
   ProjectTrackerWorkspaceRecord,
   TrackerCellValue,
 } from "@/lib/project-tracker";
@@ -855,12 +858,14 @@ function EmptyState({
   onBlank,
   onImport,
   onLayout,
+  onOpenTrash,
 }: {
   canEdit: boolean;
   pending: boolean;
   onBlank: () => void;
   onImport: () => void;
   onLayout: () => void;
+  onOpenTrash: () => void;
 }) {
   return (
     <div className="flex h-full min-h-[560px] items-center justify-center p-4 sm:p-8">
@@ -871,17 +876,82 @@ function EmptyState({
         <h1 className="mt-6 text-[32px] font-[850] tracking-[-0.045em] text-[#152019] sm:text-[40px]">Project Tracker</h1>
         <p className="mx-auto mt-3 max-w-[560px] text-[15px] leading-6 text-[#6a756d]">Track every department project in one clean, flexible table—connected to live Flux information when you want it.</p>
         {canEdit ? (
-          <TrackerSetupOptions
-            pending={pending}
-            onBlank={onBlank}
-            onImport={onImport}
-            onLayout={onLayout}
-          />
+          <>
+            <TrackerSetupOptions
+              pending={pending}
+              onBlank={onBlank}
+              onImport={onImport}
+              onLayout={onLayout}
+            />
+            <Button type="button" variant="secondary" className="mt-5" onClick={onOpenTrash}>
+              <Trash2 className="size-4" /> Open Bin
+            </Button>
+          </>
         ) : (
           <div className="mx-auto mt-8 max-w-[520px] rounded-[22px] border border-[#e1e7e1] bg-white p-6 text-[13px] leading-6 text-[#667169]">Project Tracker has not been set up yet. A user with project editing permission can create the first layout.</div>
         )}
       </div>
     </div>
+  );
+}
+
+function TrackerTrashModal({
+  items,
+  loading,
+  restoringId,
+  onRestore,
+  onClose,
+}: {
+  items: ProjectTrackerTrashItemRecord[] | null;
+  loading: boolean;
+  restoringId: string | null;
+  onRestore: (item: ProjectTrackerTrashItemRecord) => void;
+  onClose: () => void;
+}) {
+  return (
+    <Modal
+      title="Project Tracker Bin"
+      description="Deleted rows and columns stay here with their saved values. Restore an item whenever you need it again."
+      onClose={onClose}
+      widthClass="max-w-[720px]"
+    >
+      {loading ? (
+        <div className="flex min-h-44 items-center justify-center gap-2 text-[13px] font-[700] text-[#68746c]">
+          <Loader2 className="size-4 animate-spin text-[#2d8053]" /> Loading deleted items...
+        </div>
+      ) : items?.length ? (
+        <div className="space-y-2">
+          {items.map((item) => {
+            const ItemIcon = item.kind === "column" ? Columns3 : Rows3;
+            const restoring = restoringId === item.id;
+            return (
+              <div key={`${item.kind}:${item.id}`} className="flex flex-wrap items-center gap-3 rounded-[18px] border border-[#e2e8e2] bg-white px-4 py-3.5">
+                <span className="grid size-10 shrink-0 place-items-center rounded-[13px] bg-[#eef5ef] text-[#3f7f5d]">
+                  <ItemIcon className="size-4.5" />
+                </span>
+                <div className="min-w-[180px] flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="truncate text-[13px] font-[800] text-[#2d3830]">{item.name}</p>
+                    <span className="rounded-full bg-[#f0f3f0] px-2 py-0.5 text-[9px] font-[800] uppercase tracking-[0.08em] text-[#748078]">{item.kind}</span>
+                  </div>
+                  <p className="mt-1 text-[10px] text-[#7b867e]">{item.detail} · Deleted {formatDate(item.deletedAt, true)}</p>
+                </div>
+                <Button type="button" variant="secondary" size="sm" disabled={Boolean(restoringId)} onClick={() => onRestore(item)}>
+                  {restoring ? <Loader2 className="size-4 animate-spin" /> : <History className="size-4" />}
+                  {restoring ? "Restoring..." : "Restore"}
+                </Button>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="rounded-[20px] border border-dashed border-[#dbe4dc] bg-[#f8faf8] px-6 py-12 text-center">
+          <Trash2 className="mx-auto size-8 text-[#95a198]" />
+          <p className="mt-3 text-[14px] font-[800] text-[#344139]">Bin is empty</p>
+          <p className="mt-1 text-[11px] text-[#7c867f]">Deleted tracker rows and columns will appear here.</p>
+        </div>
+      )}
+    </Modal>
   );
 }
 
@@ -902,7 +972,7 @@ function TrackerSetupOptions({
     {
       title: "Start Blank",
       description: existingTracker
-        ? "Reset this tracker to one empty Project column."
+        ? "Permanently reset this tracker, including its Bin, to one empty Project column."
         : "Begin with one Project column and add anything you need.",
       icon: Plus,
       action: onBlank,
@@ -971,6 +1041,10 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
   const [columnEditor, setColumnEditor] = useState<ProjectTrackerColumnRecord | "new" | null>(null);
   const [updatesOpen, setUpdatesOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [trashOpen, setTrashOpen] = useState(false);
+  const [trashItems, setTrashItems] = useState<ProjectTrackerTrashItemRecord[] | null>(null);
+  const [trashLoading, setTrashLoading] = useState(false);
+  const [restoringTrashId, setRestoringTrashId] = useState<string | null>(null);
   const [matchesOpen, setMatchesOpen] = useState(false);
   const [detailsRowId, setDetailsRowId] = useState<string | null>(null);
   const [setupOpen, setSetupOpen] = useState(false);
@@ -1006,6 +1080,46 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
       const applied = applyResult(result);
       if (applied && "workspace" in result) after?.(result.workspace);
     });
+  }
+
+  async function openTrash() {
+    setTrashOpen(true);
+    if (trashItems !== null) return;
+    setTrashLoading(true);
+    try {
+      const result = await getProjectTrackerTrashAction();
+      if ("error" in result) {
+        showErrorToast("Project Tracker Bin", result.error);
+        return;
+      }
+      setTrashItems(result.items);
+    } catch (error) {
+      showErrorToast(
+        "Project Tracker Bin",
+        error instanceof Error ? error.message : "Deleted items could not be loaded.",
+      );
+    } finally {
+      setTrashLoading(false);
+    }
+  }
+
+  async function restoreTrashItem(item: ProjectTrackerTrashItemRecord) {
+    setRestoringTrashId(item.id);
+    try {
+      const result = await restoreProjectTrackerItemAction({ id: item.id, kind: item.kind });
+      if (!applyResult(result)) return;
+      setTrashItems((current) => current?.filter(
+        (candidate) => candidate.id !== item.id || candidate.kind !== item.kind,
+      ) ?? []);
+      resetRowWindow();
+    } catch (error) {
+      showErrorToast(
+        "Project Tracker",
+        error instanceof Error ? error.message : "The item could not be restored.",
+      );
+    } finally {
+      setRestoringTrashId(null);
+    }
   }
 
   function runFastAction(
@@ -1205,6 +1319,7 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
   }
 
   function deleteColumnFast(columnId: string) {
+    setTrashItems(null);
     runFastAction(
       () => deleteProjectTrackerColumnAction(columnId),
       (current) => ({
@@ -1223,6 +1338,7 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
 
   function deleteRowsFast(rowIds: string[]) {
     const ids = new Set(rowIds);
+    setTrashItems(null);
     runFastAction(
       () => deleteProjectTrackerRowsAction(rowIds),
       (current) => ({
@@ -1443,7 +1559,17 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
           onBlank={() => runAction(() => initializeProjectTrackerAction("blank"))}
           onImport={() => fileInputRef.current?.click()}
           onLayout={() => runAction(() => initializeProjectTrackerAction("layout"))}
+          onOpenTrash={() => void openTrash()}
         />
+        {trashOpen ? (
+          <TrackerTrashModal
+            items={trashItems}
+            loading={trashLoading}
+            restoringId={restoringTrashId}
+            onRestore={(item) => void restoreTrashItem(item)}
+            onClose={() => setTrashOpen(false)}
+          />
+        ) : null}
         <ImportProgressDialog progress={importProgress} />
       </>
     );
@@ -1483,6 +1609,7 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button type="button" variant="secondary" size="sm" onClick={() => setHistoryOpen(true)}><History className="size-4" /> History</Button>
+            {workspace.canEdit ? <Button type="button" variant="secondary" size="sm" disabled={savingCount > 0} onClick={() => void openTrash()}><Trash2 className="size-4" /> Bin</Button> : null}
             <Button type="button" variant={workspace.updateCount ? "outline" : "secondary"} size="sm" onClick={() => setUpdatesOpen(true)} className={workspace.updateCount ? "border-[#e7ba7d] bg-[#fff8ec] text-[#a96114]" : ""}>
               <CircleAlert className="size-4" /> {workspace.updateCount ? `${workspace.updateCount} updates` : "Up to date"}
             </Button>
@@ -1530,7 +1657,7 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
               kind: "rows",
               rowIds: [...selectedRows],
               title: `Delete ${count} selected ${count === 1 ? "row" : "rows"}?`,
-              description: `This removes the selected ${count === 1 ? "row" : "rows"} from Project Tracker. Any linked Flux projects and their data will remain unchanged.`,
+              description: `This moves the selected ${count === 1 ? "row" : "rows"} and their saved tracker values to Bin. You can restore them later. Any linked Flux projects and their data will remain unchanged.`,
               confirmLabel: `Delete ${count} ${count === 1 ? "row" : "rows"}`,
             });
           }}><Trash2 className="size-4" /> Delete {selectedRows.size}</Button>
@@ -1590,7 +1717,7 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
                             kind: "column",
                             columnId: column.id,
                             title: `Delete “${column.name}”?`,
-                            description: "This removes the column and every tracker value stored in it. Connected Flux project data will remain unchanged.",
+                            description: "This moves the column and its saved tracker values to Bin. You can restore it later. Connected Flux project data will remain unchanged.",
                             confirmLabel: "Delete column",
                           });
                         }}><Trash2 className="size-4" /> Delete column</DropdownMenuItem>
@@ -1649,7 +1776,7 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
                           kind: "rows",
                           rowIds: [row.id],
                           title: "Delete this tracker row?",
-                          description: "This removes the row from Project Tracker. The linked Flux project and its data will remain unchanged.",
+                          description: "This moves the row and its saved tracker values to Bin. You can restore it later. The linked Flux project and its data will remain unchanged.",
                           confirmLabel: "Delete row",
                         });
                       }}><Trash2 className="size-4" /> Delete row</DropdownMenuItem>
@@ -1751,6 +1878,16 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
         </Modal>
       ) : null}
 
+      {trashOpen ? (
+        <TrackerTrashModal
+          items={trashItems}
+          loading={trashLoading}
+          restoringId={restoringTrashId}
+          onRestore={(item) => void restoreTrashItem(item)}
+          onClose={() => setTrashOpen(false)}
+        />
+      ) : null}
+
       {matchesOpen ? (
         <Modal title="Possible Flux projects" description={`We found ${projectSuggestions.length} possible ${projectSuggestions.length === 1 ? "match" : "matches"}. Nothing is connected until you choose it.`} onClose={() => setMatchesOpen(false)} widthClass="max-w-[760px]">
           <div className="space-y-3">
@@ -1791,7 +1928,7 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
       <ConfirmationDialog
         isOpen={resetBlankOpen}
         title="Start over with a blank tracker?"
-        description="This permanently removes every tracker row, column, and local value, then creates one empty Project column. Linked Flux projects are not deleted."
+        description="This permanently removes every tracker row, column, local value, and item currently in Bin, then creates one empty Project column. Linked Flux projects are not deleted."
         confirmLabel="Reset to blank"
         pendingLabel="Resetting..."
         tone="destructive"

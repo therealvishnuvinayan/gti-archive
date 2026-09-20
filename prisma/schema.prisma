@@ -800,12 +800,14 @@ model ProjectTrackerColumn {
   width          Int                      @default(180)
   hidden         Boolean                  @default(false)
   frozen         Boolean                  @default(false)
+  deletedAt      DateTime?
   cells          ProjectTrackerCell[]
   activities     ProjectTrackerActivity[]
   createdAt      DateTime                 @default(now())
   updatedAt      DateTime                 @updatedAt
 
   @@index([trackerId, sortOrder])
+  @@index([trackerId, deletedAt])
   @@index([sourceFieldKey])
 }
 
@@ -821,10 +823,12 @@ model ProjectTrackerRow {
   cells               ProjectTrackerCell[]
   activities          ProjectTrackerActivity[]
   linkedAt            DateTime?
+  deletedAt           DateTime?
   createdAt           DateTime                 @default(now())
   updatedAt           DateTime                 @updatedAt
 
   @@index([trackerId, sortOrder])
+  @@index([trackerId, deletedAt])
   @@index([structuredProjectId])
   @@index([flexibleProjectId])
 }

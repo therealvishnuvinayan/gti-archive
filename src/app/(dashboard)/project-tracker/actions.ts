@@ -9,6 +9,7 @@ import { requireUser } from "@/lib/auth";
 import {
   PROJECT_TRACKER_FIELD_REGISTRY,
   assertProjectOptionAccessible,
+  getProjectTrackerTrash,
   getProjectTrackerWorkspace,
   getSourceValueForCell,
   getTrackerColumnAndRow,
@@ -21,12 +22,17 @@ import {
   type TrackerCellValue,
   type TrackerImportColumn,
   type TrackerProjectKind,
+  type ProjectTrackerTrashItemRecord,
 } from "@/lib/project-tracker";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 type ActionResult =
   | { workspace: Awaited<ReturnType<typeof getProjectTrackerWorkspace>>; message?: string }
   | { ok: true; message?: string }
+  | { error: string };
+
+type TrashActionResult =
+  | { items: ProjectTrackerTrashItemRecord[] }
   | { error: string };
 
 type TrackerLayoutColumn = {
@@ -104,7 +110,7 @@ export async function initializeProjectTrackerAction(
     const user = await requireUser();
     const tracker = await requireEditableTracker(user);
     const existingColumns = await prisma.projectTrackerColumn.count({
-      where: { trackerId: tracker.id },
+      where: { trackerId: tracker.id, deletedAt: null },
     });
     if (existingColumns > 0) return finish(user);
 
@@ -323,7 +329,7 @@ export async function updateProjectTrackerColumnAction(input: {
     const user = await requireUser();
     const tracker = await requireEditableTracker(user);
     const column = await prisma.projectTrackerColumn.findFirst({
-      where: { id: input.columnId, trackerId: tracker.id },
+      where: { id: input.columnId, trackerId: tracker.id, deletedAt: null },
     });
     if (!column) throw new Error("That column no longer exists.");
     const data: Prisma.ProjectTrackerColumnUpdateInput = {};
@@ -348,6 +354,7 @@ export async function updateProjectTrackerColumnAction(input: {
           const neighbor = await transaction.projectTrackerColumn.findFirst({
             where: {
               trackerId: tracker.id,
+              deletedAt: null,
               ...(input.move < 0
                 ? { sortOrder: { lt: column.sortOrder } }
                 : { sortOrder: { gt: column.sortOrder } }),
@@ -385,7 +392,7 @@ export async function deleteProjectTrackerColumnAction(columnId: string): Promis
     const user = await requireUser();
     const tracker = await requireEditableTracker(user);
     const column = await prisma.projectTrackerColumn.findFirst({
-      where: { id: columnId, trackerId: tracker.id },
+      where: { id: columnId, trackerId: tracker.id, deletedAt: null },
     });
     if (!column) throw new Error("That column no longer exists.");
     await prisma.$transaction([
@@ -398,9 +405,12 @@ export async function deleteProjectTrackerColumnAction(columnId: string): Promis
           details: { summary: `Deleted “${column.name}”` },
         },
       }),
-      prisma.projectTrackerColumn.delete({ where: { id: column.id } }),
+      prisma.projectTrackerColumn.update({
+        where: { id: column.id },
+        data: { deletedAt: new Date() },
+      }),
     ]);
-    return complete("Column deleted.");
+    return complete("Column moved to Bin.");
   } catch (error) {
     return { error: asErrorMessage(error) };
   }
@@ -443,7 +453,7 @@ export async function duplicateProjectTrackerRowAction(
     const user = await requireUser();
     const tracker = await requireEditableTracker(user);
     const source = await prisma.projectTrackerRow.findFirst({
-      where: { id: rowId, trackerId: tracker.id },
+      where: { id: rowId, trackerId: tracker.id, deletedAt: null },
       include: { cells: true },
     });
     if (!source) throw new Error("That row no longer exists.");
@@ -489,12 +499,13 @@ export async function moveProjectTrackerRowAction(rowId: string, direction: -1 |
     const user = await requireUser();
     const tracker = await requireEditableTracker(user);
     const row = await prisma.projectTrackerRow.findFirst({
-      where: { id: rowId, trackerId: tracker.id },
+      where: { id: rowId, trackerId: tracker.id, deletedAt: null },
     });
     if (!row) throw new Error("That row no longer exists.");
     const neighbor = await prisma.projectTrackerRow.findFirst({
       where: {
         trackerId: tracker.id,
+        deletedAt: null,
         ...(direction < 0 ? { sortOrder: { lt: row.sortOrder } } : { sortOrder: { gt: row.sortOrder } }),
       },
       orderBy: { sortOrder: direction < 0 ? "desc" : "asc" },
@@ -517,8 +528,9 @@ export async function deleteProjectTrackerRowsAction(rowIds: string[]): Promise<
     const tracker = await requireEditableTracker(user);
     const ids = Array.from(new Set(rowIds.filter(Boolean)));
     if (!ids.length) throw new Error("Select at least one row.");
-    const result = await prisma.projectTrackerRow.deleteMany({
-      where: { trackerId: tracker.id, id: { in: ids } },
+    const result = await prisma.projectTrackerRow.updateMany({
+      where: { trackerId: tracker.id, id: { in: ids }, deletedAt: null },
+      data: { deletedAt: new Date() },
     });
     await recordTrackerActivity({
       trackerId: tracker.id,
@@ -526,7 +538,74 @@ export async function deleteProjectTrackerRowsAction(rowIds: string[]): Promise<
       action: "ROW_DELETED",
       summary: `Deleted ${result.count} ${result.count === 1 ? "row" : "rows"}`,
     });
-    return complete(`${result.count} ${result.count === 1 ? "row" : "rows"} deleted.`);
+    return complete(`${result.count} ${result.count === 1 ? "row" : "rows"} moved to Bin.`);
+  } catch (error) {
+    return { error: asErrorMessage(error) };
+  }
+}
+
+export async function getProjectTrackerTrashAction(): Promise<TrashActionResult> {
+  try {
+    const user = await requireUser();
+    return { items: await getProjectTrackerTrash(user) };
+  } catch (error) {
+    return { error: asErrorMessage(error) };
+  }
+}
+
+export async function restoreProjectTrackerItemAction(input: {
+  id: string;
+  kind: "row" | "column";
+}): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    const tracker = await requireEditableTracker(user);
+
+    if (input.kind === "column") {
+      const column = await prisma.projectTrackerColumn.findFirst({
+        where: { id: input.id, trackerId: tracker.id, deletedAt: { not: null } },
+        select: { id: true, name: true },
+      });
+      if (!column) throw new Error("That deleted column is no longer in Bin.");
+      await prisma.$transaction([
+        prisma.projectTrackerColumn.update({
+          where: { id: column.id },
+          data: { deletedAt: null },
+        }),
+        prisma.projectTrackerActivity.create({
+          data: {
+            trackerId: tracker.id,
+            actorId: user.id,
+            columnId: column.id,
+            action: "COLUMN_RESTORED",
+            details: { summary: `Restored “${column.name}” from Bin` },
+          },
+        }),
+      ]);
+      return finish(user, `“${column.name}” restored.`);
+    }
+
+    const row = await prisma.projectTrackerRow.findFirst({
+      where: { id: input.id, trackerId: tracker.id, deletedAt: { not: null } },
+      select: { id: true },
+    });
+    if (!row) throw new Error("That deleted row is no longer in Bin.");
+    await prisma.$transaction([
+      prisma.projectTrackerRow.update({
+        where: { id: row.id },
+        data: { deletedAt: null },
+      }),
+      prisma.projectTrackerActivity.create({
+        data: {
+          trackerId: tracker.id,
+          actorId: user.id,
+          rowId: row.id,
+          action: "ROW_RESTORED",
+          details: { summary: "Restored a row from Bin" },
+        },
+      }),
+    ]);
+    return finish(user, "Row restored.");
   } catch (error) {
     return { error: asErrorMessage(error) };
   }
@@ -595,12 +674,12 @@ export async function linkProjectTrackerRowAction(input: {
     const tracker = await requireEditableTracker(user);
     const project = await assertProjectOptionAccessible(user, input.kind, input.projectId);
     const row = await prisma.projectTrackerRow.findFirst({
-      where: { id: input.rowId, trackerId: tracker.id },
+      where: { id: input.rowId, trackerId: tracker.id, deletedAt: null },
       include: { cells: true },
     });
     if (!row) throw new Error("That row no longer exists.");
     const columns = await prisma.projectTrackerColumn.findMany({
-      where: { trackerId: tracker.id, sourceFieldKey: { not: null } },
+      where: { trackerId: tracker.id, deletedAt: null, sourceFieldKey: { not: null } },
     });
     const cells = new Map(row.cells.map((cell) => [cell.columnId, cell]));
 
@@ -664,7 +743,7 @@ export async function unlinkProjectTrackerRowAction(rowId: string): Promise<Acti
     const user = await requireUser();
     const tracker = await requireEditableTracker(user);
     const row = await prisma.projectTrackerRow.findFirst({
-      where: { id: rowId, trackerId: tracker.id },
+      where: { id: rowId, trackerId: tracker.id, deletedAt: null },
     });
     if (!row) throw new Error("That row no longer exists.");
     await prisma.$transaction([
@@ -760,7 +839,7 @@ export async function importProjectTrackerAction(input: {
     const tracker = await requireEditableTracker(user);
     const parsed = validateTrackerImport(input.columns, input.rows);
     const existingColumns = await prisma.projectTrackerColumn.findMany({
-      where: { trackerId: tracker.id },
+      where: { trackerId: tracker.id, deletedAt: null },
       orderBy: { sortOrder: "asc" },
     });
     const lastRow = await prisma.projectTrackerRow.findFirst({
