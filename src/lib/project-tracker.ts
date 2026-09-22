@@ -81,6 +81,7 @@ export type ProjectTrackerActivityRecord = {
   columnId: string | null;
   action: string;
   summary: string;
+  importRowCount: number | null;
   actorName: string;
   createdAt: string;
 };
@@ -93,6 +94,8 @@ export type ProjectTrackerTrashItemRecord = {
   deletedAt: string;
 };
 
+export type ProjectTrackerSpreadsheetSheet = Record<string, unknown>;
+
 export type ProjectTrackerWorkspaceRecord = {
   id: string;
   name: string;
@@ -104,6 +107,7 @@ export type ProjectTrackerWorkspaceRecord = {
   availableFields: ProjectTrackerField[];
   activities: ProjectTrackerActivityRecord[];
   updateCount: number;
+  spreadsheetSheets: ProjectTrackerSpreadsheetSheet[];
 };
 
 type FieldContext = {
@@ -702,8 +706,29 @@ function activitySummary(action: string, details: unknown) {
   return fallbacks[action] ?? "Updated Project Tracker";
 }
 
+function activityImportRowCount(action: string, details: unknown) {
+  if (action !== "IMPORT_COMPLETED" || !details || typeof details !== "object") return null;
+  const rowCount = "rowCount" in details ? (details as { rowCount?: unknown }).rowCount : null;
+  return typeof rowCount === "number" && Number.isInteger(rowCount) && rowCount > 0
+    ? rowCount
+    : null;
+}
+
 function isRowLinked(row: { structuredProjectId: string | null; flexibleProjectId: string | null }) {
   return Boolean(row.structuredProjectId || row.flexibleProjectId);
+}
+
+function spreadsheetSheetsFromSettings(
+  settings: Prisma.JsonValue | null,
+): ProjectTrackerSpreadsheetSheet[] {
+  if (!settings || typeof settings !== "object" || Array.isArray(settings)) return [];
+  const fortuneSheet = (settings as Prisma.JsonObject).fortuneSheet;
+  if (!fortuneSheet || typeof fortuneSheet !== "object" || Array.isArray(fortuneSheet)) return [];
+  const sheets = (fortuneSheet as Prisma.JsonObject).sheets;
+  if (!Array.isArray(sheets)) return [];
+  return sheets
+    .filter((sheet) => Boolean(sheet) && typeof sheet === "object" && !Array.isArray(sheet))
+    .map((sheet) => ({ ...(sheet as Prisma.JsonObject) })) as ProjectTrackerSpreadsheetSheet[];
 }
 
 export async function getProjectTrackerWorkspace(
@@ -796,10 +821,12 @@ export async function getProjectTrackerWorkspace(
       columnId: activity.columnId,
       action: activity.action,
       summary: activitySummary(activity.action, activity.details),
+      importRowCount: activityImportRowCount(activity.action, activity.details),
       actorName: personName(activity.actor) ?? "Flux user",
       createdAt: activity.createdAt.toISOString(),
     })),
     updateCount,
+    spreadsheetSheets: spreadsheetSheetsFromSettings(tracker.settings),
   };
 }
 

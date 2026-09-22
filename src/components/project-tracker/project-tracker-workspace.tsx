@@ -2,29 +2,21 @@
 
 import Link from "next/link";
 import {
-  ArrowDown,
-  ArrowLeft,
   ArrowRight,
-  ArrowUp,
   Check,
   ChevronDown,
   CircleAlert,
   Clock3,
   Columns3,
-  Copy,
   Download,
   Eye,
-  EyeOff,
   FileDown,
   FileSpreadsheet,
-  Filter,
   History,
   Link2,
   Link2Off,
   Loader2,
-  MoreHorizontal,
   PanelRightOpen,
-  Pin,
   Plus,
   Rows3,
   Search,
@@ -35,10 +27,7 @@ import {
 } from "lucide-react";
 import {
   type ChangeEvent,
-  type CSSProperties,
-  type MouseEvent as ReactMouseEvent,
   type ReactNode,
-  type UIEvent as ReactUIEvent,
   useEffect,
   useMemo,
   useRef,
@@ -54,11 +43,9 @@ import {
   applyProjectTrackerLayoutAction,
   deleteProjectTrackerColumnAction,
   deleteProjectTrackerRowsAction,
-  duplicateProjectTrackerRowAction,
   importProjectTrackerAction,
   initializeProjectTrackerAction,
   linkProjectTrackerRowAction,
-  moveProjectTrackerRowAction,
   resetProjectTrackerToBlankAction,
   resolveProjectTrackerCellAction,
   restoreProjectTrackerItemAction,
@@ -78,6 +65,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
+import { ProjectTrackerSpreadsheetClient } from "@/components/project-tracker/project-tracker-spreadsheet-client";
+import {
+  PROJECT_TRACKER_SHEET_COLUMNS,
+  PROJECT_TRACKER_SHEET_ROWS,
+  type SpreadsheetExportRequest,
+  type SpreadsheetFocusRequest,
+} from "@/components/project-tracker/project-tracker-spreadsheet";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
 import type {
   ProjectTrackerCellRecord,
@@ -98,8 +92,6 @@ type ActionResult =
   | { ok: true; message?: string }
   | { error: string };
 
-type SortState = { columnId: string; direction: "asc" | "desc" } | null;
-type FilterState = { columnId: string; value: string };
 type ImportProgress = {
   stage: "reading" | "importing" | "rendering";
   fileName: string;
@@ -128,10 +120,6 @@ type DeleteConfirmation =
       confirmLabel: string;
     };
 
-const ROW_HEIGHT = 48;
-const ROW_WINDOW_SIZE = 50;
-const ROW_OVERSCAN = 8;
-
 const columnTypes: Array<{ value: ProjectTrackerColumnType; label: string }> = [
   { value: "TEXT", label: "Text" },
   { value: "LONG_TEXT", label: "Long text" },
@@ -156,13 +144,6 @@ const columnTypes: Array<{ value: ProjectTrackerColumnType; label: string }> = [
   { value: "TAGS", label: "Tags" },
   { value: "NOTES", label: "Notes" },
 ];
-
-const multiValueTypes = new Set<ProjectTrackerColumnType>([
-  "MULTI_SELECT",
-  "TAGS",
-  "CLIENT",
-  "VENDOR",
-]);
 
 function waitForNextPaint() {
   return new Promise<void>((resolve) => {
@@ -232,51 +213,6 @@ function formatCellValue(value: TrackerCellValue, type?: ProjectTrackerColumnTyp
   return String(value);
 }
 
-function toEditorValue(value: TrackerCellValue, type: ProjectTrackerColumnType) {
-  if (value === null) return "";
-  if (Array.isArray(value)) return value.join(", ");
-  if (type === "DATE" && typeof value === "string") return value.slice(0, 10);
-  if (type === "DATETIME" && typeof value === "string") return value.slice(0, 16);
-  return String(value);
-}
-
-function fromEditorValue(value: string, type: ProjectTrackerColumnType): TrackerCellValue {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  if (multiValueTypes.has(type)) {
-    return trimmed.split(",").map((item) => item.trim()).filter(Boolean);
-  }
-  if (type === "NUMBER" || type === "PERCENTAGE") {
-    const number = Number(trimmed);
-    return Number.isFinite(number) ? number : trimmed;
-  }
-  if (type === "DATE") {
-    const date = new Date(`${trimmed}T00:00:00.000Z`);
-    return Number.isNaN(date.getTime()) ? trimmed : date.toISOString();
-  }
-  if (type === "DATETIME") {
-    const date = new Date(trimmed);
-    return Number.isNaN(date.getTime()) ? trimmed : date.toISOString();
-  }
-  return trimmed;
-}
-
-function cellInputType(type: ProjectTrackerColumnType) {
-  if (type === "NUMBER" || type === "PERCENTAGE") return "number";
-  if (type === "DATE") return "date";
-  if (type === "DATETIME") return "datetime-local";
-  if (type === "URL") return "url";
-  return "text";
-}
-
-function ProjectKindBadge({ project }: { project: ProjectTrackerProjectOption }) {
-  return (
-    <span className="rounded-full border border-[#dce5dd] bg-[#f6f9f6] px-2 py-0.5 text-[9px] font-[800] uppercase tracking-[0.1em] text-[#718078]">
-      {project.kind === "structured" ? "Artwork" : "Flexible"}
-    </span>
-  );
-}
-
 function SyncIndicator({ cell }: { cell: ProjectTrackerCellRecord }) {
   if (cell.syncState === "custom" || cell.syncState === "unavailable") return null;
   if (cell.syncState === "update-available") {
@@ -315,7 +251,7 @@ function Modal({
 }) {
   if (typeof document === "undefined") return null;
   return createPortal(
-    <div className="fixed inset-0 z-[180] flex items-center justify-center bg-[#142119]/45 p-4 backdrop-blur-[2px]" role="dialog" aria-modal="true" aria-label={title}>
+    <div className="fixed inset-0 z-[100100] flex items-center justify-center bg-[#142119]/45 p-4 backdrop-blur-[2px]" role="dialog" aria-modal="true" aria-label={title}>
       <div className={`max-h-[88dvh] w-full ${widthClass} overflow-hidden rounded-[28px] border border-white/70 bg-white shadow-[0_34px_100px_rgba(15,31,21,0.24)]`}>
         <div className="flex items-start justify-between gap-4 border-b border-[#e5eae5] px-6 py-5">
           <div>
@@ -356,7 +292,7 @@ function ImportProgressDialog({ progress }: { progress: ImportProgress | null })
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[240] flex items-center justify-center bg-[#112118]/50 px-4 py-8 backdrop-blur-[3px]"
+      className="fixed inset-0 z-[100100] flex items-center justify-center bg-[#112118]/50 px-4 py-8 backdrop-blur-[3px]"
       role="dialog"
       aria-modal="true"
       aria-live="polite"
@@ -389,277 +325,6 @@ function ImportProgressDialog({ progress }: { progress: ImportProgress | null })
   );
 }
 
-function EditableCell({
-  row,
-  column,
-  cell,
-  disabled,
-  onSave,
-}: {
-  row: ProjectTrackerRowRecord;
-  column: ProjectTrackerColumnRecord;
-  cell: ProjectTrackerCellRecord;
-  disabled: boolean;
-  onSave: (rowId: string, columnId: string, value: TrackerCellValue) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(() => toEditorValue(cell.value, column.type));
-
-  if (column.type === "CHECKBOX" || column.type === "BOOLEAN") {
-    const checked = cell.value === true || cell.value === "true" || cell.value === "Yes";
-    return (
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => onSave(row.id, column.id, !checked)}
-        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-[#f5f8f5] disabled:cursor-default"
-      >
-        <span className={`grid size-5 place-items-center rounded-md border ${checked ? "border-[#2e8b59] bg-[#2e8b59] text-white" : "border-[#cfd8d0] bg-white"}`}>
-          {checked ? <Check className="size-3.5" /> : null}
-        </span>
-        <span className="text-[12px] text-[#59645d]">{checked ? "Yes" : "No"}</span>
-        <span className="ml-auto"><SyncIndicator cell={cell} /></span>
-      </button>
-    );
-  }
-
-  if (!editing) {
-    const display = formatCellValue(cell.value, column.type);
-    return (
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => {
-          setDraft(toEditorValue(cell.value, column.type));
-          setEditing(true);
-        }}
-        className="group flex min-h-9 w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-[#f5f8f5] disabled:cursor-default disabled:hover:bg-transparent"
-        title={Array.isArray(cell.value) ? cell.value.join(", ") : display}
-      >
-        <span className={`min-w-0 flex-1 truncate text-[13px] ${display ? "text-[#263129]" : "text-[#a3aaa5]"}`}>
-          {display || "—"}
-        </span>
-        <SyncIndicator cell={cell} />
-      </button>
-    );
-  }
-
-  function commit() {
-    const nextValue = fromEditorValue(draft, column.type);
-    if (JSON.stringify(nextValue) !== JSON.stringify(cell.value)) {
-      onSave(row.id, column.id, nextValue);
-    }
-    setEditing(false);
-  }
-
-  return (
-    <input
-      autoFocus
-      type={cellInputType(column.type)}
-      value={draft}
-      onChange={(event) => setDraft(event.target.value)}
-      onBlur={commit}
-      onKeyDown={(event) => {
-        if (event.key === "Enter") event.currentTarget.blur();
-        if (event.key === "Escape") {
-          setDraft(toEditorValue(cell.value, column.type));
-          setEditing(false);
-        }
-      }}
-      className="h-9 w-full rounded-lg border border-[#83b99a] bg-white px-2 text-[13px] text-[#263129] outline-none ring-2 ring-[#dff1e5]"
-    />
-  );
-}
-
-function ProjectCell({
-  row,
-  column,
-  cell,
-  projects,
-  disabled,
-  pending,
-  onLink,
-  onSave,
-}: {
-  row: ProjectTrackerRowRecord;
-  column: ProjectTrackerColumnRecord;
-  cell: ProjectTrackerCellRecord;
-  projects: ProjectTrackerProjectOption[];
-  disabled: boolean;
-  pending: boolean;
-  onLink: (rowId: string, project: ProjectTrackerProjectOption) => void;
-  onSave: (rowId: string, columnId: string, value: TrackerCellValue) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState(() => toSearchText(cell.value));
-  const [menuPosition, setMenuPosition] = useState<{
-    top: number;
-    left: number;
-    width: number;
-    maxHeight: number;
-  } | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const selectingProjectRef = useRef(false);
-
-  const matches = useMemo(() => {
-    const needle = normalize(query.replace(/^@\s*/, ""));
-    if (!needle) return projects.slice(0, 8);
-    return projects
-      .map((project) => {
-        const projectName = normalize(project.name);
-        const score = projectName.includes(needle)
-          ? projectName.startsWith(needle) ? 2 : 1.5
-          : scoreProjectMatch(needle, projectName);
-        return { project, score };
-      })
-      .filter((match) => match.score > 0)
-      .sort((left, right) => right.score - left.score || left.project.name.localeCompare(right.project.name))
-      .map((match) => match.project)
-      .slice(0, 8);
-  }, [projects, query]);
-
-  function selectProject(project: ProjectTrackerProjectOption) {
-    selectingProjectRef.current = true;
-    setQuery(project.name);
-    setOpen(false);
-    onLink(row.id, project);
-  }
-
-  useEffect(() => {
-    if (!open) return;
-
-    function positionMenu() {
-      const input = inputRef.current;
-      if (!input) return;
-      const rect = input.getBoundingClientRect();
-      const width = Math.min(360, window.innerWidth - 24);
-      const left = Math.max(12, Math.min(rect.left, window.innerWidth - width - 12));
-      const spaceBelow = window.innerHeight - rect.bottom - 12;
-      const spaceAbove = rect.top - 12;
-      const placeAbove = spaceBelow < 240 && spaceAbove > spaceBelow;
-      const maxHeight = Math.max(160, Math.min(360, placeAbove ? spaceAbove : spaceBelow));
-      setMenuPosition({
-        left,
-        width,
-        maxHeight,
-        top: placeAbove ? Math.max(12, rect.top - maxHeight - 6) : rect.bottom + 6,
-      });
-    }
-
-    const frame = window.requestAnimationFrame(positionMenu);
-    window.addEventListener("resize", positionMenu);
-    window.addEventListener("scroll", positionMenu, true);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.removeEventListener("resize", positionMenu);
-      window.removeEventListener("scroll", positionMenu, true);
-    };
-  }, [open]);
-
-  if (row.project && !open) {
-    const label = formatCellValue(cell.value, column.type) || row.project.name;
-    return (
-      <div className="flex min-h-9 min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-[#f5f8f5]">
-        <Link href={row.project.href} className="min-w-0 flex-1 truncate text-[13px] font-[750] text-[#1b7048] hover:underline" title={`Open ${row.project.name}`}>
-          {label}
-        </Link>
-        <SyncIndicator cell={cell} />
-        {!disabled ? (
-          <button type="button" onClick={() => {
-            setQuery(toSearchText(cell.value));
-            setOpen(true);
-          }} className="grid size-6 place-items-center rounded-md text-[#738078] hover:bg-white hover:text-[#267a50]" aria-label="Change linked project">
-            <Search className="size-3.5" />
-          </button>
-        ) : null}
-      </div>
-    );
-  }
-
-  return (
-    <div className="relative">
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[#87928a]" />
-        <input
-          ref={inputRef}
-          autoFocus={open}
-          value={query}
-          disabled={disabled || pending}
-          placeholder="Type @ or a project name"
-          role="combobox"
-          aria-autocomplete="list"
-          aria-expanded={open}
-          aria-controls={`project-options-${row.id}`}
-          onFocus={() => {
-            selectingProjectRef.current = false;
-            setOpen(true);
-          }}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            setOpen(true);
-          }}
-          onBlur={() => {
-            window.setTimeout(() => {
-              if (selectingProjectRef.current) return;
-              setOpen(false);
-              if (!row.project && query.trim() !== toSearchText(cell.value)) {
-                onSave(row.id, column.id, query.trim() || null);
-              }
-            }, 160);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && matches[0]) {
-              event.preventDefault();
-              selectProject(matches[0]);
-            }
-            if (event.key === "Escape") setOpen(false);
-          }}
-          className="h-9 w-full rounded-lg border border-transparent bg-transparent pl-8 pr-2 text-[13px] text-[#263129] outline-none placeholder:text-[#9da69f] focus:border-[#83b99a] focus:bg-white focus:ring-2 focus:ring-[#dff1e5]"
-        />
-      </div>
-      {open && menuPosition && typeof document !== "undefined" ? createPortal(
-        <div
-          id={`project-options-${row.id}`}
-          role="listbox"
-          className="fixed z-[260] overflow-y-auto rounded-[18px] border border-[#dfe6df] bg-white p-1.5 shadow-[0_22px_55px_rgba(19,39,26,0.17)]"
-          style={menuPosition}
-        >
-          <div className="px-3 py-2 text-[10px] font-[800] uppercase tracking-[0.14em] text-[#7a867e]">
-            Flux projects · {projects.length}
-          </div>
-          {matches.length ? matches.map((project) => (
-            <button
-              type="button"
-              role="option"
-              aria-selected={row.project?.id === project.id && row.project.kind === project.kind}
-              key={`${project.kind}:${project.id}`}
-              onMouseDown={(event) => {
-                event.preventDefault();
-                selectProject(project);
-              }}
-              className="flex w-full items-center gap-3 rounded-[13px] px-3 py-2.5 text-left hover:bg-[#f1f7f2]"
-            >
-              <span className="grid size-8 shrink-0 place-items-center rounded-[10px] bg-[#eaf6ed] text-[#287b50]"><Link2 className="size-4" /></span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13px] font-[750] text-[#202a23]">{project.name}</span>
-                <span className="block truncate text-[10px] text-[#778079]">{project.subtitle}</span>
-              </span>
-              <ProjectKindBadge project={project} />
-            </button>
-          )) : (
-            <p className="px-3 py-5 text-center text-[12px] text-[#7c867f]">
-              {projects.length
-                ? "No matching Flux projects. Try another name."
-                : "No Flux projects are available with your current access."}
-            </p>
-          )}
-        </div>,
-        document.body,
-      ) : null}
-    </div>
-  );
-}
-
 function scoreProjectMatch(value: string, projectName: string) {
   const left = normalize(value);
   const right = normalize(projectName);
@@ -671,6 +336,47 @@ function scoreProjectMatch(value: string, projectName: string) {
   const intersection = [...leftTokens].filter((token) => rightTokens.has(token)).length;
   const union = new Set([...leftTokens, ...rightTokens]).size;
   return union ? intersection / union : 0;
+}
+
+function findProjectSuggestions(workspace: ProjectTrackerWorkspaceRecord) {
+  const projectColumn = workspace.columns.find((column) => column.sourceFieldKey === "project.name");
+  if (!projectColumn) return [];
+  return workspace.rows.flatMap((row) => {
+    if (row.project) return [];
+    const value = toSearchText(row.cells[projectColumn.id]?.value ?? null);
+    if (!value) return [];
+    const candidates = workspace.projectOptions
+      .map((project) => ({ project, score: scoreProjectMatch(value, project.name) }))
+      .sort((left, right) => right.score - left.score);
+    return candidates[0]?.score >= 0.5
+      ? [{ row, value, project: candidates[0].project, score: candidates[0].score }]
+      : [];
+  });
+}
+
+function findLatestImportFocus(
+  workspace: ProjectTrackerWorkspaceRecord,
+): Omit<SpreadsheetFocusRequest, "id"> | null {
+  const latestImport = workspace.activities.find(
+    (activity) => activity.action === "IMPORT_COMPLETED" && activity.importRowCount,
+  );
+  if (!latestImport?.importRowCount) return null;
+  const importedAt = new Date(latestImport.createdAt).getTime();
+  const rowsAvailableAtImport = workspace.rows.filter(
+    (row) => new Date(row.createdAt).getTime() <= importedAt,
+  );
+  const importedRows = rowsAvailableAtImport.slice(-latestImport.importRowCount);
+  for (const row of importedRows) {
+    const column = workspace.columns.find((candidate) => {
+      const value = row.cells[candidate.id]?.value;
+      return value !== null && value !== "" && (!Array.isArray(value) || value.length > 0);
+    });
+    if (!column) continue;
+    const rowIndex = workspace.rows.findIndex((candidate) => candidate.id === row.id);
+    const columnIndex = workspace.columns.findIndex((candidate) => candidate.id === column.id);
+    if (rowIndex >= 0 && columnIndex >= 0) return { row: rowIndex + 1, column: columnIndex };
+  }
+  return null;
 }
 
 function emptyCell(): ProjectTrackerCellRecord {
@@ -1032,11 +738,6 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
   const [workspace, setWorkspace] = useState(initialWorkspace);
   const [pending, startTransition] = useTransition();
   const [savingCount, setSavingCount] = useState(0);
-  const [search, setSearch] = useState("");
-  const [sort, setSort] = useState<SortState>(null);
-  const [filter, setFilter] = useState<FilterState>({ columnId: "", value: "" });
-  const [showFilter, setShowFilter] = useState(false);
-  const [rowWindowStart, setRowWindowStart] = useState(0);
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [columnEditor, setColumnEditor] = useState<ProjectTrackerColumnRecord | "new" | null>(null);
   const [updatesOpen, setUpdatesOpen] = useState(false);
@@ -1051,15 +752,31 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
   const [resetBlankOpen, setResetBlankOpen] = useState(false);
   const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState<DeleteConfirmation | null>(null);
+  const [activeSpreadsheetRowId, setActiveSpreadsheetRowId] = useState<string | null>(null);
+  const [spreadsheetRevision, setSpreadsheetRevision] = useState(0);
+  const [workbookSaving, setWorkbookSaving] = useState(false);
+  const [exportRequest, setExportRequest] = useState<SpreadsheetExportRequest | null>(null);
+  const [spreadsheetFocus, setSpreadsheetFocus] = useState<SpreadsheetFocusRequest | null>(null);
+  const [lastImportFocus, setLastImportFocus] = useState<Omit<SpreadsheetFocusRequest, "id"> | null>(
+    () => findLatestImportFocus(initialWorkspace),
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const gridScrollRef = useRef<HTMLDivElement>(null);
   const mutationQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
     if (!initialWorkspace.canEdit || !initialWorkspace.isInitialized) return;
+    const storageKey = `project-tracker:setup-seen:${initialWorkspace.id}:fortune-v1`;
+    try {
+      if (window.localStorage.getItem(storageKey)) return;
+      window.localStorage.setItem(storageKey, "1");
+    } catch {
+      // If storage is unavailable, keep the setup accessible through Layouts
+      // without forcing it open again on every navigation.
+      return;
+    }
     const frame = window.requestAnimationFrame(() => setSetupOpen(true));
     return () => window.cancelAnimationFrame(frame);
-  }, [initialWorkspace.canEdit, initialWorkspace.isInitialized]);
+  }, [initialWorkspace.canEdit, initialWorkspace.id, initialWorkspace.isInitialized]);
 
   function applyResult(result: ActionResult) {
     if ("error" in result) {
@@ -1108,10 +825,10 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
     try {
       const result = await restoreProjectTrackerItemAction({ id: item.id, kind: item.kind });
       if (!applyResult(result)) return;
+      setSpreadsheetRevision((revision) => revision + 1);
       setTrashItems((current) => current?.filter(
         (candidate) => candidate.id !== item.id || candidate.kind !== item.kind,
       ) ?? []);
-      resetRowWindow();
     } catch (error) {
       showErrorToast(
         "Project Tracker",
@@ -1149,44 +866,6 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
       .finally(() => setSavingCount((count) => Math.max(0, count - 1)));
   }
 
-  const visibleColumns = useMemo(
-    () => workspace.columns.filter((column) => !column.hidden),
-    [workspace.columns],
-  );
-
-  const filteredRows = useMemo(() => {
-    const searchNeedle = normalize(search);
-    const filterNeedle = normalize(filter.value);
-    const rows = workspace.rows.filter((row) => {
-      if (searchNeedle) {
-        const haystack = normalize([
-          row.project?.name ?? "",
-          ...workspace.columns.map((column) => toSearchText(row.cells[column.id]?.value ?? null)),
-        ].join(" "));
-        if (!haystack.includes(searchNeedle)) return false;
-      }
-      if (filter.columnId && filterNeedle) {
-        const value = normalize(toSearchText(row.cells[filter.columnId]?.value ?? null));
-        if (!value.includes(filterNeedle)) return false;
-      }
-      return true;
-    });
-    if (!sort) return rows;
-    return [...rows].sort((left, right) => {
-      const leftValue = toSearchText(left.cells[sort.columnId]?.value ?? null);
-      const rightValue = toSearchText(right.cells[sort.columnId]?.value ?? null);
-      const comparison = leftValue.localeCompare(rightValue, undefined, { numeric: true, sensitivity: "base" });
-      return sort.direction === "asc" ? comparison : -comparison;
-    });
-  }, [filter, search, sort, workspace.columns, workspace.rows]);
-
-  const maxRowWindowStart = Math.max(0, filteredRows.length - ROW_WINDOW_SIZE);
-  const visibleRowStart = Math.min(rowWindowStart, maxRowWindowStart);
-  const visibleRowEnd = Math.min(filteredRows.length, visibleRowStart + ROW_WINDOW_SIZE);
-  const renderedRows = filteredRows.slice(visibleRowStart, visibleRowEnd);
-  const topRowSpacerHeight = visibleRowStart * ROW_HEIGHT;
-  const bottomRowSpacerHeight = Math.max(0, filteredRows.length - visibleRowEnd) * ROW_HEIGHT;
-
   const conflictUpdates = useMemo(() => {
     if (!updatesOpen) return [];
     return workspace.rows.flatMap((row) => workspace.columns.flatMap((column) => {
@@ -1205,34 +884,8 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
 
   const projectSuggestions = useMemo(() => {
     if (!matchesOpen) return [];
-    const projectColumn = workspace.columns.find((column) => column.sourceFieldKey === "project.name");
-    if (!projectColumn) return [];
-    return workspace.rows.flatMap((row) => {
-      if (row.project) return [];
-      const value = toSearchText(row.cells[projectColumn.id]?.value ?? null);
-      if (!value) return [];
-      const candidates = workspace.projectOptions
-        .map((project) => ({ project, score: scoreProjectMatch(value, project.name) }))
-        .sort((left, right) => right.score - left.score);
-      return candidates[0]?.score >= 0.5
-        ? [{ row, value, project: candidates[0].project, score: candidates[0].score }]
-        : [];
-    });
-  }, [matchesOpen, workspace.columns, workspace.projectOptions, workspace.rows]);
-
-  function resetRowWindow() {
-    setRowWindowStart(0);
-    gridScrollRef.current?.scrollTo({ top: 0 });
-  }
-
-  function handleGridScroll(event: ReactUIEvent<HTMLDivElement>) {
-    const firstRow = Math.max(
-      0,
-      Math.floor(Math.max(0, event.currentTarget.scrollTop - ROW_HEIGHT) / ROW_HEIGHT) - ROW_OVERSCAN,
-    );
-    const nextStart = Math.min(firstRow, Math.max(0, filteredRows.length - ROW_WINDOW_SIZE));
-    setRowWindowStart((current) => current === nextStart ? current : nextStart);
-  }
+    return findProjectSuggestions(workspace);
+  }, [matchesOpen, workspace]);
 
   function saveCellFast(rowId: string, columnId: string, value: TrackerCellValue) {
     runFastAction(
@@ -1246,6 +899,7 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
       () => linkProjectTrackerRowAction({ rowId, kind: project.kind, projectId: project.id }),
       (current) => optimisticProjectLink(current, rowId, project),
     );
+    setSpreadsheetRevision((revision) => revision + 1);
   }
 
   function updateColumnFast(input: Parameters<typeof updateProjectTrackerColumnAction>[0]) {
@@ -1274,9 +928,6 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
         ],
       }),
     );
-    window.requestAnimationFrame(() => {
-      gridScrollRef.current?.scrollTo({ top: (workspace.rows.length + 1) * ROW_HEIGHT });
-    });
   }
 
   function addColumnFast(input: {
@@ -1362,46 +1013,6 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
     setDeleteConfirmation(null);
   }
 
-  function duplicateRowFast(row: ProjectTrackerRowRecord) {
-    const id = crypto.randomUUID();
-    runFastAction(
-      () => duplicateProjectTrackerRowAction(row.id, { id }),
-      (current) => ({
-        ...current,
-        rows: [
-          ...current.rows,
-          {
-            ...row,
-            id,
-            sortOrder: current.rows.length,
-            cells: Object.fromEntries(
-              Object.entries(row.cells).map(([columnId, cell]) => [
-                columnId,
-                { ...cell, id: null },
-              ]),
-            ),
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-        ],
-      }),
-    );
-  }
-
-  function moveRowFast(rowId: string, direction: -1 | 1) {
-    runFastAction(
-      () => moveProjectTrackerRowAction(rowId, direction),
-      (current) => {
-        const rows = [...current.rows];
-        const index = rows.findIndex((row) => row.id === rowId);
-        const target = index + direction;
-        if (index < 0 || target < 0 || target >= rows.length) return current;
-        [rows[index], rows[target]] = [rows[target], rows[index]];
-        return { ...current, rows: rows.map((row, sortOrder) => ({ ...row, sortOrder })) };
-      },
-    );
-  }
-
   function unlinkProjectFast(rowId: string) {
     runFastAction(
       () => unlinkProjectTrackerRowAction(rowId),
@@ -1427,6 +1038,7 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
         }),
       }),
     );
+    setSpreadsheetRevision((revision) => revision + 1);
   }
 
   function resolveCellFast(
@@ -1458,33 +1070,14 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
         }),
       }),
     );
-  }
-
-  function handleResize(event: ReactMouseEvent, column: ProjectTrackerColumnRecord) {
-    event.preventDefault();
-    const startX = event.clientX;
-    const startWidth = column.width;
-    let finalWidth = startWidth;
-    function onMove(moveEvent: globalThis.MouseEvent) {
-      finalWidth = Math.max(110, Math.min(480, startWidth + moveEvent.clientX - startX));
-      setWorkspace((current) => ({
-        ...current,
-        columns: current.columns.map((item) => item.id === column.id ? { ...item, width: finalWidth } : item),
-      }));
-    }
-    function onUp() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      updateColumnFast({ columnId: column.id, width: finalWidth });
-    }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    setSpreadsheetRevision((revision) => revision + 1);
   }
 
   async function handleImport(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
+    const firstImportedSpreadsheetRow = workspace.rows.length + 1;
     setImportProgress({ stage: "reading", fileName: file.name });
     await waitForNextPaint();
     try {
@@ -1507,11 +1100,33 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
       });
       await waitForNextPaint();
       if (applyResult(result) && "workspace" in result) {
+        let sourceRowIndex = 0;
+        let sourceColumnIndex = 0;
+        let foundValue = false;
+        for (const [rowIndex, row] of rows.entries()) {
+          const columnIndex = row.findIndex((value) =>
+            value !== null && value !== "" && (!Array.isArray(value) || value.length > 0),
+          );
+          if (columnIndex >= 0) {
+            sourceRowIndex = rowIndex;
+            sourceColumnIndex = columnIndex;
+            foundValue = true;
+            break;
+          }
+        }
+        const importedColumnName = columns[sourceColumnIndex]?.name;
+        const targetColumn = result.workspace.columns.findIndex((column) =>
+          normalize(column.name) === normalize(importedColumnName ?? ""),
+        );
+        const focus = {
+          row: firstImportedSpreadsheetRow + (foundValue ? sourceRowIndex : 0),
+          column: Math.max(0, targetColumn),
+        };
+        setLastImportFocus(focus);
+        setSpreadsheetFocus({ id: Date.now(), ...focus });
+        setSpreadsheetRevision((revision) => revision + 1);
         await waitForNextPaint();
-        gridScrollRef.current?.scrollTo({
-          top: result.workspace.rows.length * ROW_HEIGHT,
-        });
-        if (rows.length <= 200) {
+        if (rows.length <= 200 && findProjectSuggestions(result.workspace).length > 0) {
           window.setTimeout(() => setMatchesOpen(true), 80);
         }
       }
@@ -1523,30 +1138,7 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
   }
 
   async function exportFile(format: "xlsx" | "csv") {
-    const XLSX = await import("xlsx");
-    const data = filteredRows.map((row) => Object.fromEntries(visibleColumns.map((column) => [
-      column.name,
-      Array.isArray(row.cells[column.id]?.value)
-        ? (row.cells[column.id]?.value as string[]).join(", ")
-        : row.cells[column.id]?.value ?? "",
-    ])));
-    const sheet = XLSX.utils.json_to_sheet(data, { header: visibleColumns.map((column) => column.name) });
-    sheet["!cols"] = visibleColumns.map((column) => ({ wch: Math.max(12, Math.round(column.width / 8)) }));
-    const safeName = workspace.name.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "project-tracker";
-    if (format === "csv") {
-      const blob = new Blob([XLSX.utils.sheet_to_csv(sheet)], { type: "text/csv;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = `${safeName}.csv`;
-      anchor.click();
-      URL.revokeObjectURL(url);
-    } else {
-      const book = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(book, sheet, "Project Tracker");
-      XLSX.writeFile(book, `${safeName}.xlsx`);
-    }
-    showSuccessToast(`Exported ${filteredRows.length} rows.`);
+    setExportRequest({ id: Date.now(), format });
   }
 
   if (!workspace.isInitialized) {
@@ -1575,16 +1167,6 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
     );
   }
 
-  const gridTemplateColumns = `76px ${visibleColumns.map((column) => `${column.width}px`).join(" ")} 48px`;
-  const frozenOffsets = new Map<string, number>();
-  let frozenLeft = 76;
-  for (const column of visibleColumns) {
-    if (column.frozen) {
-      frozenOffsets.set(column.id, frozenLeft);
-      frozenLeft += column.width;
-    }
-  }
-  const allVisibleSelected = renderedRows.length > 0 && renderedRows.every((row) => selectedRows.has(row.id));
   const detailsRow = detailsRowId ? workspace.rows.find((row) => row.id === detailsRowId) ?? null : null;
 
   return (
@@ -1598,8 +1180,8 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
             <div className="min-w-0">
               <h1 className="truncate text-[22px] font-[850] tracking-[-0.035em] text-[#142019]">{workspace.name}</h1>
               <p className="mt-0.5 flex items-center gap-1.5 text-[11px] font-[650] text-[#7b867e]">
-                {workspace.rows.length} rows · {workspace.columns.length} columns ·
-                {savingCount > 0 ? (
+                {Math.max(PROJECT_TRACKER_SHEET_ROWS, workspace.rows.length + 1)} sheet rows · {Math.max(PROJECT_TRACKER_SHEET_COLUMNS, workspace.columns.length)} sheet columns ·
+                {savingCount > 0 || workbookSaving ? (
                   <span className="inline-flex items-center gap-1 text-[#47735a]"><Loader2 className="size-3 animate-spin" /> Saving</span>
                 ) : (
                   <span className="inline-flex items-center gap-1 text-[#498063]"><Check className="size-3" /> Saved</span>
@@ -1624,12 +1206,6 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
             <Plus className="size-4" /> Row
           </Button>
         ) : null}
-        <div className="relative min-w-[190px] flex-1 sm:max-w-[360px]">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#89938c]" />
-          <input value={search} onChange={(event) => { setSearch(event.target.value); resetRowWindow(); }} placeholder="Search this tracker..." className="h-9 w-full rounded-full border border-[#dce3dc] bg-[#f9fbf9] pl-9 pr-9 text-[12px] outline-none focus:border-[#86b99a] focus:bg-white focus:ring-2 focus:ring-[#e1f2e6]" />
-          {search ? <button type="button" onClick={() => { setSearch(""); resetRowWindow(); }} className="absolute right-2 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-full text-[#7c877f] hover:bg-[#edf1ed]"><X className="size-3" /></button> : null}
-        </div>
-        <Button type="button" variant={filter.value ? "outline" : "secondary"} size="sm" onClick={() => setShowFilter((current) => !current)}><Filter className="size-4" /> Filter</Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild><Button type="button" variant="secondary" size="sm"><Eye className="size-4" /> Columns <ChevronDown className="size-3" /></Button></DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="max-h-[360px] overflow-y-auto">
@@ -1639,10 +1215,29 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
                 {column.name}
               </DropdownMenuCheckboxItem>
             ))}
+            {workspace.canEdit ? <>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Column settings</DropdownMenuLabel>
+              {workspace.columns.map((column) => (
+                <DropdownMenuItem key={`settings:${column.id}`} onSelect={() => setColumnEditor(column)}>
+                  <Columns3 className="size-4" /> Edit {column.name}
+                </DropdownMenuItem>
+              ))}
+            </> : null}
           </DropdownMenuContent>
         </DropdownMenu>
         {workspace.canEdit ? <Button type="button" variant="secondary" size="sm" onClick={() => setSetupOpen(true)}><Columns3 className="size-4" /> Layouts</Button> : null}
         {workspace.canEdit ? <Button type="button" variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()}><Upload className="size-4" /> Import</Button> : null}
+        {lastImportFocus ? (
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => setSpreadsheetFocus({ id: Date.now(), ...lastImportFocus })}
+          >
+            <Eye className="size-4" /> View last import
+          </Button>
+        ) : null}
         <DropdownMenu>
           <DropdownMenuTrigger asChild><Button type="button" variant="secondary" size="sm"><Download className="size-4" /> Export</Button></DropdownMenuTrigger>
           <DropdownMenuContent align="end">
@@ -1650,6 +1245,29 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
             <DropdownMenuItem onSelect={() => void exportFile("csv")}><FileDown className="size-4" /> CSV file</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        {activeSpreadsheetRowId && workspace.canEdit ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" variant="secondary" size="sm"><Link2 className="size-4" /> Link project</Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="max-h-[360px] w-[300px] overflow-y-auto">
+              <DropdownMenuLabel>Connect selected row</DropdownMenuLabel>
+              {workspace.rows.find((row) => row.id === activeSpreadsheetRowId)?.project ? (
+                <>
+                  <DropdownMenuItem onSelect={() => setDetailsRowId(activeSpreadsheetRowId)}><PanelRightOpen className="size-4" /> Row details</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => unlinkProjectFast(activeSpreadsheetRowId)}><Link2Off className="size-4" /> Disconnect current project</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              ) : null}
+              {workspace.projectOptions.map((project) => (
+                <DropdownMenuItem key={`${project.kind}:${project.id}`} onSelect={() => linkProjectFast(activeSpreadsheetRowId, project)}>
+                  <Link2 className="size-4" />
+                  <span className="min-w-0"><span className="block truncate">{project.name}</span><span className="block truncate text-[9px] text-[#89938c]">{project.subtitle}</span></span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
         {selectedRows.size && workspace.canEdit ? (
           <Button type="button" variant="destructive" size="sm" onClick={() => {
             const count = selectedRows.size;
@@ -1664,145 +1282,18 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
         ) : null}
       </div>
 
-      {showFilter ? (
-        <div className="flex flex-wrap items-center gap-2 border-b border-[#e6ebe6] bg-[#f8faf8] px-4 py-2.5">
-          <span className="text-[11px] font-[800] uppercase tracking-[0.11em] text-[#7b867e]">Show where</span>
-          <select value={filter.columnId} onChange={(event) => { setFilter((current) => ({ ...current, columnId: event.target.value })); resetRowWindow(); }} className="h-9 min-w-[160px] rounded-[12px] border border-[#d8e0d9] bg-white px-3 text-[12px] text-[#39443c] outline-none">
-            <option value="">Choose column</option>
-            {visibleColumns.map((column) => <option key={column.id} value={column.id}>{column.name}</option>)}
-          </select>
-          <input value={filter.value} onChange={(event) => { setFilter((current) => ({ ...current, value: event.target.value })); resetRowWindow(); }} placeholder="contains..." className="h-9 min-w-[200px] flex-1 rounded-[12px] border border-[#d8e0d9] bg-white px-3 text-[12px] outline-none sm:max-w-[320px]" />
-          {filter.value || filter.columnId ? <Button type="button" variant="ghost" size="sm" onClick={() => { setFilter({ columnId: "", value: "" }); resetRowWindow(); }}><X className="size-3.5" /> Clear</Button> : null}
-        </div>
-      ) : null}
-
-      <div ref={gridScrollRef} onScroll={handleGridScroll} className="relative min-h-0 min-w-0 flex-1 overflow-auto bg-[#f8faf8]">
-        <div className="min-w-max" style={{ minWidth: visibleColumns.reduce((sum, column) => sum + column.width, 124) + 124 }}>
-          <div role="row" className="sticky top-0 z-40 grid min-h-[48px] border-b border-[#dce4dc] bg-[#f1f5f1]" style={{ gridTemplateColumns }}>
-            <div className="sticky left-0 z-50 flex items-center gap-2 border-r border-[#dce4dc] bg-[#f1f5f1] px-3">
-              <input type="checkbox" checked={allVisibleSelected} onChange={(event) => setSelectedRows((current) => {
-                const next = new Set(current);
-                for (const row of renderedRows) {
-                  if (event.target.checked) next.add(row.id); else next.delete(row.id);
-                }
-                return next;
-              })} aria-label="Select all currently rendered rows" className="size-4 accent-[#2e8355]" />
-              <span className="text-[10px] font-[800] text-[#8a948d]">#</span>
-            </div>
-            {visibleColumns.map((column) => {
-              const frozenOffset = frozenOffsets.get(column.id);
-              const stickyStyle: CSSProperties | undefined = frozenOffset !== undefined ? { position: "sticky", left: frozenOffset, zIndex: 49 } : undefined;
-              return (
-                <div key={column.id} className={`group relative flex min-w-0 items-center gap-2 border-r border-[#dce4dc] bg-[#f1f5f1] px-3 ${column.frozen ? "shadow-[5px_0_12px_rgba(27,48,34,0.04)]" : ""}`} style={stickyStyle}>
-                  <span className="min-w-0 flex-1 truncate text-[11px] font-[850] uppercase tracking-[0.065em] text-[#59665d]">{column.name}</span>
-                  {column.sourceFieldKey ? <Link2 className="size-3.5 shrink-0 text-[#45906a]" /> : null}
-                  {column.frozen ? <Pin className="size-3.5 shrink-0 text-[#758078]" /> : null}
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild><button type="button" className="grid size-7 shrink-0 place-items-center rounded-md text-[#78847b] opacity-50 hover:bg-white hover:text-[#2a7a50] group-hover:opacity-100" aria-label={`${column.name} settings`}><MoreHorizontal className="size-4" /></button></DropdownMenuTrigger>
-                    <DropdownMenuContent align="start">
-                      <DropdownMenuLabel>{column.name}</DropdownMenuLabel>
-                      <DropdownMenuItem onSelect={() => { setSort({ columnId: column.id, direction: "asc" }); resetRowWindow(); }}><ArrowUp className="size-4" /> Sort A–Z</DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => { setSort({ columnId: column.id, direction: "desc" }); resetRowWindow(); }}><ArrowDown className="size-4" /> Sort Z–A</DropdownMenuItem>
-                      {sort?.columnId === column.id ? <DropdownMenuItem onSelect={() => { setSort(null); resetRowWindow(); }}><X className="size-4" /> Clear sort</DropdownMenuItem> : null}
-                      {workspace.canEdit ? <>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onSelect={() => setColumnEditor(column)}><Columns3 className="size-4" /> Column settings</DropdownMenuItem>
-                        <DropdownMenuItem disabled={column.sortOrder === workspace.columns[0]?.sortOrder} onSelect={() => updateColumnFast({ columnId: column.id, move: -1 })}><ArrowLeft className="size-4" /> Move left</DropdownMenuItem>
-                        <DropdownMenuItem disabled={column.sortOrder === workspace.columns.at(-1)?.sortOrder} onSelect={() => updateColumnFast({ columnId: column.id, move: 1 })}><ArrowRight className="size-4" /> Move right</DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => updateColumnFast({ columnId: column.id, frozen: !column.frozen })}><Pin className="size-4" /> {column.frozen ? "Unfreeze" : "Freeze"}</DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => updateColumnFast({ columnId: column.id, hidden: true })}><EyeOff className="size-4" /> Hide</DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem variant="destructive" onSelect={() => {
-                          setDeleteConfirmation({
-                            kind: "column",
-                            columnId: column.id,
-                            title: `Delete “${column.name}”?`,
-                            description: "This moves the column and its saved tracker values to Bin. You can restore it later. Connected Flux project data will remain unchanged.",
-                            confirmLabel: "Delete column",
-                          });
-                        }}><Trash2 className="size-4" /> Delete column</DropdownMenuItem>
-                      </> : null}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                  {workspace.canEdit ? <button type="button" onMouseDown={(event) => handleResize(event, column)} className="absolute -right-1 top-0 z-10 h-full w-2 cursor-col-resize" aria-label={`Resize ${column.name}`} /> : null}
-                </div>
-              );
-            })}
-            <div className="bg-[#f1f5f1]" />
-          </div>
-
-          {filteredRows.length ? <>
-            {topRowSpacerHeight ? <div aria-hidden="true" style={{ height: topRowSpacerHeight }} /> : null}
-            {renderedRows.map((row, rowIndex) => (
-              <div key={row.id} role="row" className={`grid h-12 border-b border-[#e4e9e4] ${selectedRows.has(row.id) ? "bg-[#f0f8f2]" : "bg-white hover:bg-[#fbfcfb]"}`} style={{ gridTemplateColumns }}>
-              <div className={`sticky left-0 z-30 flex items-center gap-2 border-r border-[#e1e7e1] px-3 ${selectedRows.has(row.id) ? "bg-[#f0f8f2]" : "bg-white"}`}>
-                <input type="checkbox" checked={selectedRows.has(row.id)} onChange={(event) => setSelectedRows((current) => {
-                  const next = new Set(current);
-                  if (event.target.checked) next.add(row.id); else next.delete(row.id);
-                  return next;
-                })} aria-label={`Select row ${visibleRowStart + rowIndex + 1}`} className="size-4 accent-[#2e8355]" />
-                <span className="w-5 text-right text-[10px] font-[700] text-[#929b95]">{visibleRowStart + rowIndex + 1}</span>
-              </div>
-              {visibleColumns.map((column) => {
-                const cell = row.cells[column.id] ?? { id: null, value: null, sourceValue: null, syncState: "custom" as const, lastSyncedAt: null };
-                const frozenOffset = frozenOffsets.get(column.id);
-                const stickyStyle: CSSProperties | undefined = frozenOffset !== undefined ? { position: "sticky", left: frozenOffset, zIndex: 29 } : undefined;
-                const projectColumn = column.sourceFieldKey === "project.name" || column.type === "PROJECT";
-                return (
-                  <div key={column.id} className={`min-w-0 border-r border-[#e4e9e4] p-1 ${column.frozen ? `shadow-[5px_0_12px_rgba(27,48,34,0.035)] ${selectedRows.has(row.id) ? "bg-[#f0f8f2]" : "bg-white"}` : ""}`} style={stickyStyle}>
-                    {projectColumn ? (
-                      <ProjectCell row={row} column={column} cell={cell} projects={workspace.projectOptions} disabled={!workspace.canEdit} pending={false} onLink={linkProjectFast} onSave={saveCellFast} />
-                    ) : (
-                      <EditableCell row={row} column={column} cell={cell} disabled={!workspace.canEdit} onSave={saveCellFast} />
-                    )}
-                  </div>
-                );
-              })}
-              <div className="flex items-center justify-center bg-inherit">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild><button type="button" className="grid size-8 place-items-center rounded-lg text-[#7c877f] hover:bg-[#edf2ed] hover:text-[#2b7950]" aria-label="Row actions"><MoreHorizontal className="size-4" /></button></DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onSelect={() => setDetailsRowId(row.id)}><PanelRightOpen className="size-4" /> Row details</DropdownMenuItem>
-                    {row.project ? <DropdownMenuItem asChild><Link href={row.project.href}><Link2 className="size-4" /> Open Flux project</Link></DropdownMenuItem> : null}
-                    {workspace.canEdit ? <>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onSelect={() => moveRowFast(row.id, -1)}><ArrowUp className="size-4" /> Move up</DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => moveRowFast(row.id, 1)}><ArrowDown className="size-4" /> Move down</DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => duplicateRowFast(row)}><Copy className="size-4" /> Duplicate row</DropdownMenuItem>
-                      {row.project ? <DropdownMenuItem onSelect={() => unlinkProjectFast(row.id)}><Link2Off className="size-4" /> Disconnect project</DropdownMenuItem> : null}
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem variant="destructive" onSelect={() => {
-                        setDeleteConfirmation({
-                          kind: "rows",
-                          rowIds: [row.id],
-                          title: "Delete this tracker row?",
-                          description: "This moves the row and its saved tracker values to Bin. You can restore it later. The linked Flux project and its data will remain unchanged.",
-                          confirmLabel: "Delete row",
-                        });
-                      }}><Trash2 className="size-4" /> Delete row</DropdownMenuItem>
-                    </> : null}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-              </div>
-            ))}
-            {bottomRowSpacerHeight ? <div aria-hidden="true" style={{ height: bottomRowSpacerHeight }} /> : null}
-          </> : (
-            <div className="flex min-h-[320px] items-center justify-center bg-white px-6 text-center">
-              <div><Rows3 className="mx-auto size-8 text-[#9aaa9f]" /><p className="mt-3 text-[15px] font-[800] text-[#344139]">{workspace.rows.length ? "No rows match these filters" : "Your tracker is ready"}</p><p className="mt-1 text-[12px] text-[#7c867f]">{workspace.rows.length ? "Clear the search or filter to see more." : "Add a row, then choose a Flux project or enter your own information."}</p>{!workspace.rows.length && workspace.canEdit ? <Button type="button" size="sm" className="mt-5" onClick={addRowFast}><Plus className="size-4" /> Add first row</Button> : null}</div>
-            </div>
-          )}
-        </div>
+      <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-white">
+        <ProjectTrackerSpreadsheetClient
+          workspace={workspace}
+          revision={spreadsheetRevision}
+          exportRequest={exportRequest}
+          focusRequest={spreadsheetFocus}
+          onActiveRowChange={setActiveSpreadsheetRowId}
+          onSelectedRowsChange={(rowIds) => setSelectedRows(new Set(rowIds))}
+          onSaveCell={saveCellFast}
+          onWorkbookSavingChange={setWorkbookSaving}
+        />
       </div>
-
-      <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-[#e3e9e3] bg-white px-4 py-2.5 text-[10px] font-[700] text-[#7e8981]">
-        <span>
-          {filteredRows.length ? `${visibleRowStart + 1}–${visibleRowEnd}` : "0"} of {filteredRows.length} rows
-          {filteredRows.length !== workspace.rows.length ? ` (${workspace.rows.length} total)` : ""}
-        </span>
-        <span>Smooth view · scroll normally through all rows</span>
-        <span className="hidden items-center gap-1.5 lg:flex"><Link2 className="size-3.5 text-[#3d8a62]" /> Linked cells update safely; local values are never silently replaced.</span>
-      </footer>
 
       {columnEditor ? (
         <ColumnEditorModal
@@ -1810,6 +1301,17 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
           column={columnEditor === "new" ? null : columnEditor}
           pending={pending}
           onClose={() => setColumnEditor(null)}
+          onDelete={columnEditor === "new" ? undefined : () => {
+            const column = columnEditor;
+            setColumnEditor(null);
+            setDeleteConfirmation({
+              kind: "column",
+              columnId: column.id,
+              title: `Delete “${column.name}”?`,
+              description: "This moves the column and its saved tracker values to Bin. You can restore it later. Connected Flux project data will remain unchanged.",
+              confirmLabel: "Delete column",
+            });
+          }}
           onSave={(input) => {
             if (columnEditor === "new") {
               addColumnFast(input);
@@ -1938,10 +1440,6 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
           () => {
             setResetBlankOpen(false);
             setSelectedRows(new Set());
-            setSearch("");
-            setSort(null);
-            setFilter({ columnId: "", value: "" });
-            resetRowWindow();
           },
         )}
         onClose={() => setResetBlankOpen(false)}
@@ -1957,12 +1455,14 @@ function ColumnEditorModal({
   column,
   pending,
   onClose,
+  onDelete,
   onSave,
 }: {
   workspace: ProjectTrackerWorkspaceRecord;
   column: ProjectTrackerColumnRecord | null;
   pending: boolean;
   onClose: () => void;
+  onDelete?: () => void;
   onSave: (input: { name: string; type: ProjectTrackerColumnType; sourceFieldKey?: string | null }) => void;
 }) {
   const [name, setName] = useState(column?.name ?? "");
@@ -1990,7 +1490,12 @@ function ColumnEditorModal({
           if (key) chooseField(key);
         }} className="mt-1.5 h-11 w-full rounded-[14px] border border-[#d9e1da] bg-white px-3 text-[13px] outline-none"><option value="">Custom tracker field</option>{workspace.availableFields.map((field) => <option key={field.key} value={field.key}>{field.label}</option>)}</select><span className="mt-1.5 block text-[10px] leading-4 text-[#858f88]">Custom fields stay in the tracker. Connected fields safely read from the linked Flux project.</span></label>
       </div>
-      <div className="mt-6 flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" disabled={pending || !name.trim()} onClick={() => onSave({ name: name.trim(), type, sourceFieldKey })}>{pending ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />} {column ? "Save changes" : "Add column"}</Button></div>
+      <div className="mt-6 flex flex-wrap items-center gap-2">
+        {onDelete ? <Button type="button" variant="destructive" onClick={onDelete}><Trash2 className="size-4" /> Delete column</Button> : null}
+        <span className="flex-1" />
+        <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+        <Button type="button" disabled={pending || !name.trim()} onClick={() => onSave({ name: name.trim(), type, sourceFieldKey })}>{pending ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />} {column ? "Save changes" : "Add column"}</Button>
+      </div>
     </Modal>
   );
 }

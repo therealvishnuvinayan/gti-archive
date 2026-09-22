@@ -76,7 +76,9 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1053.0",
     "@aws-sdk/s3-request-presigner": "^3.1053.0",
+    "@corbe30/fortune-excel": "2.3.4",
     "@fontsource/inter": "^5.2.8",
+    "@fortune-sheet/react": "1.0.4",
     "@prisma/client": "^6.19.3",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@radix-ui/react-select": "^2.2.6",

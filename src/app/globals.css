@@ -1,3 +1,4 @@
+@import "@fortune-sheet/react/dist/index.css";
 @import "@fontsource/inter/400.css";
 @import "@fontsource/inter/500.css";
 @import "@fontsource/inter/600.css";
@@ -262,4 +263,34 @@ input {
 
 .no-scrollbar::-webkit-scrollbar {
   display: none;
+}
+
+/*
+ * Project Tracker owns row creation so every visible tracker row keeps a
+ * database identity, history, and Bin recovery. FortuneSheet's generic bottom
+ * "add rows" control otherwise floats over short sheets and can overlap app
+ * dialogs. The tracker toolbar's Row action is the supported equivalent.
+ */
+.project-tracker-fortune .luckysheet-bottom-controll-row {
+  display: none !important;
+}
+
+/* Keep a stable toolbar height without clipping color pickers and other menus
+ * that intentionally open over the grid. */
+.project-tracker-fortune .fortune-toolbar {
+  min-height: 40px;
+  overflow: visible;
+}
+
+/* FortuneSheet must be allowed to shrink inside the dashboard flex layout;
+ * otherwise its native worksheet tabs fall below the clipped viewport. */
+.project-tracker-fortune .fortune-container,
+.project-tracker-fortune .fortune-sheet-container {
+  min-height: 0;
+}
+
+.project-tracker-fortune .luckysheet-sheet-area {
+  z-index: 30;
+  display: flex;
+  flex: 0 0 31px;
 }

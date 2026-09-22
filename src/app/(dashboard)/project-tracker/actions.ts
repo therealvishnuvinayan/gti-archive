@@ -240,11 +240,21 @@ export async function resetProjectTrackerToBlankAction(): Promise<ActionResult> 
     const user = await requireUser();
     const tracker = await requireEditableTracker(user);
     const projectField = fieldForKey("project.name");
+    const currentSettings =
+      tracker.settings && typeof tracker.settings === "object" && !Array.isArray(tracker.settings)
+        ? (tracker.settings as Prisma.JsonObject)
+        : {};
+    const settingsWithoutWorkbook = { ...currentSettings };
+    delete settingsWithoutWorkbook.fortuneSheet;
 
     await withPrismaRetry(() =>
       prisma.$transaction(async (transaction) => {
         await transaction.projectTrackerRow.deleteMany({ where: { trackerId: tracker.id } });
         await transaction.projectTrackerColumn.deleteMany({ where: { trackerId: tracker.id } });
+        await transaction.projectTracker.update({
+          where: { id: tracker.id },
+          data: { settings: settingsWithoutWorkbook },
+        });
         await transaction.projectTrackerColumn.create({
           data: {
             trackerId: tracker.id,
@@ -664,6 +674,49 @@ export async function saveProjectTrackerCellAction(input: {
   }
 }
 
+export async function saveProjectTrackerWorkbookAction(input: {
+  sheets: unknown[];
+}): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    const tracker = await requireEditableTracker(user);
+    const serialized = JSON.stringify(input.sheets);
+    if (serialized.length > 4_000_000) {
+      throw new Error("This workbook is too large to save. Remove large images or unused sheets and try again.");
+    }
+
+    const sheets = JSON.parse(serialized) as unknown;
+    if (!Array.isArray(sheets) || sheets.length > 20) {
+      throw new Error("The workbook must contain between 1 and 20 worksheets.");
+    }
+    if (sheets.some((sheet) => !sheet || typeof sheet !== "object" || Array.isArray(sheet))) {
+      throw new Error("The workbook contains invalid worksheet data.");
+    }
+
+    const currentSettings =
+      tracker.settings && typeof tracker.settings === "object" && !Array.isArray(tracker.settings)
+        ? (tracker.settings as Prisma.JsonObject)
+        : {};
+
+    await prisma.projectTracker.update({
+      where: { id: tracker.id },
+      data: {
+        settings: {
+          ...currentSettings,
+          fortuneSheet: {
+            version: 1,
+            sheets: sheets as Prisma.InputJsonValue[],
+          },
+        },
+      },
+    });
+
+    return complete();
+  } catch (error) {
+    return { error: asErrorMessage(error) };
+  }
+}
+
 export async function linkProjectTrackerRowAction(input: {
   rowId: string;
   kind: TrackerProjectKind;
@@ -919,9 +972,12 @@ export async function importProjectTrackerAction(input: {
     });
 
     const connectedColumns = parsed.columns.filter((column) => column.sourceFieldKey).length;
+    const linkedMessage = connectedColumns > 0
+      ? `${connectedColumns} ${connectedColumns === 1 ? "column was" : "columns were"} matched to Flux fields.`
+      : "No columns were auto-linked to Flux; every imported value was kept as spreadsheet data.";
     return finish(
       user,
-      `Imported ${parsed.rows.length} rows. Flux recognized ${connectedColumns} ${connectedColumns === 1 ? "column" : "columns"}.`,
+      `Imported ${parsed.rows.length} rows across ${parsed.columns.length} ${parsed.columns.length === 1 ? "column" : "columns"}. ${linkedMessage}`,
     );
   } catch (error) {
     return { error: asErrorMessage(error) };
