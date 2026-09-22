@@ -246,6 +246,7 @@ export async function resetProjectTrackerToBlankAction(): Promise<ActionResult> 
         : {};
     const settingsWithoutWorkbook = { ...currentSettings };
     delete settingsWithoutWorkbook.fortuneSheet;
+    delete settingsWithoutWorkbook.spreadsheet;
 
     await withPrismaRetry(() =>
       prisma.$transaction(async (transaction) => {
@@ -288,6 +289,7 @@ export async function addProjectTrackerColumnAction(input: {
   name: string;
   type: ProjectTrackerColumnType;
   sourceFieldKey?: string | null;
+  beforeColumnId?: string;
 }): Promise<ActionResult> {
   try {
     const user = await requireUser();
@@ -301,24 +303,42 @@ export async function addProjectTrackerColumnAction(input: {
       orderBy: { sortOrder: "desc" },
       select: { sortOrder: true },
     });
-    const column = await prisma.projectTrackerColumn.create({
-      data: {
-        ...(input.id ? { id: input.id } : {}),
-        trackerId: tracker.id,
-        name,
-        type: sourceField?.type ?? assertColumnType(input.type),
-        sourceFieldKey: sourceField?.key ?? null,
-        sortOrder: (lastColumn?.sortOrder ?? -1) + 1,
-        width: sourceField?.type === ProjectTrackerColumnType.LONG_TEXT ? 260 : 180,
-      },
-    });
-    await recordTrackerActivity({
-      trackerId: tracker.id,
-      actorId: user.id,
-      action: "COLUMN_ADDED",
-      summary: `Added “${name}”`,
-      columnId: column.id,
-    });
+    const beforeColumn = input.beforeColumnId
+      ? await prisma.projectTrackerColumn.findFirst({
+          where: { id: input.beforeColumnId, trackerId: tracker.id, deletedAt: null },
+          select: { sortOrder: true },
+        })
+      : null;
+    await withPrismaRetry(() => prisma.$transaction(async (transaction) => {
+      const sortOrder = beforeColumn?.sortOrder ?? (lastColumn?.sortOrder ?? -1) + 1;
+      if (beforeColumn) {
+        await transaction.projectTrackerColumn.updateMany({
+          where: { trackerId: tracker.id, sortOrder: { gte: sortOrder } },
+          data: { sortOrder: { increment: 1 } },
+        });
+      }
+      const created = await transaction.projectTrackerColumn.create({
+        data: {
+          ...(input.id ? { id: input.id } : {}),
+          trackerId: tracker.id,
+          name,
+          type: sourceField?.type ?? assertColumnType(input.type),
+          sourceFieldKey: sourceField?.key ?? null,
+          sortOrder,
+          width: sourceField?.type === ProjectTrackerColumnType.LONG_TEXT ? 260 : 180,
+        },
+      });
+      await transaction.projectTrackerActivity.create({
+        data: {
+          trackerId: tracker.id,
+          actorId: user.id,
+          action: "COLUMN_ADDED",
+          details: { summary: `Added “${name}”` },
+          columnId: created.id,
+        },
+      });
+      return created;
+    }));
     return complete("Column added.");
   } catch (error) {
     return { error: asErrorMessage(error) };
@@ -426,7 +446,7 @@ export async function deleteProjectTrackerColumnAction(columnId: string): Promis
   }
 }
 
-export async function addProjectTrackerRowAction(input?: { id?: string }): Promise<ActionResult> {
+export async function addProjectTrackerRowAction(input?: { id?: string; beforeRowId?: string }): Promise<ActionResult> {
   try {
     const user = await requireUser();
     const tracker = await requireEditableTracker(user);
@@ -435,20 +455,38 @@ export async function addProjectTrackerRowAction(input?: { id?: string }): Promi
       orderBy: { sortOrder: "desc" },
       select: { sortOrder: true },
     });
-    const row = await prisma.projectTrackerRow.create({
-      data: {
-        ...(input?.id ? { id: input.id } : {}),
-        trackerId: tracker.id,
-        sortOrder: (lastRow?.sortOrder ?? -1) + 1,
-      },
-    });
-    await recordTrackerActivity({
-      trackerId: tracker.id,
-      actorId: user.id,
-      action: "ROW_ADDED",
-      summary: "Added a row",
-      rowId: row.id,
-    });
+    const beforeRow = input?.beforeRowId
+      ? await prisma.projectTrackerRow.findFirst({
+          where: { id: input.beforeRowId, trackerId: tracker.id, deletedAt: null },
+          select: { sortOrder: true },
+        })
+      : null;
+    await withPrismaRetry(() => prisma.$transaction(async (transaction) => {
+      const sortOrder = beforeRow?.sortOrder ?? (lastRow?.sortOrder ?? -1) + 1;
+      if (beforeRow) {
+        await transaction.projectTrackerRow.updateMany({
+          where: { trackerId: tracker.id, sortOrder: { gte: sortOrder } },
+          data: { sortOrder: { increment: 1 } },
+        });
+      }
+      const created = await transaction.projectTrackerRow.create({
+        data: {
+          ...(input?.id ? { id: input.id } : {}),
+          trackerId: tracker.id,
+          sortOrder,
+        },
+      });
+      await transaction.projectTrackerActivity.create({
+        data: {
+          trackerId: tracker.id,
+          actorId: user.id,
+          action: "ROW_ADDED",
+          details: { summary: "Added a row" },
+          rowId: created.id,
+        },
+      });
+      return created;
+    }));
     return complete();
   } catch (error) {
     return { error: asErrorMessage(error) };
@@ -674,19 +712,115 @@ export async function saveProjectTrackerCellAction(input: {
   }
 }
 
-export async function saveProjectTrackerWorkbookAction(input: {
-  sheets: unknown[];
+export async function saveProjectTrackerCellsAction(input: {
+  changes: Array<{ rowId: string; columnId: string; value: TrackerCellValue }>;
 }): Promise<ActionResult> {
   try {
     const user = await requireUser();
     const tracker = await requireEditableTracker(user);
-    const serialized = JSON.stringify(input.sheets);
+    if (input.changes.length > 500) throw new Error("Save up to 500 tracker cells in one batch.");
+    const deduplicated = new Map(
+      input.changes.map((change) => [`${change.rowId}:${change.columnId}`, change]),
+    );
+    const changes = [...deduplicated.values()];
+    if (!changes.length) return complete();
+    const rowIds = Array.from(new Set(changes.map((change) => change.rowId)));
+    const columnIds = Array.from(new Set(changes.map((change) => change.columnId)));
+    const [rows, columns] = await Promise.all([
+      prisma.projectTrackerRow.findMany({
+        where: { trackerId: tracker.id, id: { in: rowIds }, deletedAt: null },
+        select: { id: true },
+      }),
+      prisma.projectTrackerColumn.findMany({
+        where: { trackerId: tracker.id, id: { in: columnIds }, deletedAt: null },
+        select: { id: true, sourceFieldKey: true },
+      }),
+    ]);
+    const validRows = new Set(rows.map((row) => row.id));
+    const columnMap = new Map(columns.map((column) => [column.id, column]));
+    if (validRows.size !== rowIds.length || columnMap.size !== columnIds.length) {
+      throw new Error("One or more tracker cells no longer exist.");
+    }
+    const operations: Prisma.PrismaPromise<unknown>[] = changes.map((change) => {
+      const value = normalizeTrackerCellValue(change.value);
+      const column = columnMap.get(change.columnId)!;
+      return value === null || (Array.isArray(value) && value.length === 0)
+        ? prisma.projectTrackerCell.deleteMany({ where: { rowId: change.rowId, columnId: change.columnId } })
+        : prisma.projectTrackerCell.upsert({
+            where: { rowId_columnId: { rowId: change.rowId, columnId: change.columnId } },
+            create: {
+              rowId: change.rowId,
+              columnId: change.columnId,
+              value: jsonValue(value),
+              isLocalOverride: Boolean(column.sourceFieldKey),
+            },
+            update: { value: jsonValue(value), isLocalOverride: Boolean(column.sourceFieldKey) },
+          });
+    });
+    operations.push(prisma.projectTrackerActivity.create({
+      data: {
+        trackerId: tracker.id,
+        actorId: user.id,
+        action: changes.length === 1 ? "CELL_UPDATED" : "CELLS_UPDATED",
+        rowId: rowIds.length === 1 ? rowIds[0] : undefined,
+        columnId: columnIds.length === 1 ? columnIds[0] : undefined,
+        details: { summary: changes.length === 1 ? "Updated a tracker value" : `Updated ${changes.length} tracker values` },
+      },
+    }));
+    await withPrismaRetry(() => prisma.$transaction(operations));
+    return complete();
+  } catch (error) {
+    return { error: asErrorMessage(error) };
+  }
+}
+
+export async function reorderProjectTrackerRowsAction(rowIds: string[]): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    const tracker = await requireEditableTracker(user);
+    const uniqueIds = Array.from(new Set(rowIds));
+    const activeRows = await prisma.projectTrackerRow.findMany({
+      where: { trackerId: tracker.id, deletedAt: null },
+      select: { id: true },
+    });
+    if (uniqueIds.length !== activeRows.length || activeRows.some((row) => !uniqueIds.includes(row.id))) {
+      throw new Error("The tracker changed while rows were being sorted. Refresh and try again.");
+    }
+    await withPrismaRetry(() => prisma.$transaction([
+      ...uniqueIds.map((id, sortOrder) => prisma.projectTrackerRow.update({ where: { id }, data: { sortOrder } })),
+      prisma.projectTrackerActivity.create({
+        data: {
+          trackerId: tracker.id,
+          actorId: user.id,
+          action: "ROWS_SORTED",
+          details: { summary: `Sorted ${uniqueIds.length} tracker rows` },
+        },
+      }),
+    ]));
+    return complete();
+  } catch (error) {
+    return { error: asErrorMessage(error) };
+  }
+}
+
+export async function saveProjectTrackerWorkbookAction(input: {
+  workbook: unknown;
+}): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    const tracker = await requireEditableTracker(user);
+    const serialized = JSON.stringify(input.workbook);
     if (serialized.length > 4_000_000) {
       throw new Error("This workbook is too large to save. Remove large images or unused sheets and try again.");
     }
 
-    const sheets = JSON.parse(serialized) as unknown;
-    if (!Array.isArray(sheets) || sheets.length > 20) {
+    const workbook = JSON.parse(serialized) as unknown;
+    if (!workbook || typeof workbook !== "object" || Array.isArray(workbook)) {
+      throw new Error("The workbook contains invalid data.");
+    }
+    const workbookRecord = workbook as Record<string, unknown>;
+    const sheets = workbookRecord.sheets;
+    if (workbookRecord.version !== 2 || !Array.isArray(sheets) || sheets.length < 1 || sheets.length > 20) {
       throw new Error("The workbook must contain between 1 and 20 worksheets.");
     }
     if (sheets.some((sheet) => !sheet || typeof sheet !== "object" || Array.isArray(sheet))) {
@@ -697,15 +831,17 @@ export async function saveProjectTrackerWorkbookAction(input: {
       tracker.settings && typeof tracker.settings === "object" && !Array.isArray(tracker.settings)
         ? (tracker.settings as Prisma.JsonObject)
         : {};
+    const nextSettings = { ...currentSettings };
+    delete nextSettings.fortuneSheet;
 
     await prisma.projectTracker.update({
       where: { id: tracker.id },
       data: {
         settings: {
-          ...currentSettings,
-          fortuneSheet: {
-            version: 1,
-            sheets: sheets as Prisma.InputJsonValue[],
+          ...nextSettings,
+          spreadsheet: {
+            version: 2,
+            workbook: workbook as Prisma.InputJsonValue,
           },
         },
       },

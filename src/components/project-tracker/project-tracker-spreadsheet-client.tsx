@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import type { ComponentProps } from "react";
 import type { ProjectTrackerSpreadsheet } from "./project-tracker-spreadsheet";
 
-const FortuneProjectTracker = dynamic(
+const CustomProjectTracker = dynamic(
   () => import("./project-tracker-spreadsheet").then((module) => module.ProjectTrackerSpreadsheet),
   {
     ssr: false,
@@ -20,5 +20,5 @@ const FortuneProjectTracker = dynamic(
 export function ProjectTrackerSpreadsheetClient(
   props: ComponentProps<typeof ProjectTrackerSpreadsheet>,
 ) {
-  return <FortuneProjectTracker {...props} />;
+  return <CustomProjectTracker {...props} />;
 }

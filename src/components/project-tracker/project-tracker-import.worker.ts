@@ -1,5 +1,10 @@
 import * as XLSX from "xlsx";
 
+import { cellKey } from "./spreadsheet/lib/coordinates";
+import { formulaCellValue } from "./spreadsheet/lib/formulas";
+import { importXlsxWorkbook } from "./spreadsheet/lib/xlsx";
+import type { SpreadsheetSheet, SpreadsheetWorkbook } from "./spreadsheet/types/spreadsheet";
+
 type SpreadsheetCellValue = string | number | boolean | null;
 type SpreadsheetColumnType = "TEXT" | "NUMBER" | "CHECKBOX" | "DATE";
 
@@ -12,21 +17,68 @@ type ParseResponse =
       ok: true;
       columns: Array<{ name: string; type: SpreadsheetColumnType }>;
       rows: SpreadsheetCellValue[][];
+      workbook: SpreadsheetWorkbook;
+      warnings: string[];
     }
   | { ok: false; error: string };
 
-self.onmessage = (event: MessageEvent<ParseRequest>) => {
+self.onmessage = async (event: MessageEvent<ParseRequest>) => {
   try {
-    const workbook = XLSX.read(event.data.buffer, { type: "array", cellDates: true });
-    const firstSheetName = workbook.SheetNames[0];
-    const firstSheet = firstSheetName ? workbook.Sheets[firstSheetName] : null;
-    if (!firstSheet) throw new Error("This file does not contain a readable table.");
-
-    const matrix = XLSX.utils.sheet_to_json<unknown[]>(firstSheet, {
-      header: 1,
-      defval: "",
-      raw: true,
-    });
+    let importedWorkbook: SpreadsheetWorkbook;
+    let warnings: string[] = [];
+    let matrix: unknown[][];
+    try {
+      const imported = await importXlsxWorkbook(event.data.buffer);
+      importedWorkbook = imported.workbook;
+      warnings = imported.warnings;
+      const firstSheet = importedWorkbook.sheets[0];
+      let maxRow = 0;
+      let maxColumn = 0;
+      for (const key of Object.keys(firstSheet.cells)) {
+        const [row, column] = key.split(":").map(Number);
+        maxRow = Math.max(maxRow, row);
+        maxColumn = Math.max(maxColumn, column);
+      }
+      matrix = Array.from({ length: maxRow + 1 }, (_, row) =>
+        Array.from({ length: maxColumn + 1 }, (_, column) =>
+          formulaCellValue(firstSheet.cells[cellKey(row, column)]) ?? ""));
+    } catch {
+      const source = XLSX.read(event.data.buffer, { type: "array", cellDates: true, cellStyles: true });
+      const sheets = source.SheetNames.flatMap((name, sheetIndex) => {
+        const sourceSheet = source.Sheets[name];
+        if (!sourceSheet) return [];
+        const range = sourceSheet["!ref"] ? XLSX.utils.decode_range(sourceSheet["!ref"]) : { s: { r: 0, c: 0 }, e: { r: 0, c: 0 } };
+        const cells: SpreadsheetSheet["cells"] = {};
+        for (let row = range.s.r; row <= range.e.r; row += 1) {
+          for (let column = range.s.c; column <= range.e.c; column += 1) {
+            const sourceCell = sourceSheet[XLSX.utils.encode_cell({ r: row, c: column })];
+            if (!sourceCell) continue;
+            const value = sourceCell.v instanceof Date ? sourceCell.v.toISOString() : sourceCell.v;
+            cells[cellKey(row, column)] = {
+              value: typeof value === "string" || typeof value === "number" || typeof value === "boolean" ? value : value == null ? null : String(value),
+              ...(typeof sourceCell.f === "string" ? { formula: `=${sourceCell.f}` } : {}),
+            };
+          }
+        }
+        return [{
+          id: sheetIndex === 0 ? "project-tracker" : crypto.randomUUID(),
+          name,
+          rowCount: Math.max(1_000, range.e.r + 1),
+          columnCount: Math.max(100, range.e.c + 1),
+          cells,
+          rowMetadata: {},
+          columnMetadata: {},
+          merges: (sourceSheet["!merges"] ?? []).map((merge) => ({ startRow: merge.s.r, startColumn: merge.s.c, endRow: merge.e.r, endColumn: merge.e.c })),
+          frozenRows: 0,
+          frozenColumns: 0,
+          conditionalFormats: [],
+        } satisfies SpreadsheetSheet];
+      });
+      if (!sheets.length) throw new Error("This file does not contain a readable table.");
+      importedWorkbook = { version: 2, activeSheetId: sheets[0].id, sheets };
+      matrix = XLSX.utils.sheet_to_json<unknown[]>(source.Sheets[source.SheetNames[0]], { header: 1, defval: "", raw: true });
+      warnings = ["Legacy spreadsheet formatting could not be fully imported; values, formulas, sheets, and merges were retained where available."];
+    }
     if (!matrix.length) throw new Error("This file does not contain a readable table.");
 
     const headers = matrix[0].map(
@@ -67,7 +119,7 @@ self.onmessage = (event: MessageEvent<ParseRequest>) => {
       return { name, type };
     });
 
-    const response: ParseResponse = { ok: true, columns, rows };
+    const response: ParseResponse = { ok: true, columns, rows, workbook: importedWorkbook, warnings };
     self.postMessage(response);
   } catch (error) {
     const response: ParseResponse = {

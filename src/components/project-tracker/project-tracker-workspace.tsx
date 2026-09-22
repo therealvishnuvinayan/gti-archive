@@ -47,9 +47,12 @@ import {
   initializeProjectTrackerAction,
   linkProjectTrackerRowAction,
   resetProjectTrackerToBlankAction,
+  reorderProjectTrackerRowsAction,
   resolveProjectTrackerCellAction,
   restoreProjectTrackerItemAction,
   saveProjectTrackerCellAction,
+  saveProjectTrackerCellsAction,
+  saveProjectTrackerWorkbookAction,
   getProjectTrackerTrashAction,
   unlinkProjectTrackerRowAction,
   updateProjectTrackerColumnAction,
@@ -72,6 +75,9 @@ import {
   type SpreadsheetExportRequest,
   type SpreadsheetFocusRequest,
 } from "@/components/project-tracker/project-tracker-spreadsheet";
+import type { TrackerCellChange } from "@/components/project-tracker/spreadsheet/hooks/use-spreadsheet";
+import { buildProjectTrackerWorkbook, mergeImportedWorkbook } from "@/components/project-tracker/spreadsheet/lib/workbook";
+import type { SpreadsheetWorkbook } from "@/components/project-tracker/spreadsheet/types/spreadsheet";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
 import type {
   ProjectTrackerCellRecord,
@@ -100,6 +106,8 @@ type ImportProgress = {
 type ParsedSpreadsheet = {
   columns: Array<{ name: string; type: ProjectTrackerColumnType }>;
   rows: TrackerCellValue[][];
+  workbook: SpreadsheetWorkbook;
+  warnings: string[];
 };
 type ImportWorkerResponse =
   | ({ ok: true } & ParsedSpreadsheet)
@@ -162,7 +170,12 @@ async function parseSpreadsheetFile(file: File): Promise<ParsedSpreadsheet> {
     worker.onmessage = (event: MessageEvent<ImportWorkerResponse>) => {
       close();
       if (event.data.ok) {
-        resolve({ columns: event.data.columns, rows: event.data.rows });
+        resolve({
+          columns: event.data.columns,
+          rows: event.data.rows,
+          workbook: event.data.workbook,
+          warnings: event.data.warnings,
+        });
       } else {
         reject(new Error(event.data.error));
       }
@@ -765,7 +778,7 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
 
   useEffect(() => {
     if (!initialWorkspace.canEdit || !initialWorkspace.isInitialized) return;
-    const storageKey = `project-tracker:setup-seen:${initialWorkspace.id}:fortune-v1`;
+    const storageKey = `project-tracker:setup-seen:${initialWorkspace.id}:spreadsheet-v2`;
     try {
       if (window.localStorage.getItem(storageKey)) return;
       window.localStorage.setItem(storageKey, "1");
@@ -894,6 +907,23 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
     );
   }
 
+  function saveCellsFast(changes: TrackerCellChange[]) {
+    if (!changes.length) return;
+    runFastAction(
+      async () => {
+        for (let index = 0; index < changes.length; index += 400) {
+          const result = await saveProjectTrackerCellsAction({ changes: changes.slice(index, index + 400) });
+          if ("error" in result) return result;
+        }
+        return { ok: true };
+      },
+      (current) => changes.reduce(
+        (next, change) => optimisticCellUpdate(next, change.rowId, change.columnId, change.value),
+        current,
+      ),
+    );
+  }
+
   function linkProjectFast(rowId: string, project: ProjectTrackerProjectOption) {
     runFastAction(
       () => linkProjectTrackerRowAction({ rowId, kind: project.kind, projectId: project.id }),
@@ -909,23 +939,25 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
     );
   }
 
-  function addRowFast() {
+  function addRowFast(insertIndex = workspace.rows.length) {
     const id = crypto.randomUUID();
+    const beforeRowId = workspace.rows[insertIndex]?.id;
     runFastAction(
-      () => addProjectTrackerRowAction({ id }),
+      () => addProjectTrackerRowAction({ id, beforeRowId }),
       (current) => ({
         ...current,
-        rows: [
-          ...current.rows,
-          {
+        rows: (() => {
+          const rows = [...current.rows];
+          rows.splice(Math.min(insertIndex, rows.length), 0, {
             id,
-            sortOrder: current.rows.length,
+            sortOrder: insertIndex,
             project: null,
             cells: Object.fromEntries(current.columns.map((column) => [column.id, emptyCell()])),
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-          },
-        ],
+          });
+          return rows.map((row, index) => ({ ...row, sortOrder: index }));
+        })(),
       }),
     );
   }
@@ -934,10 +966,11 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
     name: string;
     type: ProjectTrackerColumnType;
     sourceFieldKey?: string | null;
-  }) {
+  }, insertIndex = workspace.columns.length) {
     const id = crypto.randomUUID();
+    const beforeColumnId = workspace.columns[insertIndex]?.id;
     runFastAction(
-      () => addProjectTrackerColumnAction({ id, ...input }),
+      () => addProjectTrackerColumnAction({ id, ...input, beforeColumnId }),
       (current) => {
         const field = current.availableFields.find((item) => item.key === input.sourceFieldKey);
         const column: ProjectTrackerColumnRecord = {
@@ -946,14 +979,18 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
           type: field?.type ?? input.type,
           sourceFieldKey: field?.key ?? null,
           options: [],
-          sortOrder: current.columns.length,
+          sortOrder: insertIndex,
           width: field?.type === "LONG_TEXT" ? 260 : 180,
           hidden: false,
           frozen: false,
         };
         return {
           ...current,
-          columns: [...current.columns, column],
+          columns: (() => {
+            const columns = [...current.columns];
+            columns.splice(Math.min(insertIndex, columns.length), 0, column);
+            return columns.map((item, index) => ({ ...item, sortOrder: index }));
+          })(),
           rows: current.rows.map((row) => ({
             ...row,
             cells: {
@@ -967,6 +1004,28 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
       },
     );
     setColumnEditor(null);
+  }
+
+  function sortTrackerRows(sortedRowIds: string[]) {
+    const selectedIds = new Set(sortedRowIds);
+    const selectedPositions = workspace.rows.flatMap((row, index) => selectedIds.has(row.id) ? [index] : []);
+    if (!selectedPositions.length) return;
+    const nextRows = [...workspace.rows];
+    selectedPositions.forEach((position, index) => {
+      const row = workspace.rows.find((candidate) => candidate.id === sortedRowIds[index]);
+      if (row) nextRows[position] = row;
+    });
+    const orderedIds = nextRows.map((row) => row.id);
+    runFastAction(
+      () => reorderProjectTrackerRowsAction(orderedIds),
+      (current) => ({
+        ...current,
+        rows: orderedIds.flatMap((id, index) => {
+          const row = current.rows.find((candidate) => candidate.id === id);
+          return row ? [{ ...row, sortOrder: index }] : [];
+        }),
+      }),
+    );
   }
 
   function deleteColumnFast(columnId: string) {
@@ -1081,7 +1140,7 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
     setImportProgress({ stage: "reading", fileName: file.name });
     await waitForNextPaint();
     try {
-      const { columns, rows } = await parseSpreadsheetFile(file);
+      const { columns, rows, workbook: importedWorkbook, warnings } = await parseSpreadsheetFile(file);
       setImportProgress({
         stage: "importing",
         fileName: file.name,
@@ -1091,6 +1150,24 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
       if ("error" in result) {
         applyResult(result);
         return;
+      }
+      if (!("workspace" in result)) throw new Error("The imported tracker could not be reloaded.");
+
+      const baseWorkbook = buildProjectTrackerWorkbook(workspace, workspace.spreadsheetState);
+      const mergedWorkbook = mergeImportedWorkbook(
+        baseWorkbook,
+        importedWorkbook,
+        workspace.rows.length,
+        result.workspace.columns.map((column) => column.name),
+      );
+      const workbookSave = await saveProjectTrackerWorkbookAction({ workbook: mergedWorkbook });
+      if ("error" in workbookSave) {
+        showErrorToast("Imported formatting could not be saved", workbookSave.error);
+      } else {
+        result.workspace.spreadsheetState = mergedWorkbook;
+      }
+      if (warnings.length) {
+        showErrorToast("Some Excel features were not imported", warnings.slice(0, 3).join(" "));
       }
 
       setImportProgress({
@@ -1202,7 +1279,7 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
 
       <div className="flex flex-wrap items-center gap-2 border-b border-[#e4e9e4] bg-white px-3 py-3 sm:px-4">
         {workspace.canEdit ? (
-          <Button type="button" variant="secondary" size="sm" onClick={addRowFast}>
+          <Button type="button" variant="secondary" size="sm" onClick={() => addRowFast()}>
             <Plus className="size-4" /> Row
           </Button>
         ) : null}
@@ -1291,7 +1368,46 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
           onActiveRowChange={setActiveSpreadsheetRowId}
           onSelectedRowsChange={(rowIds) => setSelectedRows(new Set(rowIds))}
           onSaveCell={saveCellFast}
+          onSaveCells={saveCellsFast}
           onWorkbookSavingChange={setWorkbookSaving}
+          onInsertTrackerRow={(sheetRow, side) => {
+            const dataIndex = Math.max(0, sheetRow - 1);
+            addRowFast(dataIndex + (side === "below" ? 1 : 0));
+          }}
+          onDeleteTrackerRows={(sheetRows) => {
+            const rowIds = sheetRows.flatMap((sheetRow) => workspace.rows[sheetRow - 1]?.id ? [workspace.rows[sheetRow - 1].id] : []);
+            if (!rowIds.length) return;
+            setDeleteConfirmation({
+              kind: "rows",
+              rowIds,
+              title: `Delete ${rowIds.length} selected ${rowIds.length === 1 ? "row" : "rows"}?`,
+              description: "This moves the selected tracker data to Bin. Linked Flux projects remain unchanged.",
+              confirmLabel: `Delete ${rowIds.length} ${rowIds.length === 1 ? "row" : "rows"}`,
+            });
+          }}
+          onInsertTrackerColumn={(sheetColumn, side) => {
+            const insertIndex = sheetColumn + (side === "right" ? 1 : 0);
+            let suffix = workspace.columns.length + 1;
+            const names = new Set(workspace.columns.map((column) => normalize(column.name)));
+            while (names.has(normalize(`Column ${suffix}`))) suffix += 1;
+            addColumnFast({ name: `Column ${suffix}`, type: "TEXT" }, insertIndex);
+          }}
+          onDeleteTrackerColumns={(sheetColumns) => {
+            const columns = sheetColumns.flatMap((index) => workspace.columns[index] ? [workspace.columns[index]] : []);
+            if (columns.length !== 1) {
+              showErrorToast("Project Tracker", "Delete tracker columns one at a time so each item remains recoverable from Bin.");
+              return;
+            }
+            const column = columns[0];
+            setDeleteConfirmation({
+              kind: "column",
+              columnId: column.id,
+              title: `Delete “${column.name}”?`,
+              description: "This moves the column and its saved tracker values to Bin. Connected Flux data remains unchanged.",
+              confirmLabel: "Delete column",
+            });
+          }}
+          onSortTrackerRows={sortTrackerRows}
         />
       </div>
 

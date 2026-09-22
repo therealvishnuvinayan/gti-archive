@@ -32,6 +32,7 @@
     "project-workspace:user-check": "node scripts/user-project-workspace-checks.mjs",
     "project-workspace:user-integration-check": "tsc --project scripts/tsconfig.user-project-workspace-integration.json && COMPILED_ALIAS_ROOT=.tmp/user-project-workspace-integration node -r ./scripts/register-compiled-alias.cjs .tmp/user-project-workspace-integration/scripts/user-project-workspace-integration-check.js",
     "project-list:workflow-check": "tsc --project scripts/tsconfig.project-list-workflow.json && COMPILED_ALIAS_ROOT=.tmp/project-list-workflow node -r ./scripts/register-compiled-alias.cjs .tmp/project-list-workflow/scripts/project-list-workflow-check.js",
+    "project-tracker:spreadsheet-check": "tsc --project scripts/tsconfig.project-tracker-spreadsheet.json && node .tmp/project-tracker-spreadsheet/scripts/project-tracker-spreadsheet-check.js",
     "workflow:lock-check": "tsc --project scripts/tsconfig.workflow-lock.json && COMPILED_ALIAS_ROOT=.tmp/workflow-lock node -r ./scripts/register-compiled-alias.cjs .tmp/workflow-lock/scripts/workflow-lock-regression-check.js",
     "dashboard:v2-check": "node scripts/dashboard-v2-regression-checks.mjs",
     "project-create:v2-integration-check": "tsc --project scripts/tsconfig.project-v2-integration.json && COMPILED_ALIAS_ROOT=.tmp/project-v2-integration node -r ./scripts/register-compiled-alias.cjs .tmp/project-v2-integration/scripts/project-creation-v2-integration-check.js",
@@ -76,9 +77,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1053.0",
     "@aws-sdk/s3-request-presigner": "^3.1053.0",
-    "@corbe30/fortune-excel": "2.3.4",
     "@fontsource/inter": "^5.2.8",
-    "@fortune-sheet/react": "1.0.4",
     "@prisma/client": "^6.19.3",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@radix-ui/react-select": "^2.2.6",
@@ -93,6 +92,7 @@
     "ably": "^2.22.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "exceljs": "4.4.0",
     "framer-motion": "^12.40.0",
     "lucide-react": "^1.16.0",
     "next": "16.2.6",
@@ -115,5 +115,11 @@
     "prisma": "^6.19.3",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "pnpm": {
+    "overrides": {
+      "brace-expansion@1": "1.1.21",
+      "uuid@8.3.2": "11.1.1"
+    }
   }
 }

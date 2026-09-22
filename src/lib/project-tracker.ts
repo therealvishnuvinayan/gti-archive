@@ -94,8 +94,6 @@ export type ProjectTrackerTrashItemRecord = {
   deletedAt: string;
 };
 
-export type ProjectTrackerSpreadsheetSheet = Record<string, unknown>;
-
 export type ProjectTrackerWorkspaceRecord = {
   id: string;
   name: string;
@@ -107,7 +105,8 @@ export type ProjectTrackerWorkspaceRecord = {
   availableFields: ProjectTrackerField[];
   activities: ProjectTrackerActivityRecord[];
   updateCount: number;
-  spreadsheetSheets: ProjectTrackerSpreadsheetSheet[];
+  /** Versioned custom workbook, or legacy sheet data until the first safe save migrates it. */
+  spreadsheetState: unknown;
 };
 
 type FieldContext = {
@@ -699,6 +698,8 @@ function activitySummary(action: string, details: unknown) {
     PROJECT_LINKED: "Linked a Flux project",
     PROJECT_UNLINKED: "Disconnected a Flux project",
     CELL_UPDATED: "Updated a tracker value",
+    CELLS_UPDATED: "Updated tracker values",
+    ROWS_SORTED: "Sorted tracker rows",
     SOURCE_VALUE_ACCEPTED: "Accepted a Flux value",
     LOCAL_VALUE_KEPT: "Kept a local tracker value",
     IMPORT_COMPLETED: "Imported spreadsheet data",
@@ -718,17 +719,24 @@ function isRowLinked(row: { structuredProjectId: string | null; flexibleProjectI
   return Boolean(row.structuredProjectId || row.flexibleProjectId);
 }
 
-function spreadsheetSheetsFromSettings(
-  settings: Prisma.JsonValue | null,
-): ProjectTrackerSpreadsheetSheet[] {
+function spreadsheetStateFromSettings(settings: Prisma.JsonValue | null): unknown {
   if (!settings || typeof settings !== "object" || Array.isArray(settings)) return [];
+  const spreadsheet = (settings as Prisma.JsonObject).spreadsheet;
+  if (spreadsheet && typeof spreadsheet === "object" && !Array.isArray(spreadsheet)) {
+    const workbook = (spreadsheet as Prisma.JsonObject).workbook;
+    if (workbook && typeof workbook === "object" && !Array.isArray(workbook)) return workbook;
+  }
+
+  // One-way compatibility bridge for workbook metadata saved by the retired
+  // editor. The client normalizes this data into the v2 sparse model and the
+  // first autosave removes the legacy key.
   const fortuneSheet = (settings as Prisma.JsonObject).fortuneSheet;
   if (!fortuneSheet || typeof fortuneSheet !== "object" || Array.isArray(fortuneSheet)) return [];
   const sheets = (fortuneSheet as Prisma.JsonObject).sheets;
   if (!Array.isArray(sheets)) return [];
   return sheets
     .filter((sheet) => Boolean(sheet) && typeof sheet === "object" && !Array.isArray(sheet))
-    .map((sheet) => ({ ...(sheet as Prisma.JsonObject) })) as ProjectTrackerSpreadsheetSheet[];
+    .map((sheet) => ({ ...(sheet as Prisma.JsonObject) }));
 }
 
 export async function getProjectTrackerWorkspace(
@@ -826,7 +834,7 @@ export async function getProjectTrackerWorkspace(
       createdAt: activity.createdAt.toISOString(),
     })),
     updateCount,
-    spreadsheetSheets: spreadsheetSheetsFromSettings(tracker.settings),
+    spreadsheetState: spreadsheetStateFromSettings(tracker.settings),
   };
 }
 
