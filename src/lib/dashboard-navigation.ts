@@ -69,8 +69,8 @@ export function getDashboardBackNavigation(
     if (!projectSlug) {
       return topbar(
         "/projects?view=flexible",
-        "Flexible Projects",
-        "Back to Flexible Projects",
+        "Private Projects",
+        "Back to Private Projects",
       );
     }
 
@@ -79,8 +79,8 @@ export function getDashboardBackNavigation(
       const returnsToTracker = returnHref === "/project-tracker";
       return topbar(
         returnsToTracker ? returnHref : "/projects?view=flexible",
-        returnsToTracker ? "Project Tracker" : "Flexible Projects",
-        returnsToTracker ? "Back to Project Tracker" : "Back to Flexible Projects",
+        returnsToTracker ? "Project Tracker" : "Private Projects",
+        returnsToTracker ? "Back to Project Tracker" : "Back to Private Projects",
       );
     }
 

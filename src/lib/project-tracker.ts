@@ -530,7 +530,7 @@ function mapStructuredProjectOption(
     kind: "structured",
     name: project.name,
     href: `/projects/${encodeURIComponent(project.id)}?returnTo=${encodeURIComponent("/project-tracker")}`,
-    subtitle: ["Artwork project", project.status?.name].filter(Boolean).join(" · "),
+    subtitle: ["Collaborative project", project.status?.name].filter(Boolean).join(" · "),
     fields: Object.fromEntries(
       PROJECT_TRACKER_FIELD_REGISTRY.map((field) => [
         field.key,
@@ -548,7 +548,7 @@ function mapFlexibleProjectOption(
     kind: "flexible",
     name: project.name,
     href: `/projects/flexible/${encodeURIComponent(project.slug)}?returnTo=${encodeURIComponent("/project-tracker")}`,
-    subtitle: ["Flexible project", project.status === "COMPLETED" ? "Completed" : "Active"]
+    subtitle: ["Private project", project.status === "COMPLETED" ? "Completed" : "Active"]
       .filter(Boolean)
       .join(" · "),
     fields: Object.fromEntries(

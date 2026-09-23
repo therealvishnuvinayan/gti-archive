@@ -43,7 +43,7 @@ async function runProjectMutation(
     return result;
   } catch (error) {
     console.error(`[flexible-projects] ${label} failed`, error);
-    return { error: "Unable to save the Flexible Project right now. Please try again." };
+    return { error: "Unable to save the Private Project right now. Please try again." };
   }
 }
 

@@ -124,7 +124,7 @@ export function FlexibleProjectDialog({
         return;
       }
 
-      showSuccessToast(mode === "create" ? "Flexible Project created." : "Flexible Project updated.");
+      showSuccessToast(mode === "create" ? "Private Project created." : "Private Project updated.");
       onClose();
       if (mode === "create") router.push(`/projects/flexible/${result.slug}`);
       else router.refresh();
@@ -134,7 +134,7 @@ export function FlexibleProjectDialog({
   return (
     <FlexibleDialog
       open
-      title={mode === "create" ? "New Flexible Project" : "Edit Flexible Project"}
+      title={mode === "create" ? "New Private Project" : "Edit Private Project"}
       description={mode === "create" ? "Set up a simple project with your own milestones." : "Update the project details and participants."}
       onClose={pending ? () => undefined : onClose}
       maxWidth="max-w-[780px]"
