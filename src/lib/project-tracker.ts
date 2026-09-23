@@ -81,6 +81,7 @@ export type ProjectTrackerActivityRecord = {
   columnId: string | null;
   action: string;
   summary: string;
+  importRowCount: number | null;
   actorName: string;
   createdAt: string;
 };
@@ -104,6 +105,8 @@ export type ProjectTrackerWorkspaceRecord = {
   availableFields: ProjectTrackerField[];
   activities: ProjectTrackerActivityRecord[];
   updateCount: number;
+  /** Versioned custom workbook, or legacy sheet data until the first safe save migrates it. */
+  spreadsheetState: unknown;
 };
 
 type FieldContext = {
@@ -695,6 +698,8 @@ function activitySummary(action: string, details: unknown) {
     PROJECT_LINKED: "Linked a Flux project",
     PROJECT_UNLINKED: "Disconnected a Flux project",
     CELL_UPDATED: "Updated a tracker value",
+    CELLS_UPDATED: "Updated tracker values",
+    ROWS_SORTED: "Sorted tracker rows",
     SOURCE_VALUE_ACCEPTED: "Accepted a Flux value",
     LOCAL_VALUE_KEPT: "Kept a local tracker value",
     IMPORT_COMPLETED: "Imported spreadsheet data",
@@ -702,8 +707,36 @@ function activitySummary(action: string, details: unknown) {
   return fallbacks[action] ?? "Updated Project Tracker";
 }
 
+function activityImportRowCount(action: string, details: unknown) {
+  if (action !== "IMPORT_COMPLETED" || !details || typeof details !== "object") return null;
+  const rowCount = "rowCount" in details ? (details as { rowCount?: unknown }).rowCount : null;
+  return typeof rowCount === "number" && Number.isInteger(rowCount) && rowCount > 0
+    ? rowCount
+    : null;
+}
+
 function isRowLinked(row: { structuredProjectId: string | null; flexibleProjectId: string | null }) {
   return Boolean(row.structuredProjectId || row.flexibleProjectId);
+}
+
+function spreadsheetStateFromSettings(settings: Prisma.JsonValue | null): unknown {
+  if (!settings || typeof settings !== "object" || Array.isArray(settings)) return [];
+  const spreadsheet = (settings as Prisma.JsonObject).spreadsheet;
+  if (spreadsheet && typeof spreadsheet === "object" && !Array.isArray(spreadsheet)) {
+    const workbook = (spreadsheet as Prisma.JsonObject).workbook;
+    if (workbook && typeof workbook === "object" && !Array.isArray(workbook)) return workbook;
+  }
+
+  // One-way compatibility bridge for workbook metadata saved by the retired
+  // editor. The client normalizes this data into the v2 sparse model and the
+  // first autosave removes the legacy key.
+  const fortuneSheet = (settings as Prisma.JsonObject).fortuneSheet;
+  if (!fortuneSheet || typeof fortuneSheet !== "object" || Array.isArray(fortuneSheet)) return [];
+  const sheets = (fortuneSheet as Prisma.JsonObject).sheets;
+  if (!Array.isArray(sheets)) return [];
+  return sheets
+    .filter((sheet) => Boolean(sheet) && typeof sheet === "object" && !Array.isArray(sheet))
+    .map((sheet) => ({ ...(sheet as Prisma.JsonObject) }));
 }
 
 export async function getProjectTrackerWorkspace(
@@ -796,10 +829,12 @@ export async function getProjectTrackerWorkspace(
       columnId: activity.columnId,
       action: activity.action,
       summary: activitySummary(activity.action, activity.details),
+      importRowCount: activityImportRowCount(activity.action, activity.details),
       actorName: personName(activity.actor) ?? "Flux user",
       createdAt: activity.createdAt.toISOString(),
     })),
     updateCount,
+    spreadsheetState: spreadsheetStateFromSettings(tracker.settings),
   };
 }
 
