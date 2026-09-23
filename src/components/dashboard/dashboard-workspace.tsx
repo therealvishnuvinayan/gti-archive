@@ -393,7 +393,7 @@ function FlexibleProjectsOverview({
           </span>
           <div className="min-w-0">
             <h2 className="text-[16px] font-bold text-[#171d19]">
-              Flexible Projects
+              Private Projects
             </h2>
             <p className="mt-0.5 text-[11px] leading-4 text-[#6d766f]">
               Milestone-based work outside the fixed artwork workflow
@@ -422,8 +422,8 @@ function FlexibleProjectsOverview({
       {projects.length === 0 ? (
         <EmptyState
           icon={Milestone}
-          title="No flexible projects"
-          description="Flexible projects you own or collaborate on will appear here."
+          title="No private projects"
+          description="Private projects you own or collaborate on will appear here."
         />
       ) : (
         <div className="grid gap-3 p-4 sm:p-5 lg:grid-cols-3">

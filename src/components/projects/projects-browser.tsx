@@ -245,7 +245,7 @@ export function ProjectsBrowser({
                 : "text-[#4a554d] hover:bg-[#f0f4f0]"
             }`}
           >
-            <FolderKanban className="size-4" /> Artwork Projects
+            <FolderKanban className="size-4" /> Collaborative Projects
           </button>
           <button
             type="button"
@@ -258,7 +258,7 @@ export function ProjectsBrowser({
                 : "text-[#4a554d] hover:bg-[#f0f4f0]"
             }`}
           >
-            <PanelsTopLeft className="size-4" /> Flexible Projects
+            <PanelsTopLeft className="size-4" /> Private Projects
           </button>
           </div>
         </MotionSection>

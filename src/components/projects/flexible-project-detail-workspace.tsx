@@ -146,7 +146,7 @@ export function FlexibleProjectDetailWorkspace({
     <section className="mx-auto w-full max-w-[1220px] space-y-5 pb-4">
       <MotionSection>
         <Button asChild variant="ghost" className="h-10 rounded-[12px] px-2.5 text-[13px] text-[#3e4941]">
-          <Link href="/projects?view=flexible"><ArrowLeft className="size-4" /> Flexible Projects</Link>
+          <Link href="/projects?view=flexible"><ArrowLeft className="size-4" /> Private Projects</Link>
         </Button>
       </MotionSection>
 

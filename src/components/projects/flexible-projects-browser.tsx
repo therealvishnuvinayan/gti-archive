@@ -107,12 +107,12 @@ export function FlexibleProjectsBrowser({
       <MotionSection>
         <div className="flex flex-col gap-4 rounded-[22px] border border-[#dfe6df] bg-white px-5 py-5 shadow-[0_12px_34px_rgba(23,39,28,0.04)] sm:px-6 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h2 className="text-[25px] font-[750] tracking-[-0.035em] text-[#101611] sm:text-[29px]">Flexible Projects</h2>
+            <h2 className="text-[25px] font-[750] tracking-[-0.035em] text-[#101611] sm:text-[29px]">Private Projects</h2>
             <p className="mt-1.5 max-w-2xl text-[13px] leading-5 text-[#6f7871]">Custom work organized with user-defined milestones rather than the fixed artwork stages.</p>
           </div>
           {canCreateProject ? (
             <Button type="button" onClick={() => setCreateOpen(true)} className="h-12 self-start rounded-full px-6 text-[14px] lg:self-auto">
-              <Plus className="size-4" /> New Flexible Project
+              <Plus className="size-4" /> New Private Project
             </Button>
           ) : null}
         </div>
@@ -128,9 +128,9 @@ export function FlexibleProjectsBrowser({
         <MotionSection>
           <div className="rounded-[24px] border border-dashed border-[#cbd6cc] bg-white px-6 py-16 text-center shadow-[0_12px_34px_rgba(23,39,28,0.03)]">
             <PanelsTopLeft className="mx-auto size-9 text-[#75a086]" />
-            <h3 className="mt-4 text-[18px] font-[750] text-[#202a23]">No flexible projects yet</h3>
+            <h3 className="mt-4 text-[18px] font-[750] text-[#202a23]">No private projects yet</h3>
             <p className="mt-1 text-[13px] text-[#717a73]">Projects you own or collaborate on will appear here.</p>
-            {canCreateProject ? <Button type="button" onClick={() => setCreateOpen(true)} className="mt-5"><Plus className="size-4" /> New Flexible Project</Button> : null}
+            {canCreateProject ? <Button type="button" onClick={() => setCreateOpen(true)} className="mt-5"><Plus className="size-4" /> New Private Project</Button> : null}
           </div>
         </MotionSection>
       )}

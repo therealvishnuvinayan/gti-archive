@@ -624,8 +624,8 @@ export async function updateFlexibleProject(
   input: FlexibleProjectInput,
 ): Promise<FlexibleProjectMutationResult> {
   const project = await loadProjectAccessContext(projectId);
-  if (!project) return { error: "Flexible Project not found." };
-  if (!canManageFlexibleProject(actor, project)) return { error: "You are not allowed to edit this Flexible Project." };
+  if (!project) return { error: "Private Project not found." };
+  if (!canManageFlexibleProject(actor, project)) return { error: "You are not allowed to edit this Private Project." };
   const parsed = parseProjectInput(input);
   if (!parsed.data) return { error: "Review the highlighted fields.", fieldErrors: parsed.fieldErrors };
   const fieldErrors = await validateProjectUsers(parsed.data.ownerId, parsed.data.collaboratorIds);
@@ -709,7 +709,7 @@ export async function createFlexibleMilestone(
   input: FlexibleMilestoneInput,
 ): Promise<FlexibleMilestoneMutationResult> {
   const project = await loadProjectAccessContext(projectId);
-  if (!project) return { error: "Flexible Project not found." };
+  if (!project) return { error: "Private Project not found." };
   if (!canManageFlexibleMilestones(actor, project)) return { error: "You are not allowed to manage this project's milestones." };
   const parsed = parseMilestoneInput(input);
   if (!parsed.data) return { error: "Review the highlighted fields.", fieldErrors: parsed.fieldErrors };
@@ -736,7 +736,7 @@ export async function updateFlexibleMilestone(
   input: FlexibleMilestoneInput,
 ): Promise<FlexibleMilestoneMutationResult> {
   const project = await loadProjectAccessContext(projectId);
-  if (!project) return { error: "Flexible Project not found." };
+  if (!project) return { error: "Private Project not found." };
   if (!canManageFlexibleMilestones(actor, project)) return { error: "You are not allowed to manage this project's milestones." };
   const parsed = parseMilestoneInput(input);
   if (!parsed.data) return { error: "Review the highlighted fields.", fieldErrors: parsed.fieldErrors };
@@ -760,7 +760,7 @@ export async function createFlexibleMilestoneNote(
   input: FlexibleMilestoneNoteInput,
 ): Promise<FlexibleMilestoneNoteMutationResult> {
   const project = await loadProjectAccessContext(projectId);
-  if (!project) return { error: "Flexible Project not found." };
+  if (!project) return { error: "Private Project not found." };
   if (!canManageFlexibleMilestones(actor, project)) {
     return { error: "You are not allowed to add notes to this milestone." };
   }
@@ -800,7 +800,7 @@ export async function deleteFlexibleMilestoneNote(
   noteId: string,
 ): Promise<FlexibleMilestoneNoteMutationResult> {
   const project = await loadProjectAccessContext(projectId);
-  if (!project) return { error: "Flexible Project not found." };
+  if (!project) return { error: "Private Project not found." };
   if (!canManageFlexibleMilestones(actor, project)) {
     return { error: "You are not allowed to delete notes from this milestone." };
   }
@@ -829,7 +829,7 @@ export async function setFlexibleMilestoneCompleted(
   completed: boolean,
 ): Promise<FlexibleMilestoneMutationResult> {
   const project = await loadProjectAccessContext(projectId);
-  if (!project) return { error: "Flexible Project not found." };
+  if (!project) return { error: "Private Project not found." };
   if (!canManageFlexibleMilestones(actor, project)) return { error: "You are not allowed to manage this project's milestones." };
   return orderingTransaction(async (tx) => {
     await lockFlexibleProject(tx, projectId);
@@ -854,7 +854,7 @@ export async function moveFlexibleMilestone(
   direction: "up" | "down",
 ): Promise<FlexibleMilestoneMutationResult> {
   const project = await loadProjectAccessContext(projectId);
-  if (!project) return { error: "Flexible Project not found." };
+  if (!project) return { error: "Private Project not found." };
   if (!canManageFlexibleMilestones(actor, project)) return { error: "You are not allowed to manage this project's milestones." };
   return orderingTransaction(async (tx) => {
     await lockFlexibleProject(tx, projectId);
@@ -879,7 +879,7 @@ export async function duplicateFlexibleMilestone(
   milestoneId: string,
 ): Promise<FlexibleMilestoneMutationResult> {
   const project = await loadProjectAccessContext(projectId);
-  if (!project) return { error: "Flexible Project not found." };
+  if (!project) return { error: "Private Project not found." };
   if (!canManageFlexibleMilestones(actor, project)) return { error: "You are not allowed to manage this project's milestones." };
   return orderingTransaction(async (tx) => {
     await lockFlexibleProject(tx, projectId);
@@ -915,7 +915,7 @@ export async function deleteFlexibleMilestone(
   milestoneId: string,
 ): Promise<FlexibleMilestoneMutationResult> {
   const project = await loadProjectAccessContext(projectId);
-  if (!project) return { error: "Flexible Project not found." };
+  if (!project) return { error: "Private Project not found." };
   if (!canManageFlexibleMilestones(actor, project)) return { error: "You are not allowed to manage this project's milestones." };
   return orderingTransaction(async (tx) => {
     await lockFlexibleProject(tx, projectId);
