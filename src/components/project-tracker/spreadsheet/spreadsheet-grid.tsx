@@ -398,7 +398,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, {
               style={{
                 left, top, width, height,
                 zIndex: frozenRow && frozenColumn ? 24 : frozenRow || frozenColumn ? 20 : editing ? 25 : 1,
-                color: style.textColor,
+                color: edge.selected ? "#202124" : style.textColor,
                 backgroundColor: highlighted ? (key === activeHighlight ? "#ffd97a" : "#fff3bd") : edge.selected ? "#eaf5ed" : style.backgroundColor,
                 fontFamily: style.fontFamily,
                 fontSize: style.fontSize,

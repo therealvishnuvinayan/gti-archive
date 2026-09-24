@@ -7,6 +7,8 @@ import {
   ChevronDown,
   CircleAlert,
   Clock3,
+  CloudAlert,
+  CloudCheck,
   Columns3,
   Download,
   Eye,
@@ -1269,8 +1271,19 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
           <div className="flex flex-wrap items-center gap-2">
             <Button type="button" variant="secondary" size="sm" onClick={() => setHistoryOpen(true)}><History className="size-4" /> History</Button>
             {workspace.canEdit ? <Button type="button" variant="secondary" size="sm" disabled={savingCount > 0} onClick={() => void openTrash()}><Trash2 className="size-4" /> Bin</Button> : null}
-            <Button type="button" variant={workspace.updateCount ? "outline" : "secondary"} size="sm" onClick={() => setUpdatesOpen(true)} className={workspace.updateCount ? "border-[#e7ba7d] bg-[#fff8ec] text-[#a96114]" : ""}>
-              <CircleAlert className="size-4" /> {workspace.updateCount ? `${workspace.updateCount} updates` : "Up to date"}
+            <Button
+              type="button"
+              variant={workspace.updateCount ? "outline" : "ghost"}
+              size="sm"
+              title="Shows whether linked Flux project fields match this tracker"
+              aria-label={workspace.updateCount ? `Review ${workspace.updateCount} linked project updates` : "Linked project data is synced"}
+              onClick={() => setUpdatesOpen(true)}
+              className={workspace.updateCount ? "border-[#e7ba7d] bg-[#fff8ec] text-[#a96114]" : "text-[#47735a]"}
+            >
+              {workspace.updateCount ? <CloudAlert className="size-4" /> : <CloudCheck className="size-4" />}
+              {workspace.updateCount
+                ? `Review ${workspace.updateCount} project ${workspace.updateCount === 1 ? "update" : "updates"}`
+                : "Project data synced"}
             </Button>
             {workspace.canEdit ? <Button type="button" size="sm" onClick={() => setColumnEditor("new")}><Plus className="size-4" /> Add Column</Button> : null}
           </div>
@@ -1304,7 +1317,7 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
           </DropdownMenuContent>
         </DropdownMenu>
         {workspace.canEdit ? <Button type="button" variant="secondary" size="sm" onClick={() => setSetupOpen(true)}><Columns3 className="size-4" /> Layouts</Button> : null}
-        {workspace.canEdit ? <Button type="button" variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()}><Upload className="size-4" /> Import</Button> : null}
+        {workspace.canEdit ? <Button type="button" variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()}><Download className="size-4" /> Import</Button> : null}
         {lastImportFocus ? (
           <Button
             type="button"
@@ -1316,7 +1329,7 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
           </Button>
         ) : null}
         <DropdownMenu>
-          <DropdownMenuTrigger asChild><Button type="button" variant="secondary" size="sm"><Download className="size-4" /> Export</Button></DropdownMenuTrigger>
+          <DropdownMenuTrigger asChild><Button type="button" variant="secondary" size="sm"><Upload className="size-4" /> Export</Button></DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onSelect={() => void exportFile("xlsx")}><FileSpreadsheet className="size-4" /> Excel workbook (.xlsx)</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => void exportFile("csv")}><FileDown className="size-4" /> CSV file</DropdownMenuItem>
@@ -1475,9 +1488,9 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
       ) : null}
 
       {updatesOpen ? (
-        <Modal title="Project updates" description="Flux never replaces a different tracker value without your choice." onClose={() => setUpdatesOpen(false)} widthClass="max-w-[720px]">
+        <Modal title="Linked project sync" description="Review differences between tracker cells and their linked Flux project fields. Nothing changes until you choose." onClose={() => setUpdatesOpen(false)} widthClass="max-w-[720px]">
           <div className="space-y-4">
-            {!conflictUpdates.length && !localOverrides.length ? <div className="rounded-[20px] border border-[#dce9df] bg-[#f4faf5] p-6 text-center"><Check className="mx-auto size-7 text-[#33865a]" /><p className="mt-2 text-[14px] font-[800] text-[#284334]">Everything is current</p><p className="mt-1 text-[12px] text-[#718078]">Linked tracker fields match the Flux projects you can view.</p></div> : null}
+            {!conflictUpdates.length && !localOverrides.length ? <div className="rounded-[20px] border border-[#dce9df] bg-[#f4faf5] p-6 text-center"><CloudCheck className="mx-auto size-7 text-[#33865a]" /><p className="mt-2 text-[14px] font-[800] text-[#284334]">Project data is synced</p><p className="mt-1 text-[12px] text-[#718078]">Linked tracker fields match the Flux projects you can view.</p></div> : null}
             {conflictUpdates.map(({ row, column, cell }) => (
               <div key={`${row.id}:${column.id}`} className="rounded-[20px] border border-[#ecd7b8] bg-[#fffaf2] p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[13px] font-[800] text-[#28322b]">{row.project?.name ?? "Tracker row"}</p><p className="mt-0.5 text-[11px] font-[700] text-[#a5651c]">{column.name} changed</p></div><span className="rounded-full bg-[#fff0d9] px-2.5 py-1 text-[9px] font-[800] uppercase tracking-[0.1em] text-[#a86117]">Review</span></div>
