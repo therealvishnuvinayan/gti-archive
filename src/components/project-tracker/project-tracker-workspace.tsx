@@ -215,6 +215,42 @@ function formatDate(value: string, includeTime = false) {
   }).format(date);
 }
 
+function trackerHistoryDayKey(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Dubai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((item) => item.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+function formatTrackerHistoryDay(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Dubai",
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  }).format(date);
+}
+
+function formatTrackerHistoryTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Dubai",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 function formatCellValue(value: TrackerCellValue, type?: ProjectTrackerColumnType) {
   if (value === null || value === "") return "";
   if (Array.isArray(value)) {
@@ -897,6 +933,20 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
     }));
   }, [updatesOpen, workspace.columns, workspace.rows]);
 
+  const trackerActivities = workspace.activities;
+  const versionHistoryDays = useMemo(() => {
+    const days = new Map<string, typeof trackerActivities>();
+    for (const activity of trackerActivities) {
+      const key = trackerHistoryDayKey(activity.createdAt);
+      days.set(key, [...(days.get(key) ?? []), activity]);
+    }
+    return [...days.entries()].map(([key, activities]) => ({
+      key,
+      label: formatTrackerHistoryDay(activities[0]?.createdAt ?? key),
+      activities,
+    }));
+  }, [trackerActivities]);
+
   const projectSuggestions = useMemo(() => {
     if (!matchesOpen) return [];
     return findProjectSuggestions(workspace);
@@ -1280,7 +1330,7 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" variant="secondary" size="sm" onClick={() => setHistoryOpen(true)}><History className="size-4" /> History</Button>
+            <Button type="button" variant="secondary" size="sm" onClick={() => setHistoryOpen(true)}><History className="size-4" /> Version history</Button>
             {workspace.canEdit ? <Button type="button" variant="secondary" size="sm" disabled={savingCount > 0} onClick={() => void openTrash()}><Trash2 className="size-4" /> Bin</Button> : null}
             <Button
               type="button"
@@ -1515,8 +1565,31 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
       ) : null}
 
       {historyOpen ? (
-        <Modal title="Tracker history" description="Important changes to rows, columns, links, imports, and sync choices." onClose={() => setHistoryOpen(false)}>
-          <div className="space-y-2">{workspace.activities.map((activity) => <div key={activity.id} className="flex gap-3 rounded-[16px] border border-[#e4e9e4] px-4 py-3"><span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-[10px] bg-[#eef5ef] text-[#488064]"><Clock3 className="size-4" /></span><div className="min-w-0"><p className="text-[12px] font-[750] text-[#303b33]">{activity.summary}</p><p className="mt-1 text-[10px] text-[#7d8780]">{activity.actorName} · {formatDate(activity.createdAt, true)}</p></div></div>)}{!workspace.activities.length ? <p className="py-8 text-center text-[12px] text-[#7c867f]">No tracker activity yet.</p> : null}</div>
+        <Modal title="Version history" description="Important tracker changes grouped by day." onClose={() => setHistoryOpen(false)} widthClass="max-w-[720px]">
+          <div className="space-y-6">
+            {versionHistoryDays.map((day) => (
+              <section key={day.key}>
+                <div className="mb-2 flex items-center justify-between gap-3 border-b border-[#e3e8e3] pb-2">
+                  <h3 className="text-[12px] font-[850] text-[#26342b]">{day.label}</h3>
+                  <span className="text-[9px] font-[800] uppercase tracking-[0.1em] text-[#879188]">
+                    {day.activities.length} {day.activities.length === 1 ? "change" : "changes"}
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {day.activities.map((activity) => (
+                    <div key={activity.id} className="flex gap-3 rounded-[16px] border border-[#e4e9e4] px-4 py-3">
+                      <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-[10px] bg-[#eef5ef] text-[#488064]"><Clock3 className="size-4" /></span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[12px] font-[750] text-[#303b33]">{activity.summary}</p>
+                        <p className="mt-1 text-[10px] text-[#7d8780]">{formatTrackerHistoryTime(activity.createdAt)} · {activity.actorName}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ))}
+            {!versionHistoryDays.length ? <p className="py-8 text-center text-[12px] text-[#7c867f]">No version history yet.</p> : null}
+          </div>
         </Modal>
       ) : null}
 

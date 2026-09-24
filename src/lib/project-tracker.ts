@@ -602,7 +602,7 @@ async function loadTracker(trackerId: string) {
         },
         activities: {
           orderBy: { createdAt: "desc" },
-          take: 60,
+          take: 365,
           include: { actor: { select: { name: true, email: true } } },
         },
       },
