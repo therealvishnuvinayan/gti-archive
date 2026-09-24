@@ -1013,6 +1013,9 @@ export function validateTrackerImport(columns: TrackerImportColumn[], rows: Trac
   if (rows.length > MAX_IMPORT_ROWS) {
     throw new Error(`Import up to ${MAX_IMPORT_ROWS.toLocaleString()} rows at a time.`);
   }
+  const normalizedRows = rows
+    .map((row) => row.slice(0, columns.length).map(normalizeValue))
+    .filter((row) => row.some((value) => !valueIsEmpty(value)));
   return {
     columns: columns.map((column, index) => {
       const name = column.name.trim() || `Column ${index + 1}`;
@@ -1023,7 +1026,7 @@ export function validateTrackerImport(columns: TrackerImportColumn[], rows: Trac
         sourceFieldKey: match?.key ?? null,
       };
     }),
-    rows: rows.map((row) => row.slice(0, columns.length).map(normalizeValue)),
+    rows: normalizedRows,
   };
 }
 

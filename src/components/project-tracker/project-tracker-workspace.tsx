@@ -1138,7 +1138,15 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    const firstImportedSpreadsheetRow = workspace.rows.length + 1;
+    const existingDataRowCount = workspace.rows.filter(
+      (row) =>
+        Boolean(row.project) ||
+        Object.values(row.cells).some((cell) => {
+          const value = cell.value;
+          return value !== null && value !== "" && (!Array.isArray(value) || value.length > 0);
+        }),
+    ).length;
+    const firstImportedSpreadsheetRow = existingDataRowCount + 1;
     setImportProgress({ stage: "reading", fileName: file.name });
     await waitForNextPaint();
     try {
@@ -1155,11 +1163,14 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
       }
       if (!("workspace" in result)) throw new Error("The imported tracker could not be reloaded.");
 
-      const baseWorkbook = buildProjectTrackerWorkbook(workspace, workspace.spreadsheetState);
+      const baseWorkbook = buildProjectTrackerWorkbook(
+        result.workspace,
+        result.workspace.spreadsheetState,
+      );
       const mergedWorkbook = mergeImportedWorkbook(
         baseWorkbook,
         importedWorkbook,
-        workspace.rows.length,
+        existingDataRowCount,
         result.workspace.columns.map((column) => column.name),
       );
       const workbookSave = await saveProjectTrackerWorkbookAction({ workbook: mergedWorkbook });
