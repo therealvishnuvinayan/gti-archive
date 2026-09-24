@@ -547,7 +547,31 @@ async function main() {
       executorIds: [],
     },
   );
-  assertValidationError(noExecutors, "executorIds");
+  assert(
+    "projectId" in noExecutors,
+    "A self-managed project must be creatable without executors.",
+  );
+  if ("projectId" in noExecutors) {
+    const selfManagedProject = await prisma.project.findUniqueOrThrow({
+      where: { id: noExecutors.projectId },
+      select: {
+        executors: { select: { userId: true } },
+        collaborators: { select: { userId: true } },
+        workflowStages: { select: { stageKey: true, status: true } },
+      },
+    });
+    assert(
+      selfManagedProject.executors.length === 0 &&
+        selfManagedProject.collaborators.length === 0,
+      "A self-managed project must not fabricate executor or collaborator membership.",
+    );
+    assert(
+      selfManagedProject.workflowStages.find(
+        (stage) => stage.stageKey === ProjectWorkflowStageKey.PROJECT_INQUIRY,
+      )?.status === ProjectWorkflowStageStatus.AVAILABLE,
+      "A self-managed project must still begin at Stage 1.",
+    );
+  }
 
   const superAdminCoOwner = await createProjectV2(
     { id: ids.creator },
@@ -561,8 +585,8 @@ async function main() {
   assertValidationError(superAdminCoOwner, "coOwnerIds");
 
   assert(
-    (await prisma.project.count()) === projectCountBeforeValidation,
-    "Validation failures must not create partial projects.",
+    (await prisma.project.count()) === projectCountBeforeValidation + 1,
+    "Validation failures must not create partial projects beyond the valid self-managed project.",
   );
 
   await prisma.$executeRawUnsafe(`
