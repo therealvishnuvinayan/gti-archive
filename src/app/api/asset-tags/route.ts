@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
+import { canUploadArchiveFiles } from "@/lib/archives";
 import { getActiveAssetTagOptions } from "@/lib/asset-tags";
 import { createDevTimer, timeDevAsync } from "@/lib/dev-timing";
-import { canUseArchives, hasPermission } from "@/lib/permissions/resolver";
+import { hasPermission } from "@/lib/permissions/resolver";
 
 export async function GET() {
   const timer = createDevTimer("[library:asset-tags]");
@@ -18,7 +19,7 @@ export async function GET() {
   const canUseAssetTags =
     (hasPermission(user, "library.view") &&
       hasPermission(user, "library.uploadAsset")) ||
-    (canUseArchives(user) && hasPermission(user, "archive.uploadFile")) ||
+    canUploadArchiveFiles(user) ||
     hasPermission(user, "settings.manageMasterData");
 
   if (!canUseAssetTags) {

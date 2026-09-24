@@ -804,7 +804,7 @@ function EditUserModal({
                 {
                   level: "FULL" as const,
                   title: "Full Archive Scope",
-                  description: "Add all manual archive assets permitted by category rules.",
+                  description: "View and upload manual archive assets permitted by category rules.",
                 },
                 {
                   level: "PARTIAL" as const,

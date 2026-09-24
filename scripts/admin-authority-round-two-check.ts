@@ -83,7 +83,8 @@ assert.equal(isStandardUserRole(UserRole.USER), true);
 assert.deepEqual(defaultRolePermissions.ADMIN, allPermissionKeys);
 assert.deepEqual(defaultRolePermissions.SUPER_ADMIN, allPermissionKeys);
 assert.equal(defaultRolePermissions.ADMIN.length, allPermissionKeys.length);
-assert.equal(defaultRolePermissions.USER.length, 31);
+assert.equal(defaultRolePermissions.USER.length, 32);
+assert.equal(defaultRolePermissions.USER.includes("archive.uploadFile"), true);
 assert.deepEqual(editablePermissionRoleValues, ["ADMIN", "USER"]);
 
 const adminEffectivePermissions = resolveEffectivePermissionSet({

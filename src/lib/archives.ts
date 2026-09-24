@@ -384,7 +384,7 @@ type ArchiveCategoryDisplay = {
   allowedUsers?: Array<{ userId: string }>;
 } | null;
 
-function canUploadArchiveFiles(user: ArchiveAccessUser) {
+export function canUploadArchiveFiles(user: ArchiveAccessUser) {
   return (
     getArchiveAccessLevel(user) === "FULL" &&
     canUseArchives(user) &&

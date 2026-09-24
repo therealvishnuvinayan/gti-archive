@@ -1,7 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronUp, Download, Pencil, X } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  Download,
+  FolderKanban,
+  Pencil,
+  X,
+} from "lucide-react";
 
 import {
   ArchiveCategoryIconGlyph,
@@ -449,6 +456,9 @@ export function ArchiveCategoryWorkspace({
           <MotionStaggerGroup className="mt-4 space-y-3" stagger={0.035}>
             {visibleItems.map((item) => {
               const isExpanded = expandedArchiveItemIds.has(item.id);
+              const hasProject = Boolean(
+                item.projectId || item.projectName !== "Manual Archive",
+              );
 
               return (
                 <MotionItem key={item.id} className="rounded-[20px]">
@@ -482,6 +492,18 @@ export function ArchiveCategoryWorkspace({
                           <p className="mt-1 text-[12px] text-[#667168]">
                             Original: {item.originalFileName}
                           </p>
+                          {hasProject ? (
+                            <div
+                              className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full border border-[#d8e9dc] bg-[#f2f8f3] px-2.5 py-1 text-[11px] text-[#526057]"
+                              title={`Project: ${item.projectName}`}
+                            >
+                              <FolderKanban className="size-3.5 shrink-0 text-brand" />
+                              <span className="shrink-0 font-[600]">Project:</span>
+                              <span className="truncate font-[800] text-[#246d49]">
+                                {item.projectName}
+                              </span>
+                            </div>
+                          ) : null}
                           <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2 text-[11px] text-[#6c756e]">
                             <span className="max-w-full rounded-full bg-[#edf2ff] px-2 py-0.5 font-[700] uppercase tracking-[0.08em] text-[#4760c7]">
                               {item.recordTypeLabel}
@@ -585,17 +607,7 @@ export function ArchiveCategoryWorkspace({
                     </div>
                     </div>
 
-                    <div className="grid gap-4 border-t border-[#edf2ec] pt-4 text-[13px] sm:grid-cols-2 xl:grid-cols-[minmax(180px,1.2fr)_minmax(220px,1.6fr)_minmax(150px,1fr)_minmax(120px,0.8fr)]">
-                      <div className="min-w-0 space-y-1">
-                        <p className="text-[#687269]">Project</p>
-                        <p className="truncate font-[700] text-[#111712]" title={item.projectName}>
-                          {item.projectName}
-                        </p>
-                        <p className="truncate text-[#687269]" title={item.projectCategory}>
-                          {item.projectCategory}
-                        </p>
-                      </div>
-
+                    <div className="grid gap-4 border-t border-[#edf2ec] pt-4 text-[13px] sm:grid-cols-2 xl:grid-cols-[minmax(220px,1.6fr)_minmax(150px,1fr)_minmax(120px,0.8fr)]">
                       <div className="min-w-0 space-y-1">
                         <p className="text-[#687269]">Artwork metadata</p>
                         {item.artworkMetadata ? (

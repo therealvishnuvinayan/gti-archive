@@ -836,6 +836,7 @@ const defaultUserWorkflowPermissions = [
   "file.uploadSubmission",
   "library.view",
   "library.filter",
+  "archive.uploadFile",
   "completion.viewChecklist",
   "completion.uploadInvoice",
   "calendar.view",
