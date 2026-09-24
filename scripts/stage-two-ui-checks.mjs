@@ -68,10 +68,11 @@ assert(
   "Stage 2 private-folder cards must expose only the current participant's folder and classified placeholders.",
 );
 assert(
-  workspace.includes('const stageThreeHref = `/projects/${data.project.id}/stages/3`') &&
-    workspace.includes("router.push(stageThreeHref)") &&
+  workspace.includes('const nextStageHref = `/projects/${data.project.id}/stages/${data.nextStage}`') &&
+    workspace.includes("router.push(nextStageHref)") &&
+    workspace.includes("result.nextStage") &&
     !workspace.includes('router.push(`/projects/${data.project.id}`)'),
-  "Completing Stage 2 must open Stage 3 directly instead of the project overview.",
+  "Completing Stage 2 must open the next applicable stage instead of the project overview.",
 );
 assert(workspace.includes("createProjectResearchFolderAction") && actions.includes("createProjectResearchFolder"), "New Folder must call the persisted server action.");
 assert(
@@ -92,10 +93,11 @@ assert(
 assert(workspace.includes("completeProjectResearchStageAction") && actions.includes("completeProjectResearchStage"), "Next Stage must call the real completion action.");
 assert(
   workspace.includes('data.workflowStatus === "COMPLETED"') &&
-    workspace.includes("router.push(stageThreeHref)") &&
+    workspace.includes("router.push(nextStageHref)") &&
     workspace.includes("if (!result.alreadyCompleted)") &&
     service.includes("const alreadyCompleted =") &&
-    service.includes("{ success: true, nextStage: 3, alreadyCompleted }"),
+    service.includes("nextStage: skippedConceptStages ? 5 : 3") &&
+    service.includes("reason: \"SELF_MANAGED_PROJECT\""),
   "Next Stage must navigate directly from completed Stage 2 and suppress repeated completion notifications for stale pages.",
 );
 assert(!workspace.includes("predefinedFolders") && !workspace.includes("setCustomFolders"), "Folder cards must not use mock/local folder state.");

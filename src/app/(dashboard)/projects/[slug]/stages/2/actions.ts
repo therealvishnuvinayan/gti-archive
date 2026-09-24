@@ -55,6 +55,9 @@ export async function completeProjectResearchStageAction(projectId: string) {
     if (!("error" in result)) {
       revalidatePath(`/projects/${projectId}`);
       revalidatePath(`/projects/${projectId}/stages/2`);
+      revalidatePath(`/projects/${projectId}/stages/3`);
+      revalidatePath(`/projects/${projectId}/stages/4`);
+      revalidatePath(`/projects/${projectId}/stages/5`);
       revalidateTag(PROJECTS_CACHE_TAG, "max");
     }
     return result;

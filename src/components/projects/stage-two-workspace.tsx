@@ -393,10 +393,10 @@ export function StageTwoWorkspace({
   }
 
   function completeStage() {
-    const stageThreeHref = `/projects/${data.project.id}/stages/3`;
+    const nextStageHref = `/projects/${data.project.id}/stages/${data.nextStage}`;
 
     if (data.workflowStatus === "COMPLETED") {
-      router.push(stageThreeHref);
+      router.push(nextStageHref);
       return;
     }
 
@@ -407,9 +407,14 @@ export function StageTwoWorkspace({
         return;
       }
       if (!result.alreadyCompleted) {
-        showSuccessToast("Stage 2 completed.", "Concept Creation is now available.");
+        showSuccessToast(
+          "Stage 2 completed.",
+          result.skippedConceptStages
+            ? "Self-managed project: Stages 3 and 4 were skipped and Stage 5 is now available."
+            : "Concept Creation is now available.",
+        );
       }
-      router.push(stageThreeHref);
+      router.push(`/projects/${data.project.id}/stages/${result.nextStage}`);
       router.refresh();
     });
   }
