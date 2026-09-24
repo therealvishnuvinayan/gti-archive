@@ -9,10 +9,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
-  FolderKanban,
   LayoutGrid,
   List,
-  PanelsTopLeft,
   Search,
   SlidersHorizontal,
 } from "lucide-react";
@@ -22,6 +20,8 @@ import {
   MotionSection,
   MotionStaggerGroup,
 } from "@/components/motion/motion-primitives";
+import { ProjectPageHeader } from "@/components/projects/project-page-header";
+import { ProjectTypeSwitcher } from "@/components/projects/project-type-switcher";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -448,52 +448,38 @@ export function UserProjectsBrowser({
   return (
     <div className="space-y-6">
       {showProjectTypeSwitcher ? (
-        <MotionSection>
-          <div role="tablist" aria-label="Project type" className="inline-flex max-w-full gap-1 overflow-x-auto rounded-[15px] border border-[#d5ded6] bg-white p-1 shadow-[0_8px_22px_rgba(18,34,25,0.035)]">
-            <Link href="/projects" role="tab" aria-selected="true" className="flex h-10 shrink-0 items-center gap-2 rounded-[11px] bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-4 text-[13px] font-[700] text-white shadow-[0_9px_20px_rgba(31,112,70,0.22)] sm:px-5">
-              <FolderKanban className="size-4" /> Collaborative Projects
-            </Link>
-            <Link href="/projects?view=flexible" role="tab" aria-selected="false" className="flex h-10 shrink-0 items-center gap-2 rounded-[11px] px-4 text-[13px] font-[700] text-[#4a554d] transition hover:bg-[#f0f4f0] sm:px-5">
-              <PanelsTopLeft className="size-4" /> Private Projects
-            </Link>
-          </div>
-        </MotionSection>
+        <ProjectTypeSwitcher activeView="collaborative" />
       ) : null}
       <MotionSection>
         <header className="space-y-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <h1 className="text-[25px] font-[750] leading-none tracking-[-0.045em] text-[#0f1411] sm:text-[29px]">
-                My Projects
-              </h1>
-              <p className="mt-2 text-[14px] text-[#737b74]">
-                Your workspace for assigned work and deliverables.
-              </p>
-            </div>
-
-            <div
-              role="group"
-              aria-label="Project layout"
-              className="inline-flex w-fit rounded-[14px] border border-[#d6ded7] bg-white p-1 shadow-[0_8px_22px_rgba(18,34,25,0.035)]"
-            >
-              {(["grid", "list"] as const).map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  aria-pressed={view === option}
-                  onClick={() => changeView(option)}
-                  className={`flex h-10 items-center gap-2 rounded-[10px] px-4 text-[13px] font-[700] capitalize transition ${
-                    view === option
-                      ? "bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] text-white shadow-[0_8px_18px_rgba(31,112,70,0.2)]"
-                      : "text-[#445047] hover:bg-[#f1f5f1]"
-                  }`}
-                >
-                  {option === "grid" ? <LayoutGrid className="size-4" /> : <List className="size-4" />}
-                  {option}
-                </button>
-              ))}
-            </div>
-          </div>
+          <ProjectPageHeader
+            title="My Projects"
+            description="Your workspace for assigned work and deliverables."
+            actions={
+              <div
+                role="group"
+                aria-label="Project layout"
+                className="inline-flex w-fit rounded-[14px] border border-[#d6ded7] bg-white p-1 shadow-[0_8px_22px_rgba(18,34,25,0.035)]"
+              >
+                {(["grid", "list"] as const).map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    aria-pressed={view === option}
+                    onClick={() => changeView(option)}
+                    className={`flex h-10 items-center gap-2 rounded-[10px] px-4 text-[13px] font-[700] capitalize transition ${
+                      view === option
+                        ? "bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] text-white shadow-[0_8px_18px_rgba(31,112,70,0.2)]"
+                        : "text-[#445047] hover:bg-[#f1f5f1]"
+                    }`}
+                  >
+                    {option === "grid" ? <LayoutGrid className="size-4" /> : <List className="size-4" />}
+                    {option}
+                  </button>
+                ))}
+              </div>
+            }
+          />
 
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div className="no-scrollbar flex max-w-full overflow-x-auto rounded-[14px] border border-[#d5ded6] bg-white p-1 shadow-[0_8px_22px_rgba(18,34,25,0.035)]">

@@ -6,8 +6,6 @@ import { type FormEvent, useRef, useTransition } from "react";
 import {
   ChevronLeft,
   ChevronRight,
-  FolderKanban,
-  PanelsTopLeft,
   Search,
   SlidersHorizontal,
   X,
@@ -18,7 +16,9 @@ import {
   MotionSection,
   MotionStaggerGroup,
 } from "@/components/motion/motion-primitives";
+import { ProjectPageHeader } from "@/components/projects/project-page-header";
 import { ProjectCard, type ProjectCardItem } from "@/components/projects/project-card";
+import { ProjectTypeSwitcher } from "@/components/projects/project-type-switcher";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -156,19 +156,14 @@ export function ProjectsBrowser({
   const currentSearch = searchParams.toString();
   const currentProjectsHref = currentSearch ? `${pathname}?${currentSearch}` : pathname;
   const activeProjectView = searchParams.get("view") === "flexible" ? "flexible" : "artwork";
-
-  function switchProjectView(view: "artwork" | "flexible") {
-    const params = new URLSearchParams(searchParams.toString());
-
-    if (view === "flexible") {
-      params.set("view", "flexible");
-    } else {
-      params.delete("view");
-    }
-
-    const nextHref = params.size > 0 ? `${pathname}?${params}` : pathname;
-    startTransition(() => router.replace(nextHref, { scroll: false }));
-  }
+  const collaborativeParams = new URLSearchParams(currentSearch);
+  collaborativeParams.delete("view");
+  const collaborativeHref = collaborativeParams.size > 0
+    ? `${pathname}?${collaborativeParams}`
+    : pathname;
+  const privateParams = new URLSearchParams(currentSearch);
+  privateParams.set("view", "flexible");
+  const privateHref = `${pathname}?${privateParams}`;
 
   function navigate(next: {
     status?: ProjectListStatus;
@@ -228,73 +223,39 @@ export function ProjectsBrowser({
   return (
     <div className="space-y-5">
       {showProjectTypeSwitcher ? (
-        <MotionSection>
-          <div
-            role="tablist"
-            aria-label="Project type"
-            className="inline-flex max-w-full gap-1 overflow-x-auto rounded-[15px] border border-[#d5ded6] bg-white p-1 shadow-[0_8px_22px_rgba(18,34,25,0.035)]"
-          >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeProjectView === "artwork"}
-            onClick={() => switchProjectView("artwork")}
-            className={`flex h-10 shrink-0 items-center gap-2 rounded-[11px] px-4 text-[13px] font-[700] transition sm:px-5 ${
-              activeProjectView === "artwork"
-                ? "bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] text-white shadow-[0_9px_20px_rgba(31,112,70,0.22)]"
-                : "text-[#4a554d] hover:bg-[#f0f4f0]"
-            }`}
-          >
-            <FolderKanban className="size-4" /> Collaborative Projects
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeProjectView === "flexible"}
-            onClick={() => switchProjectView("flexible")}
-            className={`flex h-10 shrink-0 items-center gap-2 rounded-[11px] px-4 text-[13px] font-[700] transition sm:px-5 ${
-              activeProjectView === "flexible"
-                ? "bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] text-white shadow-[0_9px_20px_rgba(31,112,70,0.22)]"
-                : "text-[#4a554d] hover:bg-[#f0f4f0]"
-            }`}
-          >
-            <PanelsTopLeft className="size-4" /> Private Projects
-          </button>
-          </div>
-        </MotionSection>
+        <ProjectTypeSwitcher
+          activeView={activeProjectView === "flexible" ? "private" : "collaborative"}
+          collaborativeHref={collaborativeHref}
+          privateHref={privateHref}
+        />
       ) : null}
 
       {activeProjectView === "flexible" ? (
         <ProjectsGridSkeleton />
       ) : (
         <div className="space-y-5">
-      <MotionSection>
-        <header className="space-y-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <h1 className="text-[25px] font-[700] leading-none tracking-[-0.045em] text-[#0f1411] sm:text-[29px]">
-                Projects
-              </h1>
-              <p className="mt-2 text-[14px] text-[#737b74]">
-                {projectCount} {projectCount === 1 ? "project" : "projects"}
-              </p>
-            </div>
-
-            <form onSubmit={handleSearchSubmit} className="w-full lg:w-[520px]">
-              <label className="relative block">
-                <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#8b958e]" />
-                <Input
-                  key={query}
-                  ref={searchInputRef}
-                  type="search"
-                  defaultValue={query}
-                  placeholder="Search projects, owners, co-owners, executors..."
-                  className="h-[50px] rounded-[16px] border-[#dce3dc] bg-white pl-11 pr-4 text-[14px] shadow-[0_9px_24px_rgba(18,34,25,0.035)]"
-                />
-                <button type="submit" className="sr-only">Search</button>
-              </label>
-            </form>
-          </div>
+          <MotionSection>
+            <header className="space-y-5">
+              <ProjectPageHeader
+                title="Projects"
+                description={`${projectCount} ${projectCount === 1 ? "project" : "projects"}`}
+                actions={
+                  <form onSubmit={handleSearchSubmit} className="w-full lg:w-[520px]">
+                    <label className="relative block">
+                      <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#8b958e]" />
+                      <Input
+                        key={query}
+                        ref={searchInputRef}
+                        type="search"
+                        defaultValue={query}
+                        placeholder="Search projects, owners, co-owners, executors..."
+                        className="h-[50px] rounded-[16px] border-[#dce3dc] bg-white pl-11 pr-4 text-[14px] shadow-[0_9px_24px_rgba(18,34,25,0.035)]"
+                      />
+                      <button type="submit" className="sr-only">Search</button>
+                    </label>
+                  </form>
+                }
+              />
 
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div className="no-scrollbar flex max-w-full overflow-x-auto rounded-[15px] border border-[#d5ded6] bg-white p-1 shadow-[0_8px_22px_rgba(18,34,25,0.035)]">

@@ -6,6 +6,7 @@ import { ArrowRight, CalendarDays, Milestone, PanelsTopLeft, Plus } from "lucide
 
 import { MotionItem, MotionSection, MotionStaggerGroup } from "@/components/motion/motion-primitives";
 import { FlexibleProjectDialog } from "@/components/projects/flexible-project-dialog";
+import { ProjectPageHeader } from "@/components/projects/project-page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -105,17 +106,15 @@ export function FlexibleProjectsBrowser({
   return (
     <div className="space-y-5">
       <MotionSection>
-        <div className="flex flex-col gap-4 rounded-[22px] border border-[#dfe6df] bg-white px-5 py-5 shadow-[0_12px_34px_rgba(23,39,28,0.04)] sm:px-6 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h2 className="text-[25px] font-[750] tracking-[-0.035em] text-[#101611] sm:text-[29px]">Private Projects</h2>
-            <p className="mt-1.5 max-w-2xl text-[13px] leading-5 text-[#6f7871]">Custom work organized with user-defined milestones rather than the fixed artwork stages.</p>
-          </div>
-          {canCreateProject ? (
+        <ProjectPageHeader
+          title="Private Projects"
+          description="Custom work organized with user-defined milestones rather than the fixed artwork stages."
+          actions={canCreateProject ? (
             <Button type="button" onClick={() => setCreateOpen(true)} className="h-12 self-start rounded-full px-6 text-[14px] lg:self-auto">
               <Plus className="size-4" /> New Private Project
             </Button>
           ) : null}
-        </div>
+        />
       </MotionSection>
 
       {projects.length ? (

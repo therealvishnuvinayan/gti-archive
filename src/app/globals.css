@@ -80,7 +80,7 @@ body.dashboard-document-scroll-lock {
 
 button,
 input {
-  font: inherit;
+  font-family: inherit;
 }
 
 .rich-text-prose p,
