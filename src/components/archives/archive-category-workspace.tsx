@@ -17,6 +17,7 @@ import {
   getArchiveCategoryIconImageSrc,
 } from "@/components/archives/archive-data";
 import { ArchiveItemDialog } from "@/components/archives/archive-item-dialog";
+import { ArchiveShareButton } from "@/components/archives/archive-share-button";
 import { ArchiveUploadButton } from "@/components/dashboard/upload-assets-button";
 import {
   MotionItem,
@@ -580,6 +581,10 @@ export function ArchiveCategoryWorkspace({
                           Download
                         </a>
                       </Button>
+                      <ArchiveShareButton
+                        archivedFileId={item.id}
+                        fileName={item.finalArchiveFileName}
+                      />
                       <Button
                         type="button"
                         variant="secondary"
