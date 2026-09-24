@@ -12,11 +12,37 @@ import {
   cancelStageFiveChecklistRequest,
   completeStageFive,
   configureStageFiveChecklistRequestReminder,
+  deleteStageFiveSourceFile,
   requestStageFiveChecklistInformation,
   resendStageFiveExternalChecklistRequest,
   saveStageFiveChecklist,
   type StageFiveChecklistValue,
 } from "@/lib/stage-five";
+
+export async function deleteStageFiveSourceFileAction(input: {
+  projectId: string;
+  handoffId: string;
+}) {
+  const user = await requireUser();
+  try {
+    const result = await deleteStageFiveSourceFile(user, input);
+    if ("success" in result) {
+      revalidatePath(`/projects/${input.projectId}`);
+      revalidatePath(`/projects/${input.projectId}/stages/5`);
+      publishProjectActivityUpdatedAfterResponse({
+        projectId: input.projectId,
+        stageId: null,
+        eventType: "timeline_updated",
+        changedEntityId: input.handoffId,
+        actorId: user.id,
+      });
+    }
+    return result;
+  } catch (error) {
+    console.error("[stage-five] source file deletion failed", error);
+    return { error: "Unable to delete the Stage 5 file right now." } as const;
+  }
+}
 
 export async function completeStageFiveAction(input: { projectId: string }) {
   const user = await requireUser();

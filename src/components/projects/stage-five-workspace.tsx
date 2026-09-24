@@ -38,6 +38,7 @@ import {
   Upload,
   X,
   Download,
+  Trash2,
 } from "lucide-react";
 
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
@@ -48,6 +49,7 @@ import {
 import {
   completeStageFiveAction,
   configureStageFiveChecklistRequestReminderAction,
+  deleteStageFiveSourceFileAction,
   requestStageFiveChecklistInformationAction,
   resendStageFiveExternalChecklistRequestAction,
   saveStageFiveChecklistAction,
@@ -72,6 +74,7 @@ import type { ProjectStageShellRecord } from "@/lib/projects";
 import type {
   StageFiveChecklistValue,
   StageFiveChecklistItemRecord,
+  StageFiveFileRecord,
   StageFiveParticipantRecord,
   StageFiveWorkspaceData,
 } from "@/lib/stage-five";
@@ -1111,6 +1114,9 @@ export function StageFiveWorkspace({
   const [sourceUploadProgress, setSourceUploadProgress] = useState(0);
   const sourceFileInputRef = useRef<HTMLInputElement>(null);
   const [requestField, setRequestField] = useState<ChecklistDefinition | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<StageFiveFileRecord | null>(null);
+  const [deleteError, setDeleteError] = useState("");
+  const [isDeleting, startDeleting] = useTransition();
   const activeFile = pageData.files.find((file) => file.handoffId === selectedHandoffId);
   const activeDraft = drafts[selectedHandoffId];
   const unsavedHandoffIds = useMemo(() => {
@@ -1290,6 +1296,40 @@ export function StageFiveWorkspace({
     params.set("file", handoffId);
     params.set("mode", mode);
     router.replace(`/projects/${project.id}/stages/5?${params.toString()}`, { scroll: false });
+  }
+
+  function deleteSourceFile() {
+    if (!deleteTarget || isDeleting) return;
+    const target = deleteTarget;
+    const nextFile = pageData.files.find(
+      (file) => file.handoffId !== target.handoffId,
+    );
+    setDeleteError("");
+    startDeleting(async () => {
+      const result = await deleteStageFiveSourceFileAction({
+        projectId: project.id,
+        handoffId: target.handoffId,
+      });
+      if (!("success" in result)) {
+        setDeleteError(result.error ?? "Unable to delete the Stage 5 file.");
+        return;
+      }
+
+      if (target.handoffId === selectedHandoffId) {
+        clearStageFiveSessionDraft(stageFiveSessionDraftKey);
+      }
+      setDeleteTarget(null);
+      showSuccessToast(
+        "Stage 5 file deleted.",
+        result.sourceRemovedOnly
+          ? "The Stage 5 checklist was removed; the approved source remains in its original stage."
+          : `${result.fileName} was removed.`,
+      );
+      const params = new URLSearchParams({ mode });
+      if (nextFile) params.set("file", nextFile.handoffId);
+      router.replace(`/projects/${project.id}/stages/5?${params.toString()}`);
+      router.refresh();
+    });
   }
 
   function completeStage() {
@@ -1955,6 +1995,21 @@ export function StageFiveWorkspace({
                         Carried forward from Stage 3
                       </p>
                     ) : null}
+                    {pageData.canEdit && !pageData.stageCompleted ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="mt-2 h-8 border-[#efc8c4] px-3 text-[11px] font-[700] text-[#aa4740] hover:bg-[#fff3f2] hover:text-[#923b35]"
+                        disabled={isDeleting}
+                        onClick={() => {
+                          setDeleteError("");
+                          setDeleteTarget(activeFile);
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Delete File
+                      </Button>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -2188,6 +2243,26 @@ export function StageFiveWorkspace({
           }}
         />
       ) : null}
+      <ConfirmationDialog
+        isOpen={Boolean(deleteTarget)}
+        title="Delete Stage 5 file?"
+        description={
+          deleteTarget?.sourceOrigin === "DIRECT_STAGE_FIVE"
+            ? "This permanently removes the uploaded final file, its checklist, and any related information requests."
+            : "This removes the file and its checklist from Stage 5, including related information requests. The approved source file remains available in its original stage."
+        }
+        confirmLabel="Delete File"
+        cancelLabel="Cancel"
+        tone="destructive"
+        pending={isDeleting}
+        error={deleteError || undefined}
+        onConfirm={deleteSourceFile}
+        onClose={() => {
+          if (isDeleting) return;
+          setDeleteTarget(null);
+          setDeleteError("");
+        }}
+      />
       <ConfirmationDialog
         isOpen={showCompletionDialog}
         title="Complete Stage 5"

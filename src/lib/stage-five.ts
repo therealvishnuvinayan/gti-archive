@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  AttachmentAssetType,
   AttachmentStatus,
   Prisma,
   ProjectFileChecklistField,
@@ -45,6 +46,7 @@ import {
 import {
   createPresignedDownloadUrl,
   createPresignedPreviewUrl,
+  deleteObjectIfNeeded,
 } from "@/lib/storage/s3";
 import { getStageFiveCompletionState } from "@/lib/stage-six";
 import { STAGE_FIVE_SOURCE_WORKFLOW_STAGE_KEYS } from "@/lib/stage-five-lineage";
@@ -486,6 +488,188 @@ export async function getStageFiveWorkspaceData(
     stageCompleted: completionState?.completed ?? false,
     pendingRequestCount: completionState?.pendingRequestCount ?? 0,
   };
+}
+
+export async function deleteStageFiveSourceFile(
+  user: PermissionUser,
+  input: { projectId: string; handoffId: string },
+) {
+  const project = await getAuthorizedProject(
+    user,
+    input.projectId,
+    ProjectWorkflowStageKey.FINAL_LAYOUT,
+  );
+
+  if (!project || !canManageStageFive(user, project)) {
+    return { error: "You do not have permission to delete Stage 5 files." } as const;
+  }
+
+  const result = await withPrismaRetry(() =>
+    prisma.$transaction(
+      async (tx) => {
+        const stageFive = await tx.projectWorkflowStage.findUnique({
+          where: {
+            projectId_stageKey: {
+              projectId: input.projectId,
+              stageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
+            },
+          },
+          select: { status: true },
+        });
+
+        if (stageFive?.status !== ProjectWorkflowStageStatus.AVAILABLE) {
+          return {
+            error: "Stage 5 files can only be deleted while Stage 5 is active.",
+          } as const;
+        }
+
+        const handoff = await tx.projectStageFileHandoff.findFirst({
+          where: {
+            id: input.handoffId,
+            projectId: input.projectId,
+            sourceWorkflowStageKey: {
+              in: [...STAGE_FIVE_SOURCE_WORKFLOW_STAGE_KEYS],
+            },
+            targetWorkflowStageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
+          },
+          select: {
+            id: true,
+            sourceWorkflowStageKey: true,
+            sourceAttachment: {
+              select: {
+                id: true,
+                projectId: true,
+                originalFileName: true,
+                assetType: true,
+                stageId: true,
+                revisionId: true,
+                commentId: true,
+                status: true,
+                bucket: true,
+                storageKey: true,
+              },
+            },
+            checklist: {
+              select: {
+                requests: { select: { id: true } },
+              },
+            },
+            productionUnit: { select: { id: true } },
+          },
+        });
+
+        if (!handoff || handoff.sourceAttachment.status !== AttachmentStatus.READY) {
+          return { error: "The selected Stage 5 file was not found." } as const;
+        }
+
+        if (handoff.productionUnit) {
+          return {
+            error: "This file cannot be deleted because Stage 6 production has started.",
+          } as const;
+        }
+
+        const isDirectStageFiveSource =
+          handoff.sourceWorkflowStageKey === ProjectWorkflowStageKey.FINAL_LAYOUT;
+
+        if (
+          isDirectStageFiveSource &&
+          (handoff.sourceAttachment.projectId !== input.projectId ||
+            handoff.sourceAttachment.assetType !==
+              AttachmentAssetType.GENERAL_PROJECT_ASSET ||
+            handoff.sourceAttachment.stageId ||
+            handoff.sourceAttachment.revisionId ||
+            handoff.sourceAttachment.commentId)
+        ) {
+          return { error: "The direct Stage 5 file has invalid provenance." } as const;
+        }
+
+        const requestIds = handoff.checklist?.requests.map((request) => request.id) ?? [];
+        const affectedNotificationUsers =
+          requestIds.length > 0
+            ? await tx.notification.findMany({
+                where: {
+                  entityType: "CHECKLIST_REQUEST",
+                  entityId: { in: requestIds },
+                },
+                select: { userId: true },
+              })
+            : [];
+
+        if (requestIds.length > 0) {
+          await tx.notification.deleteMany({
+            where: {
+              entityType: "CHECKLIST_REQUEST",
+              entityId: { in: requestIds },
+            },
+          });
+        }
+
+        await tx.projectStageFileHandoff.delete({
+          where: { id: handoff.id },
+        });
+
+        if (isDirectStageFiveSource) {
+          const deleted = await tx.projectAttachment.updateMany({
+            where: {
+              id: handoff.sourceAttachment.id,
+              projectId: input.projectId,
+              status: AttachmentStatus.READY,
+            },
+            data: { status: AttachmentStatus.DELETED },
+          });
+
+          if (deleted.count !== 1) {
+            throw new Error("The direct Stage 5 file changed before it could be deleted.");
+          }
+        }
+
+        return {
+          success: true,
+          fileName: handoff.sourceAttachment.originalFileName,
+          isDirectStageFiveSource,
+          storage:
+            isDirectStageFiveSource
+              ? {
+                  bucket: handoff.sourceAttachment.bucket,
+                  storageKey: handoff.sourceAttachment.storageKey,
+                }
+              : null,
+          affectedNotificationUserIds: [
+            ...new Set(affectedNotificationUsers.map(({ userId }) => userId)),
+          ],
+        } as const;
+      },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        maxWait: 5_000,
+        timeout: 20_000,
+      },
+    ),
+  );
+
+  if (result.success !== true) {
+    return { error: result.error } as const;
+  }
+
+  if (result.storage) {
+    await deleteObjectIfNeeded(
+      result.storage.storageKey,
+      result.storage.bucket,
+    ).catch(() => undefined);
+  }
+
+  if (result.affectedNotificationUserIds.length > 0) {
+    await publishNotificationChanges({
+      recipientUserIds: [...result.affectedNotificationUserIds],
+      reason: "deleted",
+    });
+  }
+
+  return {
+    success: true,
+    fileName: result.fileName,
+    sourceRemovedOnly: !result.isDirectStageFiveSource,
+  } as const;
 }
 
 function validateChecklistValue(
