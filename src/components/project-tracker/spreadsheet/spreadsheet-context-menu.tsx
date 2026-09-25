@@ -79,6 +79,10 @@ export function SpreadsheetContextMenu({
           const value = Number(window.prompt("Row height in pixels", "28"));
           if (Number.isFinite(value)) rows.forEach((row) => controller.resizeRow(row, value));
         }, !canEdit)}
+        {separator}
+        {item("Clear contents", controller.clear, !canEdit)}
+        {item("Clear formatting", controller.clearFormatting, !canEdit)}
+        {item("Clear all", controller.clearAll, !canEdit)}
       </> : target.kind === "column" ? <>
         {item("Insert column left", () => onInsertColumn(target.column, "left"), !canEdit)}
         {item("Insert column right", () => onInsertColumn(target.column, "right"), !canEdit)}
@@ -89,6 +93,10 @@ export function SpreadsheetContextMenu({
           const value = Number(window.prompt("Column width in pixels", "140"));
           if (Number.isFinite(value)) columns.forEach((column) => controller.resizeColumn(column, value));
         }, !canEdit)}
+        {separator}
+        {item("Clear contents", controller.clear, !canEdit)}
+        {item("Clear formatting", controller.clearFormatting, !canEdit)}
+        {item("Clear all", controller.clearAll, !canEdit)}
       </> : <>
         {item("Insert row above", () => onInsertRow(target.row, "above"), !canEdit)}
         {item("Delete row", () => onDeleteRows([target.row]), !canEdit)}
@@ -96,6 +104,8 @@ export function SpreadsheetContextMenu({
         {item("Delete column", () => onDeleteColumns([target.column]), !canEdit)}
         {separator}
         {item("Clear contents", controller.clear, !canEdit)}
+        {item("Clear formatting", controller.clearFormatting, !canEdit)}
+        {item("Clear all", controller.clearAll, !canEdit)}
         {item(controller.selectedCell?.comment ? "Edit note…" : "Add note…", () => {
           const value = window.prompt("Cell note", controller.selectedCell?.comment ?? "");
           if (value !== null) controller.addComment(value);

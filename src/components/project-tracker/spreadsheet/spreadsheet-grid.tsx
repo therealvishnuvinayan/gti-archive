@@ -304,7 +304,10 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, {
     else if (event.key === "End") { event.preventDefault(); controller.select(controller.selection.anchorRow, sheet.columnCount - 1, { extend: event.shiftKey }); }
     else if (event.key === "PageUp") { event.preventDefault(); controller.move(-Math.max(1, Math.floor(viewport.height / 28)), 0, event.shiftKey); }
     else if (event.key === "PageDown") { event.preventDefault(); controller.move(Math.max(1, Math.floor(viewport.height / 28)), 0, event.shiftKey); }
-    else if (event.key === "Delete" || event.key === "Backspace") { event.preventDefault(); if (canEdit) controller.clear(); }
+    else if (event.key === "Delete" || event.key === "Backspace") {
+      event.preventDefault();
+      if (canEdit) controller.clearAll();
+    }
     else if (event.key === "F2" && canEdit) { event.preventDefault(); controller.setEditingCell({ row: controller.selection.anchorRow, column: controller.selection.anchorColumn }); }
     else if (canEdit && !modifier && !event.altKey && event.key.length === 1) {
       event.preventDefault();
