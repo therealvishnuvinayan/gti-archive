@@ -81,9 +81,7 @@ export async function createProjectV2(
     fieldErrors.coOwnerIds = "The project owner cannot also be a co-owner.";
   }
 
-  if (executorIds.length === 0) {
-    fieldErrors.executorIds = "Select at least one project executor.";
-  } else if (hasDuplicates(executorIds)) {
+  if (hasDuplicates(executorIds)) {
     fieldErrors.executorIds = "An executor can only be selected once.";
   }
 
@@ -375,9 +373,7 @@ export async function updateProjectV2(
     fieldErrors.coOwnerIds = "The project owner cannot also be a co-owner.";
   }
 
-  if (executorIds.length === 0) {
-    fieldErrors.executorIds = "Select at least one project executor.";
-  } else if (hasDuplicates(executorIds)) {
+  if (hasDuplicates(executorIds)) {
     fieldErrors.executorIds = "An executor can only be selected once.";
   }
 

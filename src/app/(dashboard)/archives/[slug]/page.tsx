@@ -5,11 +5,11 @@ import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import {
   canAccessArchiveCategoryForUser,
   canAccessArchivesArea,
+  canUploadArchiveFiles,
   listArchivedFilesByCategory,
 } from "@/lib/archives";
 import { getArchiveCategoryBySlug } from "@/lib/archive-categories";
 import { getUserDisplayName, requireUser } from "@/lib/auth";
-import { canUseArchives, hasPermission } from "@/lib/permissions/resolver";
 import { Card } from "@/components/ui/card";
 
 export default async function ArchiveCategoryPage({
@@ -71,7 +71,7 @@ export default async function ArchiveCategoryPage({
   }
 
   const items = await listArchivedFilesByCategory(user, category);
-  const canUploadArchives = canUseArchives(user) && hasPermission(user, "archive.uploadFile");
+  const canUploadArchives = canUploadArchiveFiles(user);
 
   return (
     <DashboardLayout

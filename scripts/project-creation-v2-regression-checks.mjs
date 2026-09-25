@@ -81,6 +81,11 @@ for (const snippet of [
   assertIncludes(creation, snippet, `Creation service guard ${snippet}`);
 }
 
+assert(
+  !creation.includes('fieldErrors.executorIds = "Select at least one project executor."'),
+  "Project creation and editing must allow a self-managed project without executors.",
+);
+
 const projectCreateBlock = creation.slice(
   creation.indexOf("const project = await tx.project.create"),
   creation.indexOf("const ownerRecipientIds"),
@@ -109,6 +114,14 @@ for (const snippet of [
   "fieldErrors",
 ]) {
   assertIncludes(`${action}\n${form}`, snippet, `Create UI submission behavior ${snippet}`);
+}
+
+for (const snippet of [
+  "Manage this project myself",
+  "Empty Stages 3 and 4 can be skipped",
+  "executorIds: selfManaged ? [] : executorIds",
+]) {
+  assertIncludes(form, snippet, `Self-managed project behavior ${snippet}`);
 }
 
 for (const snippet of [

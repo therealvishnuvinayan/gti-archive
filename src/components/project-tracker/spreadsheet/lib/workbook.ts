@@ -14,7 +14,7 @@ import {
   type SpreadsheetWorkbook,
 } from "../types/spreadsheet";
 import { cellKey, forEachCellInRange, normalizeRange, parseCellKey } from "./coordinates";
-import { translateFormula } from "./formulas";
+import { formulaCellValue, translateFormula } from "./formulas";
 
 type LegacyCell = {
   v?: unknown;
@@ -301,6 +301,106 @@ export function buildProjectTrackerWorkbook(
   };
 }
 
+function importedCellHasContent(cell: SpreadsheetCell | undefined) {
+  if (!cell) return false;
+  if (cell.formula) return true;
+  const value = formulaCellValue(cell);
+  return value !== null && value !== undefined && value !== "";
+}
+
+export function normalizeImportedWorkbook(workbook: SpreadsheetWorkbook) {
+  const source = workbook.sheets[0];
+  let firstRow = Number.POSITIVE_INFINITY;
+  let firstColumn = Number.POSITIVE_INFINITY;
+  let lastRow = -1;
+  let lastColumn = -1;
+
+  for (const [key, cell] of Object.entries(source.cells)) {
+    if (!importedCellHasContent(cell)) continue;
+    const coordinate = parseCellKey(key);
+    if (!coordinate) continue;
+    firstRow = Math.min(firstRow, coordinate.row);
+    firstColumn = Math.min(firstColumn, coordinate.column);
+    lastRow = Math.max(lastRow, coordinate.row);
+    lastColumn = Math.max(lastColumn, coordinate.column);
+  }
+
+  if (lastRow < 0 || lastColumn < 0) {
+    throw new Error("This file does not contain any populated cells.");
+  }
+
+  const cells: SpreadsheetSheet["cells"] = {};
+  for (const [key, cell] of Object.entries(source.cells)) {
+    const coordinate = parseCellKey(key);
+    if (
+      !coordinate ||
+      coordinate.row < firstRow ||
+      coordinate.row > lastRow ||
+      coordinate.column < firstColumn ||
+      coordinate.column > lastColumn
+    ) {
+      continue;
+    }
+    cells[cellKey(coordinate.row - firstRow, coordinate.column - firstColumn)] = {
+      ...structuredClone(cell),
+      ...(cell.formula
+        ? { formula: translateFormula(cell.formula, -firstRow, -firstColumn) }
+        : {}),
+    };
+  }
+
+  const rowMetadata = Object.fromEntries(
+    Object.entries(source.rowMetadata).flatMap(([key, metadata]) => {
+      const row = Number(key);
+      return Number.isInteger(row) && row >= firstRow && row <= lastRow
+        ? [[String(row - firstRow), structuredClone(metadata)]]
+        : [];
+    }),
+  );
+  const columnMetadata = Object.fromEntries(
+    Object.entries(source.columnMetadata).flatMap(([key, metadata]) => {
+      const column = Number(key);
+      return Number.isInteger(column) && column >= firstColumn && column <= lastColumn
+        ? [[String(column - firstColumn), structuredClone(metadata)]]
+        : [];
+    }),
+  );
+  const shiftRange = (range: SpreadsheetRange) => ({
+    startRow: range.startRow - firstRow,
+    endRow: range.endRow - firstRow,
+    startColumn: range.startColumn - firstColumn,
+    endColumn: range.endColumn - firstColumn,
+  });
+  const rangeIsInsideData = (range: SpreadsheetRange) =>
+    range.startRow >= firstRow &&
+    range.endRow <= lastRow &&
+    range.startColumn >= firstColumn &&
+    range.endColumn <= lastColumn;
+  const primary: SpreadsheetSheet = {
+    ...source,
+    rowCount: Math.max(DEFAULT_ROW_COUNT, lastRow - firstRow + 1),
+    columnCount: Math.max(DEFAULT_COLUMN_COUNT, lastColumn - firstColumn + 1),
+    cells,
+    rowMetadata,
+    columnMetadata,
+    merges: source.merges.filter(rangeIsInsideData).map(shiftRange),
+    frozenRows: Math.max(0, source.frozenRows - firstRow),
+    frozenColumns: Math.max(0, source.frozenColumns - firstColumn),
+    conditionalFormats: source.conditionalFormats
+      .filter((rule) => rangeIsInsideData(rule.range))
+      .map((rule) => ({ ...rule, range: shiftRange(rule.range) })),
+    ...(source.filter && rangeIsInsideData(source.filter.range)
+      ? { filter: { ...source.filter, range: shiftRange(source.filter.range) } }
+      : { filter: undefined }),
+  };
+
+  return {
+    ...workbook,
+    activeSheetId: workbook.activeSheetId === source.id ? primary.id : workbook.activeSheetId,
+    sheets: [primary, ...workbook.sheets.slice(1)],
+  } satisfies SpreadsheetWorkbook;
+}
+
 export function mergeImportedWorkbook(
   base: SpreadsheetWorkbook,
   imported: SpreadsheetWorkbook,
@@ -318,11 +418,18 @@ export function mergeImportedWorkbook(
   };
   const normalizedTargets = targetColumnNames.map((name) => name.trim().toLocaleLowerCase());
   const columnMap = new Map<number, number>();
+  const usedTargetColumns = new Set<number>();
   for (let column = 0; column < importedPrimary.columnCount; column += 1) {
     const header = importedPrimary.cells[cellKey(0, column)]?.value;
     if (typeof header !== "string") continue;
-    const target = normalizedTargets.indexOf(header.trim().toLocaleLowerCase());
-    if (target >= 0) columnMap.set(column, target);
+    const normalizedHeader = header.trim().toLocaleLowerCase();
+    const target = normalizedTargets.findIndex(
+      (name, index) => name === normalizedHeader && !usedTargetColumns.has(index),
+    );
+    if (target >= 0) {
+      columnMap.set(column, target);
+      usedTargetColumns.add(target);
+    }
   }
   for (const [key, cell] of Object.entries(importedPrimary.cells)) {
     const coordinate = parseCellKey(key);

@@ -255,6 +255,17 @@ assert(
   "An empty active Stage 5 must upload a primary final file through the existing project-asset pipeline and disable zero-file completion.",
 );
 assert(
+  workspace.includes("Delete File") &&
+    workspace.includes('title="Delete Stage 5 file?"') &&
+    workspace.includes("deleteStageFiveSourceFileAction") &&
+    actions.includes("deleteStageFiveSourceFile") &&
+    service.includes("export async function deleteStageFiveSourceFile") &&
+    service.includes("projectStageFileHandoff.delete") &&
+    service.includes("AttachmentStatus.DELETED") &&
+    service.includes("Stage 6 production has started"),
+  "Every active Stage 5 source must expose a confirmed delete path that removes its checklist, deletes direct uploads, preserves carried originals, and blocks downstream deletion.",
+);
+assert(
   lineage.includes("ProjectWorkflowStageKey.CONCEPT_CREATION") &&
     lineage.includes("ProjectWorkflowStageKey.PROJECT_DEVELOPMENT") &&
     lineage.includes("ProjectWorkflowStageKey.FINAL_LAYOUT") &&

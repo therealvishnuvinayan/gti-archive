@@ -147,6 +147,22 @@ async function mustCreateProject(name: string) {
   return result.projectId;
 }
 
+async function mustCreateSelfManagedProject(name: string) {
+  const result = await createProjectV2(
+    { id: users.owner.id },
+    {
+      name,
+      ownerId: users.owner.id,
+      coOwnerIds: [],
+      executorIds: [],
+      collaboratorIds: [],
+    },
+  );
+  check("projectId" in result, "self-managed V2 project creation must succeed");
+  await unlockStageTwo(result.projectId);
+  return result.projectId;
+}
+
 async function main() {
   process.env.AWS_REGION ||= "us-east-1";
   process.env.AWS_ACCESS_KEY_ID ||= "stage-two-test";
@@ -577,6 +593,72 @@ async function main() {
   const repeatedCompletion = await completeProjectResearchStage(users.superAdmin, zeroFileProjectId);
   check("success" in repeatedCompletion && repeatedCompletion.alreadyCompleted, "repeated Stage 2 completion must be idempotent");
   check(Boolean(await getProjectResearchPageData(users.owner, zeroFileProjectId)), "completed Stage 2 must remain openable");
+
+  const selfManagedProjectId = await mustCreateSelfManagedProject(
+    "Stage 2 self-managed completion",
+  );
+  const selfManagedCompletion = await completeProjectResearchStage(
+    users.owner,
+    selfManagedProjectId,
+  );
+  check(
+    "success" in selfManagedCompletion &&
+      selfManagedCompletion.nextStage === 5 &&
+      selfManagedCompletion.skippedConceptStages &&
+      !selfManagedCompletion.alreadyCompleted,
+    "self-managed Stage 2 completion must skip directly to Stage 5",
+  );
+  const selfManagedStages = await prisma.projectWorkflowStage.findMany({
+    where: { projectId: selfManagedProjectId },
+  });
+  const selfManagedStatus = new Map(
+    selfManagedStages.map((stage) => [stage.stageKey, stage.status] as const),
+  );
+  check(
+    selfManagedStatus.get(ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING) ===
+      ProjectWorkflowStageStatus.COMPLETED &&
+      selfManagedStatus.get(ProjectWorkflowStageKey.CONCEPT_CREATION) ===
+        ProjectWorkflowStageStatus.COMPLETED &&
+      selfManagedStatus.get(ProjectWorkflowStageKey.PROJECT_DEVELOPMENT) ===
+        ProjectWorkflowStageStatus.COMPLETED &&
+      selfManagedStatus.get(ProjectWorkflowStageKey.FINAL_LAYOUT) ===
+        ProjectWorkflowStageStatus.AVAILABLE,
+    "self-managed completion must atomically complete Stages 2-4 and unlock Stage 5",
+  );
+  check(
+    (await prisma.projectActivityLog.count({
+      where: {
+        projectId: selfManagedProjectId,
+        action: "STAGE_SKIPPED",
+      },
+    })) === 2,
+    "automatic Stage 3 and Stage 4 skips must each be audited",
+  );
+  const selfManagedPage = await getProjectResearchPageData(
+    users.owner,
+    selfManagedProjectId,
+  );
+  check(
+    selfManagedPage?.nextStage === 5,
+    "reopening completed Stage 2 for a self-managed project must continue to Stage 5",
+  );
+  const repeatedSelfManagedCompletion = await completeProjectResearchStage(
+    users.owner,
+    selfManagedProjectId,
+  );
+  check(
+    "success" in repeatedSelfManagedCompletion &&
+      repeatedSelfManagedCompletion.nextStage === 5 &&
+      repeatedSelfManagedCompletion.skippedConceptStages &&
+      repeatedSelfManagedCompletion.alreadyCompleted &&
+      (await prisma.projectActivityLog.count({
+        where: {
+          projectId: selfManagedProjectId,
+          action: "STAGE_SKIPPED",
+        },
+      })) === 2,
+    "repeated self-managed completion must be idempotent and keep Stage 5 as next",
+  );
 
   const lockedProject = await prisma.project.create({
     data: {

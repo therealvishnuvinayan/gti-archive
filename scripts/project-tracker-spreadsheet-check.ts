@@ -14,7 +14,12 @@ import {
 import { formulaCellValue, recalculateWorkbook, translateFormula } from "../src/components/project-tracker/spreadsheet/lib/formulas";
 import { applyCellPatch, reverseCellPatch } from "../src/components/project-tracker/spreadsheet/lib/history";
 import { canMergeRange, findMergeAt } from "../src/components/project-tracker/spreadsheet/lib/ranges";
-import { emptySheet, workbookFromStored } from "../src/components/project-tracker/spreadsheet/lib/workbook";
+import {
+  emptySheet,
+  mergeImportedWorkbook,
+  normalizeImportedWorkbook,
+  workbookFromStored,
+} from "../src/components/project-tracker/spreadsheet/lib/workbook";
 import { importXlsxWorkbook, workbookToXlsxBuffer } from "../src/components/project-tracker/spreadsheet/lib/xlsx";
 import type { SpreadsheetWorkbook } from "../src/components/project-tracker/spreadsheet/types/spreadsheet";
 
@@ -109,6 +114,36 @@ assert.equal(migrated.sheets[0].cells[cellKey(1, 2)].style?.fontWeight, "bold");
 assert.equal(migrated.sheets[0].cells[cellKey(1, 2)].comment, "Migrated note");
 assert.equal(migrated.sheets[0].columnMetadata["2"].width, 144);
 assert.deepEqual(migrated.sheets[0].merges[0], { startRow: 1, startColumn: 2, endRow: 1, endColumn: 3 });
+
+const offsetImportSheet = emptySheet("Offset import", "offset-import");
+offsetImportSheet.cells = {
+  [cellKey(149, 10)]: { value: "Imported field", style: { fontWeight: "bold" } },
+  [cellKey(150, 10)]: { value: "Imported value" },
+  [cellKey(151, 10)]: { formula: "=K150" },
+  [cellKey(199, 15)]: { value: null, style: { backgroundColor: "#ffffff" } },
+};
+const normalizedImport = normalizeImportedWorkbook({
+  version: 2,
+  activeSheetId: offsetImportSheet.id,
+  sheets: [offsetImportSheet],
+});
+assert.equal(normalizedImport.sheets[0].cells[cellKey(0, 0)].value, "Imported field");
+assert.equal(normalizedImport.sheets[0].cells[cellKey(1, 0)].value, "Imported value");
+assert.equal(normalizedImport.sheets[0].cells[cellKey(2, 0)].formula, "=A1");
+assert.equal(normalizedImport.sheets[0].cells[cellKey(50, 5)], undefined);
+
+const importBase = emptySheet("Tracker", "project-tracker");
+importBase.cells[cellKey(0, 0)] = { value: "Imported field" };
+importBase.cells[cellKey(1, 0)] = { value: "Existing one" };
+importBase.cells[cellKey(2, 0)] = { value: "Existing two" };
+const mergedImport = mergeImportedWorkbook(
+  { version: 2, activeSheetId: importBase.id, sheets: [importBase] },
+  normalizedImport,
+  2,
+  ["Imported field"],
+);
+assert.equal(mergedImport.sheets[0].cells[cellKey(3, 0)].value, "Imported value");
+assert.equal(mergedImport.sheets[0].cells[cellKey(3, 10)], undefined);
 
 async function verifyXlsxRoundTrip() {
   const exportSheet = emptySheet("Styled", "styled");

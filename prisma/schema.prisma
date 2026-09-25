@@ -456,6 +456,7 @@ model User {
   invoiceContactWorkflows             ProjectCompletionWorkflow[]          @relation("ProjectCompletionInvoiceContact")
   uploadedCompletionDocuments         ProjectCompletionDocument[]          @relation("ProjectCompletionDocumentUploadedBy")
   manualArchiveFiles                  ManualArchiveFile[]                  @relation("ManualArchiveFileUploadedBy")
+  createdArchiveFileShareLinks        ArchiveFileShareLink[]               @relation("ArchiveFileShareLinkCreatedBy")
   archiveAccess                       UserArchiveAccess?                   @relation("UserArchiveAccessUser")
   archiveAssetAccesses                UserArchiveAssetAccess[]             @relation("UserArchiveAssetAccessUser")
   archiveCategoryAccesses             ArchiveCategoryAccess[]              @relation("ArchiveCategoryAccessUser")
@@ -2171,6 +2172,7 @@ model ArchivedProjectFile {
   archivedBy           User                     @relation("ArchivedProjectFileArchivedBy", fields: [archivedById], references: [id], onDelete: Restrict)
   artworkMetadata      ArchiveArtworkMetadata?
   userArchiveAccesses  UserArchiveAssetAccess[] @relation("UserArchiveAssetAccessArchivedProjectFile")
+  shareLinks           ArchiveFileShareLink[]
   archivedAt           DateTime
   createdAt            DateTime                 @default(now())
   updatedAt            DateTime                 @updatedAt
@@ -2340,6 +2342,7 @@ model ManualArchiveFile {
   assetTags           ManualArchiveFileAssetTagAssignment[]
   artworkMetadata     ArchiveArtworkMetadata?
   userArchiveAccesses UserArchiveAssetAccess[]              @relation("UserArchiveAssetAccessManualArchiveFile")
+  shareLinks          ArchiveFileShareLink[]
   uploadedAt          DateTime                              @default(now())
   createdAt           DateTime                              @default(now())
   updatedAt           DateTime                              @updatedAt
@@ -2347,6 +2350,28 @@ model ManualArchiveFile {
   @@index([archiveCategoryId, uploadedAt])
   @@index([uploadedById])
   @@index([status])
+}
+
+model ArchiveFileShareLink {
+  id                    String               @id @default(cuid())
+  tokenHash             String               @unique
+  archivedProjectFileId String?
+  archivedProjectFile   ArchivedProjectFile? @relation(fields: [archivedProjectFileId], references: [id], onDelete: Cascade)
+  manualArchiveFileId   String?
+  manualArchiveFile     ManualArchiveFile?   @relation(fields: [manualArchiveFileId], references: [id], onDelete: Cascade)
+  createdById           String
+  createdBy             User                 @relation("ArchiveFileShareLinkCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+  expiresAt             DateTime
+  revokedAt             DateTime?
+  downloadCount         Int                  @default(0)
+  lastDownloadedAt      DateTime?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+
+  @@index([archivedProjectFileId])
+  @@index([manualArchiveFileId])
+  @@index([createdById])
+  @@index([expiresAt])
 }
 
 model ManualLibraryAsset {

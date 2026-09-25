@@ -31,6 +31,7 @@ type ProjectSummaryStripProps = {
   coOwners: ProjectSummaryPerson[];
   executors: ProjectSummaryPerson[];
   emptyPeopleLabel?: string;
+  executorEmptyLabel?: string;
   ownerEmptyLabel?: string;
   columns?: "responsive" | "two";
   className?: string;
@@ -147,6 +148,7 @@ export function ProjectSummaryStrip({
   coOwners,
   executors,
   emptyPeopleLabel = "None",
+  executorEmptyLabel = emptyPeopleLabel,
   ownerEmptyLabel = "Not assigned",
   columns = "responsive",
   className,
@@ -200,7 +202,7 @@ export function ProjectSummaryStrip({
             <ProjectPeopleSummary
               people={executors}
               groupLabel="Project Executors"
-              emptyLabel={emptyPeopleLabel}
+              emptyLabel={executorEmptyLabel}
             />
           </ProjectSummaryItem>
         </dl>
@@ -233,6 +235,7 @@ export function ProjectFlowSummaryStrip({
       coOwners={coOwners}
       executors={project.executors}
       emptyPeopleLabel={emptyPeopleLabel}
+      executorEmptyLabel={project.canViewParticipants ? "Self-managed" : "Restricted"}
       ownerEmptyLabel={project.ownerId ? "Restricted" : "Not assigned"}
       columns={columns}
       className={cn("mt-5", className)}

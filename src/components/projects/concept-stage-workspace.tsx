@@ -905,7 +905,7 @@ export function ConceptStageWorkspace({
                     : "Continue to Stage 5"}
               </Button>
             ) : null}
-            {canManageConcepts && !managementLocked ? (
+            {canManageConcepts && !managementLocked && executors.length > 0 ? (
               <Button
                 type="button"
                 variant="outline"
@@ -924,10 +924,12 @@ export function ConceptStageWorkspace({
           <div className="mt-6 rounded-[20px] border border-dashed border-[#cfdacf] bg-[#f8faf8] px-6 py-10 text-center">
             <p className="text-[16px] font-[740] text-[#273129]">No taskers yet</p>
             <p className="mt-1 text-[12px] text-[#748078]">
-              {stageNumber === 3 && canManageConcepts
-                ? "Create the first task when the name, executor, and brief are ready."
-                : stageNumber === 4 && canManageConcepts
-                  ? "Create a final-concept tasker, then optionally import an approved Stage 3 concept from its chat."
+              {canManageConcepts && executors.length === 0
+                ? `This project is self-managed. Skip Stage ${stageNumber} to continue${stageNumber === 4 ? " directly to Stage 5" : ""}.`
+                : stageNumber === 3 && canManageConcepts
+                  ? "Create the first task when the name, executor, and brief are ready."
+                  : stageNumber === 4 && canManageConcepts
+                    ? "Create a final-concept tasker, then optionally import an approved Stage 3 concept from its chat."
                   : "No taskers are available in this stage."}
             </p>
           </div>

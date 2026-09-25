@@ -686,7 +686,7 @@ export const helpSections: HelpSection[] = [
     eyebrow: "Project Setup",
     title: "Projects",
     summary:
-      "Project creation establishes the owner, brief, executors, financial boundaries, schedule, stages, and collaboration context for the rest of the workflow.",
+      "Project creation establishes the owner, execution approach, collaborators, and workflow context for the rest of the project.",
     keywords: ["projects", "create project", "priority", "budget", "executor", "executor", "tag", "category"],
     blocks: [
       {
@@ -694,9 +694,9 @@ export const helpSections: HelpSection[] = [
         items: [
           "Project Name and Project Brief are the required core fields. The Project Brief is the main project-level requirement.",
           "Project Category and Project Tag come from Project Master Data, with quick-add support from the form.",
-          "Project Executors are mandatory and are separate from Project Collaborators.",
+          "Project Executors are optional and are separate from Project Collaborators.",
           "A project can have multiple equally privileged Executors.",
-          "At least one Executor is required. Executors accept briefs, start stage work, and submit formal work for review.",
+          "For a self-managed project, leave Executors empty, skip empty Stages 3 and 4, and upload the final file directly in Stage 5.",
           "Executors are listed as execution participants and receive project access, but normal Executors do not accept briefs or submit formal work in this phase.",
           "Project Status, Project Priority, Project Start Date, Project End Date, and collaborators shape the working context shown across the system.",
           "Project Brief attachments stay at project level and apply across the whole project.",

@@ -762,13 +762,13 @@ function getProjectExecutorRecords(
 
 function getProjectExecutorDisplayName(executors: ProjectExecutorRecord[]) {
   if (executors.length === 0) {
-    return "—";
+    return "Self-managed";
   }
 
   const firstExecutor = executors[0];
 
   if (!firstExecutor) {
-    return "—";
+    return "Self-managed";
   }
 
   const remainingCount = executors.length - 1;

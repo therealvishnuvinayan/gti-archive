@@ -45,6 +45,11 @@ import {
 } from "@/lib/project-history";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { sanitizeRichText } from "@/lib/rich-text";
+import {
+  createSecureExternalToken,
+  getApplicationUrl,
+  hashSecureExternalToken,
+} from "@/lib/secure-external-token";
 import { defaultProjectStatusGroupSlugs } from "@/lib/project-statuses";
 import { isSuperAdminRole } from "@/lib/user-role-compatibility";
 import {
@@ -384,7 +389,7 @@ type ArchiveCategoryDisplay = {
   allowedUsers?: Array<{ userId: string }>;
 } | null;
 
-function canUploadArchiveFiles(user: ArchiveAccessUser) {
+export function canUploadArchiveFiles(user: ArchiveAccessUser) {
   return (
     getArchiveAccessLevel(user) === "FULL" &&
     canUseArchives(user) &&
@@ -5197,10 +5202,19 @@ export async function updateArchivedFileInformation(
   }
 }
 
-export async function getArchivedFileDownloadUrlForUser(
+type ArchiveDownloadFile = {
+  recordType: "FINAL_ARCHIVE_FILE" | "MANUAL_ARCHIVE_FILE";
+  id: string;
+  bucket: string;
+  storageKey: string;
+  fileName: string;
+  mimeType: string;
+};
+
+async function getArchiveDownloadFileForUser(
   user: ArchiveAccessUser,
   archivedFileId: string,
-) {
+): Promise<ArchiveDownloadFile> {
   const archivedFile = await withPrismaRetry(() =>
     prisma.archivedProjectFile.findUnique({
       where: {
@@ -5261,12 +5275,14 @@ export async function getArchivedFileDownloadUrlForUser(
       "You do not have permission to download archive files.",
     );
 
-    return createPresignedDownloadUrl({
+    return {
+      recordType: "MANUAL_ARCHIVE_FILE",
+      id: manualArchiveFile.id,
       bucket: manualArchiveFile.bucket,
       storageKey: manualArchiveFile.storageKey,
       fileName: manualArchiveFile.fileName,
       mimeType: manualArchiveFile.mimeType,
-    });
+    };
   }
 
   if (hasPartialArchiveAccess(user)) {
@@ -5302,12 +5318,357 @@ export async function getArchivedFileDownloadUrlForUser(
     }
   }
 
-  return createPresignedDownloadUrl({
+  return {
+    recordType: "FINAL_ARCHIVE_FILE",
+    id: archivedFile.id,
     bucket: archivedFile.bucket,
     storageKey: archivedFile.storageKey,
     fileName: archivedFile.finalArchiveFileName,
     mimeType: archivedFile.mimeType,
-  });
+  };
+}
+
+export async function getArchivedFileDownloadUrlForUser(
+  user: ArchiveAccessUser,
+  archivedFileId: string,
+) {
+  const file = await getArchiveDownloadFileForUser(user, archivedFileId);
+  return createPresignedDownloadUrl(file);
+}
+
+export const archiveShareExpiryDayOptions = [1, 3, 7, 14, 30] as const;
+export type ArchiveShareExpiryDays = (typeof archiveShareExpiryDayOptions)[number];
+
+function isArchiveShareExpiryDays(value: number): value is ArchiveShareExpiryDays {
+  return archiveShareExpiryDayOptions.includes(value as ArchiveShareExpiryDays);
+}
+
+export async function createArchiveFileShareLink(
+  user: ArchiveAccessUser,
+  input: { archivedFileId: string; expiryDays: number },
+) {
+  if (!isArchiveShareExpiryDays(input.expiryDays)) {
+    throw new Error("Choose a valid download-link expiry.");
+  }
+
+  const file = await getArchiveDownloadFileForUser(user, input.archivedFileId);
+  const access = createSecureExternalToken({ expiryDays: input.expiryDays });
+
+  await withPrismaRetry(() =>
+    prisma.archiveFileShareLink.create({
+      data: {
+        tokenHash: access.tokenHash,
+        createdById: user.id,
+        expiresAt: access.expiresAt,
+        ...(file.recordType === "FINAL_ARCHIVE_FILE"
+          ? { archivedProjectFileId: file.id }
+          : { manualArchiveFileId: file.id }),
+      },
+    }),
+  );
+
+  const sharePath = `/archive-download/${access.token}`;
+
+  return {
+    sharePath,
+    shareUrl: `${getApplicationUrl()}${sharePath}`,
+    expiresAt: access.expiresAt.toISOString(),
+  };
+}
+
+export type SharedArchiveFileDownloadResult =
+  | { state: "invalid" | "expired" | "unavailable" }
+  | { state: "active"; downloadUrl: string };
+
+export type SharedArchiveFilePreviewResult =
+  | { state: "invalid" | "expired" | "unavailable" }
+  | { state: "active"; previewUrl: string };
+
+export type SharedArchiveFilePageData =
+  | { state: "invalid" | "expired" | "unavailable" }
+  | {
+      state: "active";
+      fileName: string;
+      originalFileName: string;
+      mimeType: string;
+      fileTypeLabel: string;
+      fileSizeLabel: string;
+      projectName: string | null;
+      archiveCategory: string;
+      sharedBy: string;
+      sharedAt: string;
+      expiresAt: string;
+      previewPath: string;
+      downloadPath: string;
+    };
+
+export async function getSharedArchiveFilePageData(
+  token: string,
+): Promise<SharedArchiveFilePageData> {
+  const tokenHash = hashSecureExternalToken(token);
+
+  if (!tokenHash) {
+    return { state: "invalid" };
+  }
+
+  const share = await withPrismaRetry(() =>
+    prisma.archiveFileShareLink.findUnique({
+      where: { tokenHash },
+      select: {
+        expiresAt: true,
+        revokedAt: true,
+        createdAt: true,
+        createdBy: { select: { name: true, email: true } },
+        archivedProjectFile: {
+          select: {
+            finalArchiveFileName: true,
+            originalFileName: true,
+            mimeType: true,
+            fileSize: true,
+            archive: {
+              select: {
+                projectName: true,
+                archiveCategory: { select: { name: true } },
+              },
+            },
+          },
+        },
+        manualArchiveFile: {
+          select: {
+            fileName: true,
+            originalFileName: true,
+            projectName: true,
+            mimeType: true,
+            fileSize: true,
+            status: true,
+            archiveCategory: { select: { name: true } },
+          },
+        },
+      },
+    }),
+  );
+
+  if (!share) {
+    return { state: "invalid" };
+  }
+
+  if (share.revokedAt || share.expiresAt <= new Date()) {
+    return { state: "expired" };
+  }
+
+  const file = share.archivedProjectFile
+    ? {
+        fileName: share.archivedProjectFile.finalArchiveFileName,
+        originalFileName: share.archivedProjectFile.originalFileName,
+        mimeType: share.archivedProjectFile.mimeType,
+        fileSize: share.archivedProjectFile.fileSize,
+        projectName: share.archivedProjectFile.archive.projectName,
+        archiveCategory:
+          share.archivedProjectFile.archive.archiveCategory?.name ?? "Uncategorized",
+      }
+    : share.manualArchiveFile?.status === AttachmentStatus.READY
+      ? {
+          fileName: share.manualArchiveFile.fileName,
+          originalFileName: share.manualArchiveFile.originalFileName,
+          mimeType: share.manualArchiveFile.mimeType,
+          fileSize: share.manualArchiveFile.fileSize,
+          projectName: share.manualArchiveFile.projectName?.trim() || null,
+          archiveCategory: share.manualArchiveFile.archiveCategory?.name ?? "Uncategorized",
+        }
+      : null;
+
+  if (!file) {
+    return { state: "unavailable" };
+  }
+
+  return {
+    state: "active",
+    fileName: file.fileName,
+    originalFileName: file.originalFileName,
+    mimeType: file.mimeType,
+    fileTypeLabel: getArchiveFileTypeLabel(file.fileName, file.mimeType),
+    fileSizeLabel: formatArchiveFileSize(file.fileSize),
+    projectName: file.projectName,
+    archiveCategory: file.archiveCategory,
+    sharedBy: getUserDisplayName(share.createdBy),
+    sharedAt: share.createdAt.toISOString(),
+    expiresAt: share.expiresAt.toISOString(),
+    previewPath: `/api/archive-download/${token}/preview`,
+    downloadPath: `/api/archive-download/${token}`,
+  };
+}
+
+export async function getSharedArchiveFilePreview(
+  token: string,
+): Promise<SharedArchiveFilePreviewResult> {
+  const tokenHash = hashSecureExternalToken(token);
+
+  if (!tokenHash) {
+    return { state: "invalid" };
+  }
+
+  const share = await withPrismaRetry(() =>
+    prisma.archiveFileShareLink.findUnique({
+      where: { tokenHash },
+      select: {
+        expiresAt: true,
+        revokedAt: true,
+        archivedProjectFile: {
+          select: {
+            finalArchiveFileName: true,
+            bucket: true,
+            storageKey: true,
+            mimeType: true,
+          },
+        },
+        manualArchiveFile: {
+          select: {
+            fileName: true,
+            bucket: true,
+            storageKey: true,
+            mimeType: true,
+            status: true,
+          },
+        },
+      },
+    }),
+  );
+
+  if (!share) {
+    return { state: "invalid" };
+  }
+
+  if (share.revokedAt || share.expiresAt <= new Date()) {
+    return { state: "expired" };
+  }
+
+  const file = share.archivedProjectFile
+    ? {
+        fileName: share.archivedProjectFile.finalArchiveFileName,
+        bucket: share.archivedProjectFile.bucket,
+        storageKey: share.archivedProjectFile.storageKey,
+        mimeType: share.archivedProjectFile.mimeType,
+      }
+    : share.manualArchiveFile?.status === AttachmentStatus.READY
+      ? {
+          fileName: share.manualArchiveFile.fileName,
+          bucket: share.manualArchiveFile.bucket,
+          storageKey: share.manualArchiveFile.storageKey,
+          mimeType: share.manualArchiveFile.mimeType,
+        }
+      : null;
+
+  if (!file) {
+    return { state: "unavailable" };
+  }
+
+  return {
+    state: "active",
+    previewUrl: await createPresignedPreviewUrl({
+      ...file,
+      expiresInSeconds: 60,
+    }),
+  };
+}
+
+export async function getSharedArchiveFileDownload(
+  token: string,
+): Promise<SharedArchiveFileDownloadResult> {
+  const tokenHash = hashSecureExternalToken(token);
+
+  if (!tokenHash) {
+    return { state: "invalid" };
+  }
+
+  const share = await withPrismaRetry(() =>
+    prisma.archiveFileShareLink.findUnique({
+      where: { tokenHash },
+      select: {
+        id: true,
+        expiresAt: true,
+        revokedAt: true,
+        archivedProjectFile: {
+          select: {
+            id: true,
+            finalArchiveFileName: true,
+            bucket: true,
+            storageKey: true,
+            mimeType: true,
+          },
+        },
+        manualArchiveFile: {
+          select: {
+            id: true,
+            fileName: true,
+            bucket: true,
+            storageKey: true,
+            mimeType: true,
+            status: true,
+          },
+        },
+      },
+    }),
+  );
+
+  if (!share) {
+    return { state: "invalid" };
+  }
+
+  const now = new Date();
+
+  if (share.revokedAt || share.expiresAt <= now) {
+    return { state: "expired" };
+  }
+
+  const file: ArchiveDownloadFile | null = share.archivedProjectFile
+    ? {
+        recordType: "FINAL_ARCHIVE_FILE",
+        id: share.archivedProjectFile.id,
+        bucket: share.archivedProjectFile.bucket,
+        storageKey: share.archivedProjectFile.storageKey,
+        fileName: share.archivedProjectFile.finalArchiveFileName,
+        mimeType: share.archivedProjectFile.mimeType,
+      }
+    : share.manualArchiveFile?.status === AttachmentStatus.READY
+      ? {
+          recordType: "MANUAL_ARCHIVE_FILE",
+          id: share.manualArchiveFile.id,
+          bucket: share.manualArchiveFile.bucket,
+          storageKey: share.manualArchiveFile.storageKey,
+          fileName: share.manualArchiveFile.fileName,
+          mimeType: share.manualArchiveFile.mimeType,
+        }
+      : null;
+
+  if (!file) {
+    return { state: "unavailable" };
+  }
+
+  const recordedDownload = await withPrismaRetry(() =>
+    prisma.archiveFileShareLink.updateMany({
+      where: {
+        id: share.id,
+        revokedAt: null,
+        expiresAt: { gt: now },
+      },
+      data: {
+        downloadCount: { increment: 1 },
+        lastDownloadedAt: now,
+      },
+    }),
+  );
+
+  if (recordedDownload.count === 0) {
+    return { state: "expired" };
+  }
+
+  return {
+    state: "active",
+    downloadUrl: await createPresignedDownloadUrl({
+      ...file,
+      expiresInSeconds: 60,
+    }),
+  };
 }
 
 export async function getArchivedFilePreviewUrlForUser(

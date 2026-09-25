@@ -476,7 +476,7 @@ export function ProjectExecutorsPanel({
             </ul>
           ) : (
             <p className="rounded-[14px] border border-dashed border-[#d6ddd6] bg-[#fbfcfa] px-4 py-5 text-[13px] text-[#7a837b]">
-              No executors added yet.
+              Self-managed project — no executor assigned.
             </p>
           )}
 

@@ -24,6 +24,7 @@ import {
   cancelStageFiveChecklistRequest,
   completeStageFive,
   declineStageFiveChecklistRequest,
+  deleteStageFiveSourceFile,
   getStageFiveChecklistRequestData,
   getStageFiveWorkspaceData,
   requestStageFiveChecklistInformation,
@@ -70,42 +71,45 @@ async function ensureStageFiveHandoffFixtures(input: {
   attachmentIds: string[];
   handedOffById: string;
 }) {
-  return prisma.$transaction(async (tx) => {
-    const handoffs: Array<{ id: string; sourceAttachmentId: string }> = [];
+  return prisma.$transaction(
+    async (tx) => {
+      const handoffs: Array<{ id: string; sourceAttachmentId: string }> = [];
 
-    for (const sourceAttachmentId of input.attachmentIds) {
-      const handoff = await tx.projectStageFileHandoff.upsert({
-        where: {
-          projectId_sourceAttachmentId_targetWorkflowStageKey: {
+      for (const sourceAttachmentId of input.attachmentIds) {
+        const handoff = await tx.projectStageFileHandoff.upsert({
+          where: {
+            projectId_sourceAttachmentId_targetWorkflowStageKey: {
+              projectId: input.projectId,
+              sourceAttachmentId,
+              targetWorkflowStageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
+            },
+          },
+          update: {},
+          create: {
             projectId: input.projectId,
+            sourceWorkflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
             sourceAttachmentId,
             targetWorkflowStageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
+            handedOffById: input.handedOffById,
           },
-        },
-        update: {},
-        create: {
-          projectId: input.projectId,
-          sourceWorkflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
-          sourceAttachmentId,
-          targetWorkflowStageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
-          handedOffById: input.handedOffById,
-        },
-        select: { id: true, sourceAttachmentId: true },
-      });
-      await tx.projectFileChecklist.upsert({
-        where: { handoffId: handoff.id },
-        update: {},
-        create: {
-          projectId: input.projectId,
-          handoffId: handoff.id,
-          sourceAttachmentId,
-        },
-      });
-      handoffs.push(handoff);
-    }
+          select: { id: true, sourceAttachmentId: true },
+        });
+        await tx.projectFileChecklist.upsert({
+          where: { handoffId: handoff.id },
+          update: {},
+          create: {
+            projectId: input.projectId,
+            handoffId: handoff.id,
+            sourceAttachmentId,
+          },
+        });
+        handoffs.push(handoff);
+      }
 
-    return handoffs;
-  });
+      return handoffs;
+    },
+    { timeout: 15_000 },
+  );
 }
 
 async function main() {
@@ -157,12 +161,14 @@ async function main() {
   const foreignStageId = `stage-five-foreign-stage-${runId}`;
   const attachmentAId = `stage-five-file-a-${runId}`;
   const attachmentBId = `stage-five-file-b-${runId}`;
+  const attachmentDeleteId = `stage-five-file-delete-${runId}`;
   const checklistAttachmentId = `stage-five-checklist-file-${runId}`;
   const checklistAttachmentTwoId = `stage-five-checklist-file-two-${runId}`;
   const foreignChecklistAttachmentId = `stage-five-checklist-foreign-${runId}`;
   const responseAttachmentId = `stage-five-response-file-${runId}`;
   const foreignResponseAttachmentId = `stage-five-response-foreign-${runId}`;
   const directSourceId = `stage-five-direct-source-${runId}`;
+  const directDeleteSourceId = `stage-five-direct-delete-${runId}`;
   const failedDirectSourceId = `stage-five-direct-failed-${runId}`;
   const unauthorizedDirectSourceId = `stage-five-direct-unauthorized-${runId}`;
   const completedStageDirectSourceId = `stage-five-direct-after-completion-${runId}`;
@@ -251,6 +257,7 @@ async function main() {
       data: [
         [attachmentAId, projectId, stageId, "Package_Artwork_Final.ai"],
         [attachmentBId, projectId, stageId, "Print_Master.pdf"],
+        [attachmentDeleteId, projectId, stageId, "Removable_Master.pdf"],
       ].map(([id, targetProjectId, targetStageId, name]) => ({
         id,
         projectId: targetProjectId,
@@ -270,18 +277,18 @@ async function main() {
     const chatCountBefore = await prisma.projectComment.count({ where: { projectId } });
     const handoff = await ensureStageFiveHandoffFixtures({
       projectId,
-      attachmentIds: [attachmentAId, attachmentBId],
+      attachmentIds: [attachmentAId, attachmentBId, attachmentDeleteId],
       handedOffById: owner.id,
     });
-    check(handoff.length === 2, "multiple Stage 4 files must be handed off");
+    check(handoff.length === 3, "multiple Stage 4 files must be handed off");
     const duplicate = await ensureStageFiveHandoffFixtures({
       projectId,
-      attachmentIds: [attachmentAId, attachmentBId],
+      attachmentIds: [attachmentAId, attachmentBId, attachmentDeleteId],
       handedOffById: owner.id,
     });
-    check(duplicate.length === 2, "repeated fixture setup must be idempotent");
+    check(duplicate.length === 3, "repeated fixture setup must be idempotent");
     check(
-      (await prisma.projectStageFileHandoff.count({ where: { projectId } })) === 2,
+      (await prisma.projectStageFileHandoff.count({ where: { projectId } })) === 3,
       "duplicate handoff rows must be prevented",
     );
     check(
@@ -290,10 +297,13 @@ async function main() {
     );
 
     const initial = await getStageFiveWorkspaceData(owner, projectId);
-    check(initial?.files.length === 2, "Stage 5 must list every handed-off file");
+    check(initial?.files.length === 3, "Stage 5 must list every handed-off file");
     const fileA = initial.files.find((file) => file.sourceAttachment.id === attachmentAId);
     const fileB = initial.files.find((file) => file.sourceAttachment.id === attachmentBId);
-    check(fileA && fileB, "both handed-off files must have checklists");
+    const removableFile = initial.files.find(
+      (file) => file.sourceAttachment.id === attachmentDeleteId,
+    );
+    check(fileA && fileB && removableFile, "every handed-off file must have a checklist");
     check(fileA.items.length === 16, "the selected file must expose all 16 checklist fields");
     const selectedFileB = await getStageFiveWorkspaceData(owner, projectId, fileB.handoffId);
     check(
@@ -329,6 +339,56 @@ async function main() {
       "a project USER must not send Stage 5 manager information requests",
     );
 
+    const removableRequest = await requestStageFiveChecklistInformation(owner, {
+      clientRequestId: `delete_source_${randomUUID()}`,
+      projectId,
+      handoffId: removableFile.handoffId,
+      fieldKey: ProjectFileChecklistField.OUTPUT_NAME,
+      channel: ProjectFileChecklistRequestChannel.IN_APP,
+      recipientUserId: recipient.id,
+    });
+    check(!isError(removableRequest), "the removable source must accept checklist requests");
+    check(
+      isError(
+        await deleteStageFiveSourceFile(recipient, {
+          projectId,
+          handoffId: removableFile.handoffId,
+        }),
+      ),
+      "a project USER must not delete a Stage 5 source",
+    );
+    const removedCarriedSource = await deleteStageFiveSourceFile(owner, {
+      projectId,
+      handoffId: removableFile.handoffId,
+    });
+    check(
+      !isError(removedCarriedSource) && removedCarriedSource.sourceRemovedOnly,
+      "a manager must be able to remove a carried Stage 4 source from Stage 5",
+    );
+    check(
+      (await prisma.projectStageFileHandoff.count({
+        where: { id: removableFile.handoffId },
+      })) === 0 &&
+        (await prisma.projectFileChecklist.count({
+          where: { id: removableFile.checklistId },
+        })) === 0 &&
+        (await prisma.projectFileChecklistRequest.count({
+          where: { id: removableRequest.request.id },
+        })) === 0 &&
+        (await prisma.notification.count({
+          where: {
+            entityType: "CHECKLIST_REQUEST",
+            entityId: removableRequest.request.id,
+          },
+        })) === 0 &&
+        (await prisma.projectAttachment.findUnique({
+          where: { id: attachmentDeleteId },
+          select: { status: true },
+        }))?.status === AttachmentStatus.READY &&
+        (await getStageFiveWorkspaceData(owner, projectId))?.files.length === 2,
+      "carried-source deletion must cascade Stage 5 data while preserving the original approved attachment",
+    );
+
     await prisma.projectAttachment.createMany({
       data: [
         {
@@ -341,6 +401,19 @@ async function main() {
           fileSize: 4096,
           bucket: "stage-five-integration",
           storageKey: `stage-five-integration/${directSourceId}`,
+          assetType: AttachmentAssetType.GENERAL_PROJECT_ASSET,
+          status: AttachmentStatus.UPLOADING,
+        },
+        {
+          id: directDeleteSourceId,
+          projectId,
+          uploadedById: owner.id,
+          fileName: "direct-delete-final.ai",
+          originalFileName: "Direct_Delete_Final.ai",
+          mimeType: "application/postscript",
+          fileSize: 4096,
+          bucket: "stage-five-integration",
+          storageKey: `stage-five-integration/${directDeleteSourceId}`,
           assetType: AttachmentAssetType.GENERAL_PROJECT_ASSET,
           status: AttachmentStatus.UPLOADING,
         },
@@ -417,6 +490,41 @@ async function main() {
       "a direct Stage 5 source must load in the existing checklist workspace",
     );
 
+    const directDeleteUpload = await completeAttachmentUpload(
+      owner,
+      directDeleteSourceId,
+      false,
+      undefined,
+      { stageFiveDirectSource: true, suppressUploadNotification: true },
+    );
+    check(
+      directDeleteUpload &&
+        "stageFiveSource" in directDeleteUpload &&
+        Boolean(directDeleteUpload.stageFiveSource),
+      "the direct deletion fixture must create Stage 5 lineage",
+    );
+    const removedDirectSource = await deleteStageFiveSourceFile(owner, {
+      projectId,
+      handoffId: directDeleteUpload.stageFiveSource!.handoffId,
+    });
+    check(
+      !isError(removedDirectSource) && !removedDirectSource.sourceRemovedOnly,
+      "a manager must be able to delete a direct Stage 5 source",
+    );
+    check(
+      (await prisma.projectStageFileHandoff.count({
+        where: { id: directDeleteUpload.stageFiveSource!.handoffId },
+      })) === 0 &&
+        (await prisma.projectFileChecklist.count({
+          where: { id: directDeleteUpload.stageFiveSource!.checklistId },
+        })) === 0 &&
+        (await prisma.projectAttachment.findUnique({
+          where: { id: directDeleteSourceId },
+          select: { status: true },
+        }))?.status === AttachmentStatus.DELETED,
+      "direct-source deletion must remove Stage 5 lineage and soft-delete the stored attachment",
+    );
+
     await completeAttachmentUpload(
       owner,
       failedDirectSourceId,
@@ -485,6 +593,15 @@ async function main() {
       directStageSixWorkspace?.units.length === 1 &&
         directStageSixWorkspace.units[0].sourceFile.id === directSourceId,
       "Stage 6 must load and preview the direct Stage 5 source like a normal production source",
+    );
+    check(
+      isError(
+        await deleteStageFiveSourceFile(owner, {
+          projectId: foreignProjectId,
+          handoffId: directUpload.stageFiveSource!.handoffId,
+        }),
+      ),
+      "a Stage 5 source must not be deletable after Stage 6 production is created",
     );
 
     await prisma.projectAttachment.create({

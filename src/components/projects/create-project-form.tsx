@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Loader2, UserPlus } from "lucide-react";
+import { CheckCircle2, Loader2, UserPlus } from "lucide-react";
 
 import { saveCollaboratorAction } from "@/app/(dashboard)/collaboration/actions";
 import {
@@ -101,6 +101,9 @@ export function CreateProjectForm({
   );
   const [executorIds, setExecutorIds] = useState<string[]>(
     initialProject?.executorIds ?? [],
+  );
+  const [selfManaged, setSelfManaged] = useState(
+    Boolean(initialProject && initialProject.executorIds.length === 0),
   );
   const [collaboratorIds, setCollaboratorIds] = useState<string[]>(
     initialProject?.collaboratorIds ?? [],
@@ -231,7 +234,7 @@ export function CreateProjectForm({
       nextErrors.name = "Project name is required.";
     }
 
-    if (executorIds.length === 0) {
+    if (!selfManaged && executorIds.length === 0) {
       nextErrors.executors = "Select at least one project executor.";
     }
 
@@ -247,7 +250,7 @@ export function CreateProjectForm({
         name: projectName,
         ownerId,
         coOwnerIds,
-        executorIds,
+        executorIds: selfManaged ? [] : executorIds,
         collaboratorIds,
       };
       const result = isEditing
@@ -357,22 +360,59 @@ export function CreateProjectForm({
             <div className="pt-0 text-[14px] font-[700] text-[#18211b] md:pt-[16px]">
               Project Executors
             </div>
-            <div>
-              <ProjectUserSelector
-                users={executorOptions}
-                selectedIds={executorIds}
-                onChange={(nextIds) => {
-                  setExecutorIds(nextIds);
-                  setCollaboratorIds((current) =>
-                    current.filter((id) => !nextIds.includes(id)),
-                  );
+            <div className="space-y-3">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={selfManaged}
+                onClick={() => {
+                  const nextSelfManaged = !selfManaged;
+                  setSelfManaged(nextSelfManaged);
+                  if (nextSelfManaged) setExecutorIds([]);
                   setErrors((current) => ({ ...current, executors: undefined }));
                 }}
-                mode="multiple"
-                placeholder="Search users..."
-                ariaLabel="Project executors"
-                error={errors.executors}
-              />
+                className={`flex w-full items-start gap-3 rounded-[16px] border px-4 py-3.5 text-left transition ${
+                  selfManaged
+                    ? "border-[#8fbea0] bg-[#f0f8f2]"
+                    : "border-[#d9e0d9] bg-white hover:border-[#b9c9bc]"
+                }`}
+              >
+                <span
+                  className={`mt-0.5 grid size-6 shrink-0 place-items-center rounded-full border ${
+                    selfManaged
+                      ? "border-[#36825a] bg-[#36825a] text-white"
+                      : "border-[#cbd5cd] bg-white text-transparent"
+                  }`}
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                </span>
+                <span>
+                  <span className="block text-[13px] font-[720] text-[#213027]">
+                    Manage this project myself
+                  </span>
+                  <span className="mt-1 block text-[12px] leading-5 text-[#6f7b72]">
+                    No executor will be assigned. Empty Stages 3 and 4 can be skipped, then the final file can be uploaded directly in Stage 5.
+                  </span>
+                </span>
+              </button>
+
+              {!selfManaged ? (
+                <ProjectUserSelector
+                  users={executorOptions}
+                  selectedIds={executorIds}
+                  onChange={(nextIds) => {
+                    setExecutorIds(nextIds);
+                    setCollaboratorIds((current) =>
+                      current.filter((id) => !nextIds.includes(id)),
+                    );
+                    setErrors((current) => ({ ...current, executors: undefined }));
+                  }}
+                  mode="multiple"
+                  placeholder="Search users..."
+                  ariaLabel="Project executors"
+                  error={errors.executors}
+                />
+              ) : null}
             </div>
 
             <div className="pt-0 text-[14px] font-[700] text-[#18211b] md:pt-[16px]">

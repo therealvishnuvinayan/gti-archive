@@ -1,4 +1,5 @@
 import {
+  ActivityLogAction,
   AttachmentAssetType,
   AttachmentStatus,
   Prisma,
@@ -237,6 +238,19 @@ export async function getProjectResearchPageData(
     if (!participantRole.has(record.userId)) participantRole.set(record.userId, "Collaborator");
   }
 
+  const stageThreeStatus = project.workflowStages.find(
+    (stage) => stage.stageKey === ProjectWorkflowStageKey.CONCEPT_CREATION,
+  )?.status;
+  const stageFourStatus = project.workflowStages.find(
+    (stage) => stage.stageKey === ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+  )?.status;
+  const nextStage =
+    project.executors.length === 0 &&
+    stageThreeStatus === ProjectWorkflowStageStatus.COMPLETED &&
+    stageFourStatus === ProjectWorkflowStageStatus.COMPLETED
+      ? 5
+      : 3;
+
   return {
     project: {
       id: project.id,
@@ -247,6 +261,7 @@ export async function getProjectResearchPageData(
         (stage) =>
           stage.stageKey === ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING,
       )?.status ?? ProjectWorkflowStageStatus.LOCKED,
+    nextStage,
     sharedWorkspace: {
       id: sharedWorkspace.id,
       canWrite: access.canWrite,
@@ -494,16 +509,35 @@ export async function completeProjectResearchStage(
         const stageThree = workflowStages.find(
           (stage) => stage.stageKey === ProjectWorkflowStageKey.CONCEPT_CREATION,
         );
+        const stageFour = workflowStages.find(
+          (stage) => stage.stageKey === ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+        );
+        const stageFive = workflowStages.find(
+          (stage) => stage.stageKey === ProjectWorkflowStageKey.FINAL_LAYOUT,
+        );
         const completionMode = getWorkflowStageCompletionMode(
           workflowStages,
           ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING,
         );
 
-        if (!stageTwo || !stageThree || completionMode === "UNAVAILABLE") {
+        if (
+          !stageTwo ||
+          !stageThree ||
+          !stageFour ||
+          !stageFive ||
+          completionMode === "UNAVAILABLE"
+        ) {
           return { error: "Project Research and Planning is not available yet." } as const;
         }
 
         const alreadyCompleted = completionMode === "RETRY";
+        const selfManaged = project.executors.length === 0;
+        let skippedConceptStages =
+          selfManaged &&
+          stageThree.status === ProjectWorkflowStageStatus.COMPLETED &&
+          stageFour.status === ProjectWorkflowStageStatus.COMPLETED &&
+          stageFive.status !== ProjectWorkflowStageStatus.LOCKED;
+
         if (completionMode === "TRANSITION") {
           const now = new Date();
           const completed = await tx.projectWorkflowStage.updateMany({
@@ -517,8 +551,85 @@ export async function completeProjectResearchStage(
             },
           });
 
-          if (completed.count === 1) {
-            await tx.projectWorkflowStage.updateMany({
+          if (completed.count !== 1) {
+            return { error: "Stage 2 changed before it could be completed." } as const;
+          }
+
+          if (selfManaged) {
+            const skippedStageThree = await tx.projectWorkflowStage.updateMany({
+              where: {
+                id: stageThree.id,
+                status: ProjectWorkflowStageStatus.LOCKED,
+              },
+              data: {
+                status: ProjectWorkflowStageStatus.COMPLETED,
+                unlockedAt: now,
+                completedAt: now,
+              },
+            });
+
+            const skippedStageFour = await tx.projectWorkflowStage.updateMany({
+              where: {
+                id: stageFour.id,
+                status: ProjectWorkflowStageStatus.LOCKED,
+              },
+              data: {
+                status: ProjectWorkflowStageStatus.COMPLETED,
+                unlockedAt: now,
+                completedAt: now,
+              },
+            });
+
+            const unlockedStageFive = await tx.projectWorkflowStage.updateMany({
+              where: {
+                id: stageFive.id,
+                status: ProjectWorkflowStageStatus.LOCKED,
+              },
+              data: {
+                status: ProjectWorkflowStageStatus.AVAILABLE,
+                unlockedAt: now,
+              },
+            });
+
+            if (
+              skippedStageThree.count !== 1 ||
+              skippedStageFour.count !== 1 ||
+              unlockedStageFive.count !== 1
+            ) {
+              throw new Error(
+                "The self-managed workflow changed before Stages 3 and 4 could be skipped.",
+              );
+            }
+
+            await tx.projectActivityLog.createMany({
+              data: [
+                {
+                  projectId,
+                  actorId: user.id,
+                  action: ActivityLogAction.STAGE_SKIPPED,
+                  metadata: {
+                    stageNumber: 3,
+                    workflowStageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+                    nextWorkflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+                    reason: "SELF_MANAGED_PROJECT",
+                  },
+                },
+                {
+                  projectId,
+                  actorId: user.id,
+                  action: ActivityLogAction.STAGE_SKIPPED,
+                  metadata: {
+                    stageNumber: 4,
+                    workflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+                    nextWorkflowStageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
+                    reason: "SELF_MANAGED_PROJECT",
+                  },
+                },
+              ],
+            });
+            skippedConceptStages = true;
+          } else {
+            const unlockedStageThree = await tx.projectWorkflowStage.updateMany({
               where: {
                 id: stageThree.id,
                 status: ProjectWorkflowStageStatus.LOCKED,
@@ -528,10 +639,19 @@ export async function completeProjectResearchStage(
                 unlockedAt: now,
               },
             });
+
+            if (unlockedStageThree.count !== 1) {
+              throw new Error("Stage 3 changed before it could be unlocked.");
+            }
           }
         }
 
-        return { success: true, nextStage: 3, alreadyCompleted } as const;
+        return {
+          success: true,
+          nextStage: skippedConceptStages ? 5 : 3,
+          skippedConceptStages,
+          alreadyCompleted,
+        } as const;
       },
       { timeout: 30_000 },
     ),

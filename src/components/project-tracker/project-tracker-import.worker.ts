@@ -2,6 +2,7 @@ import * as XLSX from "xlsx";
 
 import { cellKey } from "./spreadsheet/lib/coordinates";
 import { formulaCellValue } from "./spreadsheet/lib/formulas";
+import { normalizeImportedWorkbook } from "./spreadsheet/lib/workbook";
 import { importXlsxWorkbook } from "./spreadsheet/lib/xlsx";
 import type { SpreadsheetSheet, SpreadsheetWorkbook } from "./spreadsheet/types/spreadsheet";
 
@@ -26,22 +27,10 @@ self.onmessage = async (event: MessageEvent<ParseRequest>) => {
   try {
     let importedWorkbook: SpreadsheetWorkbook;
     let warnings: string[] = [];
-    let matrix: unknown[][];
     try {
       const imported = await importXlsxWorkbook(event.data.buffer);
       importedWorkbook = imported.workbook;
       warnings = imported.warnings;
-      const firstSheet = importedWorkbook.sheets[0];
-      let maxRow = 0;
-      let maxColumn = 0;
-      for (const key of Object.keys(firstSheet.cells)) {
-        const [row, column] = key.split(":").map(Number);
-        maxRow = Math.max(maxRow, row);
-        maxColumn = Math.max(maxColumn, column);
-      }
-      matrix = Array.from({ length: maxRow + 1 }, (_, row) =>
-        Array.from({ length: maxColumn + 1 }, (_, column) =>
-          formulaCellValue(firstSheet.cells[cellKey(row, column)]) ?? ""));
     } catch {
       const source = XLSX.read(event.data.buffer, { type: "array", cellDates: true, cellStyles: true });
       const sheets = source.SheetNames.flatMap((name, sheetIndex) => {
@@ -76,28 +65,43 @@ self.onmessage = async (event: MessageEvent<ParseRequest>) => {
       });
       if (!sheets.length) throw new Error("This file does not contain a readable table.");
       importedWorkbook = { version: 2, activeSheetId: sheets[0].id, sheets };
-      matrix = XLSX.utils.sheet_to_json<unknown[]>(source.Sheets[source.SheetNames[0]], { header: 1, defval: "", raw: true });
       warnings = ["Legacy spreadsheet formatting could not be fully imported; values, formulas, sheets, and merges were retained where available."];
     }
+    importedWorkbook = normalizeImportedWorkbook(importedWorkbook);
+    const firstSheet = importedWorkbook.sheets[0];
+    let maxRow = 0;
+    let maxColumn = 0;
+    for (const [key, cell] of Object.entries(firstSheet.cells)) {
+      const value = formulaCellValue(cell);
+      if (!cell.formula && (value === null || value === undefined || value === "")) continue;
+      const [row, column] = key.split(":").map(Number);
+      maxRow = Math.max(maxRow, row);
+      maxColumn = Math.max(maxColumn, column);
+    }
+    const matrix = Array.from({ length: maxRow + 1 }, (_, row) =>
+      Array.from({ length: maxColumn + 1 }, (_, column) =>
+        formulaCellValue(firstSheet.cells[cellKey(row, column)]) ?? ""));
     if (!matrix.length) throw new Error("This file does not contain a readable table.");
 
     const headers = matrix[0].map(
       (value, index) => String(value).trim() || `Column ${index + 1}`,
     );
-    const rows = matrix.slice(1).map((sourceRow) =>
-      headers.map((_, index) => {
-        const value = sourceRow[index];
-        if (value instanceof Date) return value.toISOString();
-        if (
-          typeof value === "string" ||
-          typeof value === "number" ||
-          typeof value === "boolean"
-        ) {
-          return value;
-        }
-        return value == null ? null : String(value);
-      }),
-    );
+    const rows = matrix
+      .slice(1)
+      .map((sourceRow) =>
+        headers.map((_, index) => {
+          const value = sourceRow[index];
+          if (
+            typeof value === "string" ||
+            typeof value === "number" ||
+            typeof value === "boolean"
+          ) {
+            return value;
+          }
+          return value == null ? null : String(value);
+        }),
+      )
+      .filter((row) => row.some((value) => value !== null && value !== ""));
     const columns = headers.map((name, columnIndex) => {
       const values = rows
         .map((row) => row[columnIndex])

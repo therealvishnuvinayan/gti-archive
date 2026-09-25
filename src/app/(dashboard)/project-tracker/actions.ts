@@ -1031,21 +1031,38 @@ export async function importProjectTrackerAction(input: {
       where: { trackerId: tracker.id, deletedAt: null },
       orderBy: { sortOrder: "asc" },
     });
-    const lastRow = await prisma.projectTrackerRow.findFirst({
-      where: { trackerId: tracker.id },
+    const existingRows = await prisma.projectTrackerRow.findMany({
+      where: { trackerId: tracker.id, deletedAt: null },
       orderBy: { sortOrder: "desc" },
-      select: { sortOrder: true },
+      select: {
+        id: true,
+        sortOrder: true,
+        structuredProjectId: true,
+        flexibleProjectId: true,
+        _count: { select: { cells: true } },
+      },
     });
 
-    let nextColumnOrder = existingColumns.length
-      ? Math.max(...existingColumns.map((column) => column.sortOrder)) + 1
-      : 0;
+    const populatedRows = existingRows.filter(
+      (row) => row.structuredProjectId || row.flexibleProjectId || row._count.cells > 0,
+    );
+    const blankRowIds = existingRows
+      .filter((row) => !row.structuredProjectId && !row.flexibleProjectId && row._count.cells === 0)
+      .map((row) => row.id);
+    const usedColumnIds = new Set<string>();
+    const reorderedColumns: Array<{ id: string; sortOrder: number }> = [];
     const newColumns: Prisma.ProjectTrackerColumnCreateManyInput[] = [];
-    const columnIds = parsed.columns.map((importedColumn) => {
+    const columnIds = parsed.columns.map((importedColumn, index) => {
       const existing = existingColumns.find(
-        (column) => normalizeTrackerLabel(column.name) === normalizeTrackerLabel(importedColumn.name),
+        (column) =>
+          !usedColumnIds.has(column.id) &&
+          normalizeTrackerLabel(column.name) === normalizeTrackerLabel(importedColumn.name),
       );
-      if (existing) return existing.id;
+      if (existing) {
+        usedColumnIds.add(existing.id);
+        reorderedColumns.push({ id: existing.id, sortOrder: index });
+        return existing.id;
+      }
 
       const id = randomUUID();
       newColumns.push({
@@ -1054,13 +1071,18 @@ export async function importProjectTrackerAction(input: {
         name: importedColumn.name,
         type: importedColumn.type,
         sourceFieldKey: importedColumn.sourceFieldKey,
-        sortOrder: nextColumnOrder++,
+        sortOrder: index,
         frozen: importedColumn.sourceFieldKey === "project.name" && existingColumns.length === 0,
       });
       return id;
     });
+    existingColumns
+      .filter((column) => !usedColumnIds.has(column.id))
+      .forEach((column, index) => {
+        reorderedColumns.push({ id: column.id, sortOrder: parsed.columns.length + index });
+      });
 
-    const nextRowOrder = (lastRow?.sortOrder ?? -1) + 1;
+    const nextRowOrder = (populatedRows[0]?.sortOrder ?? -1) + 1;
     const newRows = parsed.rows.map((_, index) => ({
       id: randomUUID(),
       trackerId: tracker.id,
@@ -1081,6 +1103,15 @@ export async function importProjectTrackerAction(input: {
 
     await withPrismaRetry(() => {
       const operations: Prisma.PrismaPromise<unknown>[] = [];
+      if (blankRowIds.length) {
+        operations.push(prisma.projectTrackerRow.deleteMany({ where: { id: { in: blankRowIds } } }));
+      }
+      for (const column of reorderedColumns) {
+        operations.push(prisma.projectTrackerColumn.update({
+          where: { id: column.id },
+          data: { sortOrder: column.sortOrder },
+        }));
+      }
       for (const columnBatch of chunksOf(newColumns, 100)) {
         operations.push(prisma.projectTrackerColumn.createMany({ data: columnBatch }));
       }

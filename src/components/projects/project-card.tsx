@@ -277,7 +277,7 @@ export function ProjectCard({ project, returnHref }: ProjectCardProps) {
                     ) : null}
                   </>
                 ) : (
-                  <span className="text-[12px] text-[#9a6a24]">None assigned</span>
+                  <span className="text-[12px] text-[#397653]">Self-managed</span>
                 )}
               </div>
             </div>
