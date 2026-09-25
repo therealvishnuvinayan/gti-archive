@@ -13,6 +13,7 @@ import {
   ChevronDown,
   ClipboardPaste,
   Copy,
+  Eraser,
   Filter,
   Grid2X2,
   Italic,
@@ -254,6 +255,13 @@ export function SpreadsheetToolbar({ controller, canEdit, onFind }: {
       <ToolButton title="Cut" disabled={disabled} onClick={() => void controller.copy(true)}><Scissors className="size-4" /></ToolButton>
       <ToolButton title="Copy" onClick={() => void controller.copy()}><Copy className="size-4" /></ToolButton>
       <ToolButton title="Paste" disabled={disabled} onClick={() => void controller.paste()}><ClipboardPaste className="size-4" /></ToolButton>
+      <IconSelect title="Clear" value="" disabled={disabled} icon={<Eraser className="size-4" />} onChange={(value) => {
+        if (value === "contents") controller.clear();
+        else if (value === "formatting") controller.clearFormatting();
+        else if (value === "all") controller.clearAll();
+      }}>
+        <option value="">Clear</option><option value="contents">Clear contents</option><option value="formatting">Clear formatting</option><option value="all">Clear all</option>
+      </IconSelect>
       <Divider />
       <SmallSelect title="Font family" value={cellStyle.fontFamily ?? "Inter"} width="w-[112px]" onChange={(value) => set({ fontFamily: value })}>
         {['Inter', 'Arial', 'Calibri', 'Georgia', 'Times New Roman', 'Courier New'].map((font) => <option key={font}>{font}</option>)}

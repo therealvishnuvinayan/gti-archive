@@ -23,6 +23,8 @@ import {
   forEachCellInRange,
   normalizeRange,
   parseCellKey,
+  rangeContains,
+  rangesOverlap,
   selectionRange,
 } from "../lib/coordinates";
 import { parseClipboardText, serializeClipboardMatrix } from "../lib/clipboard";
@@ -38,12 +40,13 @@ import {
   emptySheet,
   insertSheetColumn,
   insertSheetRow,
+  isCellEmpty,
   updateSheet,
 } from "../lib/workbook";
 
 type HistoryCommand =
   | { kind: "cells"; sheetId: string; before: SpreadsheetCellPatch; after: SpreadsheetCellPatch }
-  | { kind: "sheet"; sheetId: string; before: SpreadsheetSheet; after: SpreadsheetSheet }
+  | { kind: "sheet"; sheetId: string; before: SpreadsheetSheet; after: SpreadsheetSheet; syncCellKeys?: string[] }
   | { kind: "workbook"; before: SpreadsheetWorkbook; after: SpreadsheetWorkbook };
 
 type InternalClipboard = {
@@ -312,6 +315,11 @@ export function useSpreadsheet({
         calculated.sheets.find((item) => item.id === command.sheetId)!,
         Object.keys(command[side]),
       ));
+    } else if (command.kind === "sheet" && command.syncCellKeys?.length) {
+      onSaveCells(trackerChangesForPatch(
+        calculated.sheets.find((item) => item.id === command.sheetId)!,
+        command.syncCellKeys,
+      ));
     }
   }, [commitWorkbook, onSaveCells, trackerChangesForPatch]);
 
@@ -336,18 +344,100 @@ export function useSpreadsheet({
     selectedCell?.value === null || selectedCell?.value === undefined ? "" : String(selectedCell.value)
   );
 
-  const clear = useCallback(() => {
-    const currentSheet = activeSheet(workbookRef.current);
-    const updates: Record<string, SpreadsheetCell | undefined> = {};
-    forEachCellInRange(selectionRange(selection), (row, column) => {
-      if (currentSheet.id === PRIMARY_SHEET_ID && row === 0 && column < workspaceRef.current.columns.length) return;
-      const current = currentSheet.cells[cellKey(row, column)];
-      updates[cellKey(row, column)] = current
-        ? { ...current, value: null, formula: undefined, computedValue: undefined }
-        : undefined;
-    });
-    changeCells(updates);
-  }, [changeCells, selection]);
+  const clearSelection = useCallback((mode: "contents" | "formatting" | "all") => {
+    if (!workspaceRef.current.canEdit) return;
+    const current = workbookRef.current;
+    const currentSheet = activeSheet(current);
+    const range = selectionRange(selection);
+    const cells = { ...currentSheet.cells };
+    const changedCellKeys: string[] = [];
+
+    for (const [key, cell] of Object.entries(currentSheet.cells)) {
+      const coordinate = parseCellKey(key);
+      if (!coordinate || !rangeContains(range, coordinate.row, coordinate.column)) continue;
+      const protectedHeader =
+        currentSheet.id === PRIMARY_SHEET_ID &&
+        coordinate.row === 0 &&
+        coordinate.column < workspaceRef.current.columns.length;
+      if (protectedHeader) continue;
+
+      if (mode === "contents") {
+        const nextCell = {
+          ...cell,
+          value: null,
+          formula: undefined,
+          computedValue: undefined,
+        };
+        if (isCellEmpty(nextCell)) delete cells[key];
+        else cells[key] = nextCell;
+      } else if (mode === "formatting") {
+        const nextCell = { ...cell, style: undefined };
+        if (isCellEmpty(nextCell)) delete cells[key];
+        else cells[key] = nextCell;
+      } else {
+        delete cells[key];
+      }
+      changedCellKeys.push(key);
+    }
+
+    let rowMetadata = currentSheet.rowMetadata;
+    let columnMetadata = currentSheet.columnMetadata;
+    if (mode !== "contents" && (selection.kind === "row" || selection.kind === "all")) {
+      rowMetadata = { ...currentSheet.rowMetadata };
+      for (const [key, metadata] of Object.entries(rowMetadata)) {
+        const row = Number(key);
+        if (!Number.isInteger(row) || row < range.startRow || row > range.endRow) continue;
+        const remaining = { ...metadata };
+        delete remaining.style;
+        if (Object.keys(remaining).length) rowMetadata[key] = remaining;
+        else delete rowMetadata[key];
+      }
+    }
+    if (mode !== "contents" && (selection.kind === "column" || selection.kind === "all")) {
+      columnMetadata = { ...currentSheet.columnMetadata };
+      for (const [key, metadata] of Object.entries(columnMetadata)) {
+        const column = Number(key);
+        if (!Number.isInteger(column) || column < range.startColumn || column > range.endColumn) continue;
+        const remaining = { ...metadata };
+        delete remaining.style;
+        if (Object.keys(remaining).length) columnMetadata[key] = remaining;
+        else delete columnMetadata[key];
+      }
+    }
+
+    const nextSheet: SpreadsheetSheet = {
+      ...currentSheet,
+      cells,
+      rowMetadata,
+      columnMetadata,
+      conditionalFormats: mode === "contents"
+        ? currentSheet.conditionalFormats
+        : currentSheet.conditionalFormats.filter((rule) => !rangesOverlap(rule.range, range)),
+      merges: mode === "all"
+        ? currentSheet.merges.filter((mergeRange) => !rangesOverlap(mergeRange, range))
+        : currentSheet.merges,
+      ...(mode === "all" && currentSheet.filter && rangesOverlap(currentSheet.filter.range, range)
+        ? { filter: undefined }
+        : {}),
+    };
+    commitWorkbook(
+      updateSheet(current, currentSheet.id, () => nextSheet),
+      {
+        kind: "sheet",
+        sheetId: currentSheet.id,
+        before: currentSheet,
+        after: nextSheet,
+        ...(mode === "contents" || mode === "all" ? { syncCellKeys: changedCellKeys } : {}),
+      },
+    );
+    if (mode === "contents" || mode === "all") {
+      onSaveCells(trackerChangesForPatch(nextSheet, changedCellKeys));
+    }
+  }, [commitWorkbook, onSaveCells, selection, trackerChangesForPatch]);
+
+  const clear = useCallback(() => clearSelection("contents"), [clearSelection]);
+  const clearFormatting = useCallback(() => clearSelection("formatting"), [clearSelection]);
+  const clearAll = useCallback(() => clearSelection("all"), [clearSelection]);
 
   const copy = useCallback(async (cut = false) => {
     const currentSheet = activeSheet(workbookRef.current);
@@ -774,6 +864,8 @@ export function useSpreadsheet({
     move,
     commitCell,
     clear,
+    clearFormatting,
+    clearAll,
     copy,
     paste,
     undo,
