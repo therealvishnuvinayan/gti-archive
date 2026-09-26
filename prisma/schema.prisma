@@ -1140,6 +1140,8 @@ model ProjectConceptFolder {
   approvedBy                       User?                   @relation("ProjectConceptFolderApprover", fields: [approvedById], references: [id], onDelete: SetNull)
   approvedAt                       DateTime?
   completedWithoutFileAt           DateTime?
+  completionRequestedAt            DateTime?
+  completionRequestNote            String?                 @db.Text
   sourceStage3ConceptId            String?                 @unique
   sourceStage3Concept              ProjectConceptFolder?   @relation("ProjectConceptPromotion", fields: [sourceStage3ConceptId], references: [id], onDelete: Restrict)
   promotedStage4Concept            ProjectConceptFolder?   @relation("ProjectConceptPromotion")

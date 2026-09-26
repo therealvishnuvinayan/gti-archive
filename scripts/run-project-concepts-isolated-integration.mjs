@@ -18,6 +18,7 @@ const port = await new Promise((resolve, reject) => {
 });
 const env = {
   ...process.env,
+  NEXT_PUBLIC_REALTIME_PROVIDER: "none",
   DATABASE_URL: `postgresql://${encodeURIComponent(userInfo().username)}@127.0.0.1:${port}/postgres`,
   AWS_REGION: "us-east-1", AWS_S3_BUCKET: "folder-tests.invalid",
   AWS_ACCESS_KEY_ID: "folder-test", AWS_SECRET_ACCESS_KEY: "folder-test", S3_USE_ACCELERATE_ENDPOINT: "false",
@@ -35,6 +36,7 @@ try {
   run("pnpm", ["exec", "prisma", "migrate", "deploy"]);
   console.log("All migrations applied to a disposable local database.");
   for (const [compiledRoot, script] of [
+    [".tmp/project-concept-integration", "project-concept-completion-request-check"],
     [".tmp/project-concept-integration", "project-concept-without-file-check"],
     [".tmp/project-concept-integration", "project-concept-integration-check"],
     [".tmp/project-concept-integration", "project-concept-round-four-integration-check"],

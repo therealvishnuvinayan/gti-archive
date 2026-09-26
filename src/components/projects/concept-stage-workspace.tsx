@@ -32,6 +32,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { Card, CardContent } from "@/components/ui/card";
+import { RequestConceptCompletionButton } from "@/components/projects/request-concept-completion-button";
 import { CompleteConceptTaskButton } from "@/components/projects/complete-concept-task-button";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import {
@@ -970,7 +971,9 @@ export function ConceptStageWorkspace({
                       className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-[9px] font-[800] uppercase tracking-[0.07em] ${
                         (folder.approvedAttachment || folder.completedWithoutFileAt)
                           ? "bg-[#e7f5eb] text-[#247247]"
-                          : folder.latestRevisionStatus === "REJECTED"
+                          : folder.completionRequest
+                            ? "bg-[#f0e9f8] text-[#60417f]"
+                            : folder.latestRevisionStatus === "REJECTED"
                             ? "bg-[#fff0ef] text-[#b94d45]"
                             : "bg-[#fff3d6] text-[#8a5718]"
                       }`}
@@ -979,12 +982,15 @@ export function ConceptStageWorkspace({
                         ? "Completed · No file"
                         : folder.approvedAttachment
                           ? "Approved Concept"
-                          : folder.latestRevisionStatus === "REJECTED"
-                            ? "Changes Requested"
-                            : "Not Approved"}
+                          : folder.completionRequest
+                            ? "Waiting for review"
+                            : folder.latestRevisionStatus === "REJECTED"
+                              ? "Changes Requested"
+                              : "Not Approved"}
                     </span>
                   ) : null}
-                  {folder.canCompleteWithoutFile && !managementLocked ? <span className="mt-2 block"><CompleteConceptTaskButton projectId={project.id} folderId={folder.id} name={folder.name} /></span> : null}
+                  {folder.canCompleteWithoutFile && !managementLocked ? <span className="mt-2 block"><CompleteConceptTaskButton projectId={project.id} folderId={folder.id} name={folder.name} completionRequest={folder.completionRequest} /></span> : null}
+                  {folder.canRequestCompletion && !managementLocked ? <span className="mt-2 block"><RequestConceptCompletionButton projectId={project.id} folderId={folder.id} name={folder.name} /></span> : null}
                   {stageNumber === 4 ? (
                     <span
                       className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-[9px] font-[800] uppercase tracking-[0.07em] ${

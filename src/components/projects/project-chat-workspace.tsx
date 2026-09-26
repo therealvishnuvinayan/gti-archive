@@ -137,6 +137,7 @@ import type {
 import type { ProjectCompletionWorkflowRecord } from "@/lib/project-completion";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
 import type { StageHistoryRecord } from "@/lib/project-history";
+import { RequestConceptCompletionButton } from "@/components/projects/request-concept-completion-button";
 import { CompleteConceptTaskButton } from "@/components/projects/complete-concept-task-button";
 import type { ProjectConceptChatMode } from "@/lib/project-concepts";
 import type {
@@ -7859,10 +7860,11 @@ export function ProjectChatWorkspace({
             </dl>
             {conceptMode.completedWithoutFile ? <span className="rounded-full bg-[#e7f5eb] px-3 py-1.5 text-[11px] font-semibold text-[#247247]">Completed · No file</span> : null}
             {conceptMode.canCompleteWithoutFile && activeStage && !isStageCompleted ? (
-              <CompleteConceptTaskButton projectId={project.id} folderId={conceptMode.folderId} name={conceptMode.conceptName} onCompleted={() => setStageCardOverrides((current) => ({
+              <CompleteConceptTaskButton projectId={project.id} folderId={conceptMode.folderId} name={conceptMode.conceptName} completionRequest={conceptMode.completionRequest} onCompleted={() => setStageCardOverrides((current) => ({
                 ...current, [activeStage.id]: { ...current[activeStage.id], actualStartedAt: activeStage.actualStartedAt, actualStartedAtValue: activeStage.actualStartedAtValue, status: "completed" },
               }))} />
             ) : null}
+            {conceptMode.canRequestCompletion && !isStageCompleted ? <RequestConceptCompletionButton projectId={project.id} folderId={conceptMode.folderId} name={conceptMode.conceptName} /> : null}
             {canRevokeConceptApproval ? (
               <Button
                 type="button"
@@ -7887,6 +7889,13 @@ export function ProjectChatWorkspace({
               deadline={activeStage?.plannedDueAtValue ?? null}
             />
           </div>
+          {conceptMode.completionRequest && !isStageCompleted ? (
+            <div role="status" className="mt-3 rounded-xl border border-[#d9cfeb] bg-[#f7f3fc] px-4 py-3 text-sm text-[#60417f]">
+              <p className="font-semibold">Waiting for completion review</p>
+              <p className="mt-1">{conceptMode.assignedExecutor?.name?.trim() || conceptMode.assignedExecutor?.email || "The assigned executor"} requested completion without a file. The project owner can review the work and complete the task.</p>
+              {conceptMode.completionRequest.note ? <p className="mt-2 max-h-28 overflow-y-auto whitespace-pre-wrap break-words">{conceptMode.completionRequest.note}</p> : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
       <div

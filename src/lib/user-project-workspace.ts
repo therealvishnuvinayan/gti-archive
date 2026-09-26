@@ -159,6 +159,7 @@ export async function getUserProjectWorkspace(
             name: true,
             workflowStageKey: true,
             approvedAttachmentId: true,
+            completionRequestedAt: true,
             updatedAt: true,
             taskerStage: {
               select: {

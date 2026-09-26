@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/auth";
 import {
   notifyConceptBriefAssigned,
   notifyConceptFileApproved,
+  notifyConceptTaskCompletion,
   notifyStageFiveActivated,
   notifyStageFourFinalFileApproved,
   notifyStageFourConceptsActivated,
@@ -15,6 +16,7 @@ import {
   completeStageFourConcepts,
   completeStageThreeConcepts,
   completeStageThreeTaskWithoutFile,
+  requestStageThreeTaskCompletion,
   createProjectConceptFolder,
   deleteProjectConceptFolder,
   editProjectConceptFolder,
@@ -249,6 +251,33 @@ export async function markProjectConceptApprovedAttachmentAction(input: {
   }
 }
 
+export async function requestStageThreeTaskCompletionAction(input: { projectId: string; folderId: string; note?: string }) {
+  const user = await requireUser();
+  try {
+    const result = await requestStageThreeTaskCompletion(user, input);
+    if (!("error" in result)) {
+      revalidateConceptStage(input.projectId, "CONCEPT_CREATION");
+      revalidatePath(`/projects/${input.projectId}`);
+      revalidatePath(`/projects/${input.projectId}/workspace`);
+      revalidatePath(`/projects/${input.projectId}/stages/3/concepts`);
+      revalidatePath(`/projects/${input.projectId}/stages/3/concepts/${input.folderId}`);
+      if (result.changed) {
+        publishProjectActivityUpdatedAfterResponse({
+          projectId: input.projectId, stageId: result.taskerStageId,
+          eventType: "stage_status_changed", changedEntityId: result.taskerStageId, actorId: user.id,
+        });
+        await runNotificationTask("concept-completion-requested", () => notifyConceptTaskCompletion({
+          projectId: input.projectId, folderId: input.folderId, actorId: user.id, event: "requested",
+        }));
+      }
+    }
+    return result;
+  } catch (error) {
+    console.error("[project-concepts] completion request failed", error);
+    return { error: "Unable to request completion. Please try again." };
+  }
+}
+
 export async function completeStageThreeTaskWithoutFileAction(input: { projectId: string; folderId: string }) {
   const user = await requireUser();
   try {
@@ -258,10 +287,16 @@ export async function completeStageThreeTaskWithoutFileAction(input: { projectId
       revalidatePath(`/projects/${input.projectId}`);
       revalidatePath(`/projects/${input.projectId}/stages/3/concepts`);
       revalidatePath(`/projects/${input.projectId}/stages/3/concepts/${input.folderId}`);
-      if (result.changed) publishProjectActivityUpdatedAfterResponse({
-        projectId: input.projectId, stageId: result.taskerStageId,
-        eventType: "stage_status_changed", changedEntityId: result.taskerStageId, actorId: user.id,
-      });
+      revalidatePath(`/projects/${input.projectId}/workspace`);
+      if (result.changed) {
+        publishProjectActivityUpdatedAfterResponse({
+          projectId: input.projectId, stageId: result.taskerStageId,
+          eventType: "stage_status_changed", changedEntityId: result.taskerStageId, actorId: user.id,
+        });
+        await runNotificationTask("concept-task-completed", () => notifyConceptTaskCompletion({
+          projectId: input.projectId, folderId: input.folderId, actorId: user.id, event: "completed",
+        }));
+      }
     }
     return result;
   } catch (error) {

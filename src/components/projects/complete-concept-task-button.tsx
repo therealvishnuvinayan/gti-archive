@@ -7,9 +7,11 @@ import { completeStageThreeTaskWithoutFileAction } from "@/app/(dashboard)/proje
 import { Button } from "@/components/ui/button";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { showSuccessToast } from "@/lib/toast";
+import type { ConceptCompletionRequest } from "@/lib/project-concepts";
 
-export function CompleteConceptTaskButton({ projectId, folderId, name, onCompleted }: {
+export function CompleteConceptTaskButton({ projectId, folderId, name, completionRequest, onCompleted }: {
   projectId: string; folderId: string; name: string; onCompleted?: () => void;
+  completionRequest?: ConceptCompletionRequest | null;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -30,8 +32,10 @@ export function CompleteConceptTaskButton({ projectId, folderId, name, onComplet
   }
   return <>
     <Button type="button" variant="outline" size="sm" className="relative z-10 h-auto min-h-9 whitespace-normal text-[11px]" disabled={pending} onClick={() => { setError(undefined); setOpen(true); }}>
-      <CheckCircle2 className="size-4 shrink-0" />Complete without file
+      <CheckCircle2 className="size-4 shrink-0" />{completionRequest ? "Review & complete" : "Complete without file"}
     </Button>
-    <ConfirmationDialog isOpen={open} title="Complete task without a file?" description={`Mark “${name}” as completed? This closes the task and records that no file submission was required.`} confirmLabel="Complete Task" pending={pending} error={error} onConfirm={complete} onClose={() => { if (!pending) setOpen(false); }} />
+    <ConfirmationDialog isOpen={open} title={completionRequest ? "Review completion request" : "Complete task without a file?"} description={completionRequest ? `The assigned executor has requested completion of “${name}”. Review their work before marking the task completed.` : `Mark “${name}” as completed? This closes the task and records that no file submission was required.`} confirmLabel="Complete Task" pending={pending} error={error} onConfirm={complete} onClose={() => { if (!pending) setOpen(false); }}>
+      {completionRequest ? <div className="mb-5 max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded-xl border border-line bg-[#f7faf6] p-4 text-sm">{completionRequest.note || "No additional note provided. Review the work in the project folders or task discussion."}</div> : null}
+    </ConfirmationDialog>
   </>;
 }

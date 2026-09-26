@@ -3082,6 +3082,12 @@ export async function createStageRevision(
           throw new Error("Concept revision files changed before submission. Please retry.");
         }
 
+        // A file submission replaces any earlier request to complete without a file.
+        await tx.projectConceptFolder.updateMany({
+          where: { projectId: input.projectId, taskerStageId: stage.id, completionRequestedAt: { not: null } },
+          data: { completionRequestedAt: null, completionRequestNote: null },
+        });
+
         await tx.projectActivityLog.create({
           data: {
             projectId: input.projectId,
