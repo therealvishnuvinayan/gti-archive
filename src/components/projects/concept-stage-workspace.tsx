@@ -249,7 +249,7 @@ function ConceptDetailsDialog({
                             {(executor.name?.trim() || executor.email).slice(0, 1).toUpperCase()}
                           </span>
                           <span className="min-w-0">
-                            <span className="block truncate">{executor.name?.trim() || executor.email}</span>
+                            <span className="block min-w-0 whitespace-normal break-words">{executor.name?.trim() || executor.email}</span>
                             <span className="block truncate text-[10px] text-[#7a857d]">{executor.email}</span>
                           </span>
                         </span>
@@ -951,7 +951,7 @@ export function ConceptStageWorkspace({
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[15px] font-[740] text-[#202a23]">{folder.name}</span>
                   {canManageConcepts ? (
-                    <span className="mt-1 block truncate text-[11px] text-[#748078]">
+                    <span className="mt-1 block min-w-0 whitespace-normal break-words text-[11px] text-[#748078]">
                       Assigned to: {folder.assignedExecutor?.name || folder.assignedExecutor?.email || "Unassigned"}
                     </span>
                   ) : null}

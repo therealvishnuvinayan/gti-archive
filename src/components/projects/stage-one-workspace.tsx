@@ -229,7 +229,7 @@ function PartySelector({
                 key={`${value.source}:${value.id}`}
                 className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full bg-[#edf4ee] py-1 pl-2.5 pr-1 text-[12px] font-[650] text-[#285f43]"
               >
-                <span className="max-w-[180px] truncate">{value.name}</span>
+                <span className="max-w-[180px] min-w-0 whitespace-normal break-words">{value.name}</span>
                 {!disabled ? (
                   <button
                     type="button"
@@ -253,7 +253,7 @@ function PartySelector({
             onClick={() => setOpen(true)}
             className="min-w-0 flex-1 text-left"
           >
-            <span className="block truncate text-[13px] font-[650] text-[#263029]">
+            <span className="block min-w-0 whitespace-normal break-words text-[13px] font-[650] text-[#263029]">
               {singleValue.name}
             </span>
             {singleValue.company || singleValue.email ? (
@@ -345,7 +345,7 @@ function PartySelector({
                       .toUpperCase()}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13px] font-[650] text-[#202923]">
+                    <span className="block min-w-0 whitespace-normal break-words text-[13px] font-[650] text-[#202923]">
                       {option.name}
                     </span>
                     <span className="block truncate text-[11px] text-[#7d8780]">

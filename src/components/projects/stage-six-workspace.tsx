@@ -695,8 +695,8 @@ function ApprovalSection({
           <div key={step.id} className="grid gap-3 border-b border-[#e8ede8] px-5 py-4 last:border-b-0 sm:grid-cols-[44px_minmax(0,1fr)_auto_auto] sm:items-center">
             <span className="grid size-9 place-items-center rounded-[10px] border border-[#dfe6df] bg-[#f8faf8] text-[12px] font-[740]">{index + 1}</span>
             <div className="min-w-0">
-              <p className="truncate text-[12px] font-[720] text-[#27322b]">{step.isMarketingDirectorRequired ? "Marketing Director" : step.recipientName}</p>
-              <p className="mt-1 truncate text-[10px] text-[#77827a]">{step.recipientType ? `${step.recipientName}${step.recipientEmail ? ` · ${step.recipientEmail}` : ""}` : "Recipient not assigned"}</p>
+              <p className="min-w-0 whitespace-normal break-words text-[12px] font-[720] text-[#27322b]">{step.isMarketingDirectorRequired ? "Marketing Director" : step.recipientName}</p>
+              <p className="mt-1 min-w-0 whitespace-normal break-words text-[10px] text-[#77827a]">{step.recipientType ? `${step.recipientName}${step.recipientEmail ? ` · ${step.recipientEmail}` : ""}` : "Recipient not assigned"}</p>
               {step.failureMessage ? <p className="mt-1 text-[10px] text-[#a54b43]">{step.failureMessage}</p> : null}
               {step.decisionComment ? <p className="mt-1 text-[10px] italic text-[#657168]">“{step.decisionComment}”</p> : null}
             </div>
@@ -727,7 +727,7 @@ function ApprovalSection({
             {unit.removedApprovalSteps.map((step) => (
               <div key={step.id} className="flex flex-wrap items-center justify-between gap-2 rounded-[11px] border border-[#e3e8e4] bg-white px-3 py-2.5">
                 <div className="min-w-0">
-                  <p className="truncate text-[11px] font-[700] text-[#465149]">Step {step.sequence} · {step.recipientName}</p>
+                  <p className="min-w-0 whitespace-normal break-words text-[11px] font-[700] text-[#465149]">Step {step.sequence} · {step.recipientName}</p>
                   <p className="mt-0.5 text-[9px] text-[#7b857e]">Removed{step.removedByName ? ` by ${step.removedByName}` : ""}{step.removedAt ? ` · ${new Date(step.removedAt).toLocaleString()}` : ""}</p>
                   {step.decisionComment ? <p className="mt-1 text-[10px] italic text-[#657168]">“{step.decisionComment}”</p> : null}
                 </div>

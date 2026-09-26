@@ -387,7 +387,7 @@ function FileGalleryCard({
         </a>
       )}
       <div className="min-w-0 px-3 py-3">
-        <p className="truncate text-[11px] text-[#657169]" title={file.uploadedBy}>
+        <p className="min-w-0 whitespace-normal break-words text-[11px] text-[#657169]" title={file.uploadedBy}>
           {file.uploadedBy}
         </p>
         <p className="mt-1 text-[10px] text-[#8a948d]">
@@ -996,11 +996,11 @@ export function StageTwoFolderWorkspace({
                             {file.name}
                           </a>
                         )}
-                        <p className="truncate text-[10px] text-[#879188] md:hidden">{file.uploadedBy} · {formatBytes(file.size)}</p>
+                        <p className="min-w-0 whitespace-normal break-words text-[10px] text-[#879188] md:hidden">{file.uploadedBy} · {formatBytes(file.size)}</p>
                       </div>
                     </div>
                     <span className="hidden text-[11px] text-[#6f7b72] md:block">{getExtension(file.name)}</span>
-                    <span className="hidden text-[11px] leading-4 text-[#6f7b72] md:block">{formatUploadedDate(file.uploadedAt, true)}<span className="block truncate text-[10px] text-[#8b958e]" title={file.uploadedBy}>{file.uploadedBy}</span></span>
+                    <span className="hidden text-[11px] leading-4 text-[#6f7b72] md:block">{formatUploadedDate(file.uploadedAt, true)}<span className="block min-w-0 whitespace-normal break-words text-[10px] text-[#8b958e]" title={file.uploadedBy}>{file.uploadedBy}</span></span>
                     <span className="hidden text-[11px] text-[#6f7b72] md:block">{formatBytes(file.size)}</span>
                     <FileActionMenu
                       file={file}

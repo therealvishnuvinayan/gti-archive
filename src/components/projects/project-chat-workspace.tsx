@@ -2244,7 +2244,7 @@ function ProjectAssetCard({
           <span className="min-w-0 truncate">{stem}</span>
           {extension ? <span className="shrink-0">{extension}</span> : null}
         </div>
-        <p className="mt-1 truncate text-[11px] font-[600] leading-4 text-[#667168]">
+        <p className="mt-1 min-w-0 whitespace-normal break-words text-[11px] font-[600] leading-4 text-[#667168]">
           Uploaded by {uploadedBy}
         </p>
       </div>
@@ -8861,7 +8861,7 @@ export function ProjectChatWorkspace({
                           </div>
                           <div className="mt-3 flex items-center gap-2">
                             <div className="min-w-0">
-	                              <p className="truncate text-[13px] font-[700] text-[#111712]">
+	                              <p className="min-w-0 whitespace-normal break-words text-[13px] font-[700] text-[#111712]">
 	                                {getActorDisplayName(
                                   message.author,
                                   currentUserDisplayName,
@@ -9050,7 +9050,7 @@ export function ProjectChatWorkspace({
                           </span>
 	                        ) : (
 	                          <div className="min-w-0">
-	                            <p className="truncate text-[12px] font-semibold text-[#111712]">
+	                            <p className="min-w-0 whitespace-normal break-words text-[12px] font-semibold text-[#111712]">
 	                              {getActorDisplayName(
                                 message.author,
                                 currentUserDisplayName,
@@ -9555,7 +9555,7 @@ export function ProjectChatWorkspace({
                               {getInitials(participant.name)}
                             </div>
                             <div className="min-w-0 flex-1">
-                              <p className="truncate text-[14px] font-semibold text-[#173120]">
+                              <p className="min-w-0 whitespace-normal break-words text-[14px] font-semibold text-[#173120]">
                                 {participant.name}
                               </p>
                               <p className="truncate text-[12px] text-[#68736a]">
@@ -9708,7 +9708,7 @@ export function ProjectChatWorkspace({
                   <dl className="space-y-2 text-[12px] text-[#344139]">
                     <div className="flex items-center justify-between gap-3">
                       <dt className="font-semibold text-[#6b776e]">Assigned Executor</dt>
-                      <dd className="truncate font-[750]">
+                      <dd className="min-w-0 whitespace-normal break-words font-[750]">
                         {conceptMode.assignedExecutor?.name?.trim() ||
                           conceptMode.assignedExecutor?.email ||
                           "Unassigned"}

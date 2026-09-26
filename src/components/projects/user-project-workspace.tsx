@@ -268,7 +268,7 @@ export function UserProjectWorkspace({
                       <LockKeyhole className="h-8 w-8" />
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[14px] font-[740] text-[#353d37]">
+                      <span className="block min-w-0 whitespace-normal break-words text-[14px] font-[740] text-[#353d37]">
                         {folder.ownerName}&apos;s Folder
                       </span>
                       <span className="mt-1 block truncate text-[10px] text-[#858e87]">

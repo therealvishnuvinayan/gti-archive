@@ -525,7 +525,7 @@ export function StageTwoWorkspace({
                 >
                   <span className="grid size-14 shrink-0 place-items-center rounded-[16px] bg-[#e8ebe9] text-[#69736c]"><LockKeyhole className="h-8 w-8" /></span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[14px] font-[740] text-[#353d37]">{folder.ownerName}&apos;s Folder</span>
+                    <span className="block min-w-0 whitespace-normal break-words text-[14px] font-[740] text-[#353d37]">{folder.ownerName}&apos;s Folder</span>
                     <span className="mt-1 block truncate text-[10px] text-[#858e87]">{folder.role}</span>
                     <span className="mt-2 inline-flex rounded-full bg-[#e4e7e5] px-2.5 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] text-[#59625c]">Classified</span>
                   </span>
