@@ -66,9 +66,11 @@ async function main() {
   await assertResearchFolderReadAccess(reader, { projectId, folderId: notes.id });
   await assert.rejects(() => assertResearchFolderWriteAccess(reader, { projectId, folderId: notes.id }));
   await assert.rejects(() => assertResearchFolderReadAccess(reader, { projectId, folderId: financeReferences.id }));
-  const upload = await requestProjectResearchFileUpload(coOwner, { projectId, folderId: notes.id, originalFileName: "Notes.txt", mimeType: "text/plain", fileSize: 3 });
+  const upload = await requestProjectResearchFileUpload(reader, { projectId, folderId: notes.id, originalFileName: "Notes.txt", mimeType: "text/plain", fileSize: 3 });
   assert.ok("attachmentId" in upload && upload.attachmentId);
-  await completeProjectResearchFileUpload(coOwner, { projectId, folderId: notes.id, attachmentId: upload.attachmentId });
+  const nestedFile = await completeProjectResearchFileUpload(reader, { projectId, folderId: notes.id, attachmentId: upload.attachmentId });
+  assert.equal(nestedFile?.uploadedBy, reader.name, "A participant can upload several subfolders deep inside Brief");
+  assert.equal((await getProjectResearchFolderPageData(coOwner, { projectId, folderId: notes.id }))?.files[0].uploadedBy, reader.name);
   const target = { projectId, folderId: interviews.id };
   const option = (await getProjectResearchImportOptions(owner, target)).find((item) => item.title === "Initial Brief")!;
   const imported = await importProjectInquiryContent(owner, { ...target, itemIds: [option.id] }, {

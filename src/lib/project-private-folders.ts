@@ -267,6 +267,7 @@ export async function getProjectPrivateFolderPageData(
       fileCount: child._count.files, folderCount: child._count.children,
     })),
     canWrite: true,
+    canUpload: true,
     files: files.map(mapPrivateFile),
   };
 }

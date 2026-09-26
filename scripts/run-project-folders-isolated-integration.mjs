@@ -38,6 +38,7 @@ try {
     [".tmp/project-folders", "project-folder-integration-check"],
     [".tmp/project-research-import", "project-research-import-check"],
     [".tmp/project-research-integration", "project-research-integration-check"],
+    [".tmp/user-project-workspace-integration", "user-project-workspace-integration-check"],
   ]) {
     env.COMPILED_ALIAS_ROOT = compiledRoot;
     console.log(run("node", ["-r", "./scripts/register-compiled-alias.cjs", `${compiledRoot}/scripts/${script}.js`]).trim());

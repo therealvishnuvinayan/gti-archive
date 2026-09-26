@@ -47,7 +47,7 @@ import {
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
 import {
   assertProjectResearchFileAccess,
-  assertResearchFolderWriteAccess,
+  assertResearchFolderUploadAccess,
 } from "@/lib/project-research-access";
 import { assertProjectPrivateAttachmentAccess } from "@/lib/project-private-folders";
 import {
@@ -5878,7 +5878,7 @@ export async function requestAttachmentUpload(
     }
 
     try {
-      await assertResearchFolderWriteAccess(user, {
+      await assertResearchFolderUploadAccess(user, {
         projectId: input.projectId,
         folderId: input.researchFolderId,
       });
@@ -6436,7 +6436,7 @@ export async function completeAttachmentUpload(
     if (attachment.uploadedById !== user.id) {
       throw new Error("Only the uploader can complete this research file upload.");
     }
-    await assertResearchFolderWriteAccess(user, {
+    await assertResearchFolderUploadAccess(user, {
       projectId: attachment.projectId,
       folderId: options.researchFolderId,
     });

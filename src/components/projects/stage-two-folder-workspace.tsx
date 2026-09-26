@@ -431,7 +431,7 @@ function FileGalleryCard({
       <div className="min-w-0 px-3 py-3">
         <FolderColorBadge value={file.colorLabel} className="mb-1.5" />
         <p className="min-w-0 whitespace-normal break-words text-[11px] text-[#657169]" title={file.uploadedBy}>
-          {file.uploadedBy}
+          Uploaded by {file.uploadedBy}
         </p>
         <p className="mt-1 text-[10px] text-[#8a948d]">
           Uploaded {formatUploadedDate(file.uploadedAt)} · {formatBytes(file.size)}
@@ -753,7 +753,7 @@ export function StageTwoFolderWorkspace({
   }
 
   async function uploadFiles(fileList: FileList | File[]) {
-    if (!data.canWrite) return;
+    if (!data.canUpload) return;
     const selectedFiles = Array.from(fileList);
     if (selectedFiles.length === 0) return;
 
@@ -799,6 +799,8 @@ export function StageTwoFolderWorkspace({
       current.filter((upload) => failedUploadKeys.has(upload.key)),
     );
     if (uploadedCount > 0) {
+      setQuery("");
+      setColorFilter("ALL");
       showSuccessToast(`${uploadedCount} ${uploadedCount === 1 ? "file" : "files"} uploaded.`);
     }
     if (failedCount > 0) {
@@ -947,11 +949,11 @@ export function StageTwoFolderWorkspace({
               </a>
             )}
             <FolderColorBadge value={file.colorLabel} className="mt-1" />
-            <p className="min-w-0 whitespace-normal break-words text-[10px] text-[#879188] md:hidden">{file.uploadedBy} · {formatBytes(file.size)}</p>
+            <p className="min-w-0 whitespace-normal break-words text-[10px] text-[#879188] md:hidden">Uploaded by {file.uploadedBy} · {formatBytes(file.size)}</p>
           </div>
         </div>
         <span className="hidden text-[11px] text-[#6f7b72] md:block">{getExtension(file.name)}</span>
-        <span className="hidden text-[11px] leading-4 text-[#6f7b72] md:block">{formatUploadedDate(file.uploadedAt, true)}<span className="block min-w-0 whitespace-normal break-words text-[10px] text-[#8b958e]" title={file.uploadedBy}>{file.uploadedBy}</span></span>
+        <span className="hidden text-[11px] leading-4 text-[#6f7b72] md:block">{formatUploadedDate(file.uploadedAt, true)}<span className="block min-w-0 whitespace-normal break-words text-[10px] text-[#8b958e]" title={file.uploadedBy}>Uploaded by {file.uploadedBy}</span></span>
         <span className="hidden text-[11px] text-[#6f7b72] md:block">{formatBytes(file.size)}</span>
         <FileActionMenu
           onPin={() => void pinItem("file", file)}
@@ -1040,13 +1042,17 @@ export function StageTwoFolderWorkspace({
                       <FileDown className="h-4 w-4" /> Import
                     </Button>
                   ) : null}
-                  {!data.canWrite ? (
+                  {!data.canUpload ? (
                     <span className="inline-flex h-10 items-center gap-2 rounded-[11px] bg-[#e9eeea] px-3 text-[11px] font-[700] text-[#627067]">
                       <LockKeyhole className="h-3.5 w-3.5" />
                       {context === "user-shared"
                         ? "Read-only folder"
                         : "Read-only workspace"}
                     </span>
+                  ) : !data.canWrite ? (
+                    <Button type="button" className="h-10 rounded-[11px]" onClick={() => inputRef.current?.click()}>
+                      <Upload className="h-4 w-4" /> Upload Files
+                    </Button>
                   ) : (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -1114,6 +1120,7 @@ export function StageTwoFolderWorkspace({
               ref={inputRef}
               type="file"
               multiple
+              disabled={!data.canUpload}
               className="hidden"
               onChange={(event) => {
                 if (event.target.files) void uploadFiles(event.target.files);
@@ -1143,12 +1150,12 @@ export function StageTwoFolderWorkspace({
               if (!isFileDrag(event)) return;
               event.preventDefault();
               dragDepth.current += 1;
-              if (data.canWrite) setDragging(true);
+              if (data.canUpload) setDragging(true);
             }}
             onDragOver={(event) => {
               if (!isFileDrag(event)) return;
               event.preventDefault();
-              event.dataTransfer.dropEffect = data.canWrite ? "copy" : "none";
+              event.dataTransfer.dropEffect = data.canUpload ? "copy" : "none";
             }}
             onDragLeave={(event) => {
               if (!isFileDrag(event)) return;
@@ -1161,10 +1168,10 @@ export function StageTwoFolderWorkspace({
               event.preventDefault();
               dragDepth.current = 0;
               setDragging(false);
-              if (data.canWrite) void uploadFiles(event.dataTransfer.files);
+              if (data.canUpload) void uploadFiles(event.dataTransfer.files);
             }}
           >
-            {dragging && data.canWrite ? (
+            {dragging && data.canUpload ? (
               <div className="absolute inset-3 z-30 flex flex-col items-center justify-center rounded-[22px] border-2 border-dashed border-[#2b8056] bg-[#eaf5ed]/95 text-center text-[#216643] shadow-[0_18px_44px_rgba(25,103,67,0.12)]">
                 <UploadCloud className="h-10 w-10" />
                 <p className="mt-3 text-[17px] font-[760]">Drop files to upload to {data.folder.name}</p>
@@ -1225,7 +1232,9 @@ export function StageTwoFolderWorkspace({
                     ? "Try another name or colour filter."
                     : data.canWrite
                       ? `Drag files here or use New to add a folder or files to ${data.folder.name}.`
-                      : "This folder does not contain any folders or files yet."}
+                      : data.canUpload
+                        ? `Drag files here or choose Upload Files to add files to ${data.folder.name}.`
+                        : "This folder does not contain any folders or files yet."}
                 </p>
                 {colorFilter !== "ALL" || query ? <Button variant="secondary" className="mt-3" onClick={() => { setColorFilter("ALL"); setQuery(""); }}>Clear filters</Button> : null}
               </div>

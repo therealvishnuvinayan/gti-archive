@@ -34,6 +34,7 @@ assert.doesNotMatch(detailPage, /searchParams.*admin|searchParams.*manager/i);
 for (const copy of [
   "Project Workspace",
   "Shared Folders",
+  "Upload files",
   "Read only",
   "Private Folders",
   "My Private Folder",
@@ -87,6 +88,8 @@ assert.match(workspaceQuery, /const classifiedFolders = canViewClassifiedFolders
 assert.match(workspaceQuery, /: \[\];/);
 assert.match(workspace, /Only your private folder is visible to you\./);
 assert.match(workspace, /data\.canViewClassifiedFolders/);
+assert.match(workspace, /folder\.canUpload/);
+assert.match(workspaceQuery, /getProjectResearchAccess/);
 
 assert.match(privateFolders, /ownerUserId: user\.id/);
 assert.match(privateFolders, /activeParticipantWhere\(user\.id\)/);
@@ -104,6 +107,7 @@ assert.match(
   /canWrite:\s*isCanonicalWorkspace &&\s*stageAvailable &&\s*canManageWorkspace/,
 );
 assert.match(researchAccess, /canManageWorkspace = isGlobalAdministrator \|\| isProjectOwner \|\| isProjectCoOwner/);
+assert.match(researchAccess, /canUpload:\s*isCanonicalWorkspace &&\s*stageAvailable &&\s*\(canManageWorkspace \|\| isCanonicalSharedFolder\) &&\s*!isProjectCompleted/);
 assert.match(stageTwoPage, /!isBusinessAdministratorRole\(user\.role\)/);
 assert.match(stageTwoPage, /redirect\(`\/projects\/\$\{slug\}`\)/);
 assert.match(stageTwoFolderPage, /getProjectResearchFolderPageData\(user,/);

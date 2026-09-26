@@ -481,6 +481,7 @@ export async function getProjectResearchFolderPageData(
       fileCount: child._count.files, folderCount: child._count.children,
     })),
     canWrite: access.canWrite,
+    canUpload: access.canUpload,
     files: folder.files.map((record) => ({
       id: record.id,
       pinnedAt: record.pinnedAt?.toISOString() ?? null,

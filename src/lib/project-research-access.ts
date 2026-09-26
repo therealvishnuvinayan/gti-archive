@@ -14,7 +14,7 @@ import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { isProjectStatusCompleted } from "@/lib/project-statuses";
 import { getFolderAncestors } from "@/lib/project-folder-tree";
 
-const researchAccessProjectSelect = {
+export const researchAccessProjectSelect = {
   ownerId: true,
   completedAt: true,
   archivedAt: true,
@@ -56,6 +56,7 @@ export type ProjectResearchAccess = {
   workspaceOwnerUserId: string;
   isCanonicalWorkspace: boolean;
   canRead: boolean;
+  canUpload: boolean;
   canWrite: boolean;
   isProjectCompleted: boolean;
   isProjectOwner: boolean;
@@ -116,6 +117,11 @@ export function getProjectResearchAccess(
     canRead:
       isCanonicalSharedFolder ||
       (isCanonicalWorkspace && stageAvailable && canManageWorkspace),
+    canUpload:
+      isCanonicalWorkspace &&
+      stageAvailable &&
+      (canManageWorkspace || isCanonicalSharedFolder) &&
+      !isProjectCompleted,
     canWrite:
       isCanonicalWorkspace &&
       stageAvailable &&
@@ -195,6 +201,19 @@ export async function assertResearchFolderReadAccess(
 
   if (!result.access.canRead) {
     throw new Error("You do not have permission to view this research folder.");
+  }
+
+  return result;
+}
+
+export async function assertResearchFolderUploadAccess(
+  user: Pick<PermissionUser, "id" | "role">,
+  input: { projectId: string; folderId: string },
+) {
+  const result = await getResearchFolderAccess(user, input);
+
+  if (!result.access.canUpload) {
+    throw new Error("You do not have permission to upload to this folder.");
   }
 
   return result;

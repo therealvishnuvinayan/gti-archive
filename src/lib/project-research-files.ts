@@ -10,6 +10,7 @@ import {
 } from "@/lib/project-history";
 import {
   assertResearchFolderReadAccess,
+  assertResearchFolderUploadAccess,
   assertResearchFolderWriteAccess,
   getResearchFolderAccess,
 } from "@/lib/project-research-access";
@@ -31,7 +32,7 @@ export async function requestProjectResearchFileUpload(
     uploadEndpointMode?: RequestUploadInput["uploadEndpointMode"];
   },
 ) {
-  await assertResearchFolderWriteAccess(user, {
+  await assertResearchFolderUploadAccess(user, {
     projectId: input.projectId,
     folderId: input.folderId,
   });
@@ -56,7 +57,7 @@ export async function completeProjectResearchFileUpload(
     failed?: boolean;
   },
 ) {
-  await assertResearchFolderWriteAccess(user, {
+  await assertResearchFolderUploadAccess(user, {
     projectId: input.projectId,
     folderId: input.folderId,
   });
