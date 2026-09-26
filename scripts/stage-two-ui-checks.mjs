@@ -63,7 +63,7 @@ assert(
   workspace.includes("data.myPrivateFolder.href") &&
     workspace.includes("data.classifiedFolders.map") &&
     workspace.includes('LockKeyhole className="h-8 w-8"') &&
-    service.includes("projectPrivateFolder.findUnique") &&
+    service.includes("projectPrivateFolder.findFirst") &&
     !service.includes("projectPrivateFolder.findMany"),
   "Stage 2 private-folder cards must expose only the current participant's folder and classified placeholders.",
 );
@@ -182,7 +182,7 @@ assert(
 assert(
   folderWorkspace.includes("grid-cols-[repeat(auto-fill,minmax(min(100%,210px),1fr))]") &&
     folderWorkspace.includes("truncate") &&
-    folderWorkspace.includes("Search files in this folder") &&
+    folderWorkspace.includes("Search folders and files") &&
     ["Newest", "Oldest", "Name (A–Z)", "Name (Z–A)"].every((label) =>
       folderWorkspace.includes(label),
     ),
@@ -278,7 +278,7 @@ assert(
   "Text-file creation must retain both UI and server-side Stage 2 write authorization.",
 );
 assert(
-  folderWorkspace.includes("No files yet") &&
+  folderWorkspace.includes("This folder is empty") &&
     folderWorkspace.includes("Drag files here or use New") &&
     folderWorkspace.includes("setFiles((current) => [uploadedFile as FolderFile, ...current])") &&
     !folderWorkspace.includes("router.refresh"),
@@ -325,7 +325,7 @@ assert(
 assert(schema.includes("model ProjectResearchWorkspace") && schema.includes("model ProjectResearchFolder") && schema.includes("model ProjectResearchFolderFile"), "Stage 2 Prisma models are missing.");
 assert(migration.includes("ON CONFLICT") && migration.includes('FROM "ProjectCollaborator"'), "Migration participant backfill must be idempotent and include ProjectCollaborator.");
 assert(migration.includes("'workflow:' || project.\"id\"") && migration.includes('ON CONFLICT ("projectId", "stageKey") DO NOTHING'), "Stage 2 migration must reconcile missing fixed-workflow rows idempotently.");
-assert(!schema.includes("parentFolderId") && !migration.includes('ALTER TABLE "ProjectStage"'), "Stage 2 must remain flat and must not mutate legacy ProjectStage.");
+assert(schema.includes("parentFolderId") && folderWorkspace.includes("data.ancestors.map") && folderWorkspace.includes("New Folder") && !migration.includes('ALTER TABLE "ProjectStage"'), "Stage 2 must support nested folders and breadcrumb navigation without changing legacy ProjectStage.");
 assert(
   !schema.includes("model TextDocument") && !schema.includes("model Note"),
   "Plain-text files must not introduce a separate note or document model.",

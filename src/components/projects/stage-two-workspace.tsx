@@ -27,7 +27,6 @@ import {
   SlidersHorizontal,
   Trash2,
   UploadCloud,
-  X,
 } from "lucide-react";
 
 import {
@@ -35,6 +34,7 @@ import {
   createProjectResearchFolderAction,
   deleteProjectResearchFolderAction,
 } from "@/app/(dashboard)/projects/[slug]/stages/2/actions";
+import { NewFolderDialog } from "@/components/projects/new-folder-dialog";
 import { StageTwoImportDialog } from "@/components/projects/stage-two-import-dialog";
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
@@ -47,7 +47,6 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ProjectResearchPageData } from "@/lib/project-research";
 import { uploadProjectResearchFile } from "@/lib/project-research-upload-client";
@@ -169,7 +168,7 @@ function FolderTile({
           {upload ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <File className="h-3.5 w-3.5" />}
           {upload
             ? `Uploading ${upload.fileCount} ${upload.fileCount === 1 ? "file" : "files"} · ${upload.progress}%`
-            : `${folder.fileCount} ${folder.fileCount === 1 ? "file" : "files"}`}
+            : `${folder.folderCount} ${folder.folderCount === 1 ? "folder" : "folders"} · ${folder.fileCount} ${folder.fileCount === 1 ? "file" : "files"}`}
         </span>
       </Link>
       {canDelete ? (
@@ -193,64 +192,6 @@ function FolderTile({
           <span className="mt-2 text-[13px] font-[760]">Drop to upload</span>
         </span>
       ) : null}
-    </div>
-  );
-}
-
-function NewFolderDialog({
-  open,
-  pending,
-  error,
-  onClose,
-  onCreate,
-}: {
-  open: boolean;
-  pending: boolean;
-  error?: string;
-  onClose: () => void;
-  onCreate: (name: string) => void;
-}) {
-  const [name, setName] = useState("");
-  if (!open) return null;
-
-  return (
-    <div className="fixed inset-0 z-[150] flex items-center justify-center bg-[#112118]/40 px-4 py-8 backdrop-blur-[2px]" role="dialog" aria-modal="true">
-      <Card className="w-full max-w-[500px] rounded-[24px] border border-[#dfe6df] shadow-[0_32px_80px_rgba(14,31,20,0.22)]">
-        <CardContent className="p-6 sm:p-7">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-[22px] font-[760] tracking-[-0.03em] text-[#162019]">Create a folder</h2>
-              <p className="mt-1 text-[13px] text-[#6f7a72]">Add a flat custom folder to the shared project workspace.</p>
-            </div>
-            <Button type="button" variant="secondary" size="icon" onClick={onClose} disabled={pending}>
-              <X className="h-4 w-4" /><span className="sr-only">Close</span>
-            </Button>
-          </div>
-          <label className="mt-6 block space-y-2">
-            <span className="text-[13px] font-[680] text-[#2d372f]">Folder name</span>
-            <Input
-              autoFocus
-              value={name}
-              maxLength={120}
-              onChange={(event) => setName(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") onCreate(name);
-                if (event.key === "Escape") onClose();
-              }}
-              placeholder="e.g., Customer Interviews"
-              aria-invalid={Boolean(error)}
-              className={cn("h-12 rounded-[14px]", error && "border-[#c85c54]")}
-            />
-            {error ? <span className="block text-[12px] text-[#b84e48]">{error}</span> : null}
-          </label>
-          <div className="mt-7 flex justify-end gap-3">
-            <Button type="button" variant="secondary" onClick={onClose} disabled={pending}>Cancel</Button>
-            <Button type="button" onClick={() => onCreate(name)} disabled={pending}>
-              <Plus className="h-4 w-4" /> {pending ? "Creating..." : "Create folder"}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }
@@ -368,6 +309,7 @@ export function StageTwoWorkspace({
           systemKey: null,
           sortOrder: 1000,
           fileCount: 0,
+          folderCount: 0,
         },
       ]);
       showSuccessToast("Folder created.");
@@ -561,13 +503,13 @@ export function StageTwoWorkspace({
           </div>
         </CardContent>
       </Card>
-      <NewFolderDialog open={dialogOpen} pending={isPending} error={folderError} onClose={() => setDialogOpen(false)} onCreate={createFolder} />
+      {dialogOpen ? <NewFolderDialog open pending={isPending} error={folderError} onClose={() => setDialogOpen(false)} onCreate={createFolder} /> : null}
       <ConfirmationDialog
         isOpen={Boolean(folderToDelete)}
         title="Delete folder?"
         description={
           folderToDelete
-            ? `Delete “${folderToDelete.name}” and every file inside it? This permanently removes them from the shared project workspace and cannot be undone.`
+            ? `Delete “${folderToDelete.name}” and all subfolders and files inside it? This permanently removes them from the shared project workspace and cannot be undone.`
             : ""
         }
         confirmLabel="Delete folder"

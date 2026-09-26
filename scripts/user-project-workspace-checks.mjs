@@ -79,7 +79,7 @@ assert.match(workspaceQuery, /ProjectResearchFolderSystemKey\.TECH/);
 assert.doesNotMatch(workspaceQuery, /MARKET_COMPETITION|VENDORS|FINANCE|LEGAL|PITCH/);
 assert.match(workspaceQuery, /deriveUserTaskDisplayState/);
 assert.match(workspaceQuery, /buildAccessibleProjectsWhere\(currentUser\)/);
-assert.match(workspaceQuery, /where: \{ ownerUserId: currentUser\.id \}/);
+assert.match(workspaceQuery, /where: \{ ownerUserId: currentUser\.id, parentFolderId: null \}/);
 assert.match(workspaceQuery, /isGlobalProjectAdministrator\(currentUser\)/);
 assert.match(workspaceQuery, /isProjectOwner\(currentUser, project\)/);
 assert.match(workspaceQuery, /isProjectCoOwner\(currentUser, project\)/);
@@ -101,11 +101,12 @@ assert.match(researchAccess, /ProjectResearchFolderSystemKey\.BRIEF/);
 assert.match(researchAccess, /ProjectResearchFolderSystemKey\.TECH/);
 assert.match(
   researchAccess,
-  /canWrite:\s*isCanonicalWorkspace &&\s*stageAvailable &&\s*isGlobalAdministrator/,
+  /canWrite:\s*isCanonicalWorkspace &&\s*stageAvailable &&\s*canManageWorkspace/,
 );
+assert.match(researchAccess, /canManageWorkspace = isGlobalAdministrator \|\| isProjectOwner \|\| isProjectCoOwner/);
 assert.match(stageTwoPage, /!isBusinessAdministratorRole\(user\.role\)/);
 assert.match(stageTwoPage, /redirect\(`\/projects\/\$\{slug\}`\)/);
-assert.match(stageTwoFolderPage, /user\.role === UserRole\.USER/);
+assert.match(stageTwoFolderPage, /getProjectResearchFolderPageData\(user,/);
 assert.match(conceptRoute, /user\.role === UserRole\.USER/);
 assert.match(conceptRoute, /stageNeutral: true/);
 assert.match(conceptRoute, /backHref: backHref \?\? `\/projects\/\$\{encodeURIComponent\(projectId\)\}`/);

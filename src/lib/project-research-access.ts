@@ -12,6 +12,7 @@ import {
 } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { isProjectStatusCompleted } from "@/lib/project-statuses";
+import { getFolderAncestors } from "@/lib/project-folder-tree";
 
 const researchAccessProjectSelect = {
   ownerId: true,
@@ -105,6 +106,7 @@ export function getProjectResearchAccess(
     (context.folderSystemKey === ProjectResearchFolderSystemKey.BRIEF ||
       context.folderSystemKey === ProjectResearchFolderSystemKey.TECH) &&
     isProjectParticipant;
+  const canManageWorkspace = isGlobalAdministrator || isProjectOwner || isProjectCoOwner;
 
   return {
     projectId: context.projectId,
@@ -113,11 +115,11 @@ export function getProjectResearchAccess(
     isCanonicalWorkspace,
     canRead:
       isCanonicalSharedFolder ||
-      (isCanonicalWorkspace && stageAvailable && isGlobalAdministrator),
+      (isCanonicalWorkspace && stageAvailable && canManageWorkspace),
     canWrite:
       isCanonicalWorkspace &&
       stageAvailable &&
-      isGlobalAdministrator &&
+      canManageWorkspace &&
       !isProjectCompleted,
     isProjectCompleted,
     isProjectOwner,
@@ -166,13 +168,20 @@ export async function getResearchFolderAccess(
     throw new Error("Research folder not found.");
   }
 
+  const hierarchy = await withPrismaRetry(() => prisma.projectResearchFolder.findMany({
+    where: { workspaceId: folder.workspaceId },
+    select: { id: true, name: true, parentFolderId: true, systemKey: true },
+  }));
+  const path = getFolderAncestors(hierarchy, folder.id);
+
   return {
     folder,
+    path,
     access: getProjectResearchAccess(user, {
       projectId: input.projectId,
       workspaceId: folder.workspaceId,
       workspaceOwnerUserId: folder.workspace.ownerUserId,
-      folderSystemKey: folder.systemKey,
+      folderSystemKey: path[0].systemKey,
       project,
     }),
   };

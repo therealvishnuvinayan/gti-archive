@@ -221,10 +221,8 @@ async function main() {
   );
   check(
     Boolean(
-      await prisma.projectPrivateFolder.findUnique({
-        where: {
-          projectId_ownerUserId: { projectId, ownerUserId: users.lateCollaborator.id },
-        },
+      await prisma.projectPrivateFolder.findFirst({
+        where: { projectId, ownerUserId: users.lateCollaborator.id, parentFolderId: null },
       }),
     ),
     "adding a project collaborator must provision their private folder",
@@ -348,11 +346,11 @@ async function main() {
     "historical participant research folders must not accept uploads",
   );
 
-  const ownerPrivateFolder = await prisma.projectPrivateFolder.findUniqueOrThrow({
-    where: { projectId_ownerUserId: { projectId, ownerUserId: users.owner.id } },
+  const ownerPrivateFolder = await prisma.projectPrivateFolder.findFirstOrThrow({
+    where: { projectId, ownerUserId: users.owner.id, parentFolderId: null },
   });
-  const coOwnerPrivateFolder = await prisma.projectPrivateFolder.findUniqueOrThrow({
-    where: { projectId_ownerUserId: { projectId, ownerUserId: users.coOwner.id } },
+  const coOwnerPrivateFolder = await prisma.projectPrivateFolder.findFirstOrThrow({
+    where: { projectId, ownerUserId: users.coOwner.id, parentFolderId: null },
   });
   check(
     (await getProjectPrivateFolderPageData(users.owner, {

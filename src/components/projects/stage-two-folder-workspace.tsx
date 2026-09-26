@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import {
   type DragEvent,
   useEffect,
@@ -24,6 +25,7 @@ import {
   FileText,
   FileVideo,
   FolderOpen,
+  FolderPlus,
   Grid2X2,
   List,
   Loader2,
@@ -39,6 +41,9 @@ import {
 } from "lucide-react";
 
 import { StageTwoImportDialog } from "@/components/projects/stage-two-import-dialog";
+import { NewFolderDialog } from "@/components/projects/new-folder-dialog";
+import { createProjectResearchFolderAction, deleteProjectResearchFolderAction } from "@/app/(dashboard)/projects/[slug]/stages/2/actions";
+import { createProjectPrivateSubfolderAction, deleteProjectPrivateSubfolderAction } from "@/app/(dashboard)/projects/[slug]/workspace/private/actions";
 import { AssetPreviewDialog } from "@/components/projects/asset-preview-button";
 import { ProjectBackButton } from "@/components/projects/project-back-button";
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
@@ -583,6 +588,11 @@ export function StageTwoFolderWorkspace({
   const [sort, setSort] = useState<FileSort>("newest");
   const [query, setQuery] = useState("");
   const [files, setFiles] = useState<FolderFile[]>(data.files);
+  const [folders, setFolders] = useState(data.folders);
+  const [folderDialogOpen, setFolderDialogOpen] = useState(false);
+  const [folderPending, setFolderPending] = useState(false);
+  const [folderError, setFolderError] = useState<string>();
+  const [folderToDelete, setFolderToDelete] = useState<FolderData["folders"][number]>();
   const [uploads, setUploads] = useState<PendingUpload[]>([]);
   const [deletingId, setDeletingId] = useState<string>();
   const [previewFile, setPreviewFile] = useState<FolderFile>();
@@ -601,6 +611,45 @@ export function StageTwoFolderWorkspace({
     ? uploadProjectPrivateFile
     : uploadProjectResearchFile;
   const projectWorkspaceHref = `/projects/${data.project.id}`;
+  const folderHref = (id: string) => context === "research"
+    ? `/projects/${data.project.id}/stages/2/folders/${id}`
+    : `/projects/${data.project.id}/workspace/${isPrivateFolder ? "private" : "shared"}/${id}`;
+  const visibleFolders = useMemo(() => folders.filter((folder) => folder.name.toLocaleLowerCase("en").includes(query.trim().toLocaleLowerCase("en"))).sort((left, right) => {
+    if (sort === "name-asc") return left.name.localeCompare(right.name);
+    if (sort === "name-desc") return right.name.localeCompare(left.name);
+    const difference = new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
+    return sort === "oldest" ? difference : -difference;
+  }), [folders, query, sort]);
+
+  async function createFolder(name: string) {
+    if (!data.canWrite || folderPending) return;
+    setFolderPending(true);
+    setFolderError(undefined);
+    try {
+      const input = { projectId: data.project.id, parentFolderId: data.folder.id, name };
+      const result = await (isPrivateFolder ? createProjectPrivateSubfolderAction(input) : createProjectResearchFolderAction(input));
+      if ("error" in result) { setFolderError(result.error); return; }
+      setFolders((current) => [...current, { ...result.folder, fileCount: 0, folderCount: 0, createdAt: new Date().toISOString() }]);
+      setFolderDialogOpen(false);
+      showSuccessToast("Folder created.");
+    } catch { setFolderError("Unable to create folder. Please try again."); }
+    finally { setFolderPending(false); }
+  }
+
+  async function deleteFolder() {
+    if (!folderToDelete || !data.canWrite || folderPending) return;
+    setFolderPending(true);
+    setFolderError(undefined);
+    try {
+      const input = { projectId: data.project.id, folderId: folderToDelete.id };
+      const result = await (isPrivateFolder ? deleteProjectPrivateSubfolderAction(input) : deleteProjectResearchFolderAction(input));
+      if ("error" in result) { setFolderError(result.error); return; }
+      setFolders((current) => current.filter((folder) => folder.id !== input.folderId));
+      setFolderToDelete(undefined);
+      showSuccessToast("Folder deleted.");
+    } catch { setFolderError("Unable to delete folder. Please try again."); }
+    finally { setFolderPending(false); }
+  }
 
   const visibleFiles = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase("en");
@@ -748,7 +797,7 @@ export function StageTwoFolderWorkspace({
           >
             <nav
               aria-label="Folder navigation"
-              className="flex min-w-0 items-center gap-2 border-b border-[#e6ece7] bg-white px-5 py-3 sm:px-8"
+              className="flex min-w-0 flex-wrap items-center gap-2 border-b border-[#e6ece7] bg-white px-5 py-3 sm:px-8"
             >
               {context === "research" ? (
                 <ProjectBackButton
@@ -763,8 +812,12 @@ export function StageTwoFolderWorkspace({
                   ariaLabel="Back to project workspace"
                 />
               )}
+              {data.ancestors.map((ancestor) => <span key={ancestor.id} className="contents">
+                <span className="text-[#a0aaa2]">/</span>
+                <Link href={folderHref(ancestor.id)} title={ancestor.name} className="max-w-[180px] truncate text-[12px] font-[650] text-[#2d7952] hover:underline">{ancestor.name}</Link>
+              </span>)}
               <span className="text-[#a0aaa2]">/</span>
-              <span className="max-w-[220px] truncate text-[12px] font-[700] text-[#536158]">
+              <span aria-current="page" className="max-w-[220px] truncate text-[12px] font-[700] text-[#536158]">
                 {data.folder.name}
               </span>
             </nav>
@@ -788,7 +841,7 @@ export function StageTwoFolderWorkspace({
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  {data.canWrite && context === "research" ? (
+                  {data.canWrite && !isPrivateFolder ? (
                     <Button type="button" variant="secondary" onClick={() => setImportOpen(true)} className="h-10 rounded-[11px]">
                       <FileDown className="h-4 w-4" /> Import
                     </Button>
@@ -809,6 +862,9 @@ export function StageTwoFolderWorkspace({
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="min-w-[200px]">
                         <DropdownMenuLabel>Add to folder</DropdownMenuLabel>
+                        <DropdownMenuItem onSelect={() => { setFolderError(undefined); setFolderDialogOpen(true); }}>
+                          <FolderPlus className="h-4 w-4" /> New Folder
+                        </DropdownMenuItem>
                         <DropdownMenuItem onSelect={() => inputRef.current?.click()}>
                           <Upload className="h-4 w-4" /> Upload Files
                         </DropdownMenuItem>
@@ -877,8 +933,8 @@ export function StageTwoFolderWorkspace({
                 <Input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Search files in this folder..."
-                  aria-label="Search files in this folder"
+                  placeholder="Search folders and files..."
+                  aria-label="Search folders and files"
                   className="h-10 rounded-[11px] border-[#dce3dc] bg-white pl-10 shadow-none"
                 />
               </div>
@@ -943,23 +999,40 @@ export function StageTwoFolderWorkspace({
               </div>
             ) : null}
 
-            {visibleFiles.length === 0 ? (
+            {visibleFolders.length > 0 ? (
+              <section aria-label="Subfolders" className="mb-6">
+                <h2 className="mb-3 text-[12px] font-[750] uppercase tracking-wide text-[#758078]">Folders</h2>
+                <div className={cn(view === "grid" ? "grid grid-cols-[repeat(auto-fill,minmax(min(100%,210px),1fr))] gap-4" : "space-y-2")}>
+                  {visibleFolders.map((folder) => <div key={folder.id} className="relative flex items-center rounded-[16px] border border-[#dfe6df] bg-white shadow-sm">
+                    <Link href={folderHref(folder.id)} className="flex min-w-0 flex-1 items-center gap-3 rounded-[16px] p-4 hover:bg-[#f1f7f2]">
+                      <FolderOpen className="size-9 shrink-0 text-[#397655]" />
+                      <span className="min-w-0 flex-1"><span className="block truncate text-[14px] font-[700] text-[#263129]" title={folder.name}>{folder.name}</span>
+                        <span className="mt-1 block text-[11px] text-[#758078]">{folder.folderCount} {folder.folderCount === 1 ? "folder" : "folders"} · {folder.fileCount} {folder.fileCount === 1 ? "file" : "files"}</span>
+                      </span>
+                    </Link>
+                    {data.canWrite ? <Button type="button" variant="ghost" size="icon" className="mr-2 shrink-0 text-[#ad514b]" aria-label={`Delete folder ${folder.name}`} onClick={() => { setFolderError(undefined); setFolderToDelete(folder); }}><Trash2 className="size-4" /></Button> : null}
+                  </div>)}
+                </div>
+              </section>
+            ) : null}
+
+            {visibleFiles.length === 0 && visibleFolders.length === 0 ? (
               <div className="flex min-h-[310px] flex-col items-center justify-center rounded-[20px] border border-dashed border-[#d7e0d8] bg-white/70 px-6 text-center">
                 <span className="grid size-14 place-items-center rounded-[17px] bg-[#edf5ef] text-[#397655]">
                   <FolderOpen className="h-7 w-7" />
                 </span>
                 <p className="mt-4 text-[15px] font-[720] text-[#364239]">
-                  {query ? "No matching files" : "No files yet"}
+                  {query ? "No matching folders or files" : "This folder is empty"}
                 </p>
                 <p className="mt-1 max-w-[360px] text-[12px] leading-5 text-[#77827a]">
                   {query
-                    ? "Try another file name."
+                    ? "Try another folder or file name."
                     : data.canWrite
-                      ? `Drag files here or use New to add files to ${data.folder.name}.`
-                      : "This folder does not contain any files yet."}
+                      ? `Drag files here or use New to add a folder or files to ${data.folder.name}.`
+                      : "This folder does not contain any folders or files yet."}
                 </p>
               </div>
-            ) : view === "grid" ? (
+            ) : visibleFiles.length === 0 ? null : view === "grid" ? (
               <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,210px),1fr))] gap-4">
                 {visibleFiles.map((file) => (
                   <FileGalleryCard
@@ -1028,6 +1101,14 @@ export function StageTwoFolderWorkspace({
           </div>
         </CardContent>
       </Card>
+
+      {folderDialogOpen ? <NewFolderDialog open pending={folderPending} error={folderError} parentName={data.folder.name} onClose={() => setFolderDialogOpen(false)} onCreate={(name) => void createFolder(name)} /> : null}
+      <ConfirmationDialog
+        isOpen={Boolean(folderToDelete)} title="Delete folder?"
+        description={folderToDelete ? `Delete “${folderToDelete.name}” and all subfolders and files inside it? This cannot be undone.` : ""}
+        confirmLabel="Delete folder" tone="destructive" pending={folderPending} error={folderError}
+        onConfirm={() => void deleteFolder()} onClose={() => { if (!folderPending) setFolderToDelete(undefined); }}
+      />
 
       {importOpen ? (
         <StageTwoImportDialog

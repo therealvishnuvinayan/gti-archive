@@ -590,13 +590,8 @@ async function main() {
     check(!isError(updated), "membership removal update must succeed");
     check(
       Boolean(
-        await prisma.projectPrivateFolder.findUnique({
-          where: {
-            projectId_ownerUserId: {
-              projectId,
-              ownerUserId: users.collaborator.id,
-            },
-          },
+        await prisma.projectPrivateFolder.findFirst({
+          where: { projectId, ownerUserId: users.collaborator.id, parentFolderId: null },
         }),
       ),
       "member removal must preserve the historical private folder",

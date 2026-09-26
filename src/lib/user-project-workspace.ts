@@ -144,7 +144,7 @@ export async function getUserProjectWorkspace(
           },
         },
         privateFolders: {
-          where: { ownerUserId: currentUser.id },
+          where: { ownerUserId: currentUser.id, parentFolderId: null },
           select: { id: true, ownerUserId: true },
         },
         conceptFolders: {

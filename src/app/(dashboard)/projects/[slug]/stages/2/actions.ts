@@ -52,18 +52,23 @@ export async function importProjectInquiryContentAction(input: {
 export async function createProjectResearchFolderAction(input: {
   projectId: string;
   name: string;
+  parentFolderId?: string;
 }) {
   const user = await requireUser();
   try {
     const result = await createProjectResearchFolder(user, input);
     if (!("error" in result)) {
       revalidatePath(`/projects/${input.projectId}/stages/2`);
+      if (input.parentFolderId) {
+        revalidatePath(`/projects/${input.projectId}/stages/2/folders/${input.parentFolderId}`);
+        revalidatePath(`/projects/${input.projectId}/workspace/shared/${input.parentFolderId}`);
+      }
       revalidateTag(PROJECTS_CACHE_TAG, "max");
     }
     return result;
   } catch (error) {
     console.error("[project-research] folder creation failed", error);
-    return { error: error instanceof Error ? error.message : "Unable to create folder." };
+    return { error: "Unable to create folder. Please try again." };
   }
 }
 
@@ -76,13 +81,15 @@ export async function deleteProjectResearchFolderAction(input: {
     const result = await deleteProjectResearchFolder(user, input);
     if (!("error" in result)) {
       revalidatePath(`/projects/${input.projectId}/stages/2`);
+      revalidatePath(`/projects/${input.projectId}/stages/2/folders`, "layout");
+      revalidatePath(`/projects/${input.projectId}/workspace/shared`, "layout");
       revalidateTag(PROJECTS_CACHE_TAG, "max");
     }
     return result;
   } catch (error) {
     console.error("[project-research] folder deletion failed", error);
     return {
-      error: error instanceof Error ? error.message : "Unable to delete folder.",
+      error: "Unable to delete folder. Please reload and try again.",
     };
   }
 }

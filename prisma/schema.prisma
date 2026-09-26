@@ -1053,6 +1053,9 @@ model ProjectResearchFolder {
   workspace      ProjectResearchWorkspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   name           String
   normalizedName String
+  parentFolderId String?
+  parentFolder   ProjectResearchFolder? @relation("ResearchFolderChildren", fields: [workspaceId, parentFolderId], references: [workspaceId, id], onDelete: NoAction, onUpdate: NoAction)
+  children       ProjectResearchFolder[] @relation("ResearchFolderChildren")
   systemKey      ProjectResearchFolderSystemKey?
   isSystem       Boolean                         @default(false)
   sortOrder      Int                             @default(1000)
@@ -1062,7 +1065,8 @@ model ProjectResearchFolder {
   createdAt      DateTime                        @default(now())
   updatedAt      DateTime                        @updatedAt
 
-  @@unique([workspaceId, normalizedName])
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, parentFolderId, normalizedName])
   @@unique([workspaceId, systemKey])
   @@index([workspaceId, sortOrder])
   @@index([createdById])
@@ -1091,11 +1095,17 @@ model ProjectPrivateFolder {
   project     Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
   ownerUserId String
   owner       User                @relation("ProjectPrivateFolderOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  name        String              @default("My Private Folder")
+  normalizedName String           @default("my private folder")
+  parentFolderId String?
+  parentFolder ProjectPrivateFolder? @relation("PrivateFolderChildren", fields: [projectId, ownerUserId, parentFolderId], references: [projectId, ownerUserId, id], onDelete: NoAction, onUpdate: NoAction)
+  children    ProjectPrivateFolder[] @relation("PrivateFolderChildren")
   files       ProjectAttachment[]
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
 
-  @@unique([projectId, ownerUserId])
+  @@unique([projectId, ownerUserId, id])
+  @@unique([parentFolderId, normalizedName])
   @@index([ownerUserId])
 }
 

@@ -162,7 +162,7 @@ export async function getProjectResearchPageData(
     ...project.collaborators.map((record) => record.userId),
   ]);
 
-  if (!isGlobalProjectAdministrator(user) || !project.ownerId) {
+  if (!project.ownerId || (!isGlobalProjectAdministrator(user) && project.ownerId !== user.id && !project.coOwners.some((record) => record.userId === user.id))) {
     return null;
   }
   const ownerUserId = project.ownerId;
@@ -197,7 +197,7 @@ export async function getProjectResearchPageData(
   const [folders, ownPrivateFolder] = await Promise.all([
     withPrismaRetry(() =>
       prisma.projectResearchFolder.findMany({
-        where: { workspaceId: sharedWorkspace.id },
+        where: { workspaceId: sharedWorkspace.id, parentFolderId: null },
         relationLoadStrategy: "join",
         orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
         select: {
@@ -208,6 +208,7 @@ export async function getProjectResearchPageData(
           sortOrder: true,
           _count: {
             select: {
+              children: true,
               files: { where: { attachment: { status: AttachmentStatus.READY } } },
             },
           },
@@ -216,10 +217,8 @@ export async function getProjectResearchPageData(
     ),
     participantIds.has(user.id)
       ? withPrismaRetry(() =>
-          prisma.projectPrivateFolder.findUnique({
-            where: {
-              projectId_ownerUserId: { projectId, ownerUserId: user.id },
-            },
+          prisma.projectPrivateFolder.findFirst({
+            where: { projectId, ownerUserId: user.id, parentFolderId: null },
             select: { id: true },
           }),
         )
@@ -275,6 +274,7 @@ export async function getProjectResearchPageData(
       systemKey: folder.systemKey,
       sortOrder: folder.sortOrder,
       fileCount: folder._count.files,
+      folderCount: folder._count.children,
     })),
     myPrivateFolder: ownPrivateFolder
       ? {
@@ -306,7 +306,7 @@ export async function getProjectResearchPageData(
 
 export async function createProjectResearchFolder(
   user: ResearchUser,
-  input: { projectId: string; name: string },
+  input: { projectId: string; name: string; parentFolderId?: string },
 ) {
   const name = cleanProjectResearchFolderName(input.name);
 
@@ -357,11 +357,20 @@ export async function createProjectResearchFolder(
     return { error: "This folder set is read-only for your account." } as const;
   }
 
+  if (input.parentFolderId) {
+    const parent = await prisma.projectResearchFolder.findFirst({
+      where: { id: input.parentFolderId, workspaceId: workspace.id },
+      select: { id: true },
+    });
+    if (!parent) return { error: "Parent folder not found." } as const;
+  }
+
   try {
     const folder = await withPrismaRetry(() =>
       prisma.projectResearchFolder.create({
         data: {
           workspaceId: workspace.id,
+          parentFolderId: input.parentFolderId || null,
           name,
           normalizedName: normalizeProjectResearchFolderName(name),
           isSystem: false,
@@ -375,7 +384,7 @@ export async function createProjectResearchFolder(
     return { folder } as const;
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      return { error: "A folder with this name already exists in this folder set." } as const;
+      return { error: "A folder with this name already exists in this location." } as const;
     }
     throw error;
   }
@@ -385,8 +394,9 @@ export async function getProjectResearchFolderPageData(
   user: ResearchUser,
   input: { projectId: string; folderId: string },
 ) {
-  const { access } = await getResearchFolderAccess(user, input).catch(() => ({
+  const { access, path } = await getResearchFolderAccess(user, input).catch(() => ({
     access: null,
+    path: [],
   }));
 
   if (!access?.canRead) {
@@ -405,6 +415,13 @@ export async function getProjectResearchFolderPageData(
         name: true,
         isSystem: true,
         systemKey: true,
+        children: {
+          orderBy: [{ name: "asc" }, { id: "asc" }],
+          select: {
+            id: true, name: true, createdAt: true,
+            _count: { select: { children: true, files: { where: { attachment: { status: AttachmentStatus.READY } } } } },
+          },
+        },
         workspace: {
           select: {
             id: true,
@@ -450,6 +467,11 @@ export async function getProjectResearchFolderPageData(
       ownerName: displayName(folder.workspace.owner),
     },
     folder: { id: folder.id, name: folder.name, isSystem: folder.isSystem },
+    ancestors: path.slice(0, -1).map(({ id, name }) => ({ id, name })),
+    folders: folder.children.map((child) => ({
+      id: child.id, name: child.name, createdAt: child.createdAt.toISOString(),
+      fileCount: child._count.files, folderCount: child._count.children,
+    })),
     canWrite: access.canWrite,
     files: folder.files.map((record) => ({
       id: record.id,
