@@ -15,6 +15,7 @@ import {
 import { getUserDisplayName } from "@/lib/auth";
 import {
   type ProjectContactInput,
+  type ProjectContactEntityType,
   validateProjectContactInput,
 } from "@/lib/project-contact-validation";
 import {
@@ -81,6 +82,7 @@ const projectAccessSelect = {
 
 export type ProjectInquiryPartyOption = {
   source: ProjectInquiryPartySource;
+  entityType: ProjectContactEntityType;
   id: string;
   name: string;
   company: string | null;
@@ -94,7 +96,7 @@ export type ProjectInquiryPartyOption = {
 
 export type ProjectInquiryPartySelection = Pick<
   ProjectInquiryPartyOption,
-  "source" | "id" | "name" | "company" | "companyEmail" | "companyPhone" | "companyWebsite" | "position" | "email" | "phone"
+  "source" | "entityType" | "id" | "name" | "company" | "companyEmail" | "companyPhone" | "companyWebsite" | "position" | "email" | "phone"
 >;
 
 export type ProjectInquiryTargetMarketInput = {
@@ -262,6 +264,7 @@ function mapPartyOptionFromUser(user: {
 }): ProjectInquiryPartyOption {
   return {
     source: ProjectInquiryPartySource.USER,
+    entityType: "PERSON",
     id: user.id,
     name: getUserDisplayName(user),
     company: user.department,
@@ -275,6 +278,7 @@ function mapPartyOptionFromUser(user: {
 }
 
 function mapPartyOptionFromContact(contact: {
+  entityType: ProjectContactEntityType;
   id: string;
   name: string;
   company: string | null;
@@ -287,6 +291,7 @@ function mapPartyOptionFromContact(contact: {
 }): ProjectInquiryPartyOption {
   return {
     source: ProjectInquiryPartySource.MANUAL_CONTACT,
+    entityType: contact.entityType,
     id: contact.id,
     name: contact.name,
     company: contact.company,
@@ -303,6 +308,7 @@ function mapSavedParty(party: {
   source: ProjectInquiryPartySource;
   userId: string | null;
   contactId: string | null;
+  snapshotEntityType: ProjectContactEntityType;
   snapshotName: string;
   snapshotCompany: string | null;
   snapshotCompanyEmail: string | null;
@@ -314,6 +320,7 @@ function mapSavedParty(party: {
 }): ProjectInquiryPartySelection {
   return {
     source: party.source,
+    entityType: party.snapshotEntityType,
     id:
       party.source === ProjectInquiryPartySource.USER
         ? party.userId ?? ""
@@ -378,6 +385,7 @@ export async function createContactDirectoryEntry(
   const contact = await withPrismaRetry(() =>
     prisma.contactDirectoryEntry.create({
       data: {
+        entityType: validation.data.entityType,
         name: validation.data.name,
         company: validation.data.company || null,
         companyEmail: validation.data.companyEmail || null,
@@ -391,6 +399,7 @@ export async function createContactDirectoryEntry(
       select: {
         id: true,
         name: true,
+        entityType: true,
         company: true,
         companyEmail: true,
         companyPhone: true,
@@ -584,6 +593,7 @@ export async function searchProjectInquiryPartyOptions(
         select: {
           id: true,
           name: true,
+          entityType: true,
           company: true,
           companyEmail: true,
           companyPhone: true,
@@ -810,6 +820,7 @@ async function resolvePartySnapshot(
       source: ProjectInquiryPartySource.USER,
       userId: selectedUser.id,
       contactId: null,
+      snapshotEntityType: "PERSON" as const,
       snapshotName: getUserDisplayName(selectedUser),
       snapshotCompany: selectedUser.department,
       snapshotCompanyEmail: null,
@@ -826,6 +837,7 @@ async function resolvePartySnapshot(
     select: {
       id: true,
       name: true,
+      entityType: true,
       company: true,
       companyEmail: true,
       companyPhone: true,
@@ -844,6 +856,7 @@ async function resolvePartySnapshot(
     source: ProjectInquiryPartySource.MANUAL_CONTACT,
     userId: null,
     contactId: contact.id,
+    snapshotEntityType: contact.entityType,
     snapshotName: contact.name,
     snapshotCompany: contact.company,
     snapshotCompanyEmail: contact.companyEmail,

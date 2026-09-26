@@ -12,7 +12,6 @@ export type ProjectContactForm = Required<Omit<CreateContactDirectoryEntryInput,
 
 type ProjectContactDialogProps = {
   isOpen: boolean;
-  kind?: "CLIENT" | "CONTACT";
   title: string;
   description: string;
   submitLabel: string;
@@ -28,9 +27,29 @@ type ProjectContactDialogProps = {
   ) => void;
 };
 
+type ContactField = Exclude<keyof ProjectContactForm, "entityType">;
+const contactFields: Record<ProjectContactForm["entityType"], ReadonlyArray<readonly [ContactField, string, string, boolean]>> = {
+  COMPANY: [
+    ["company", "Company Name", "Company or organisation", true],
+    ["companyEmail", "Company Email ID", "company@example.com", false],
+    ["companyPhone", "Company Contact Number", "+971 ...", false],
+    ["companyWebsite", "Company Website", "https://example.com", false],
+    ["name", "Contact Person / Representative", "Representative full name", true],
+    ["email", "Representative Email", "name@example.com", true],
+    ["phone", "Representative Contact Number", "+971 ...", true],
+    ["position", "Representative Designation", "Role or position", true],
+  ],
+  PERSON: [
+    ["company", "Company Name (if applicable)", "Company or organisation", false],
+    ["name", "Full Name", "Individual / contact person’s full name", true],
+    ["email", "Email", "name@example.com", true],
+    ["phone", "Contact Number", "+971 ...", true],
+    ["position", "Designation", "Role or position", true],
+  ],
+};
+
 export function ProjectContactDialog({
   isOpen,
-  kind = "CONTACT",
   title,
   description,
   submitLabel,
@@ -46,35 +65,18 @@ export function ProjectContactDialog({
     Partial<Record<keyof ProjectContactForm, HTMLInputElement | null>>
   >({});
 
-  const fields: ReadonlyArray<readonly [keyof ProjectContactForm, string, string, boolean]> = kind === "CLIENT"
-    ? [
-        ["company", "Company Name", "Company or organisation", true],
-        ["companyEmail", "Company Email ID", "company@example.com", false],
-        ["companyPhone", "Company Contact Number", "+971 ...", false],
-        ["companyWebsite", "Company Website", "https://example.com", false],
-        ["name", "Contact Person / Representative", "Representative full name", true],
-        ["email", "Representative Email", "name@example.com", true],
-        ["phone", "Representative Contact Number", "+971 ...", true],
-        ["position", "Representative Designation", "Role or position", true],
-      ]
-    : [
-        ["name", "Name", "Contact name", true],
-        ["company", "Company", "Company or organisation", false],
-        ["position", "Position / title", "Role or position", false],
-        ["email", "Email", "name@example.com", false],
-        ["phone", "Phone", "+971 ...", false],
-      ];
+  const isCompany = form.entityType === "COMPANY";
+  const fields = contactFields[form.entityType];
 
   useEffect(() => {
-    const order: Array<keyof ProjectContactForm> = kind === "CLIENT"
-      ? ["company", "companyEmail", "companyPhone", "companyWebsite", "name", "email", "phone", "position"]
-      : ["name", "company", "position", "email", "phone"];
-    const firstInvalidField = order.find((field) => Boolean(fieldErrors?.[field]));
+    const firstInvalidField = contactFields[form.entityType]
+      .map(([field]) => field)
+      .find((field) => Boolean(fieldErrors?.[field]));
 
     if (firstInvalidField) {
       inputRefs.current[firstInvalidField]?.focus();
     }
-  }, [fieldErrors, kind]);
+  }, [fieldErrors, form.entityType]);
 
   if (!isOpen) {
     return null;
@@ -125,15 +127,40 @@ export function ProjectContactDialog({
             </div>
           ) : null}
 
+          <fieldset className="mt-6" disabled={saving}>
+            <legend className="mb-2 text-[13px] font-[650] text-[#2d372f]">Type</legend>
+            <div className="grid grid-cols-2 gap-2">
+              {(["PERSON", "COMPANY"] as const).map((entityType) => (
+                <label key={entityType} className="cursor-pointer">
+                  <input
+                    type="radio"
+                    name="project-contact-entity-type"
+                    value={entityType}
+                    checked={form.entityType === entityType}
+                    onChange={() => onChange("entityType", entityType)}
+                    className="peer sr-only"
+                    aria-describedby={fieldErrors?.entityType ? "project-contact-entityType-error" : undefined}
+                  />
+                  <span className="block rounded-[12px] border border-[#dce3dc] px-4 py-3 text-center text-[13px] font-[650] text-[#677269] peer-checked:border-[#2d7b51] peer-checked:bg-[#edf6ef] peer-checked:text-[#2d7b51] peer-focus-visible:ring-2 peer-focus-visible:ring-brand/35 peer-disabled:opacity-60">
+                    {entityType === "PERSON" ? "Person" : "Company"}
+                  </span>
+                </label>
+              ))}
+            </div>
+            {fieldErrors?.entityType ? (
+              <p id="project-contact-entityType-error" role="alert" className="mt-2 text-[12px] text-[#b84e48]">{fieldErrors.entityType}</p>
+            ) : null}
+          </fieldset>
+
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
             {fields.map(([field, label, placeholder, required]) => (
               <label
                 key={field}
-                className={kind === "CONTACT" && field === "phone" ? "space-y-2 sm:col-span-2" : "space-y-2"}
+                className={!isCompany && field === "company" ? "space-y-2 sm:col-span-2" : "space-y-2"}
               >
                 <span className="block text-[13px] font-[650] text-[#2d372f]">
                   {label}
-                  {required ? <span className="ml-1 text-[#bd4d48]">*</span> : kind === "CLIENT" ? <span className="ml-1 font-normal text-[#7b857e]">(Optional)</span> : null}
+                  {required ? <span className="ml-1 text-[#bd4d48]">*</span> : <span className="ml-1 font-normal text-[#7b857e]">(Optional)</span>}
                 </span>
                 <Input
                   ref={(element) => {

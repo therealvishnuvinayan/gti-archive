@@ -99,6 +99,11 @@ enum ProjectInquiryPartySource {
   MANUAL_CONTACT
 }
 
+enum ProjectContactEntityType {
+  PERSON
+  COMPANY
+}
+
 enum ProjectInquiryTargetMarketKind {
   COUNTRY
   REGION
@@ -921,6 +926,7 @@ model ProjectWorkflowStage {
 
 model ContactDirectoryEntry {
   id             String                @id @default(cuid())
+  entityType     ProjectContactEntityType @default(PERSON)
   name           String
   company        String?
   companyEmail   String?
@@ -972,6 +978,7 @@ model ProjectInquiryParty {
   contactId        String?
   contact          ContactDirectoryEntry?    @relation(fields: [contactId], references: [id], onDelete: Restrict)
   snapshotName     String
+  snapshotEntityType ProjectContactEntityType @default(PERSON)
   snapshotCompany  String?
   snapshotCompanyEmail String?
   snapshotCompanyPhone String?

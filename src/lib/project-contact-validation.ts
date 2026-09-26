@@ -1,5 +1,8 @@
+export type ProjectContactEntityType = "PERSON" | "COMPANY";
+
 export type ProjectContactInput = {
   kind?: "CLIENT" | "CONTACT";
+  entityType?: ProjectContactEntityType;
   name: string;
   company?: string;
   companyEmail?: string;
@@ -82,16 +85,21 @@ export function normalizeInternationalPhone(value: string) {
 
 export function validateProjectContactInput(input: ProjectContactInput) {
   const fieldErrors: ProjectContactFieldErrors = {};
+  const entityType = input.entityType ?? (input.kind === "CLIENT" ? "COMPANY" : "PERSON");
+  const isCompany = entityType === "COMPANY";
+  if (entityType !== "PERSON" && entityType !== "COMPANY") {
+    fieldErrors.entityType = "Select Person or Company.";
+  }
   const name = normalizeWhitespace(input.name ?? "");
   const company = normalizeWhitespace(input.company ?? "");
   const position = normalizeWhitespace(input.position ?? "");
   const email = normalizeProjectContactEmail(input.email ?? "");
   const rawPhone = input.phone?.trim() ?? "";
   const phone = rawPhone ? normalizeInternationalPhone(rawPhone) : "";
-  const companyEmail = normalizeProjectContactEmail(input.companyEmail ?? "");
-  const rawCompanyPhone = input.companyPhone?.trim() ?? "";
+  const companyEmail = isCompany ? normalizeProjectContactEmail(input.companyEmail ?? "") : "";
+  const rawCompanyPhone = isCompany ? input.companyPhone?.trim() ?? "" : "";
   const companyPhone = rawCompanyPhone ? normalizeInternationalPhone(rawCompanyPhone) : "";
-  const rawWebsite = input.companyWebsite?.trim() ?? "";
+  const rawWebsite = isCompany ? input.companyWebsite?.trim() ?? "" : "";
   let companyWebsite = rawWebsite;
 
   if (rawWebsite) {
@@ -114,15 +122,15 @@ export function validateProjectContactInput(input: ProjectContactInput) {
     }
   }
 
-  if (input.kind === "CLIENT") {
-    if (!company) fieldErrors.company = "Company name is required.";
-    if (!email) fieldErrors.email = "Representative email is required.";
-    if (!rawPhone) fieldErrors.phone = "Representative contact number is required.";
-    if (!position) fieldErrors.position = "Representative designation is required.";
+  if (isCompany && !company) fieldErrors.company = "Company name is required.";
+  if (isCompany || input.entityType === "PERSON") {
+    if (!email) fieldErrors.email = isCompany ? "Representative email is required." : "Email is required.";
+    if (!rawPhone) fieldErrors.phone = isCompany ? "Representative contact number is required." : "Contact number is required.";
+    if (!position) fieldErrors.position = isCompany ? "Representative designation is required." : "Designation is required.";
   }
 
   if (!name) {
-    fieldErrors.name = input.kind === "CLIENT"
+    fieldErrors.name = isCompany
       ? "Contact person / representative is required."
       : "Name is required.";
   } else if (name.length > MAX_CONTACT_NAME_LENGTH) {
@@ -157,6 +165,7 @@ export function validateProjectContactInput(input: ProjectContactInput) {
     fieldErrors,
     data: {
       kind: input.kind ?? "CONTACT",
+      entityType,
       name,
       company,
       companyEmail,

@@ -93,8 +93,8 @@ function getTodayDateValue() {
   return `${year}-${month}-${day}`;
 }
 
-function getDefaultContactForm(): ProjectContactForm {
-  return { name: "", company: "", companyEmail: "", companyPhone: "", companyWebsite: "", position: "", email: "", phone: "" };
+function getDefaultContactForm(entityType: ProjectContactForm["entityType"] = "PERSON"): ProjectContactForm {
+  return { entityType, name: "", company: "", companyEmail: "", companyPhone: "", companyWebsite: "", position: "", email: "", phone: "" };
 }
 
 function formatBytes(bytes: number) {
@@ -162,10 +162,10 @@ function PartySelector({
   );
   const singleValue = multiple ? null : values[0] ?? null;
   function partyLabel(party: ProjectInquiryPartySelection) {
-    return companyFirst && party.source === "MANUAL_CONTACT" ? party.company || party.name : party.name;
+    return party.entityType === "COMPANY" ? party.company || party.name : party.name;
   }
   function partyDescription(party: ProjectInquiryPartySelection) {
-    return companyFirst && party.source === "MANUAL_CONTACT" && party.company
+    return party.entityType === "COMPANY"
       ? [party.name, party.position, party.companyEmail || party.email].filter(Boolean).join(" · ")
       : [party.company, party.position, party.email].filter(Boolean).join(" · ");
   }
@@ -183,8 +183,8 @@ function PartySelector({
     });
     if (companyFirst) {
       matches.sort((left, right) =>
-        Number(right.source === "MANUAL_CONTACT" && Boolean(right.company)) -
-        Number(left.source === "MANUAL_CONTACT" && Boolean(left.company)),
+        Number(right.entityType === "COMPANY") -
+        Number(left.entityType === "COMPANY"),
       );
     }
     return matches;
@@ -246,11 +246,11 @@ function PartySelector({
                 key={`${value.source}:${value.id}`}
                 className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full bg-[#edf4ee] py-1 pl-2.5 pr-1 text-[12px] font-[650] text-[#285f43]"
               >
-                <span className="max-w-[180px] min-w-0 whitespace-normal break-words">{value.name}</span>
+                <span className="max-w-[180px] min-w-0 whitespace-normal break-words">{partyLabel(value)}</span>
                 {!disabled ? (
                   <button
                     type="button"
-                    aria-label={`Remove ${value.name}`}
+                    aria-label={`Remove ${partyLabel(value)}`}
                     onClick={() => removeOption(value)}
                     className="grid size-5 place-items-center rounded-full hover:bg-[#dce9df]"
                   >
@@ -366,8 +366,7 @@ function PartySelector({
                       {partyLabel(option)}
                     </span>
                     <span className="block whitespace-normal break-words text-[11px] text-[#7d8780]">
-                      {partyDescription(option) ||
-                        (option.source === "USER" ? "FluxSys user" : "Directory contact")}
+                      {[option.entityType === "COMPANY" ? "Company" : "Person", partyDescription(option)].filter(Boolean).join(" · ")}
                     </span>
                   </span>
                   {selected ? <Check className="h-4 w-4 text-brand" /> : null}
@@ -964,7 +963,7 @@ export function StageOneWorkspace({
   function openContactDialog(target: PartyField) {
     if (!pageData.canEdit) return;
     setContactTarget(target);
-    setContactForm(getDefaultContactForm());
+    setContactForm(getDefaultContactForm(target === "client" ? "COMPANY" : "PERSON"));
     setContactErrors({});
     setContactError(undefined);
   }
@@ -1171,7 +1170,7 @@ export function StageOneWorkspace({
                 <PartySelector
                   ariaLabel="Client"
                   companyFirst
-                  placeholder="Search or select a company"
+                  placeholder="Search or select a person or company"
                   options={partyOptions}
                   values={client ? [client] : []}
                   disabled={readOnly || submitting}
@@ -1405,12 +1404,11 @@ export function StageOneWorkspace({
 
       <ProjectContactDialog
         isOpen={contactTarget !== null}
-        kind={contactTarget === "client" ? "CLIENT" : "CONTACT"}
         title={contactTarget === "client" ? "Add Client" : "Add Beneficiary"}
         description={
           contactTarget === "client"
-            ? "Enter the company and its representative’s details. This client will be available for future projects."
-            : "Enter the beneficiary details. The beneficiary will also be available in the contact directory."
+            ? "Choose a person or company and enter the client details. This client will be available for future projects."
+            : "Choose a person or company and enter the beneficiary details. This beneficiary will be available for future projects."
         }
         submitLabel={contactTarget === "client" ? "Add Client" : "Add Beneficiary"}
         form={contactForm}
@@ -1421,7 +1419,7 @@ export function StageOneWorkspace({
         onSubmit={() => void handleCreateContact()}
         onChange={(field, value) => {
           setContactForm((current) => ({ ...current, [field]: value }));
-          setContactErrors((current) => ({ ...current, [field]: undefined }));
+          setContactErrors((current) => field === "entityType" ? {} : { ...current, [field]: undefined });
           setContactError(undefined);
         }}
       />

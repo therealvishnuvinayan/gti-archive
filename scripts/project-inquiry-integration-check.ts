@@ -284,6 +284,40 @@ async function main() {
     kind: "CLIENT", company: "Incomplete Company", name: "",
   });
   assert("error" in missingRepresentative && ["name", "email", "phone", "position"].every((field) => missingRepresentative.fieldErrors?.[field as "name" | "email" | "phone" | "position"]), "New clients must require all representative details on the server.");
+  const companyBeneficiary = await createContactDirectoryEntry(superAdmin, mainProject.id, {
+    kind: "CONTACT", entityType: "COMPANY", company: "Beneficiary Company",
+    name: "Beneficiary Representative", email: "representative@example.test",
+    phone: "+971501234567", position: "Director",
+    companyEmail: "beneficiary@example.test", companyPhone: "+12025550123", companyWebsite: "beneficiary.example.test",
+  });
+  assert("contact" in companyBeneficiary && companyBeneficiary.contact.entityType === "COMPANY", "Beneficiaries must support company records.");
+  const personClient = await createContactDirectoryEntry(superAdmin, mainProject.id, {
+    kind: "CLIENT", entityType: "PERSON", name: "Individual Client", email: "individual@example.test",
+    phone: "+971501234567", position: "Consultant", company: "Optional Employer",
+    companyEmail: "old-company@example.test", companyPhone: "not a phone", companyWebsite: "not a website",
+  });
+  assert("contact" in personClient && personClient.contact.entityType === "PERSON" &&
+    personClient.contact.company === "Optional Employer" && personClient.contact.companyEmail === null &&
+    personClient.contact.companyPhone === null && personClient.contact.companyWebsite === null,
+    "Person clients must retain an optional company name and discard hidden company contact fields.");
+  const personCompanyResult = await completeProjectInquiry(superAdmin, {
+    projectId: minimalProject.id,
+    client: { source: ProjectInquiryPartySource.MANUAL_CONTACT, id: personClient.contact.id },
+    finalBeneficiaries: [{ source: ProjectInquiryPartySource.MANUAL_CONTACT, id: companyBeneficiary.contact.id }],
+  });
+  assert("success" in personCompanyResult, "A person client and company beneficiary must save together.");
+  const typedParties = (await getProjectInquiryPageData(superAdmin, minimalProject.id)).inquiry;
+  assert(typedParties?.client?.entityType === "PERSON" && typedParties.client.name === "Individual Client" &&
+    typedParties.finalBeneficiaries[0]?.entityType === "COMPANY" &&
+    typedParties.finalBeneficiaries[0].company === "Beneficiary Company" &&
+    typedParties.finalBeneficiaries[0].companyEmail === "beneficiary@example.test" &&
+    typedParties.finalBeneficiaries[0].companyPhone === "+12025550123" &&
+    typedParties.finalBeneficiaries[0].companyWebsite === "https://beneficiary.example.test/" &&
+    typedParties.finalBeneficiaries[0].name === "Beneficiary Representative",
+    "Reloaded clients and beneficiaries must preserve their type and separate company/individual fields.");
+  await prisma.contactDirectoryEntry.update({ where: { id: companyBeneficiary.contact.id }, data: { entityType: "PERSON" } });
+  assert((await getProjectInquiryPageData(superAdmin, minimalProject.id)).inquiry?.finalBeneficiaries[0].entityType === "COMPANY",
+    "A saved beneficiary's type must remain snapshotted after directory changes.");
   const beneficiaryContactResult = await createContactDirectoryEntry(
     superAdmin,
     mainProject.id,
@@ -411,7 +445,7 @@ async function main() {
     },
   });
   const savedClient = persisted.parties.find((party) => party.role === "CLIENT");
-  assert(savedClient?.snapshotCompany === "Manual Client Company" &&
+  assert(savedClient?.snapshotEntityType === "COMPANY" && savedClient.snapshotCompany === "Manual Client Company" &&
     savedClient.snapshotCompanyEmail === "company@example.test" &&
     savedClient.snapshotCompanyPhone === "+12025550123" &&
     savedClient.snapshotCompanyWebsite === "https://client.example.test/" &&

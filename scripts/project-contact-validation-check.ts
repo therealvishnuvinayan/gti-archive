@@ -53,6 +53,7 @@ const optionalContact = validateProjectContactInput({
 assert.deepEqual(optionalContact.fieldErrors, {});
 assert.deepEqual(optionalContact.data, {
   kind: "CONTACT",
+  entityType: "PERSON",
   companyEmail: "",
   companyPhone: "",
   companyWebsite: "",
@@ -120,4 +121,30 @@ assert.ok(validateProjectContactInput({ ...client, companyPhone: "0501234567" })
 for (const companyWebsite of ["javascript:alert(1)", "ftp://example.com", "not a website", "https://", "https://user:password@example.com"]) {
   assert.ok(validateProjectContactInput({ ...client, companyWebsite }).fieldErrors.companyWebsite, `Reject invalid website: ${companyWebsite}`);
 }
+for (const kind of ["CLIENT", "CONTACT"] as const) {
+  const company = validateProjectContactInput({ ...client, kind, entityType: "COMPANY" });
+  assert.deepEqual(company.fieldErrors, {});
+  assert.equal(company.data.entityType, "COMPANY");
+  for (const field of ["company", "name", "email", "phone", "position"] as const) {
+    assert.ok(validateProjectContactInput({ ...client, kind, entityType: "COMPANY", [field]: "" }).fieldErrors[field]);
+  }
+  const person = validateProjectContactInput({
+    ...client, kind, entityType: "PERSON", company: "",
+    companyEmail: "invalid@", companyPhone: "bad phone", companyWebsite: "javascript:alert(1)",
+  });
+  assert.deepEqual(person.fieldErrors, {}, "Hidden company fields must not prevent saving a person.");
+  assert.equal(person.data.entityType, "PERSON");
+  assert.equal(person.data.company, "");
+  assert.equal(person.data.companyEmail, "");
+  assert.equal(person.data.companyPhone, "");
+  assert.equal(person.data.companyWebsite, "");
+  assert.equal(person.data.email, "jane@example.com");
+  for (const field of ["name", "email", "phone", "position"] as const) {
+    assert.ok(validateProjectContactInput({ ...client, kind, entityType: "PERSON", [field]: "" }).fieldErrors[field]);
+  }
+  const employedPerson = validateProjectContactInput({ ...client, kind, entityType: "PERSON" });
+  assert.equal(employedPerson.data.company, "Example Company");
+  assert.equal(employedPerson.data.entityType, "PERSON", "An optional company name must not change a person's type.");
+}
+assert.ok(validateProjectContactInput({ ...client, entityType: "INVALID" as "PERSON" }).fieldErrors.entityType);
 console.log("Project contact validation checks passed.");
