@@ -8,7 +8,7 @@ import {
   createProjectResearchFolder,
 } from "@/lib/project-research";
 import { deleteProjectResearchFolder } from "@/lib/project-research-files";
-import { getProjectResearchImportOptions, importProjectInquiryContent } from "@/lib/project-research-import";
+import { getProjectResearchImportFolders, getProjectResearchImportOptions, importProjectInquiryContent } from "@/lib/project-research-import";
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
 import { setProjectFolderItemPin } from "@/lib/project-folder-pins";
 import type { FolderItemPinInput } from "@/lib/project-folder-pins-shared";
@@ -62,7 +62,11 @@ function importErrorMessage(error: unknown, fallback: string) {
 export async function getProjectResearchImportOptionsAction(input: { projectId: string; folderId: string }) {
   const user = await requireUser();
   try {
-    return { items: await getProjectResearchImportOptions(user, input) };
+    const [items, folders] = await Promise.all([
+      getProjectResearchImportOptions(user, input),
+      getProjectResearchImportFolders(user, input),
+    ]);
+    return { items, folders };
   } catch (error) {
     console.error("[research-import] loading content failed", error);
     return { error: importErrorMessage(error, "Unable to load Stage 1 content. Please try again.") };
@@ -79,6 +83,7 @@ export async function importProjectInquiryContentAction(input: {
     const result = await importProjectInquiryContent(user, input);
     revalidatePath(`/projects/${input.projectId}/stages/2`);
     revalidatePath(`/projects/${input.projectId}/stages/2/folders/${input.folderId}`);
+    revalidatePath(`/projects/${input.projectId}/workspace/shared/${input.folderId}`);
     revalidateTag(PROJECTS_CACHE_TAG, "max");
     return result;
   } catch (error) {

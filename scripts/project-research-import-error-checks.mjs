@@ -15,6 +15,7 @@ runInNewContext(compiled, {
   require: (name) => {
     if (name === "@/lib/auth") return { requireUser: async () => ({ id: "test-user" }) };
     if (name === "@/lib/project-research-import") return {
+      getProjectResearchImportFolders: async () => [],
       getProjectResearchImportOptions: async () => { throw failure; },
       importProjectInquiryContent: async () => { throw failure; },
     };

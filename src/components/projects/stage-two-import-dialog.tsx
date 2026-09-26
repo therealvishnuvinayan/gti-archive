@@ -21,6 +21,7 @@ export function StageTwoImportDialog({ projectId, folders, initialFolderId, onCl
   onImported: (folderId: string, files: ImportResult["files"]) => void;
 }) {
   const [folderId, setFolderId] = useState(initialFolderId ?? folders[0]?.id ?? "");
+  const [destinationFolders, setDestinationFolders] = useState(folders);
   const [items, setItems] = useState<InquiryImportItem[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(Boolean(folderId));
@@ -35,7 +36,10 @@ export function StageTwoImportDialog({ projectId, folders, initialFolderId, onCl
     void getProjectResearchImportOptionsAction({ projectId, folderId }).then((result) => {
       if (cancelled) return;
       if ("error" in result) setError(result.error);
-      else setItems(result.items);
+      else {
+        setItems(result.items);
+        setDestinationFolders(result.folders);
+      }
     }).catch(() => {
       if (!cancelled) setError("Unable to load Stage 1 content. Please try again.");
     }).finally(() => { if (!cancelled) setLoading(false); });
@@ -63,7 +67,7 @@ export function StageTwoImportDialog({ projectId, folders, initialFolderId, onCl
         ...item, alreadyImported: item.alreadyImported || (selected.has(item.id) && !failedIds.has(item.id)),
       })));
       setSelected(failedIds);
-      if (result.files.length) showSuccessToast(`Imported ${result.files.length} ${result.files.length === 1 ? "item" : "items"} from Stage 1.`);
+      if (result.files.length) showSuccessToast(`Imported ${result.files.length} ${result.files.length === 1 ? "item" : "items"} into ${destinationFolders.find((folder) => folder.id === folderId)?.name ?? "the selected folder"}.`);
       if (result.failures.length) {
         setError(`Unable to import: ${result.failures.map((item) => item.title).join(", ")}. These items remain selected so you can retry.`);
       } else {
@@ -109,8 +113,8 @@ export function StageTwoImportDialog({ projectId, folders, initialFolderId, onCl
         <div className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto p-5 sm:p-6">
           <label className="block text-[13px] font-[650] text-[#2d372f]">
             Import into folder
-            <select value={folderId} onChange={(event) => { resetOptions(); setFolderId(event.target.value); }} disabled={pending || Boolean(initialFolderId)} className="mt-2 block h-11 w-full rounded-[12px] border border-[#dce3dc] bg-white px-3 font-normal disabled:bg-[#f5f7f5]">
-              {folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
+            <select value={folderId} onChange={(event) => { resetOptions(); setFolderId(event.target.value); }} disabled={pending || loading} className="mt-2 block h-11 w-full cursor-pointer rounded-[12px] border border-[#dce3dc] bg-white px-3 font-normal disabled:cursor-wait disabled:bg-[#f5f7f5]">
+              {destinationFolders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
             </select>
           </label>
           {error ? <div role="alert" className="mt-4 break-words rounded-[12px] bg-[#fff2f1] p-3 text-[13px] text-[#ae4742] [overflow-wrap:anywhere]">{error}<button type="button" className="ml-2 underline" disabled={pending} onClick={() => { resetOptions(); setAttempt((value) => value + 1); }}>Reload content</button></div> : null}

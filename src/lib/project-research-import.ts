@@ -4,6 +4,7 @@ import { ActivityLogAction, AttachmentAssetType, AttachmentStatus, type Prisma }
 import { prisma } from "@/lib/prisma";
 import { assertResearchFolderWriteAccess } from "@/lib/project-research-access";
 import { richTextToPlainText } from "@/lib/rich-text";
+import { getFolderAncestors } from "@/lib/project-folder-tree";
 import {
   buildProjectAssetKey,
   copyStoredObject,
@@ -103,6 +104,18 @@ async function getImportSources(projectId: string): Promise<ImportSource[]> {
     inquiry.priority && `Priority: ${inquiry.priority}`,
   ].filter(Boolean).join("\n"));
   return items;
+}
+
+export async function getProjectResearchImportFolders(user: ImportUser, input: ImportTarget) {
+  const { access } = await assertResearchFolderWriteAccess(user, input);
+  const folders = await prisma.projectResearchFolder.findMany({
+    where: { workspaceId: access.workspaceId },
+    select: { id: true, name: true, parentFolderId: true },
+  });
+  return folders.map((folder) => ({
+    id: folder.id,
+    name: getFolderAncestors(folders, folder.id).map((ancestor) => ancestor.name).join(" / "),
+  })).sort((left, right) => left.name.localeCompare(right.name));
 }
 
 export async function getProjectResearchImportOptions(user: ImportUser, input: ImportTarget) {

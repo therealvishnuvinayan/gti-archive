@@ -1268,7 +1268,10 @@ export function StageTwoFolderWorkspace({
           folders={[data.folder]}
           initialFolderId={data.folder.id}
           onClose={() => setImportOpen(false)}
-          onImported={(_folderId, importedFiles) => setFiles(importedFiles)}
+          onImported={(folderId, importedFiles) => {
+            if (folderId === data.folder.id) setFiles(importedFiles);
+            else setFolders((current) => current.map((folder) => folder.id === folderId ? { ...folder, fileCount: importedFiles.length } : folder));
+          }}
         />
       ) : null}
       {previewFile ? (

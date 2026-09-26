@@ -4,7 +4,7 @@ import { UserRole } from "@prisma/client";
 import { prisma } from "../src/lib/prisma";
 import { ensureCanonicalProjectResearchWorkspace } from "../src/lib/project-research";
 import { getInitialProjectWorkflowStageData } from "../src/lib/project-workflow";
-import { getProjectResearchImportOptions, importProjectInquiryContent } from "../src/lib/project-research-import";
+import { getProjectResearchImportFolders, getProjectResearchImportOptions, importProjectInquiryContent } from "../src/lib/project-research-import";
 
 const prefix = `research-import-${randomUUID()}`;
 const owner = { id: `${prefix}-owner`, role: UserRole.ADMIN };
@@ -60,6 +60,21 @@ async function main() {
     objects.set(`source-bucket/${storageKey}`, "image");
   }
   const target = { projectId, folderId: folder.id };
+  const tech = await prisma.projectResearchFolder.findFirstOrThrow({ where: { workspace: { projectId }, systemKey: "TECH" } });
+  const briefReferences = await prisma.projectResearchFolder.create({ data: {
+    workspaceId: folder.workspaceId, parentFolderId: folder.id, name: "References", normalizedName: "references",
+  } });
+  const techReferences = await prisma.projectResearchFolder.create({ data: {
+    workspaceId: folder.workspaceId, parentFolderId: tech.id, name: "References", normalizedName: "references",
+  } });
+  const destinations = await getProjectResearchImportFolders(owner, target);
+  assert.ok(destinations.some((item) => item.id === folder.id && item.name === "Brief"));
+  assert.ok(destinations.some((item) => item.id === tech.id && item.name === "Tech"));
+  assert.ok(destinations.some((item) => item.id === briefReferences.id && item.name === "Brief / References"));
+  assert.ok(destinations.some((item) => item.id === techReferences.id && item.name === "Tech / References"));
+  assert.equal(destinations.some((item) => item.id === otherFolder.id), false, "Only folders from the authorized workspace are offered");
+  await assert.rejects(() => getProjectResearchImportFolders(reader, target));
+  await assert.rejects(() => getProjectResearchImportFolders(owner, { ...target, folderId: otherFolder.id }));
   const items = await getProjectResearchImportOptions(owner, target);
   const file = items.find((item) => item.kind === "file")!;
   const brief = items.find((item) => item.title === "Initial Brief")!;
@@ -119,12 +134,18 @@ async function main() {
   assert.equal((await getProjectResearchImportOptions(owner, secondTarget)).find((item) => item.id === file.id)?.alreadyImported, false);
   assert.equal((await importProjectInquiryContent(owner, { ...secondTarget, itemIds: [file.id] }, storage)).files.length, 1,
     "The same source may be imported independently into a different destination folder");
+  const nestedTarget = { projectId, folderId: techReferences.id };
+  assert.equal((await getProjectResearchImportOptions(owner, nestedTarget)).find((item) => item.id === file.id)?.alreadyImported, false);
+  assert.equal((await importProjectInquiryContent(owner, { ...nestedTarget, itemIds: [file.id] }, storage)).files.length, 1);
+  assert.equal(await prisma.projectResearchFolderFile.count({ where: { folderId: techReferences.id } }), 1);
+  assert.equal(await prisma.projectResearchFolderFile.count({ where: { folderId: briefReferences.id } }), 0, "Imports use the selected subfolder, including when names match");
   await prisma.projectAttachment.delete({ where: { id: sourceIds[0] } });
   objects.delete(`source-bucket/${prefix}/source-0.png`);
   assert.ok(await prisma.projectAttachment.findUnique({ where: { id: image.id } }));
   assert.equal(objects.get(`${image.bucket}/${image.storageKey}`), "image", "Removing Stage 1 data must not remove the Stage 2 copy");
 
   await prisma.project.update({ where: { id: projectId }, data: { completedAt: new Date() } });
+  await assert.rejects(() => getProjectResearchImportFolders(owner, target));
   await assert.rejects(() => getProjectResearchImportOptions(owner, target));
   await assert.rejects(() => importProjectInquiryContent(owner, { ...target, itemIds: [legal.id] }, storage));
   await prisma.project.update({ where: { id: projectId }, data: { completedAt: null } });
