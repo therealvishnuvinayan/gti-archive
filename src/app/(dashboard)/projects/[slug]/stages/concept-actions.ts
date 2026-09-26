@@ -307,6 +307,7 @@ export async function completeStageThreeTaskWithoutFileAction(input: { projectId
 
 export async function completeStageThreeConceptsAction(input: {
   projectId: string;
+  completeOpenTasks?: boolean;
 }) {
   const user = await requireUser();
 
@@ -322,8 +323,22 @@ export async function completeStageThreeConceptsAction(input: {
         input.projectId,
         "PROJECT_DEVELOPMENT",
       );
+      revalidatePath(`/projects/${input.projectId}`);
+      revalidatePath(`/projects/${input.projectId}/workspace`);
+      revalidatePath(`/projects/${input.projectId}/stages/3/concepts`);
+      for (const folderId of result.completedTaskIds) {
+        revalidatePath(`/projects/${input.projectId}/stages/3/concepts/${folderId}`);
+      }
 
       if (result.transitioned) {
+        publishProjectActivityUpdatedAfterResponse({
+          projectId: input.projectId, eventType: "stage_status_changed", actorId: user.id,
+        });
+        for (const folderId of result.completedTaskIds) {
+          await runNotificationTask("concept-task-completed", () => notifyConceptTaskCompletion({
+            projectId: input.projectId, folderId, actorId: user.id, event: "completed",
+          }));
+        }
         await runNotificationTask("stage-four-concepts-activated", () =>
           notifyStageFourConceptsActivated({
             projectId: input.projectId,

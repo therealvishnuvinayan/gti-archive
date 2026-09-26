@@ -34,6 +34,7 @@ import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { Card, CardContent } from "@/components/ui/card";
 import { RequestConceptCompletionButton } from "@/components/projects/request-concept-completion-button";
 import { CompleteConceptTaskButton } from "@/components/projects/complete-concept-task-button";
+import { CompleteConceptStageButton } from "@/components/projects/complete-concept-stage-button";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import {
   DropdownMenu,
@@ -534,6 +535,7 @@ export function ConceptStageWorkspace({
     name: string;
     isApproved: boolean;
     completedWithoutFile: boolean;
+    canCompleteWithoutFile: boolean;
   }>;
   executors: ConceptExecutor[];
   selectedExecutorId: string | null;
@@ -578,7 +580,7 @@ export function ConceptStageWorkspace({
   function completeCurrentStage() {
     if (!canCompleteStage) {
       setCompletionError(
-        `Only a project owner, co-owner, or administrator can complete Stage ${stageNumber}.`,
+        `Only the project owner or an administrator can complete Stage ${stageNumber}.`,
       );
       return;
     }
@@ -887,6 +889,9 @@ export function ConceptStageWorkspace({
                   <ArrowRight className="h-4 w-4" />
                 </Link>
               </Button>
+            ) : null}
+            {stageNumber === 3 && canCompleteStage && !managementLocked && pendingConcepts.length > 0 ? (
+              <CompleteConceptStageButton projectId={project.id} tasks={pendingConcepts} />
             ) : null}
             {canCompleteStage && !managementLocked && stageCompletionReady ? (
               <Button

@@ -121,7 +121,7 @@ assert(
 assert(
   concepts.includes("completeStageThreeConcepts") &&
     concepts.includes("canCompleteProjectConceptStage(user, managerContext)") &&
-    concepts.includes("Only a project owner, co-owner, or administrator can complete Stage 3.") &&
+    concepts.includes("Only the project owner or an administrator can complete Stage 3.") &&
     concepts.includes("TransactionIsolationLevel.Serializable") &&
     concepts.includes("unapprovedConcepts.length > 0") &&
     concepts.includes("Every Stage 3 task must have an approved file or be completed without a file") &&
@@ -129,7 +129,7 @@ assert(
     concepts.includes("ProjectWorkflowStageStatus.COMPLETED") &&
     concepts.includes("ProjectWorkflowStageStatus.AVAILABLE") &&
     !concepts.includes("ProjectStageFileHandoff"),
-  "Owner/co-owner/administrator Stage 3 completion must permit an empty optional stage, validate created concepts, and unlock Stage 4 without automatic promotion.",
+  "Owner/administrator Stage 3 completion must permit an empty optional stage, validate created concepts, and unlock Stage 4 without automatic promotion.",
 );
 assert(
   concepts.includes("importStageThreeConceptReference") &&

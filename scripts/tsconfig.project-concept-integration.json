@@ -12,6 +12,7 @@
     "target": "ES2022"
   },
   "include": [
+    "project-concept-manual-stage-check.ts",
     "project-concept-completion-request-check.ts",
     "project-concept-without-file-check.ts",
     "project-concept-integration-check.ts",
