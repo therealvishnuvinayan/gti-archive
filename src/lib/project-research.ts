@@ -206,7 +206,7 @@ export async function getProjectResearchPageData(
           isSystem: true,
           systemKey: true,
           sortOrder: true,
-          pinnedAt: true,
+          pinnedAt: true, colorLabel: true,
           _count: {
             select: {
               children: true,
@@ -220,7 +220,7 @@ export async function getProjectResearchPageData(
       ? withPrismaRetry(() =>
           prisma.projectPrivateFolder.findFirst({
             where: { projectId, ownerUserId: user.id, parentFolderId: null },
-            select: { id: true },
+            select: { id: true, colorLabel: true },
           }),
         )
       : Promise.resolve(null),
@@ -275,12 +275,14 @@ export async function getProjectResearchPageData(
       systemKey: folder.systemKey,
       sortOrder: folder.sortOrder,
       pinnedAt: folder.pinnedAt?.toISOString() ?? null,
+      colorLabel: folder.colorLabel,
       fileCount: folder._count.files,
       folderCount: folder._count.children,
     })),
     myPrivateFolder: ownPrivateFolder
       ? {
           href: `/projects/${projectId}/workspace/private/${ownPrivateFolder.id}`,
+          colorLabel: ownPrivateFolder.colorLabel,
         }
       : null,
     classifiedFolders: [...participantIds]
@@ -417,10 +419,11 @@ export async function getProjectResearchFolderPageData(
         name: true,
         isSystem: true,
         systemKey: true,
+        colorLabel: true,
         children: {
           orderBy: [{ name: "asc" }, { id: "asc" }],
           select: {
-            id: true, name: true, createdAt: true, pinnedAt: true,
+            id: true, name: true, createdAt: true, pinnedAt: true, colorLabel: true,
             _count: { select: { children: true, files: { where: { attachment: { status: AttachmentStatus.READY } } } } },
           },
         },
@@ -438,7 +441,7 @@ export async function getProjectResearchFolderPageData(
           select: {
             id: true,
             createdAt: true,
-            pinnedAt: true,
+            pinnedAt: true, colorLabel: true,
             attachment: {
               select: {
                 id: true,
@@ -469,17 +472,19 @@ export async function getProjectResearchFolderPageData(
       ownerUserId: folder.workspace.ownerUserId,
       ownerName: displayName(folder.workspace.owner),
     },
-    folder: { id: folder.id, name: folder.name, isSystem: folder.isSystem },
+    folder: { id: folder.id, name: folder.name, isSystem: folder.isSystem, colorLabel: folder.colorLabel },
     ancestors: path.slice(0, -1).map(({ id, name }) => ({ id, name })),
     folders: folder.children.map((child) => ({
       id: child.id, name: child.name, createdAt: child.createdAt.toISOString(),
       pinnedAt: child.pinnedAt?.toISOString() ?? null,
+      colorLabel: child.colorLabel,
       fileCount: child._count.files, folderCount: child._count.children,
     })),
     canWrite: access.canWrite,
     files: folder.files.map((record) => ({
       id: record.id,
       pinnedAt: record.pinnedAt?.toISOString() ?? null,
+      colorLabel: record.colorLabel,
       attachmentId: record.attachment.id,
       name: record.attachment.originalFileName,
       mimeType: record.attachment.mimeType,

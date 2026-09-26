@@ -12,6 +12,25 @@ import { getProjectResearchImportOptions, importProjectInquiryContent } from "@/
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
 import { setProjectFolderItemPin } from "@/lib/project-folder-pins";
 import type { FolderItemPinInput } from "@/lib/project-folder-pins-shared";
+import { setProjectFolderItemColor } from "@/lib/project-folder-colors";
+import type { FolderItemColorInput } from "@/lib/project-folder-colors-shared";
+
+export async function setProjectFolderItemColorAction(input: FolderItemColorInput) {
+  const user = await requireUser();
+  try {
+    const result = await setProjectFolderItemColor(user, input);
+    revalidatePath(`/projects/${input.projectId}/stages/2`);
+    for (const folderId of new Set([input.folderId, result.parentFolderId].filter(Boolean))) {
+      revalidatePath(`/projects/${input.projectId}/stages/2/folders/${folderId}`);
+      revalidatePath(`/projects/${input.projectId}/workspace/shared/${folderId}`);
+      revalidatePath(`/projects/${input.projectId}/workspace/private/${folderId}`);
+    }
+    return result;
+  } catch (error) {
+    console.error("[folder-colour] update failed", error);
+    return { error: "Unable to update this colour label. Please reload and try again." };
+  }
+}
 
 export async function setProjectFolderItemPinAction(input: FolderItemPinInput) {
   const user = await requireUser();

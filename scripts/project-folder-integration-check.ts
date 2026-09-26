@@ -10,6 +10,8 @@ import { createProjectPrivateSubfolder, deleteProjectPrivateSubfolder, ensurePro
 import { getProjectResearchImportOptions, importProjectInquiryContent } from "../src/lib/project-research-import";
 import { setProjectFolderItemPin } from "../src/lib/project-folder-pins";
 import { comparePinnedItems, type FolderItemPinInput } from "../src/lib/project-folder-pins-shared";
+import { setProjectFolderItemColor } from "../src/lib/project-folder-colors";
+import { FOLDER_COLORS, compareFolderColors, matchesFolderColor, type FolderItemColorInput, type FolderColor } from "../src/lib/project-folder-colors-shared";
 
 const prefix = `folder-test-${randomUUID()}`;
 const makeUser = (name: string, role: UserRole = UserRole.USER) => ({ id: `${prefix}-${name}`, email: `${prefix}-${name}@example.test`, name, role });
@@ -105,15 +107,55 @@ async function main() {
     bucket: () => "folder-test", copy: async () => undefined, write: async () => undefined, remove: async () => undefined,
   });
   assert.equal(retainedPins.folderFiles.filter((file) => file.pinnedAt).length, 2, "Import refresh preserves existing pins");
+  const folderColor = (folderId: string, colorLabel: FolderColor | null): FolderItemColorInput => ({ projectId, context: "research", kind: "folder", folderId, colorLabel });
+  const fileColor: FolderItemColorInput = { ...folderColor(interviews.id, "BLUE"), kind: "file", fileId: allFiles[1].id };
+  for (const color of FOLDER_COLORS) await setProjectFolderItemColor(owner, folderColor(brief.id, color.value));
+  assert.equal((await getProjectResearchPageData(coOwner, projectId))!.folders.find((folder) => folder.id === brief.id)!.colorLabel, "GREY", "All seven colours are accepted and changes persist");
+  await setProjectFolderItemColor(coOwner, folderColor(notes.id, "RED"));
+  await setProjectFolderItemColor(owner, folderColor(readerPins.folders.find((folder) => folder.pinnedAt)!.id, "BLUE"));
+  await setProjectFolderItemColor(coOwner, fileColor);
+  const colouredPage = (await getProjectResearchFolderPageData(reader, target))!;
+  assert.equal(colouredPage.folders.find((folder) => folder.id === notes.id)!.colorLabel, "RED", "Shared folder labels are visible to another user");
+  assert.equal(colouredPage.files.find((file) => file.id === fileColor.fileId)!.colorLabel, "BLUE", "Shared file labels are visible to another user");
+  assert.ok(colouredPage.files.find((file) => file.id === fileColor.fileId)!.pinnedAt, "Colour changes preserve pins");
+  assert.equal((await getProjectResearchFolderPageData(reader, { projectId, folderId: notes.id }))!.folder.colorLabel, "RED", "Opened folders show their colour");
+  const items = [...colouredPage.folders, ...colouredPage.files];
+  assert.equal(items.filter((item) => matchesFolderColor(item.colorLabel, "BLUE")).length, 2, "Colour filters include both folders and files");
+  assert.equal(items.filter((item) => matchesFolderColor(item.colorLabel, "ALL")).length, items.length);
+  assert.equal(items.filter((item) => matchesFolderColor(item.colorLabel, "NONE")).length, items.length - 3);
+  assert.deepEqual([...FOLDER_COLORS.map((color) => ({ colorLabel: color.value })), { colorLabel: null }].reverse().sort(compareFolderColors).map((item) => item.colorLabel), [...FOLDER_COLORS.map((color) => color.value), null], "Colour sorting follows the palette, with unlabelled items last");
+  for (const input of [fileColor, folderColor(notes.id, "BLUE")]) await assert.rejects(() => setProjectFolderItemColor(reader, input));
+  for (const input of [
+    { ...fileColor, folderId: finance.id }, { ...fileColor, projectId: otherProjectId },
+    { ...fileColor, colorLabel: "INVALID" as FolderColor }, { ...fileColor, kind: "invalid" as "file" },
+    { ...fileColor, context: "invalid" as "research" },
+  ]) await assert.rejects(() => setProjectFolderItemColor(owner, input));
+  const retainedColours = await importProjectInquiryContent(owner, { ...target, itemIds: [option.id] }, {
+    bucket: () => "folder-test", copy: async () => undefined, write: async () => undefined, remove: async () => undefined,
+  });
+  assert.equal(retainedColours.folderFiles.find((file) => file.id === fileColor.fileId)!.colorLabel, "BLUE", "Import refresh preserves colour labels");
+  await setProjectFolderItemColor(owner, { ...fileColor, colorLabel: null });
+  await setProjectFolderItemColor(owner, folderColor(notes.id, null));
+  const clearedPage = (await getProjectResearchFolderPageData(reader, target))!;
+  assert.equal(clearedPage.files.find((file) => file.id === fileColor.fileId)!.colorLabel, null);
+  assert.equal(clearedPage.folders.find((folder) => folder.id === notes.id)!.colorLabel, null);
+  const colouredAttachmentId = allFiles[1].attachmentId;
+  for (const status of ["UPLOADING", "DELETED"] as const) {
+    await prisma.projectAttachment.update({ where: { id: colouredAttachmentId }, data: { status } });
+    await assert.rejects(() => setProjectFolderItemColor(owner, fileColor), `${status} files cannot be labelled`);
+  }
+  await prisma.projectAttachment.update({ where: { id: colouredAttachmentId }, data: { status: "READY" } });
   assert.deepEqual([
     { id: "normal", pinnedAt: null }, { id: "older", pinnedAt: "2026-01-01T00:00:00.000Z" }, { id: "newer", pinnedAt: "2026-01-02T00:00:00.000Z" },
   ].sort(comparePinnedItems).map((item) => item.id), ["newer", "older", "normal"]);
   assert.ok("error" in await deleteProjectResearchFolder(reader, { projectId, folderId: references.id }));
   await prisma.project.update({ where: { id: projectId }, data: { completedAt: new Date() } });
+  await assert.rejects(() => setProjectFolderItemColor(owner, fileColor));
   await assert.rejects(() => setProjectFolderItemPin(owner, pinnedFileInput));
   assert.ok("error" in await createProjectResearchFolder(coOwner, { projectId, parentFolderId: notes.id, name: "Completed" }));
   await prisma.project.update({ where: { id: projectId }, data: { completedAt: null } });
   await prisma.projectWorkflowStage.updateMany({ where: { projectId, stageKey: "PROJECT_RESEARCH_AND_PLANNING" }, data: { status: "LOCKED" } });
+  await assert.rejects(() => setProjectFolderItemColor(coOwner, folderColor(notes.id, "GREEN")));
   await assert.rejects(() => setProjectFolderItemPin(coOwner, folderPin(notes.id)));
   assert.ok("error" in await createProjectResearchFolder(owner, { projectId, parentFolderId: notes.id, name: "Locked" }));
   await prisma.projectWorkflowStage.updateMany({ where: { projectId, stageKey: "PROJECT_RESEARCH_AND_PLANNING" }, data: { status: "AVAILABLE" } });
@@ -138,6 +180,9 @@ async function main() {
   const privateUpload = await requestProjectPrivateFileUpload(owner, { projectId, folderId: privateLeafId, originalFileName: "Private.txt", mimeType: "text/plain", fileSize: 3, createdTextFile: true });
   assert.ok("attachmentId" in privateUpload && privateUpload.attachmentId);
   const privateFilePin: FolderItemPinInput = { projectId, context: "private", kind: "file", folderId: privateLeafId, fileId: privateUpload.attachmentId, pinned: true };
+  const privateFileColor: FolderItemColorInput = { ...privateFilePin, colorLabel: "PURPLE" };
+  const privateFolderColor: FolderItemColorInput = { ...folderColor(privateLeafId, "ORANGE"), context: "private" };
+  await assert.rejects(() => setProjectFolderItemColor(owner, privateFileColor), "Incomplete private files cannot be labelled");
   await assert.rejects(() => setProjectFolderItemPin(owner, privateFilePin), "Incomplete files cannot be pinned");
   await prisma.projectAttachment.update({ where: { id: privateUpload.attachmentId }, data: { status: "READY" } });
   await setProjectFolderItemPin(owner, privateFilePin);
@@ -145,11 +190,28 @@ async function main() {
   await setProjectFolderItemPin(owner, privateFolderPin);
   assert.ok((await getProjectPrivateFolderPageData(owner, { projectId, folderId: privateChildId })).folders[0].pinnedAt);
   assert.ok((await getProjectPrivateFolderPageData(owner, { projectId, folderId: privateLeafId })).files[0].pinnedAt);
+  await setProjectFolderItemColor(owner, privateFileColor);
+  await setProjectFolderItemColor(owner, privateFolderColor);
+  await setProjectFolderItemColor(owner, { ...privateFolderColor, folderId: privateRoot.id, colorLabel: "GREEN" });
+  assert.equal((await getProjectResearchPageData(owner, projectId))!.myPrivateFolder!.colorLabel, "GREEN");
+  assert.equal((await getProjectPrivateFolderPageData(owner, { projectId, folderId: privateChildId })).folders[0].colorLabel, "ORANGE");
+  const privatePage = await getProjectPrivateFolderPageData(owner, { projectId, folderId: privateLeafId });
+  assert.equal(privatePage.folder.colorLabel, "ORANGE");
+  assert.equal(privatePage.files[0].colorLabel, "PURPLE");
+  assert.ok(privatePage.files[0].pinnedAt, "Private file colours preserve pins");
   for (const user of [coOwner, reader, outsider]) {
+    await assert.rejects(() => setProjectFolderItemColor(user, privateFileColor));
+    await assert.rejects(() => setProjectFolderItemColor(user, privateFolderColor));
     await assert.rejects(() => setProjectFolderItemPin(user, privateFilePin));
     await assert.rejects(() => setProjectFolderItemPin(user, privateFolderPin));
   }
   await assert.rejects(() => setProjectFolderItemPin(owner, { ...privateFilePin, folderId: privateChildId }));
+  await assert.rejects(() => setProjectFolderItemColor(owner, { ...privateFileColor, folderId: privateChildId }));
+  await assert.rejects(() => setProjectFolderItemColor(owner, { ...privateFileColor, projectId: otherProjectId }));
+  await setProjectFolderItemColor(owner, { ...privateFileColor, colorLabel: null });
+  await setProjectFolderItemColor(owner, { ...privateFolderColor, colorLabel: null });
+  assert.equal((await getProjectPrivateFolderPageData(owner, { projectId, folderId: privateLeafId })).files[0].colorLabel, null);
+  assert.equal((await getProjectPrivateFolderPageData(owner, { projectId, folderId: privateChildId })).folders[0].colorLabel, null);
   await setProjectFolderItemPin(owner, { ...privateFilePin, pinned: false });
   await setProjectFolderItemPin(owner, { ...privateFolderPin, pinned: false });
   assert.equal((await getProjectPrivateFolderPageData(owner, { projectId, folderId: privateLeafId })).files[0].pinnedAt, null);
@@ -162,7 +224,7 @@ async function main() {
   assert.ok(await prisma.projectResearchFolder.findUnique({ where: { id: financeReferences.id } }));
   assert.equal(await prisma.projectAttachment.count({ where: { projectId, assetType: "PROJECT_RESEARCH_FILE", status: { not: "DELETED" } } }), 0);
   assert.ok(removedObjects.length >= 3, "Subtree deletion cleans up all stored files");
-  console.log("Nested folders and shared pins passed: six mixed pins, persistence, unpinning, sorting, access, imports, uploads, privacy and deletion.");
+  console.log("Nested folders, shared pins and colour labels passed: seven colours, clear labels, filters, colour sorting, six mixed pins, persistence, access, imports, uploads, privacy and deletion.");
 }
 
 main().finally(async () => {

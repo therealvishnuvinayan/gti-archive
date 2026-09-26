@@ -43,9 +43,11 @@ import {
 } from "lucide-react";
 
 import { StageTwoImportDialog } from "@/components/projects/stage-two-import-dialog";
+import { FolderColorBadge, FolderColorFilterControl, FolderColorMenu } from "@/components/projects/folder-color-label";
+import { compareFolderColors, getFolderColor, matchesFolderColor, type FolderColor, type FolderColorFilter } from "@/lib/project-folder-colors-shared";
 import { NewFolderDialog } from "@/components/projects/new-folder-dialog";
 import { comparePinnedItems } from "@/lib/project-folder-pins-shared";
-import { createProjectResearchFolderAction, deleteProjectResearchFolderAction, setProjectFolderItemPinAction } from "@/app/(dashboard)/projects/[slug]/stages/2/actions";
+import { createProjectResearchFolderAction, deleteProjectResearchFolderAction, setProjectFolderItemPinAction, setProjectFolderItemColorAction } from "@/app/(dashboard)/projects/[slug]/stages/2/actions";
 import { createProjectPrivateSubfolderAction, deleteProjectPrivateSubfolderAction } from "@/app/(dashboard)/projects/[slug]/workspace/private/actions";
 import { AssetPreviewDialog } from "@/components/projects/asset-preview-button";
 import { ProjectBackButton } from "@/components/projects/project-back-button";
@@ -84,7 +86,7 @@ type FolderData = NonNullable<
 type FolderFile = FolderData["files"][number];
 type ChildFolder = FolderData["folders"][number];
 type FileView = "grid" | "list";
-type FileSort = "newest" | "oldest" | "name-asc" | "name-desc";
+type FileSort = "newest" | "oldest" | "name-asc" | "name-desc" | "colour";
 
 type PendingUpload = {
   key: string;
@@ -101,6 +103,7 @@ const sortLabels: Record<FileSort, string> = {
   oldest: "Oldest",
   "name-asc": "Name (A–Z)",
   "name-desc": "Name (Z–A)",
+  colour: "Colour label",
 };
 
 function subscribeToFileView(onStoreChange: () => void) {
@@ -296,6 +299,8 @@ function FileActionMenu({
   onDelete,
   onPin,
   pinPending,
+  onColor,
+  colorPending,
 }: {
   file: FolderFile;
   baseApi: string;
@@ -305,6 +310,8 @@ function FileActionMenu({
   onDelete: () => void;
   onPin: () => void;
   pinPending: boolean;
+  onColor: (color: FolderColor | null) => void;
+  colorPending: boolean;
 }) {
   return (
     <DropdownMenu>
@@ -330,6 +337,7 @@ function FileActionMenu({
             <Download className="h-4 w-4" /> Download
           </a>
         </DropdownMenuItem>
+        {canWrite ? <FolderColorMenu value={file.colorLabel} pending={colorPending || deleting} onChange={onColor} /> : null}
         {canWrite ? (
           <DropdownMenuItem disabled={pinPending || deleting} onSelect={onPin}>
             {pinPending ? <Loader2 className="size-4 animate-spin" /> : file.pinnedAt ? <PinOff className="size-4" /> : <Pin className="size-4" />}
@@ -359,6 +367,8 @@ function FileGalleryCard({
   onDelete,
   onPin,
   pinPending,
+  onColor,
+  colorPending,
 }: {
   file: FolderFile;
   baseApi: string;
@@ -368,6 +378,8 @@ function FileGalleryCard({
   onDelete: () => void;
   onPin: () => void;
   pinPending: boolean;
+  onColor: (color: FolderColor | null) => void;
+  colorPending: boolean;
 }) {
   const previewable = isBrowserPreviewable(file);
   const textContentPath = `${baseApi}/files/${file.id}`;
@@ -394,6 +406,8 @@ function FileGalleryCard({
           onDelete={onDelete}
           onPin={onPin}
           pinPending={pinPending}
+          onColor={onColor}
+          colorPending={colorPending}
         />
       </div>
       {previewable ? (
@@ -415,6 +429,7 @@ function FileGalleryCard({
         </a>
       )}
       <div className="min-w-0 px-3 py-3">
+        <FolderColorBadge value={file.colorLabel} className="mb-1.5" />
         <p className="min-w-0 whitespace-normal break-words text-[11px] text-[#657169]" title={file.uploadedBy}>
           {file.uploadedBy}
         </p>
@@ -607,6 +622,9 @@ export function StageTwoFolderWorkspace({
     () => "grid",
   );
   const [sort, setSort] = useState<FileSort>("newest");
+  const [colorFilter, setColorFilter] = useState<FolderColorFilter>("ALL");
+  const [currentFolderColor, setCurrentFolderColor] = useState(data.folder.colorLabel);
+  const [colorPendingIds, setColorPendingIds] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
   const [files, setFiles] = useState<FolderFile[]>(data.files);
   const [folders, setFolders] = useState(data.folders);
@@ -636,12 +654,32 @@ export function StageTwoFolderWorkspace({
   const folderHref = (id: string) => context === "research"
     ? `/projects/${data.project.id}/stages/2/folders/${id}`
     : `/projects/${data.project.id}/workspace/${isPrivateFolder ? "private" : "shared"}/${id}`;
-  const visibleFolders = useMemo(() => folders.filter((folder) => folder.name.toLocaleLowerCase("en").includes(query.trim().toLocaleLowerCase("en"))).sort((left, right) => {
+  const visibleFolders = useMemo(() => folders.filter((folder) => matchesFolderColor(folder.colorLabel, colorFilter) && folder.name.toLocaleLowerCase("en").includes(query.trim().toLocaleLowerCase("en"))).sort((left, right) => {
+    if (sort === "colour") return compareFolderColors(left, right) || left.name.localeCompare(right.name);
     if (sort === "name-asc") return left.name.localeCompare(right.name);
     if (sort === "name-desc") return right.name.localeCompare(left.name);
     const difference = new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
     return sort === "oldest" ? difference : -difference;
-  }), [folders, query, sort]);
+  }), [folders, query, sort, colorFilter]);
+
+  async function colorItem(kind: "folder" | "file", item: { id: string }, colorLabel: FolderColor | null) {
+    const key = `${kind}:${item.id}`;
+    if (!data.canWrite || colorPendingIds.has(key)) return;
+    setColorPendingIds((current) => new Set(current).add(key));
+    try {
+      const result = await setProjectFolderItemColorAction({
+        projectId: data.project.id, context: isPrivateFolder ? "private" : "research", kind,
+        folderId: kind === "folder" ? item.id : data.folder.id,
+        fileId: kind === "file" ? item.id : undefined, colorLabel,
+      });
+      if ("error" in result) { showErrorToast(result.error); return; }
+      if (kind === "folder" && item.id === data.folder.id) setCurrentFolderColor(result.colorLabel);
+      else if (kind === "folder") setFolders((current) => current.map((folder) => folder.id === item.id ? { ...folder, colorLabel: result.colorLabel } : folder));
+      else setFiles((current) => current.map((file) => file.id === item.id ? { ...file, colorLabel: result.colorLabel } : file));
+      showSuccessToast(result.colorLabel ? "Colour label updated." : "Colour label removed.");
+    } catch { showErrorToast("Unable to update this colour label. Please try again."); }
+    finally { setColorPendingIds((current) => { const next = new Set(current); next.delete(key); return next; }); }
+  }
 
   async function pinItem(kind: "folder" | "file", item: ChildFolder | FolderFile) {
     const key = `${kind}:${item.id}`;
@@ -669,8 +707,10 @@ export function StageTwoFolderWorkspace({
       const input = { projectId: data.project.id, parentFolderId: data.folder.id, name };
       const result = await (isPrivateFolder ? createProjectPrivateSubfolderAction(input) : createProjectResearchFolderAction(input));
       if ("error" in result) { setFolderError(result.error); return; }
-      setFolders((current) => [...current, { ...result.folder, fileCount: 0, folderCount: 0, pinnedAt: null, createdAt: new Date().toISOString() }]);
+      setFolders((current) => [...current, { ...result.folder, fileCount: 0, folderCount: 0, pinnedAt: null, colorLabel: null, createdAt: new Date().toISOString() }]);
       setFolderDialogOpen(false);
+      setColorFilter("ALL");
+      setQuery("");
       showSuccessToast("Folder created.");
     } catch { setFolderError("Unable to create folder. Please try again."); }
     finally { setFolderPending(false); }
@@ -694,16 +734,17 @@ export function StageTwoFolderWorkspace({
   const visibleFiles = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase("en");
     const next = files.filter((file) =>
-      normalizedQuery ? file.name.toLocaleLowerCase("en").includes(normalizedQuery) : true,
+      matchesFolderColor(file.colorLabel, colorFilter) && (!normalizedQuery || file.name.toLocaleLowerCase("en").includes(normalizedQuery)),
     );
 
     return next.sort((left, right) => {
+      if (sort === "colour") return compareFolderColors(left, right) || left.name.localeCompare(right.name);
       if (sort === "name-asc") return left.name.localeCompare(right.name);
       if (sort === "name-desc") return right.name.localeCompare(left.name);
       const dateDifference = new Date(left.uploadedAt).getTime() - new Date(right.uploadedAt).getTime();
       return sort === "oldest" ? dateDifference : -dateDifference;
     });
-  }, [files, query, sort]);
+  }, [files, query, sort, colorFilter]);
 
   function updateUpload(key: string, patch: Partial<PendingUpload>) {
     setUploads((current) =>
@@ -831,14 +872,15 @@ export function StageTwoFolderWorkspace({
   const pinnedItems = [
     ...visibleFolders.filter((folder) => folder.pinnedAt).map((item) => ({ kind: "folder" as const, item })),
     ...visibleFiles.filter((file) => file.pinnedAt).map((item) => ({ kind: "file" as const, item })),
-  ].sort((left, right) => comparePinnedItems(left.item, right.item) || left.item.id.localeCompare(right.item.id));
+  ].sort((left, right) => (sort === "colour" ? compareFolderColors(left.item, right.item) : 0) || comparePinnedItems(left.item, right.item) || left.item.id.localeCompare(right.item.id));
 
   function renderFolder(folder: ChildFolder) {
     return (
       <div key={folder.id} className="relative flex self-start items-center rounded-[16px] border border-[#dfe6df] bg-white shadow-sm">
         <Link href={folderHref(folder.id)} className="flex min-w-0 flex-1 items-center gap-3 rounded-[16px] p-4 hover:bg-[#f1f7f2]">
-          <span className="relative shrink-0"><FolderOpen className="size-9 text-[#397655]" />{folder.pinnedAt ? <Pin className="absolute -bottom-1 -right-1 size-3.5 rounded bg-white text-[#24764e]" aria-label="Pinned" /> : null}</span>
+          <span className="relative shrink-0"><FolderOpen className="size-9 text-[#397655]" style={{ color: getFolderColor(folder.colorLabel)?.hex }} />{folder.pinnedAt ? <Pin className="absolute -bottom-1 -right-1 size-3.5 rounded bg-white text-[#24764e]" aria-label="Pinned" /> : null}</span>
           <span className="min-w-0 flex-1"><span className="block truncate text-[14px] font-[700] text-[#263129]" title={folder.name}>{folder.name}</span>
+            <FolderColorBadge value={folder.colorLabel} className="mt-1" />
             <span className="mt-1 block text-[11px] text-[#758078]">{folder.folderCount} {folder.folderCount === 1 ? "folder" : "folders"} · {folder.fileCount} {folder.fileCount === 1 ? "file" : "files"}</span>
           </span>
         </Link>
@@ -848,6 +890,7 @@ export function StageTwoFolderWorkspace({
               <Button type="button" variant="ghost" size="icon" className="mr-2 shrink-0" aria-label={`Actions for folder ${folder.name}`}><MoreVertical className="size-4" /></Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <FolderColorMenu value={folder.colorLabel} pending={colorPendingIds.has(`folder:${folder.id}`)} onChange={(color) => void colorItem("folder", folder, color)} />
               <DropdownMenuItem disabled={pinPendingIds.has(`folder:${folder.id}`)} onSelect={() => void pinItem("folder", folder)}>
                 {folder.pinnedAt ? <PinOff className="size-4" /> : <Pin className="size-4" />}{folder.pinnedAt ? "Unpin" : "Pin to top"}
               </DropdownMenuItem>
@@ -868,6 +911,8 @@ export function StageTwoFolderWorkspace({
         file={file}
         onPin={() => void pinItem("file", file)}
         pinPending={pinPendingIds.has(`file:${file.id}`)}
+        onColor={(color) => void colorItem("file", file, color)}
+        colorPending={colorPendingIds.has(`file:${file.id}`)}
         baseApi={baseApi}
         canWrite={data.canWrite}
         deleting={deletingId === file.id}
@@ -901,6 +946,7 @@ export function StageTwoFolderWorkspace({
                 {file.name}
               </a>
             )}
+            <FolderColorBadge value={file.colorLabel} className="mt-1" />
             <p className="min-w-0 whitespace-normal break-words text-[10px] text-[#879188] md:hidden">{file.uploadedBy} · {formatBytes(file.size)}</p>
           </div>
         </div>
@@ -910,6 +956,8 @@ export function StageTwoFolderWorkspace({
         <FileActionMenu
           onPin={() => void pinItem("file", file)}
           pinPending={pinPendingIds.has(`file:${file.id}`)}
+          onColor={(color) => void colorItem("file", file, color)}
+          colorPending={colorPendingIds.has(`file:${file.id}`)}
           file={file}
           baseApi={baseApi}
           canWrite={data.canWrite}
@@ -964,12 +1012,13 @@ export function StageTwoFolderWorkspace({
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex min-w-0 items-center gap-3">
                   <span className="grid size-11 shrink-0 place-items-center rounded-[13px] bg-[#e7f3ea] text-[#2d7952]">
-                    <FolderOpen className="h-5 w-5" />
+                    <FolderOpen className="h-5 w-5" style={{ color: getFolderColor(currentFolderColor)?.hex }} />
                   </span>
                   <div className="min-w-0">
                     <h1 className="truncate text-[26px] font-[780] tracking-[-0.04em] text-[#151c17] sm:text-[30px]">
                       {data.folder.name}
                     </h1>
+                    <FolderColorBadge value={currentFolderColor} className="mt-1" />
                     <p className="mt-0.5 text-[11px] text-[#77827a]">
                       {context === "private"
                         ? `Only you can access this folder · ${files.length} ${files.length === 1 ? "file" : "files"}`
@@ -980,6 +1029,12 @@ export function StageTwoFolderWorkspace({
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  {data.canWrite ? (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild><Button type="button" variant="secondary" size="icon" aria-label={`Actions for folder ${data.folder.name}`}><MoreVertical className="size-4" /></Button></DropdownMenuTrigger>
+                      <DropdownMenuContent align="end"><FolderColorMenu value={currentFolderColor} pending={colorPendingIds.has(`folder:${data.folder.id}`)} onChange={(color) => void colorItem("folder", data.folder, color)} /></DropdownMenuContent>
+                    </DropdownMenu>
+                  ) : null}
                   {data.canWrite && !isPrivateFolder ? (
                     <Button type="button" variant="secondary" onClick={() => setImportOpen(true)} className="h-10 rounded-[11px]">
                       <FileDown className="h-4 w-4" /> Import
@@ -1066,8 +1121,8 @@ export function StageTwoFolderWorkspace({
               }}
             />
 
-            <div className="border-b border-[#e9eee9] bg-[#fbfcfb] px-5 py-3 sm:px-8">
-              <div className="relative max-w-[420px]">
+            <div className="flex flex-wrap items-center gap-3 border-b border-[#e9eee9] bg-[#fbfcfb] px-5 py-3 sm:px-8">
+              <div className="relative min-w-[180px] max-w-[420px] flex-1">
                 <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#829087]" />
                 <Input
                   value={query}
@@ -1077,6 +1132,7 @@ export function StageTwoFolderWorkspace({
                   className="h-10 rounded-[11px] border-[#dce3dc] bg-white pl-10 shadow-none"
                 />
               </div>
+              <FolderColorFilterControl value={colorFilter} onChange={setColorFilter} />
             </div>
           </div>
 
@@ -1162,15 +1218,16 @@ export function StageTwoFolderWorkspace({
                   <FolderOpen className="h-7 w-7" />
                 </span>
                 <p className="mt-4 text-[15px] font-[720] text-[#364239]">
-                  {query ? "No matching folders or files" : "This folder is empty"}
+                  {query || colorFilter !== "ALL" ? "No matching folders or files" : "This folder is empty"}
                 </p>
                 <p className="mt-1 max-w-[360px] text-[12px] leading-5 text-[#77827a]">
-                  {query
-                    ? "Try another folder or file name."
+                  {query || colorFilter !== "ALL"
+                    ? "Try another name or colour filter."
                     : data.canWrite
                       ? `Drag files here or use New to add a folder or files to ${data.folder.name}.`
                       : "This folder does not contain any folders or files yet."}
                 </p>
+                {colorFilter !== "ALL" || query ? <Button variant="secondary" className="mt-3" onClick={() => { setColorFilter("ALL"); setQuery(""); }}>Clear filters</Button> : null}
               </div>
             ) : unpinnedFiles.length === 0 ? null : view === "grid" ? (
               <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,210px),1fr))] gap-4">

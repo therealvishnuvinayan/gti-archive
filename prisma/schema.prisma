@@ -14,6 +14,16 @@ enum UserRole {
   USER
 }
 
+enum ProjectItemColor {
+  RED
+  ORANGE
+  YELLOW
+  GREEN
+  BLUE
+  PURPLE
+  GREY
+}
+
 enum StageStatus {
   PENDING
   ONGOING
@@ -1057,6 +1067,7 @@ model ProjectResearchFolder {
   parentFolder   ProjectResearchFolder? @relation("ResearchFolderChildren", fields: [workspaceId, parentFolderId], references: [workspaceId, id], onDelete: NoAction, onUpdate: NoAction)
   children       ProjectResearchFolder[] @relation("ResearchFolderChildren")
   pinnedAt       DateTime?
+  colorLabel     ProjectItemColor?
   systemKey      ProjectResearchFolderSystemKey?
   isSystem       Boolean                         @default(false)
   sortOrder      Int                             @default(1000)
@@ -1080,6 +1091,7 @@ model ProjectResearchFolderFile {
   attachmentId String                @unique
   inquiryImportKey String?
   pinnedAt     DateTime?
+  colorLabel   ProjectItemColor?
   attachment   ProjectAttachment     @relation(fields: [attachmentId], references: [id], onDelete: Cascade)
   addedById    String
   addedBy      User                  @relation("ProjectResearchFolderFileAdder", fields: [addedById], references: [id], onDelete: Restrict)
@@ -1103,6 +1115,7 @@ model ProjectPrivateFolder {
   parentFolder ProjectPrivateFolder? @relation("PrivateFolderChildren", fields: [projectId, ownerUserId, parentFolderId], references: [projectId, ownerUserId, id], onDelete: NoAction, onUpdate: NoAction)
   children    ProjectPrivateFolder[] @relation("PrivateFolderChildren")
   pinnedAt    DateTime?
+  colorLabel  ProjectItemColor?
   files       ProjectAttachment[]
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
@@ -2029,6 +2042,7 @@ model ProjectAttachment {
   researchFolderFile         ProjectResearchFolderFile?
   privateFolderId            String?
   pinnedAt                   DateTime?
+  colorLabel                 ProjectItemColor?
   privateFolder              ProjectPrivateFolder?                 @relation(fields: [privateFolderId], references: [id], onDelete: SetNull)
   stageFileHandoffs          ProjectStageFileHandoff[]             @relation("ProjectStageFileHandoffSourceAttachment")
   sourceFileChecklists       ProjectFileChecklist[]                @relation("ProjectFileChecklistSourceAttachment")

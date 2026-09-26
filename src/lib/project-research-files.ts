@@ -95,7 +95,7 @@ export async function completeProjectResearchFileUpload(
       select: {
         id: true,
         attachmentId: true,
-        pinnedAt: true,
+        pinnedAt: true, colorLabel: true,
         attachment: {
           select: {
             originalFileName: true,
@@ -116,6 +116,7 @@ export async function completeProjectResearchFileUpload(
   return {
     id: file.id,
     pinnedAt: file.pinnedAt?.toISOString() ?? null,
+    colorLabel: file.colorLabel,
     attachmentId: file.attachmentId,
     name: file.attachment.originalFileName,
     mimeType: file.attachment.mimeType,

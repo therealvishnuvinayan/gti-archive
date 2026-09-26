@@ -1,11 +1,12 @@
-export type FolderItemPinInput = {
+export type FolderItemTarget = {
   projectId: string;
   context: "research" | "private";
   kind: "folder" | "file";
   folderId: string;
   fileId?: string;
-  pinned: boolean;
 };
+
+export type FolderItemPinInput = FolderItemTarget & { pinned: boolean };
 
 export function comparePinnedItems(
   left: { pinnedAt: string | null },

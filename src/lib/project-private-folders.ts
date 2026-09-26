@@ -10,6 +10,7 @@ import {
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { getFolderAncestors, getFolderSubtree } from "@/lib/project-folder-tree";
 import type { FolderItemPinInput } from "@/lib/project-folder-pins-shared";
+import type { FolderItemColorInput } from "@/lib/project-folder-colors-shared";
 import { validatePreparedProjectResearchTextFile } from "@/lib/project-research-text-file";
 import {
   buildProjectAssetKey,
@@ -135,7 +136,7 @@ async function getOwnedPrivateFolder(
         ownerUserId: true,
         name: true,
         parentFolderId: true,
-        pinnedAt: true,
+        pinnedAt: true, colorLabel: true,
         owner: { select: { name: true, email: true } },
         project: { select: { id: true, name: true } },
       },
@@ -167,7 +168,7 @@ export async function assertProjectPrivateAttachmentAccess(
         id: true,
         projectId: true,
         privateFolderId: true,
-        pinnedAt: true,
+        pinnedAt: true, colorLabel: true,
         bucket: true,
         storageKey: true,
         originalFileName: true,
@@ -199,6 +200,7 @@ function mapPrivateFile(
   return {
     id: attachment.id,
     pinnedAt: attachment.pinnedAt?.toISOString() ?? null,
+    colorLabel: attachment.colorLabel,
     attachmentId: attachment.id,
     name: attachment.originalFileName,
     mimeType: attachment.mimeType,
@@ -216,7 +218,7 @@ export async function getProjectPrivateFolderPageData(
   const hierarchy = await prisma.projectPrivateFolder.findMany({
     where: { projectId: input.projectId, ownerUserId: user.id },
     select: {
-      id: true, name: true, parentFolderId: true, createdAt: true, pinnedAt: true,
+      id: true, name: true, parentFolderId: true, createdAt: true, pinnedAt: true, colorLabel: true,
       _count: { select: { children: true, files: { where: { status: AttachmentStatus.READY } } } },
     },
   });
@@ -234,7 +236,7 @@ export async function getProjectPrivateFolderPageData(
         id: true,
         projectId: true,
         privateFolderId: true,
-        pinnedAt: true,
+        pinnedAt: true, colorLabel: true,
         bucket: true,
         storageKey: true,
         originalFileName: true,
@@ -256,11 +258,12 @@ export async function getProjectPrivateFolderPageData(
       ownerUserId: folder.ownerUserId,
       ownerName: displayName(folder.owner),
     },
-    folder: { id: folder.id, name: folder.name, isSystem: !folder.parentFolderId },
+    folder: { id: folder.id, name: folder.name, isSystem: !folder.parentFolderId, colorLabel: folder.colorLabel },
     ancestors: path.slice(0, -1).map(({ id, name }) => ({ id, name })),
     folders: hierarchy.filter((child) => child.parentFolderId === folder.id).map((child) => ({
       id: child.id, name: child.name, createdAt: child.createdAt.toISOString(),
       pinnedAt: child.pinnedAt?.toISOString() ?? null,
+      colorLabel: child.colorLabel,
       fileCount: child._count.files, folderCount: child._count.children,
     })),
     canWrite: true,
@@ -304,6 +307,22 @@ export async function setProjectPrivateItemPin(user: PrivateFolderUser, input: F
   });
   if (changed.count !== 1) throw new Error("File not found.");
   return { pinnedAt: pinnedAt?.toISOString() ?? null, parentFolderId: folder.id };
+}
+
+export async function setProjectPrivateItemColor(user: PrivateFolderUser, input: FolderItemColorInput) {
+  const folder = await getOwnedPrivateFolder(user, input);
+  if (input.kind === "folder") {
+    return prisma.projectPrivateFolder.update({
+      where: { id: folder.id }, data: { colorLabel: input.colorLabel },
+      select: { colorLabel: true, parentFolderId: true },
+    });
+  }
+  const file = await getExactPrivateFile(user, { projectId: input.projectId, folderId: input.folderId, fileId: input.fileId! });
+  const changed = await prisma.projectAttachment.updateMany({
+    where: { id: file.id, privateFolderId: folder.id, status: AttachmentStatus.READY }, data: { colorLabel: input.colorLabel },
+  });
+  if (changed.count !== 1) throw new Error("File not found.");
+  return { colorLabel: input.colorLabel, parentFolderId: folder.id };
 }
 
 export async function deleteProjectPrivateSubfolder(user: PrivateFolderUser, input: { projectId: string; folderId: string }) {
@@ -471,7 +490,7 @@ export async function completeProjectPrivateFileUpload(
       data: { status: AttachmentStatus.READY },
       select: {
         id: true,
-        pinnedAt: true,
+        pinnedAt: true, colorLabel: true,
         projectId: true,
         privateFolderId: true,
         bucket: true,
