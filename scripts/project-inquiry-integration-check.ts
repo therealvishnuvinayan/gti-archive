@@ -15,6 +15,7 @@ import {
   createContactDirectoryEntry,
   getProjectInquiryPageData,
   searchProjectInquiryHistorySuggestions,
+  searchProjectInquiryPartyOptions,
   type CompleteProjectInquiryInput,
 } from "../src/lib/project-inquiry";
 import { prisma } from "../src/lib/prisma";
@@ -254,12 +255,35 @@ async function main() {
     superAdmin,
     mainProject.id,
     {
+      kind: "CLIENT",
       name: "Manual Client Entity",
       company: "Manual Client Company",
+      companyEmail: " COMPANY@Example.Test ",
+      companyPhone: "+1 (202) 555-0123",
+      companyWebsite: "client.example.test",
+      position: "Account Manager",
+      phone: "+971 50 123 4567",
       email: " CLIENT-CONTACT@Example.Test ",
     },
   );
   assert("contact" in clientContactResult, "Manual client contact must be created.");
+  assert(
+    clientContactResult.contact.companyEmail === "company@example.test" &&
+      clientContactResult.contact.companyPhone === "+12025550123" &&
+      clientContactResult.contact.companyWebsite === "https://client.example.test/" &&
+      clientContactResult.contact.phone === "+971501234567",
+    "Company details must persist separately from representative details.",
+  );
+  const companySearch = await searchProjectInquiryPartyOptions(superAdmin, mainProject.id, "company@example.test");
+  assert(companySearch.some((contact) => contact.id === clientContactResult.contact.id), "Clients must be searchable by company email.");
+  const missingCompany = await createContactDirectoryEntry(superAdmin, mainProject.id, {
+    kind: "CLIENT", name: "Representative", email: "rep@example.test", phone: "+971501234567", position: "Manager",
+  });
+  assert("error" in missingCompany && missingCompany.fieldErrors?.company, "New clients must require a company on the server.");
+  const missingRepresentative = await createContactDirectoryEntry(superAdmin, mainProject.id, {
+    kind: "CLIENT", company: "Incomplete Company", name: "",
+  });
+  assert("error" in missingRepresentative && ["name", "email", "phone", "position"].every((field) => missingRepresentative.fieldErrors?.[field as "name" | "email" | "phone" | "position"]), "New clients must require all representative details on the server.");
   const beneficiaryContactResult = await createContactDirectoryEntry(
     superAdmin,
     mainProject.id,
@@ -386,6 +410,18 @@ async function main() {
       attachments: true,
     },
   });
+  const savedClient = persisted.parties.find((party) => party.role === "CLIENT");
+  assert(savedClient?.snapshotCompany === "Manual Client Company" &&
+    savedClient.snapshotCompanyEmail === "company@example.test" &&
+    savedClient.snapshotCompanyPhone === "+12025550123" &&
+    savedClient.snapshotCompanyWebsite === "https://client.example.test/" &&
+    savedClient.snapshotName === "Manual Client Entity" &&
+    savedClient.snapshotEmail === "client-contact@example.test" &&
+    savedClient.snapshotPhone === "+971501234567" &&
+    savedClient.snapshotPosition === "Account Manager", "All eight client fields must survive saving Stage 1.");
+  await prisma.contactDirectoryEntry.update({ where: { id: clientContactResult.contact.id }, data: { companyEmail: "changed@example.test" } });
+  const reloadedClient = (await getProjectInquiryPageData(superAdmin, mainProject.id)).inquiry?.client;
+  assert(reloadedClient?.companyEmail === "company@example.test" && reloadedClient.companyPhone === "+12025550123" && reloadedClient.companyWebsite === "https://client.example.test/", "Saved projects must retain their own company contact snapshot after directory changes.");
   assert(
     persisted.initialBrief === "<p>Persisted initial brief</p>",
     "Initial Brief must persist.",

@@ -1,12 +1,16 @@
 export type ProjectContactInput = {
+  kind?: "CLIENT" | "CONTACT";
   name: string;
   company?: string;
+  companyEmail?: string;
+  companyPhone?: string;
+  companyWebsite?: string;
   position?: string;
   email?: string;
   phone?: string;
 };
 
-export type ProjectContactField = keyof ProjectContactInput;
+export type ProjectContactField = Exclude<keyof ProjectContactInput, "kind">;
 export type ProjectContactFieldErrors = Partial<Record<ProjectContactField, string>>;
 
 const MAX_CONTACT_NAME_LENGTH = 160;
@@ -84,9 +88,43 @@ export function validateProjectContactInput(input: ProjectContactInput) {
   const email = normalizeProjectContactEmail(input.email ?? "");
   const rawPhone = input.phone?.trim() ?? "";
   const phone = rawPhone ? normalizeInternationalPhone(rawPhone) : "";
+  const companyEmail = normalizeProjectContactEmail(input.companyEmail ?? "");
+  const rawCompanyPhone = input.companyPhone?.trim() ?? "";
+  const companyPhone = rawCompanyPhone ? normalizeInternationalPhone(rawCompanyPhone) : "";
+  const rawWebsite = input.companyWebsite?.trim() ?? "";
+  let companyWebsite = rawWebsite;
+
+  if (rawWebsite) {
+    try {
+      const url = new URL(
+        /^[a-z][a-z\d+.-]*:/i.test(rawWebsite) ? rawWebsite : `https://${rawWebsite}`,
+      );
+      if (
+        !["http:", "https:"].includes(url.protocol) ||
+        !url.hostname.includes(".") ||
+        !url.hostname.split(".").every((label) => EMAIL_DOMAIN_LABEL_PATTERN.test(label)) ||
+        url.username || url.password ||
+        rawWebsite.length > 2048 || /\s/.test(rawWebsite)
+      ) {
+        throw new Error("Invalid website");
+      }
+      companyWebsite = url.href;
+    } catch {
+      fieldErrors.companyWebsite = "Enter a valid company website, e.g. https://example.com.";
+    }
+  }
+
+  if (input.kind === "CLIENT") {
+    if (!company) fieldErrors.company = "Company name is required.";
+    if (!email) fieldErrors.email = "Representative email is required.";
+    if (!rawPhone) fieldErrors.phone = "Representative contact number is required.";
+    if (!position) fieldErrors.position = "Representative designation is required.";
+  }
 
   if (!name) {
-    fieldErrors.name = "Name is required.";
+    fieldErrors.name = input.kind === "CLIENT"
+      ? "Contact person / representative is required."
+      : "Name is required.";
   } else if (name.length > MAX_CONTACT_NAME_LENGTH) {
     fieldErrors.name = `Keep the name under ${MAX_CONTACT_NAME_LENGTH} characters.`;
   }
@@ -108,11 +146,22 @@ export function validateProjectContactInput(input: ProjectContactInput) {
       "Enter a valid international phone number including country code.";
   }
 
+  if (companyEmail && !isValidProjectContactEmail(companyEmail)) {
+    fieldErrors.companyEmail = "Enter a valid company email address.";
+  }
+  if (rawCompanyPhone && !companyPhone) {
+    fieldErrors.companyPhone = "Enter a valid international phone number including country code.";
+  }
+
   return {
     fieldErrors,
     data: {
+      kind: input.kind ?? "CONTACT",
       name,
       company,
+      companyEmail,
+      companyPhone: companyPhone ?? "",
+      companyWebsite,
       position,
       email,
       phone: phone ?? "",

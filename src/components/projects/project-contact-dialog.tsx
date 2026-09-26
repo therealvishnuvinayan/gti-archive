@@ -8,10 +8,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import type { CreateContactDirectoryEntryInput } from "@/lib/project-inquiry";
 
-export type ProjectContactForm = Required<CreateContactDirectoryEntryInput>;
+export type ProjectContactForm = Required<Omit<CreateContactDirectoryEntryInput, "kind">>;
 
 type ProjectContactDialogProps = {
   isOpen: boolean;
+  kind?: "CLIENT" | "CONTACT";
   title: string;
   description: string;
   submitLabel: string;
@@ -29,6 +30,7 @@ type ProjectContactDialogProps = {
 
 export function ProjectContactDialog({
   isOpen,
+  kind = "CONTACT",
   title,
   description,
   submitLabel,
@@ -44,15 +46,35 @@ export function ProjectContactDialog({
     Partial<Record<keyof ProjectContactForm, HTMLInputElement | null>>
   >({});
 
+  const fields: ReadonlyArray<readonly [keyof ProjectContactForm, string, string, boolean]> = kind === "CLIENT"
+    ? [
+        ["company", "Company Name", "Company or organisation", true],
+        ["companyEmail", "Company Email ID", "company@example.com", false],
+        ["companyPhone", "Company Contact Number", "+971 ...", false],
+        ["companyWebsite", "Company Website", "https://example.com", false],
+        ["name", "Contact Person / Representative", "Representative full name", true],
+        ["email", "Representative Email", "name@example.com", true],
+        ["phone", "Representative Contact Number", "+971 ...", true],
+        ["position", "Representative Designation", "Role or position", true],
+      ]
+    : [
+        ["name", "Name", "Contact name", true],
+        ["company", "Company", "Company or organisation", false],
+        ["position", "Position / title", "Role or position", false],
+        ["email", "Email", "name@example.com", false],
+        ["phone", "Phone", "+971 ...", false],
+      ];
+
   useEffect(() => {
-    const firstInvalidField = (
-      ["name", "company", "position", "email", "phone"] as const
-    ).find((field) => Boolean(fieldErrors?.[field]));
+    const order: Array<keyof ProjectContactForm> = kind === "CLIENT"
+      ? ["company", "companyEmail", "companyPhone", "companyWebsite", "name", "email", "phone", "position"]
+      : ["name", "company", "position", "email", "phone"];
+    const firstInvalidField = order.find((field) => Boolean(fieldErrors?.[field]));
 
     if (firstInvalidField) {
       inputRefs.current[firstInvalidField]?.focus();
     }
-  }, [fieldErrors]);
+  }, [fieldErrors, kind]);
 
   if (!isOpen) {
     return null;
@@ -104,28 +126,22 @@ export function ProjectContactDialog({
           ) : null}
 
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
-            {(
-              [
-                ["name", "Name", "Contact name", true],
-                ["company", "Company", "Company or organisation", false],
-                ["position", "Position / title", "Role or position", false],
-                ["email", "Email", "name@example.com", false],
-                ["phone", "Phone", "+971 ...", false],
-              ] as const
-            ).map(([field, label, placeholder, required]) => (
+            {fields.map(([field, label, placeholder, required]) => (
               <label
                 key={field}
-                className={field === "phone" ? "space-y-2 sm:col-span-2" : "space-y-2"}
+                className={kind === "CONTACT" && field === "phone" ? "space-y-2 sm:col-span-2" : "space-y-2"}
               >
                 <span className="block text-[13px] font-[650] text-[#2d372f]">
                   {label}
-                  {required ? <span className="ml-1 text-[#bd4d48]">*</span> : null}
+                  {required ? <span className="ml-1 text-[#bd4d48]">*</span> : kind === "CLIENT" ? <span className="ml-1 font-normal text-[#7b857e]">(Optional)</span> : null}
                 </span>
                 <Input
                   ref={(element) => {
                     inputRefs.current[field] = element;
                   }}
-                  type={field === "email" ? "email" : field === "phone" ? "tel" : "text"}
+                  type={field === "email" || field === "companyEmail" ? "email" : field === "phone" || field === "companyPhone" ? "tel" : field === "companyWebsite" ? "url" : "text"}
+                  aria-required={required}
+                  disabled={saving}
                   value={form[field]}
                   onChange={(event) => onChange(field, event.target.value)}
                   placeholder={placeholder}
@@ -133,8 +149,8 @@ export function ProjectContactDialog({
                   aria-describedby={
                     fieldErrors?.[field]
                       ? `project-contact-${field}-error`
-                      : field === "phone"
-                        ? "project-contact-phone-help"
+                      : field === "phone" || field === "companyPhone"
+                        ? `project-contact-${field}-help`
                         : undefined
                   }
                   className={`h-12 rounded-[14px] border bg-white shadow-none ${
@@ -150,9 +166,9 @@ export function ProjectContactDialog({
                     {fieldErrors[field]}
                   </span>
                 ) : null}
-                {field === "phone" ? (
+                {field === "phone" || field === "companyPhone" ? (
                   <span
-                    id="project-contact-phone-help"
+                    id={`project-contact-${field}-help`}
                     className="block text-[11px] text-[#78837b]"
                   >
                     Include country code, e.g. +971, +91, +44.

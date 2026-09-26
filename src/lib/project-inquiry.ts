@@ -84,6 +84,9 @@ export type ProjectInquiryPartyOption = {
   id: string;
   name: string;
   company: string | null;
+  companyEmail: string | null;
+  companyPhone: string | null;
+  companyWebsite: string | null;
   position: string | null;
   email: string | null;
   phone: string | null;
@@ -91,7 +94,7 @@ export type ProjectInquiryPartyOption = {
 
 export type ProjectInquiryPartySelection = Pick<
   ProjectInquiryPartyOption,
-  "source" | "id" | "name" | "company" | "position" | "email" | "phone"
+  "source" | "id" | "name" | "company" | "companyEmail" | "companyPhone" | "companyWebsite" | "position" | "email" | "phone"
 >;
 
 export type ProjectInquiryTargetMarketInput = {
@@ -262,6 +265,9 @@ function mapPartyOptionFromUser(user: {
     id: user.id,
     name: getUserDisplayName(user),
     company: user.department,
+    companyEmail: null,
+    companyPhone: null,
+    companyWebsite: null,
     position: user.jobTitle,
     email: user.email,
     phone: user.phoneNumber,
@@ -272,6 +278,9 @@ function mapPartyOptionFromContact(contact: {
   id: string;
   name: string;
   company: string | null;
+  companyEmail: string | null;
+  companyPhone: string | null;
+  companyWebsite: string | null;
   position: string | null;
   email: string | null;
   phone: string | null;
@@ -281,6 +290,9 @@ function mapPartyOptionFromContact(contact: {
     id: contact.id,
     name: contact.name,
     company: contact.company,
+    companyEmail: contact.companyEmail,
+    companyPhone: contact.companyPhone,
+    companyWebsite: contact.companyWebsite,
     position: contact.position,
     email: contact.email,
     phone: contact.phone,
@@ -293,6 +305,9 @@ function mapSavedParty(party: {
   contactId: string | null;
   snapshotName: string;
   snapshotCompany: string | null;
+  snapshotCompanyEmail: string | null;
+  snapshotCompanyPhone: string | null;
+  snapshotCompanyWebsite: string | null;
   snapshotPosition: string | null;
   snapshotEmail: string | null;
   snapshotPhone: string | null;
@@ -305,6 +320,9 @@ function mapSavedParty(party: {
         : party.contactId ?? "",
     name: party.snapshotName,
     company: party.snapshotCompany,
+    companyEmail: party.snapshotCompanyEmail,
+    companyPhone: party.snapshotCompanyPhone,
+    companyWebsite: party.snapshotCompanyWebsite,
     position: party.snapshotPosition,
     email: party.snapshotEmail,
     phone: party.snapshotPhone,
@@ -362,6 +380,9 @@ export async function createContactDirectoryEntry(
       data: {
         name: validation.data.name,
         company: validation.data.company || null,
+        companyEmail: validation.data.companyEmail || null,
+        companyPhone: validation.data.companyPhone || null,
+        companyWebsite: validation.data.companyWebsite || null,
         position: validation.data.position || null,
         email: validation.data.email || null,
         phone: validation.data.phone || null,
@@ -371,6 +392,9 @@ export async function createContactDirectoryEntry(
         id: true,
         name: true,
         company: true,
+        companyEmail: true,
+        companyPhone: true,
+        companyWebsite: true,
         position: true,
         email: true,
         phone: true,
@@ -528,6 +552,9 @@ export async function searchProjectInquiryPartyOptions(
         OR: [
           { name: { contains: search, mode: Prisma.QueryMode.insensitive } },
           { company: { contains: search, mode: Prisma.QueryMode.insensitive } },
+          { companyEmail: { contains: search, mode: Prisma.QueryMode.insensitive } },
+          { companyPhone: { contains: search, mode: Prisma.QueryMode.insensitive } },
+          { companyWebsite: { contains: search, mode: Prisma.QueryMode.insensitive } },
           { position: { contains: search, mode: Prisma.QueryMode.insensitive } },
           { email: { contains: search, mode: Prisma.QueryMode.insensitive } },
         ],
@@ -558,6 +585,9 @@ export async function searchProjectInquiryPartyOptions(
           id: true,
           name: true,
           company: true,
+          companyEmail: true,
+          companyPhone: true,
+          companyWebsite: true,
           position: true,
           email: true,
           phone: true,
@@ -782,6 +812,9 @@ async function resolvePartySnapshot(
       contactId: null,
       snapshotName: getUserDisplayName(selectedUser),
       snapshotCompany: selectedUser.department,
+      snapshotCompanyEmail: null,
+      snapshotCompanyPhone: null,
+      snapshotCompanyWebsite: null,
       snapshotPosition: selectedUser.jobTitle,
       snapshotEmail: selectedUser.email,
       snapshotPhone: selectedUser.phoneNumber,
@@ -794,6 +827,9 @@ async function resolvePartySnapshot(
       id: true,
       name: true,
       company: true,
+      companyEmail: true,
+      companyPhone: true,
+      companyWebsite: true,
       position: true,
       email: true,
       phone: true,
@@ -810,6 +846,9 @@ async function resolvePartySnapshot(
     contactId: contact.id,
     snapshotName: contact.name,
     snapshotCompany: contact.company,
+    snapshotCompanyEmail: contact.companyEmail,
+    snapshotCompanyPhone: contact.companyPhone,
+    snapshotCompanyWebsite: contact.companyWebsite,
     snapshotPosition: contact.position,
     snapshotEmail: contact.email,
     snapshotPhone: contact.phone,

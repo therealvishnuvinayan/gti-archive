@@ -79,16 +79,18 @@ export function ProjectPeopleSummary({
   people,
   groupLabel,
   emptyLabel = "None",
+  visibleCount = 1,
 }: {
   people: ProjectSummaryPerson[];
   groupLabel: string;
   emptyLabel?: string;
+  visibleCount?: number;
 }) {
   if (!people.length) {
     return <span className="text-[#89928b]">{emptyLabel}</span>;
   }
 
-  const visiblePeople = people.slice(0, 1);
+  const visiblePeople = people.slice(0, visibleCount);
   const remainingCount = people.length - visiblePeople.length;
   const visibleNames = visiblePeople.map((person) => person.name).join(", ");
 
@@ -203,6 +205,7 @@ export function ProjectSummaryStrip({
               people={executors}
               groupLabel="Project Executors"
               emptyLabel={executorEmptyLabel}
+              visibleCount={3}
             />
           </ProjectSummaryItem>
         </dl>

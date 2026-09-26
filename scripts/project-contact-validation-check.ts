@@ -52,6 +52,10 @@ const optionalContact = validateProjectContactInput({
 });
 assert.deepEqual(optionalContact.fieldErrors, {});
 assert.deepEqual(optionalContact.data, {
+  kind: "CONTACT",
+  companyEmail: "",
+  companyPhone: "",
+  companyWebsite: "",
   name: "John Doe",
   company: "ABC",
   position: "",
@@ -81,4 +85,39 @@ assert.equal(
   "Enter a valid international phone number including country code.",
 );
 
+const client = {
+  kind: "CLIENT" as const,
+  company: " Example Company ",
+  name: " Jane   Doe ",
+  email: " Jane@Example.COM ",
+  phone: "+971 50 123 4567",
+  position: " Account Manager ",
+};
+const requiredClient = validateProjectContactInput(client);
+assert.deepEqual(requiredClient.fieldErrors, {});
+assert.equal(requiredClient.data.company, "Example Company");
+assert.equal(requiredClient.data.name, "Jane Doe");
+assert.equal(requiredClient.data.companyEmail, "");
+assert.equal(requiredClient.data.companyPhone, "");
+assert.equal(requiredClient.data.companyWebsite, "");
+for (const field of ["company", "name", "email", "phone", "position"] as const) {
+  assert.ok(validateProjectContactInput({ ...client, [field]: " " }).fieldErrors[field], `${field} is required for a client`);
+}
+const completeClient = validateProjectContactInput({
+  ...client,
+  companyEmail: " INFO@Example.COM ",
+  companyPhone: "+1 (202) 555-0123",
+  companyWebsite: "example.com/contact",
+});
+assert.deepEqual(completeClient.fieldErrors, {});
+assert.equal(completeClient.data.companyEmail, "info@example.com");
+assert.equal(completeClient.data.companyPhone, "+12025550123");
+assert.equal(completeClient.data.companyWebsite, "https://example.com/contact");
+assert.equal(completeClient.data.email, "jane@example.com");
+assert.equal(completeClient.data.phone, "+971501234567");
+assert.ok(validateProjectContactInput({ ...client, companyEmail: "invalid@" }).fieldErrors.companyEmail);
+assert.ok(validateProjectContactInput({ ...client, companyPhone: "0501234567" }).fieldErrors.companyPhone);
+for (const companyWebsite of ["javascript:alert(1)", "ftp://example.com", "not a website", "https://", "https://user:password@example.com"]) {
+  assert.ok(validateProjectContactInput({ ...client, companyWebsite }).fieldErrors.companyWebsite, `Reject invalid website: ${companyWebsite}`);
+}
 console.log("Project contact validation checks passed.");

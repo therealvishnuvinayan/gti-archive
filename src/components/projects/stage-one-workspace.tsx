@@ -94,7 +94,7 @@ function getTodayDateValue() {
 }
 
 function getDefaultContactForm(): ProjectContactForm {
-  return { name: "", company: "", position: "", email: "", phone: "" };
+  return { name: "", company: "", companyEmail: "", companyPhone: "", companyWebsite: "", position: "", email: "", phone: "" };
 }
 
 function formatBytes(bytes: number) {
@@ -134,6 +134,7 @@ function PartySelector({
   options,
   values,
   multiple = false,
+  companyFirst = false,
   disabled,
   error,
   onChange,
@@ -144,6 +145,7 @@ function PartySelector({
   options: ProjectInquiryPartyOption[];
   values: ProjectInquiryPartySelection[];
   multiple?: boolean;
+  companyFirst?: boolean;
   disabled: boolean;
   error?: string;
   onChange: (values: ProjectInquiryPartySelection[]) => void;
@@ -159,19 +161,34 @@ function PartySelector({
     [values],
   );
   const singleValue = multiple ? null : values[0] ?? null;
+  function partyLabel(party: ProjectInquiryPartySelection) {
+    return companyFirst && party.source === "MANUAL_CONTACT" ? party.company || party.name : party.name;
+  }
+  function partyDescription(party: ProjectInquiryPartySelection) {
+    return companyFirst && party.source === "MANUAL_CONTACT" && party.company
+      ? [party.name, party.position, party.companyEmail || party.email].filter(Boolean).join(" · ")
+      : [party.company, party.position, party.email].filter(Boolean).join(" · ");
+  }
   const showSearchInput = multiple || !singleValue || open;
   const filteredOptions = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase("en");
-    return options.filter((option) => {
+    const matches = options.filter((option) => {
       if (multiple && selectedKeys.has(`${option.source}:${option.id}`)) {
         return false;
       }
       if (!normalizedQuery) return true;
-      return [option.name, option.company, option.position, option.email]
+      return [option.name, option.company, option.position, option.email, option.companyEmail, option.companyPhone, option.companyWebsite]
         .filter(Boolean)
         .some((part) => part!.toLocaleLowerCase("en").includes(normalizedQuery));
     });
-  }, [multiple, options, query, selectedKeys]);
+    if (companyFirst) {
+      matches.sort((left, right) =>
+        Number(right.source === "MANUAL_CONTACT" && Boolean(right.company)) -
+        Number(left.source === "MANUAL_CONTACT" && Boolean(left.company)),
+      );
+    }
+    return matches;
+  }, [companyFirst, multiple, options, query, selectedKeys]);
 
   function selectOption(option: ProjectInquiryPartyOption) {
     onChange(multiple ? [...values, option] : [option]);
@@ -254,11 +271,11 @@ function PartySelector({
             className="min-w-0 flex-1 text-left"
           >
             <span className="block min-w-0 whitespace-normal break-words text-[13px] font-[650] text-[#263029]">
-              {singleValue.name}
+              {partyLabel(singleValue)}
             </span>
-            {singleValue.company || singleValue.email ? (
-              <span className="block truncate text-[11px] text-[#7d8780]">
-                {singleValue.company || singleValue.email}
+            {partyDescription(singleValue) ? (
+              <span className="block whitespace-normal break-words text-[11px] text-[#7d8780]">
+                {partyDescription(singleValue)}
               </span>
             ) : null}
           </button>
@@ -337,7 +354,7 @@ function PartySelector({
                   className="flex w-full items-center gap-3 rounded-[13px] px-3 py-2.5 text-left hover:bg-[#f3f7f3]"
                 >
                   <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[#edf4ee] text-[11px] font-[750] text-[#2d704b]">
-                    {option.name
+                    {partyLabel(option)
                       .split(/\s+/)
                       .map((part) => part[0])
                       .join("")
@@ -346,12 +363,10 @@ function PartySelector({
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block min-w-0 whitespace-normal break-words text-[13px] font-[650] text-[#202923]">
-                      {option.name}
+                      {partyLabel(option)}
                     </span>
-                    <span className="block truncate text-[11px] text-[#7d8780]">
-                      {[option.company, option.position, option.email]
-                        .filter(Boolean)
-                        .join(" · ") ||
+                    <span className="block whitespace-normal break-words text-[11px] text-[#7d8780]">
+                      {partyDescription(option) ||
                         (option.source === "USER" ? "FluxSys user" : "Directory contact")}
                     </span>
                   </span>
@@ -361,7 +376,7 @@ function PartySelector({
             })
           ) : (
             <p className="px-4 py-8 text-center text-[13px] text-[#7b847d]">
-              No matching people or contacts.
+              {companyFirst ? "No matching companies or contacts." : "No matching people or contacts."}
             </p>
           )}
         </div>
@@ -956,7 +971,7 @@ export function StageOneWorkspace({
 
   async function handleCreateContact() {
     if (!contactTarget) return;
-    const validation = validateProjectContactInput(contactForm);
+    const validation = validateProjectContactInput({ ...contactForm, kind: contactTarget === "client" ? "CLIENT" : "CONTACT" });
 
     if (Object.keys(validation.fieldErrors).length > 0) {
       setContactErrors(validation.fieldErrors);
@@ -1152,10 +1167,11 @@ export function StageOneWorkspace({
 
           <form onSubmit={handleSubmit}>
             <div className="grid gap-x-10 gap-y-6 lg:grid-cols-2">
-              <StageOneFormField label="Client Name" required error={fieldErrors.client}>
+              <StageOneFormField label="Client" required error={fieldErrors.client}>
                 <PartySelector
-                  ariaLabel="Client name"
-                  placeholder="Search or select client"
+                  ariaLabel="Client"
+                  companyFirst
+                  placeholder="Search or select a company"
                   options={partyOptions}
                   values={client ? [client] : []}
                   disabled={readOnly || submitting}
@@ -1389,10 +1405,11 @@ export function StageOneWorkspace({
 
       <ProjectContactDialog
         isOpen={contactTarget !== null}
+        kind={contactTarget === "client" ? "CLIENT" : "CONTACT"}
         title={contactTarget === "client" ? "Add Client" : "Add Beneficiary"}
         description={
           contactTarget === "client"
-            ? "Enter the client details. The client will also be available in the contact directory."
+            ? "Enter the company and its representative’s details. This client will be available for future projects."
             : "Enter the beneficiary details. The beneficiary will also be available in the contact directory."
         }
         submitLabel={contactTarget === "client" ? "Add Client" : "Add Beneficiary"}
