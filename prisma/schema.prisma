@@ -1056,6 +1056,7 @@ model ProjectResearchFolder {
   parentFolderId String?
   parentFolder   ProjectResearchFolder? @relation("ResearchFolderChildren", fields: [workspaceId, parentFolderId], references: [workspaceId, id], onDelete: NoAction, onUpdate: NoAction)
   children       ProjectResearchFolder[] @relation("ResearchFolderChildren")
+  pinnedAt       DateTime?
   systemKey      ProjectResearchFolderSystemKey?
   isSystem       Boolean                         @default(false)
   sortOrder      Int                             @default(1000)
@@ -1078,6 +1079,7 @@ model ProjectResearchFolderFile {
   folder       ProjectResearchFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
   attachmentId String                @unique
   inquiryImportKey String?
+  pinnedAt     DateTime?
   attachment   ProjectAttachment     @relation(fields: [attachmentId], references: [id], onDelete: Cascade)
   addedById    String
   addedBy      User                  @relation("ProjectResearchFolderFileAdder", fields: [addedById], references: [id], onDelete: Restrict)
@@ -1100,6 +1102,7 @@ model ProjectPrivateFolder {
   parentFolderId String?
   parentFolder ProjectPrivateFolder? @relation("PrivateFolderChildren", fields: [projectId, ownerUserId, parentFolderId], references: [projectId, ownerUserId, id], onDelete: NoAction, onUpdate: NoAction)
   children    ProjectPrivateFolder[] @relation("PrivateFolderChildren")
+  pinnedAt    DateTime?
   files       ProjectAttachment[]
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
@@ -2025,6 +2028,7 @@ model ProjectAttachment {
   inquiryAssociations        ProjectInquiryAttachment[]
   researchFolderFile         ProjectResearchFolderFile?
   privateFolderId            String?
+  pinnedAt                   DateTime?
   privateFolder              ProjectPrivateFolder?                 @relation(fields: [privateFolderId], references: [id], onDelete: SetNull)
   stageFileHandoffs          ProjectStageFileHandoff[]             @relation("ProjectStageFileHandoffSourceAttachment")
   sourceFileChecklists       ProjectFileChecklist[]                @relation("ProjectFileChecklistSourceAttachment")

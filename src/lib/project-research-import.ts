@@ -124,6 +124,7 @@ export async function getProjectResearchImportOptions(user: ImportUser, input: I
 
 const importedFileSelect = {
   id: true,
+  pinnedAt: true,
   attachmentId: true,
   attachment: { select: {
     storageKey: true, originalFileName: true, mimeType: true, fileSize: true, createdAt: true,
@@ -135,6 +136,7 @@ type ImportedRecord = Prisma.ProjectResearchFolderFileGetPayload<{ select: typeo
 function fileRecord(file: ImportedRecord) {
   return {
     id: file.id, attachmentId: file.attachmentId, name: file.attachment.originalFileName,
+    pinnedAt: file.pinnedAt?.toISOString() ?? null,
     mimeType: file.attachment.mimeType, size: file.attachment.fileSize,
     uploadedAt: file.attachment.createdAt.toISOString(),
     uploadedBy: file.attachment.uploadedBy.name?.trim() || file.attachment.uploadedBy.email,

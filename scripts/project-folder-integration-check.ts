@@ -8,6 +8,8 @@ import { assertResearchFolderReadAccess, assertResearchFolderWriteAccess } from 
 import { completeProjectResearchFileUpload, deleteProjectResearchFolder, requestProjectResearchFileUpload } from "../src/lib/project-research-files";
 import { createProjectPrivateSubfolder, deleteProjectPrivateSubfolder, ensureProjectPrivateFolder, getProjectPrivateFolderPageData, requestProjectPrivateFileUpload } from "../src/lib/project-private-folders";
 import { getProjectResearchImportOptions, importProjectInquiryContent } from "../src/lib/project-research-import";
+import { setProjectFolderItemPin } from "../src/lib/project-folder-pins";
+import { comparePinnedItems, type FolderItemPinInput } from "../src/lib/project-folder-pins-shared";
 
 const prefix = `folder-test-${randomUUID()}`;
 const makeUser = (name: string, role: UserRole = UserRole.USER) => ({ id: `${prefix}-${name}`, email: `${prefix}-${name}@example.test`, name, role });
@@ -72,11 +74,47 @@ async function main() {
   });
   assert.equal(imported.files.length, 1);
   assert.equal((await getProjectResearchFolderPageData(reader, target))?.files.length, 1);
+  // Six root pins and six mixed pins prove the feature supports more than five.
+  const folderPin = (folderId: string): FolderItemPinInput => ({ projectId, context: "research", kind: "folder", folderId, pinned: true });
+  for (const root of roots.slice(0, 6)) await setProjectFolderItemPin(owner, folderPin(root.id));
+  assert.equal((await getProjectResearchPageData(coOwner, projectId))?.folders.filter((folder) => folder.pinnedAt).length, 6);
+  for (let index = 0; index < 3; index += 1) {
+    const child = await createChild(interviews.id, `Pinned ${index}`);
+    await setProjectFolderItemPin(coOwner, folderPin(child.id));
+  }
+  for (let index = 0; index < 2; index += 1) {
+    const prepared = await requestProjectResearchFileUpload(owner, { ...target, originalFileName: `Pinned ${index}.txt`, mimeType: "text/plain", fileSize: 3 });
+    assert.ok("attachmentId" in prepared && prepared.attachmentId);
+    await completeProjectResearchFileUpload(owner, { ...target, attachmentId: prepared.attachmentId });
+  }
+  const allFiles = (await getProjectResearchFolderPageData(owner, target))!.files;
+  for (const file of allFiles) await setProjectFolderItemPin(owner, { ...folderPin(interviews.id), kind: "file", fileId: file.id });
+  const readerPins = (await getProjectResearchFolderPageData(reader, target))!;
+  assert.equal([...readerPins.folders, ...readerPins.files].filter((item) => item.pinnedAt).length, 6, "Pins persist for another viewer");
+  const pinnedFileInput = { ...folderPin(interviews.id), kind: "file" as const, fileId: allFiles[0].id };
+  const repeat = await setProjectFolderItemPin(coOwner, pinnedFileInput);
+  assert.equal(repeat.pinnedAt, allFiles[0].pinnedAt ?? readerPins.files.find((file) => file.id === allFiles[0].id)!.pinnedAt, "Repeated pin requests preserve order");
+  await assert.rejects(() => setProjectFolderItemPin(reader, pinnedFileInput));
+  await assert.rejects(() => setProjectFolderItemPin(reader, folderPin(notes.id)));
+  await assert.rejects(() => setProjectFolderItemPin(owner, { ...pinnedFileInput, folderId: finance.id }));
+  await assert.rejects(() => setProjectFolderItemPin(owner, { ...pinnedFileInput, projectId: otherProjectId }));
+  await assert.rejects(() => setProjectFolderItemPin(owner, { ...pinnedFileInput, kind: "invalid" as "file" }));
+  await setProjectFolderItemPin(coOwner, { ...pinnedFileInput, pinned: false });
+  assert.equal((await getProjectResearchFolderPageData(reader, target))!.files.find((file) => file.id === allFiles[0].id)!.pinnedAt, null);
+  const retainedPins = await importProjectInquiryContent(owner, { ...target, itemIds: [option.id] }, {
+    bucket: () => "folder-test", copy: async () => undefined, write: async () => undefined, remove: async () => undefined,
+  });
+  assert.equal(retainedPins.folderFiles.filter((file) => file.pinnedAt).length, 2, "Import refresh preserves existing pins");
+  assert.deepEqual([
+    { id: "normal", pinnedAt: null }, { id: "older", pinnedAt: "2026-01-01T00:00:00.000Z" }, { id: "newer", pinnedAt: "2026-01-02T00:00:00.000Z" },
+  ].sort(comparePinnedItems).map((item) => item.id), ["newer", "older", "normal"]);
   assert.ok("error" in await deleteProjectResearchFolder(reader, { projectId, folderId: references.id }));
   await prisma.project.update({ where: { id: projectId }, data: { completedAt: new Date() } });
+  await assert.rejects(() => setProjectFolderItemPin(owner, pinnedFileInput));
   assert.ok("error" in await createProjectResearchFolder(coOwner, { projectId, parentFolderId: notes.id, name: "Completed" }));
   await prisma.project.update({ where: { id: projectId }, data: { completedAt: null } });
   await prisma.projectWorkflowStage.updateMany({ where: { projectId, stageKey: "PROJECT_RESEARCH_AND_PLANNING" }, data: { status: "LOCKED" } });
+  await assert.rejects(() => setProjectFolderItemPin(coOwner, folderPin(notes.id)));
   assert.ok("error" in await createProjectResearchFolder(owner, { projectId, parentFolderId: notes.id, name: "Locked" }));
   await prisma.projectWorkflowStage.updateMany({ where: { projectId, stageKey: "PROJECT_RESEARCH_AND_PLANNING" }, data: { status: "AVAILABLE" } });
 
@@ -99,6 +137,22 @@ async function main() {
   await assert.rejects(() => prisma.projectPrivateFolder.create({ data: { projectId, ownerUserId: coOwner.id, parentFolderId: privateRoot.id, name: "Invalid", normalizedName: "invalid" } }));
   const privateUpload = await requestProjectPrivateFileUpload(owner, { projectId, folderId: privateLeafId, originalFileName: "Private.txt", mimeType: "text/plain", fileSize: 3, createdTextFile: true });
   assert.ok("attachmentId" in privateUpload && privateUpload.attachmentId);
+  const privateFilePin: FolderItemPinInput = { projectId, context: "private", kind: "file", folderId: privateLeafId, fileId: privateUpload.attachmentId, pinned: true };
+  await assert.rejects(() => setProjectFolderItemPin(owner, privateFilePin), "Incomplete files cannot be pinned");
+  await prisma.projectAttachment.update({ where: { id: privateUpload.attachmentId }, data: { status: "READY" } });
+  await setProjectFolderItemPin(owner, privateFilePin);
+  const privateFolderPin: FolderItemPinInput = { projectId, context: "private", kind: "folder", folderId: privateLeafId, pinned: true };
+  await setProjectFolderItemPin(owner, privateFolderPin);
+  assert.ok((await getProjectPrivateFolderPageData(owner, { projectId, folderId: privateChildId })).folders[0].pinnedAt);
+  assert.ok((await getProjectPrivateFolderPageData(owner, { projectId, folderId: privateLeafId })).files[0].pinnedAt);
+  for (const user of [coOwner, reader, outsider]) {
+    await assert.rejects(() => setProjectFolderItemPin(user, privateFilePin));
+    await assert.rejects(() => setProjectFolderItemPin(user, privateFolderPin));
+  }
+  await assert.rejects(() => setProjectFolderItemPin(owner, { ...privateFilePin, folderId: privateChildId }));
+  await setProjectFolderItemPin(owner, { ...privateFilePin, pinned: false });
+  await setProjectFolderItemPin(owner, { ...privateFolderPin, pinned: false });
+  assert.equal((await getProjectPrivateFolderPageData(owner, { projectId, folderId: privateLeafId })).files[0].pinnedAt, null);
   assert.ok("error" in await deleteProjectPrivateSubfolder(owner, { projectId, folderId: privateRoot.id }));
   await deleteProjectPrivateSubfolder(owner, { projectId, folderId: privateChildId });
   assert.equal(await prisma.projectPrivateFolder.count({ where: { projectId, ownerUserId: owner.id } }), 1);
@@ -108,7 +162,7 @@ async function main() {
   assert.ok(await prisma.projectResearchFolder.findUnique({ where: { id: financeReferences.id } }));
   assert.equal(await prisma.projectAttachment.count({ where: { projectId, assetType: "PROJECT_RESEARCH_FILE", status: { not: "DELETED" } } }), 0);
   assert.ok(removedObjects.length >= 3, "Subtree deletion cleans up all stored files");
-  console.log("Nested folder creation, breadcrumbs, inherited access, imports, uploads, uniqueness, privacy and deletion passed.");
+  console.log("Nested folders and shared pins passed: six mixed pins, persistence, unpinning, sorting, access, imports, uploads, privacy and deletion.");
 }
 
 main().finally(async () => {

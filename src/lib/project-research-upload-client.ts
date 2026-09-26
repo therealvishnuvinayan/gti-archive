@@ -1,5 +1,6 @@
 export type ResearchUploadedFile = {
   id: string;
+  pinnedAt: string | null;
   attachmentId: string;
   name: string;
   mimeType: string;

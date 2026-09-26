@@ -9,6 +9,7 @@ import {
 
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { getFolderAncestors, getFolderSubtree } from "@/lib/project-folder-tree";
+import type { FolderItemPinInput } from "@/lib/project-folder-pins-shared";
 import { validatePreparedProjectResearchTextFile } from "@/lib/project-research-text-file";
 import {
   buildProjectAssetKey,
@@ -134,6 +135,7 @@ async function getOwnedPrivateFolder(
         ownerUserId: true,
         name: true,
         parentFolderId: true,
+        pinnedAt: true,
         owner: { select: { name: true, email: true } },
         project: { select: { id: true, name: true } },
       },
@@ -165,6 +167,7 @@ export async function assertProjectPrivateAttachmentAccess(
         id: true,
         projectId: true,
         privateFolderId: true,
+        pinnedAt: true,
         bucket: true,
         storageKey: true,
         originalFileName: true,
@@ -195,6 +198,7 @@ function mapPrivateFile(
 ) {
   return {
     id: attachment.id,
+    pinnedAt: attachment.pinnedAt?.toISOString() ?? null,
     attachmentId: attachment.id,
     name: attachment.originalFileName,
     mimeType: attachment.mimeType,
@@ -212,7 +216,7 @@ export async function getProjectPrivateFolderPageData(
   const hierarchy = await prisma.projectPrivateFolder.findMany({
     where: { projectId: input.projectId, ownerUserId: user.id },
     select: {
-      id: true, name: true, parentFolderId: true, createdAt: true,
+      id: true, name: true, parentFolderId: true, createdAt: true, pinnedAt: true,
       _count: { select: { children: true, files: { where: { status: AttachmentStatus.READY } } } },
     },
   });
@@ -230,6 +234,7 @@ export async function getProjectPrivateFolderPageData(
         id: true,
         projectId: true,
         privateFolderId: true,
+        pinnedAt: true,
         bucket: true,
         storageKey: true,
         originalFileName: true,
@@ -255,6 +260,7 @@ export async function getProjectPrivateFolderPageData(
     ancestors: path.slice(0, -1).map(({ id, name }) => ({ id, name })),
     folders: hierarchy.filter((child) => child.parentFolderId === folder.id).map((child) => ({
       id: child.id, name: child.name, createdAt: child.createdAt.toISOString(),
+      pinnedAt: child.pinnedAt?.toISOString() ?? null,
       fileCount: child._count.files, folderCount: child._count.children,
     })),
     canWrite: true,
@@ -281,6 +287,23 @@ export async function createProjectPrivateSubfolder(
     }
     throw error;
   }
+}
+
+export async function setProjectPrivateItemPin(user: PrivateFolderUser, input: FolderItemPinInput) {
+  const folder = await getOwnedPrivateFolder(user, input);
+  if (input.kind === "folder") {
+    if (!folder.parentFolderId) throw new Error("The main private folder is already shown in the workspace.");
+    const pinnedAt = input.pinned ? folder.pinnedAt ?? new Date() : null;
+    await prisma.projectPrivateFolder.update({ where: { id: folder.id }, data: { pinnedAt } });
+    return { pinnedAt: pinnedAt?.toISOString() ?? null, parentFolderId: folder.parentFolderId };
+  }
+  const file = await getExactPrivateFile(user, { projectId: input.projectId, folderId: input.folderId, fileId: input.fileId! });
+  const pinnedAt = input.pinned ? file.pinnedAt ?? new Date() : null;
+  const changed = await prisma.projectAttachment.updateMany({
+    where: { id: file.id, privateFolderId: folder.id, status: AttachmentStatus.READY }, data: { pinnedAt },
+  });
+  if (changed.count !== 1) throw new Error("File not found.");
+  return { pinnedAt: pinnedAt?.toISOString() ?? null, parentFolderId: folder.id };
 }
 
 export async function deleteProjectPrivateSubfolder(user: PrivateFolderUser, input: { projectId: string; folderId: string }) {
@@ -448,6 +471,7 @@ export async function completeProjectPrivateFileUpload(
       data: { status: AttachmentStatus.READY },
       select: {
         id: true,
+        pinnedAt: true,
         projectId: true,
         privateFolderId: true,
         bucket: true,

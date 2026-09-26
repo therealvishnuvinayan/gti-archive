@@ -24,6 +24,7 @@ import {
   LockKeyhole,
   Loader2,
   Plus,
+  Pin,
   SlidersHorizontal,
   Trash2,
   UploadCloud,
@@ -33,8 +34,11 @@ import {
   completeProjectResearchStageAction,
   createProjectResearchFolderAction,
   deleteProjectResearchFolderAction,
+  setProjectFolderItemPinAction,
 } from "@/app/(dashboard)/projects/[slug]/stages/2/actions";
 import { NewFolderDialog } from "@/components/projects/new-folder-dialog";
+import { FolderPinButton } from "@/components/projects/folder-pin-button";
+import { comparePinnedItems } from "@/lib/project-folder-pins-shared";
 import { StageTwoImportDialog } from "@/components/projects/stage-two-import-dialog";
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
@@ -89,6 +93,8 @@ function FolderTile({
   upload,
   onDropFiles,
   onDelete,
+  onPin,
+  pinPending,
 }: {
   folder: FolderRecord;
   view: FolderView;
@@ -98,6 +104,8 @@ function FolderTile({
   upload?: FolderUploadSummary;
   onDropFiles: (folder: FolderRecord, files: File[]) => void;
   onDelete: (folder: FolderRecord) => void;
+  onPin: (folder: FolderRecord) => void;
+  pinPending: boolean;
 }) {
   const dragDepth = useRef(0);
   const [dragActive, setDragActive] = useState(false);
@@ -154,12 +162,13 @@ function FolderTile({
             : "items-center gap-4 px-4 py-3.5",
         )}
       >
-        <div className={cn("flex w-full items-center gap-4", canDelete && "pr-10")}>
+        <div className={cn("flex w-full items-center gap-4", canWrite ? "pr-20" : canDelete && "pr-10")}>
           <FolderArtwork />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-[14px] font-[720] text-[#202a23]">{folder.name}</span>
             <span className="mt-1 block text-[11px] text-[#7c867f]">
               {folder.isSystem ? "System folder" : "Custom folder"}
+              {folder.pinnedAt ? <span className="ml-2 inline-flex items-center gap-1 text-[#24764e]"><Pin className="size-3" />Pinned</span> : null}
             </span>
           </span>
           <ChevronRight className="h-4 w-4 shrink-0 text-[#8a948d] transition group-hover:translate-x-0.5 group-hover:text-brand" />
@@ -171,6 +180,7 @@ function FolderTile({
             : `${folder.folderCount} ${folder.folderCount === 1 ? "folder" : "folders"} · ${folder.fileCount} ${folder.fileCount === 1 ? "file" : "files"}`}
         </span>
       </Link>
+      {canWrite ? <FolderPinButton name={folder.name} pinned={Boolean(folder.pinnedAt)} pending={pinPending} onClick={() => onPin(folder)} className={cn("absolute z-20", view === "grid" ? "right-14 top-4" : "right-14 top-1/2 -translate-y-1/2")} /> : null}
       {canDelete ? (
         <button
           type="button"
@@ -206,6 +216,7 @@ export function StageTwoWorkspace({
   const router = useRouter();
   const [view, setView] = useState<FolderView>("grid");
   const [sort, setSort] = useState<FolderSort>("business");
+  const [pinPendingIds, setPinPendingIds] = useState<Set<string>>(new Set());
   const [folderRecords, setFolderRecords] = useState(data.folders);
   const [folderUploads, setFolderUploads] = useState<
     Record<string, FolderUploadSummary | undefined>
@@ -222,10 +233,11 @@ export function StageTwoWorkspace({
     const compareBusinessOrder = (left: FolderRecord, right: FolderRecord) =>
       left.sortOrder - right.sortOrder || left.name.localeCompare(right.name);
 
-    if (sort === "business") return next.sort(compareBusinessOrder);
+    if (sort === "business") return next.sort((left, right) => comparePinnedItems(left, right) || compareBusinessOrder(left, right));
     if (sort === "files-desc") {
       return next.sort(
         (left, right) =>
+          comparePinnedItems(left, right) ||
           right.fileCount - left.fileCount || compareBusinessOrder(left, right),
       );
     }
@@ -233,9 +245,21 @@ export function StageTwoWorkspace({
     return next.sort((left, right) => {
       const nameOrder =
         (sort === "name-desc" ? -1 : 1) * left.name.localeCompare(right.name);
-      return nameOrder || compareBusinessOrder(left, right);
+      return comparePinnedItems(left, right) || nameOrder || compareBusinessOrder(left, right);
     });
   }, [folderRecords, sort]);
+
+  async function pinFolder(folder: FolderRecord) {
+    if (!data.sharedWorkspace.canWrite || pinPendingIds.has(folder.id)) return;
+    setPinPendingIds((current) => new Set(current).add(folder.id));
+    try {
+      const result = await setProjectFolderItemPinAction({ projectId: data.project.id, context: "research", kind: "folder", folderId: folder.id, pinned: !folder.pinnedAt });
+      if ("error" in result) { showErrorToast(result.error); return; }
+      setFolderRecords((current) => current.map((item) => item.id === folder.id ? { ...item, pinnedAt: result.pinnedAt } : item));
+      showSuccessToast(result.pinnedAt ? "Folder pinned to top." : "Folder unpinned.");
+    } catch { showErrorToast("Unable to update this pin. Please try again."); }
+    finally { setPinPendingIds((current) => { const next = new Set(current); next.delete(folder.id); return next; }); }
+  }
 
   async function uploadFilesToFolder(folder: FolderRecord, files: File[]) {
     if (!data.sharedWorkspace.canWrite || files.length === 0) return;
@@ -310,6 +334,7 @@ export function StageTwoWorkspace({
           sortOrder: 1000,
           fileCount: 0,
           folderCount: 0,
+          pinnedAt: null,
         },
       ]);
       showSuccessToast("Folder created.");
@@ -439,6 +464,8 @@ export function StageTwoWorkspace({
                   canWrite={data.sharedWorkspace.canWrite}
                   canDelete={data.sharedWorkspace.canDeleteFolders}
                   upload={folderUploads[folder.id]}
+                  onPin={(folder) => void pinFolder(folder)}
+                  pinPending={pinPendingIds.has(folder.id)}
                   onDropFiles={(targetFolder, files) =>
                     void uploadFilesToFolder(targetFolder, files)
                   }
