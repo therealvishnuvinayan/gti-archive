@@ -6394,6 +6394,12 @@ export async function completeAttachmentUpload(
           : "view",
     });
 
+    if (concept && attachment.stage?.status === StageStatus.COMPLETED &&
+      attachment.status !== AttachmentStatus.READY &&
+      (attachment.assetType === AttachmentAssetType.REVISION_ORIGINAL || attachment.assetType === AttachmentAssetType.STAGE_SUBMISSION)) {
+      throw new Error("This task is already completed.");
+    }
+
     if (
       concept &&
       isConceptBriefAttachment &&

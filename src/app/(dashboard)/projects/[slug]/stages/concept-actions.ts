@@ -14,6 +14,7 @@ import {
 import {
   completeStageFourConcepts,
   completeStageThreeConcepts,
+  completeStageThreeTaskWithoutFile,
   createProjectConceptFolder,
   deleteProjectConceptFolder,
   editProjectConceptFolder,
@@ -245,6 +246,27 @@ export async function markProjectConceptApprovedAttachmentAction(input: {
   } catch (error) {
     console.error("[project-concepts] approval failed", error);
     return { error: "Unable to approve this concept file right now." } as const;
+  }
+}
+
+export async function completeStageThreeTaskWithoutFileAction(input: { projectId: string; folderId: string }) {
+  const user = await requireUser();
+  try {
+    const result = await completeStageThreeTaskWithoutFile(user, input);
+    if (!("error" in result)) {
+      revalidateConceptStage(input.projectId, "CONCEPT_CREATION");
+      revalidatePath(`/projects/${input.projectId}`);
+      revalidatePath(`/projects/${input.projectId}/stages/3/concepts`);
+      revalidatePath(`/projects/${input.projectId}/stages/3/concepts/${input.folderId}`);
+      if (result.changed) publishProjectActivityUpdatedAfterResponse({
+        projectId: input.projectId, stageId: result.taskerStageId,
+        eventType: "stage_status_changed", changedEntityId: result.taskerStageId, actorId: user.id,
+      });
+    }
+    return result;
+  } catch (error) {
+    console.error("[project-concepts] completion without file failed", error);
+    return { error: "Unable to complete this task. Please try again." };
   }
 }
 

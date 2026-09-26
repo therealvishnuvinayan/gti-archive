@@ -32,6 +32,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { Card, CardContent } from "@/components/ui/card";
+import { CompleteConceptTaskButton } from "@/components/projects/complete-concept-task-button";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import {
   DropdownMenu,
@@ -531,6 +532,7 @@ export function ConceptStageWorkspace({
     id: string;
     name: string;
     isApproved: boolean;
+    completedWithoutFile: boolean;
   }>;
   executors: ConceptExecutor[];
   selectedExecutorId: string | null;
@@ -562,15 +564,15 @@ export function ConceptStageWorkspace({
   const approvedConceptCount = completionConcepts.filter(
     (concept) => concept.isApproved,
   ).length;
-  const unapprovedConcepts = completionConcepts.filter(
-    (concept) => !concept.isApproved,
+  const pendingConcepts = completionConcepts.filter(
+    (concept) => !concept.isApproved && !(stageNumber === 3 && concept.completedWithoutFile),
   );
-  const allConceptsApproved =
-    completionConcepts.length > 0 && unapprovedConcepts.length === 0;
+  const allConceptsComplete =
+    completionConcepts.length > 0 && pendingConcepts.length === 0;
   const isEmptyStageThree = stageNumber === 3 && completionConcepts.length === 0;
   const isEmptyStageFour = stageNumber === 4 && completionConcepts.length === 0;
   const stageCompletionReady =
-    isEmptyStageThree || isEmptyStageFour || allConceptsApproved;
+    isEmptyStageThree || isEmptyStageFour || allConceptsComplete;
 
   function completeCurrentStage() {
     if (!canCompleteStage) {
@@ -580,16 +582,16 @@ export function ConceptStageWorkspace({
       return;
     }
 
-    if (stageNumber === 3 && !isEmptyStageThree && !allConceptsApproved) {
+    if (stageNumber === 3 && !isEmptyStageThree && !allConceptsComplete) {
       setCompletionError(
-        unapprovedConcepts.length > 0
-          ? `Every Stage 3 concept must have an Approved Concept before completion. Pending: ${unapprovedConcepts.map((concept) => concept.name).join(", ")}.`
-          : "Approve every created Stage 3 concept before continuing.",
+        pendingConcepts.length > 0
+          ? `Complete every Stage 3 task with an approved file or without a file before continuing. Pending: ${pendingConcepts.map((concept) => concept.name).join(", ")}.`
+          : "Complete every Stage 3 task before continuing.",
       );
       return;
     }
 
-    if (stageNumber === 4 && !isEmptyStageFour && !allConceptsApproved) {
+    if (stageNumber === 4 && !isEmptyStageFour && !allConceptsComplete) {
       setCompletionError(
         "Every Stage 4 concept must receive Final Approval before Stage 4 can be completed.",
       );
@@ -613,7 +615,7 @@ export function ConceptStageWorkspace({
         showSuccessToast(
           result.skipped
             ? "Stage 3 skipped. Stage 4 is now available."
-            : `Stage 3 completed with ${result.approvedCount} approved concept${result.approvedCount === 1 ? "" : "s"}. Stage 4 is now available.`,
+            : "Stage 3 completed. Stage 4 is now available.",
         );
         router.push(`/projects/${project.id}/stages/4`);
       } else if (stageNumber === 4 && "finalApprovedCount" in result) {
@@ -966,20 +968,23 @@ export function ConceptStageWorkspace({
                   {stageNumber === 3 ? (
                     <span
                       className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-[9px] font-[800] uppercase tracking-[0.07em] ${
-                        folder.approvedAttachment
+                        (folder.approvedAttachment || folder.completedWithoutFileAt)
                           ? "bg-[#e7f5eb] text-[#247247]"
                           : folder.latestRevisionStatus === "REJECTED"
                             ? "bg-[#fff0ef] text-[#b94d45]"
                             : "bg-[#fff3d6] text-[#8a5718]"
                       }`}
                     >
-                      {folder.approvedAttachment
-                        ? "Approved Concept"
-                        : folder.latestRevisionStatus === "REJECTED"
-                          ? "Changes Requested"
-                          : "Not Approved"}
+                      {folder.completedWithoutFileAt
+                        ? "Completed · No file"
+                        : folder.approvedAttachment
+                          ? "Approved Concept"
+                          : folder.latestRevisionStatus === "REJECTED"
+                            ? "Changes Requested"
+                            : "Not Approved"}
                     </span>
                   ) : null}
+                  {folder.canCompleteWithoutFile && !managementLocked ? <span className="mt-2 block"><CompleteConceptTaskButton projectId={project.id} folderId={folder.id} name={folder.name} /></span> : null}
                   {stageNumber === 4 ? (
                     <span
                       className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-[9px] font-[800] uppercase tracking-[0.07em] ${
@@ -1207,13 +1212,13 @@ export function ConceptStageWorkspace({
           stageNumber === 3
             ? isEmptyStageThree
               ? "No Stage 3 concepts have been created. Continue directly to Stage 4 only when an initial concept already exists outside this stage."
-              : unapprovedConcepts.length > 0
-                ? `Every Stage 3 concept must have an Approved Concept before completion. Pending: ${unapprovedConcepts.map((concept) => concept.name).join(", ")}.`
-                : `Stage 3 will be closed with ${approvedConceptCount} approved concept${approvedConceptCount === 1 ? "" : "s"}. Stage 4 will open without automatically creating any taskers.`
+              : pendingConcepts.length > 0
+                ? `Complete every Stage 3 task with an approved file or without a file before continuing. Pending: ${pendingConcepts.map((concept) => concept.name).join(", ")}.`
+                : `All ${completionConcepts.length} Stage 3 tasks are complete. Stage 4 will open without automatically creating any taskers.`
             : isEmptyStageFour
               ? "No Stage 4 concepts have been created. Skip Final Concept and continue directly to Stage 5? A final file will need to be uploaded directly in Stage 5."
-              : unapprovedConcepts.length > 0
-                ? `Every Stage 4 concept must receive Final Approval before completion. Pending: ${unapprovedConcepts.map((concept) => concept.name).join(", ")}.`
+              : pendingConcepts.length > 0
+                ? `Every Stage 4 concept must receive Final Approval before completion. Pending: ${pendingConcepts.map((concept) => concept.name).join(", ")}.`
                 : `${approvedConceptCount} final approved file${approvedConceptCount === 1 ? "" : "s"} will continue to Stage 5, and Stage 4 concept management will be locked.`
         }
         confirmLabel={

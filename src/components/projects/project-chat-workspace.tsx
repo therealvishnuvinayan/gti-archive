@@ -137,6 +137,7 @@ import type {
 import type { ProjectCompletionWorkflowRecord } from "@/lib/project-completion";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
 import type { StageHistoryRecord } from "@/lib/project-history";
+import { CompleteConceptTaskButton } from "@/components/projects/complete-concept-task-button";
 import type { ProjectConceptChatMode } from "@/lib/project-concepts";
 import type {
   StageChatRealtimeMessageCreatedPayload,
@@ -7856,6 +7857,12 @@ export function ProjectChatWorkspace({
                 </div>
               ))}
             </dl>
+            {conceptMode.completedWithoutFile ? <span className="rounded-full bg-[#e7f5eb] px-3 py-1.5 text-[11px] font-semibold text-[#247247]">Completed · No file</span> : null}
+            {conceptMode.canCompleteWithoutFile && activeStage && !isStageCompleted ? (
+              <CompleteConceptTaskButton projectId={project.id} folderId={conceptMode.folderId} name={conceptMode.conceptName} onCompleted={() => setStageCardOverrides((current) => ({
+                ...current, [activeStage.id]: { ...current[activeStage.id], actualStartedAt: activeStage.actualStartedAt, actualStartedAtValue: activeStage.actualStartedAtValue, status: "completed" },
+              }))} />
+            ) : null}
             {canRevokeConceptApproval ? (
               <Button
                 type="button"

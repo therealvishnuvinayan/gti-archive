@@ -135,11 +135,11 @@ assert(
     workspace.includes('"Skip Stage 4"') &&
     workspace.includes('"Skip Stage 4?"') &&
     workspace.includes("A final file will need to be uploaded directly in Stage 5.") &&
-    concepts.includes("const skipped = project.conceptFolders.length === 0") &&
+    concepts.includes("const skipped = stageFourConcepts.length === 0") &&
     concepts.includes("Stage 4 can be skipped only while it is available and Stage 5 is still locked.") &&
     concepts.includes("action: ActivityLogAction.STAGE_SKIPPED") &&
     concepts.includes("skipped: true") &&
-    concepts.includes("handoffs: []"),
+    concepts.includes("for (const concept of approvedStageThreeConcepts)"),
   "An empty available Stage 4 must expose a confirmed, audited skip that unlocks Stage 5 without fake source data.",
 );
 
@@ -157,8 +157,8 @@ for (const label of [
 }
 assert(
   workspace.includes("completeStageFourConceptsAction") &&
-    workspace.includes("allConceptsApproved") &&
-    workspace.includes("isEmptyStageFour || allConceptsApproved") &&
+    workspace.includes("allConceptsComplete") &&
+    workspace.includes("isEmptyStageFour || allConceptsComplete") &&
     workspace.includes("canCompleteStage && !managementLocked && stageCompletionReady") &&
     workspace.includes("confirmDisabled={!stageCompletionReady}") &&
     concepts.includes("conceptsWithoutFinalFile.length > 0") &&
