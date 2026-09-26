@@ -16,6 +16,7 @@ import {
   Download,
   Eye,
   File,
+  FileDown,
   FileArchive,
   FileCode2,
   FileImage,
@@ -37,6 +38,7 @@ import {
   UploadCloud,
 } from "lucide-react";
 
+import { StageTwoImportDialog } from "@/components/projects/stage-two-import-dialog";
 import { AssetPreviewDialog } from "@/components/projects/asset-preview-button";
 import { ProjectBackButton } from "@/components/projects/project-back-button";
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
@@ -587,6 +589,7 @@ export function StageTwoFolderWorkspace({
   const [fileToDelete, setFileToDelete] = useState<FolderFile>();
   const [deleteError, setDeleteError] = useState<string>();
   const [textFileDialogOpen, setTextFileDialogOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [textFilePending, setTextFilePending] = useState(false);
   const [textFileProgress, setTextFileProgress] = useState(0);
   const [textFileError, setTextFileError] = useState<string>();
@@ -785,6 +788,11 @@ export function StageTwoFolderWorkspace({
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  {data.canWrite && context === "research" ? (
+                    <Button type="button" variant="secondary" onClick={() => setImportOpen(true)} className="h-10 rounded-[11px]">
+                      <FileDown className="h-4 w-4" /> Import
+                    </Button>
+                  ) : null}
                   {!data.canWrite ? (
                     <span className="inline-flex h-10 items-center gap-2 rounded-[11px] bg-[#e9eeea] px-3 text-[11px] font-[700] text-[#627067]">
                       <LockKeyhole className="h-3.5 w-3.5" />
@@ -1021,6 +1029,15 @@ export function StageTwoFolderWorkspace({
         </CardContent>
       </Card>
 
+      {importOpen ? (
+        <StageTwoImportDialog
+          projectId={data.project.id}
+          folders={[data.folder]}
+          initialFolderId={data.folder.id}
+          onClose={() => setImportOpen(false)}
+          onImported={(_folderId, importedFiles) => setFiles(importedFiles)}
+        />
+      ) : null}
       {previewFile ? (
         <AssetPreviewDialog
           key={previewFile.attachmentId}

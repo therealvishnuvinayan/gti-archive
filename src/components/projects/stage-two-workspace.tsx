@@ -15,6 +15,7 @@ import {
   ChevronDown,
   ChevronRight,
   File,
+  FileDown,
   Folder,
   FolderKey,
   Grid2X2,
@@ -34,6 +35,7 @@ import {
   createProjectResearchFolderAction,
   deleteProjectResearchFolderAction,
 } from "@/app/(dashboard)/projects/[slug]/stages/2/actions";
+import { StageTwoImportDialog } from "@/components/projects/stage-two-import-dialog";
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { Button } from "@/components/ui/button";
@@ -268,6 +270,7 @@ export function StageTwoWorkspace({
     Record<string, FolderUploadSummary | undefined>
   >({});
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [folderError, setFolderError] = useState<string>();
   const [folderToDelete, setFolderToDelete] = useState<FolderRecord>();
   const [deleteError, setDeleteError] = useState<string>();
@@ -430,6 +433,17 @@ export function StageTwoWorkspace({
       }}
     >
       <ProjectAccessRealtimeGuard projectId={data.project.id} currentUserId={currentUserId} />
+      {importOpen ? (
+        <StageTwoImportDialog
+          projectId={data.project.id}
+          folders={folderRecords}
+          onClose={() => setImportOpen(false)}
+          onImported={(folderId, importedFiles) => {
+            setFolderRecords((current) => current.map((folder) => folder.id === folderId ? { ...folder, fileCount: importedFiles.length } : folder));
+            router.refresh();
+          }}
+        />
+      ) : null}
       <Card
         className="mt-5 overflow-hidden rounded-[26px] border-[#dfe6df] shadow-[0_20px_54px_rgba(23,39,28,0.055)]"
       >
@@ -453,6 +467,11 @@ export function StageTwoWorkspace({
                 </div>
               </div>
               <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end xl:w-auto xl:flex-nowrap">
+                {data.sharedWorkspace.canWrite ? (
+                  <Button type="button" variant="secondary" disabled={!folderRecords.length} onClick={() => setImportOpen(true)} className="rounded-[12px] shadow-none">
+                    <FileDown className="h-4 w-4" /> Import
+                  </Button>
+                ) : null}
                 <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
                   <div className="inline-flex shrink-0 rounded-[12px] border border-[#dce3dc] bg-white p-1">
                     {(["grid", "list"] as FolderView[]).map((option) => (

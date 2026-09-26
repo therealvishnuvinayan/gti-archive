@@ -1073,12 +1073,14 @@ model ProjectResearchFolderFile {
   folderId     String
   folder       ProjectResearchFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
   attachmentId String                @unique
+  inquiryImportKey String?
   attachment   ProjectAttachment     @relation(fields: [attachmentId], references: [id], onDelete: Cascade)
   addedById    String
   addedBy      User                  @relation("ProjectResearchFolderFileAdder", fields: [addedById], references: [id], onDelete: Restrict)
   createdAt    DateTime              @default(now())
 
   @@unique([folderId, attachmentId])
+  @@unique([folderId, inquiryImportKey])
   @@index([folderId, createdAt])
   @@index([addedById])
 }
