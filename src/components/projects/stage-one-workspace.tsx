@@ -135,6 +135,7 @@ function PartySelector({
   values,
   multiple = false,
   companyFirst = false,
+  showPersonName = false,
   disabled,
   error,
   onChange,
@@ -146,6 +147,7 @@ function PartySelector({
   values: ProjectInquiryPartySelection[];
   multiple?: boolean;
   companyFirst?: boolean;
+  showPersonName?: boolean;
   disabled: boolean;
   error?: string;
   onChange: (values: ProjectInquiryPartySelection[]) => void;
@@ -342,6 +344,11 @@ function PartySelector({
           ) : filteredOptions.length ? (
             filteredOptions.map((option) => {
               const selected = selectedKeys.has(`${option.source}:${option.id}`);
+              const optionName = showPersonName ? option.name : partyLabel(option);
+              const companyName = option.source === "MANUAL_CONTACT" ? option.company?.trim() : null;
+              const optionDetails = showPersonName
+                ? companyName || "Company name not available."
+                : [option.entityType === "COMPANY" ? "Company" : "Person", partyDescription(option)].filter(Boolean).join(" · ");
               return (
                 <button
                   key={`${option.source}:${option.id}`}
@@ -354,7 +361,7 @@ function PartySelector({
                   className="flex w-full items-center gap-3 rounded-[13px] px-3 py-2.5 text-left hover:bg-[#f3f7f3]"
                 >
                   <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[#edf4ee] text-[11px] font-[750] text-[#2d704b]">
-                    {partyLabel(option)
+                    {optionName
                       .split(/\s+/)
                       .map((part) => part[0])
                       .join("")
@@ -362,11 +369,11 @@ function PartySelector({
                       .toUpperCase()}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block min-w-0 whitespace-normal break-words text-[13px] font-[650] text-[#202923]">
-                      {partyLabel(option)}
+                    <span className={cn("block min-w-0 whitespace-normal break-words font-[650] text-[#202923]", showPersonName ? "text-[15px]" : "text-[13px]")}>
+                      {optionName}
                     </span>
                     <span className="block whitespace-normal break-words text-[11px] text-[#7d8780]">
-                      {[option.entityType === "COMPANY" ? "Company" : "Person", partyDescription(option)].filter(Boolean).join(" · ")}
+                      {optionDetails}
                     </span>
                   </span>
                   {selected ? <Check className="h-4 w-4 text-brand" /> : null}
@@ -1170,6 +1177,7 @@ export function StageOneWorkspace({
                 <PartySelector
                   ariaLabel="Client"
                   companyFirst
+                  showPersonName
                   placeholder="Search or select a person or company"
                   options={partyOptions}
                   values={client ? [client] : []}
