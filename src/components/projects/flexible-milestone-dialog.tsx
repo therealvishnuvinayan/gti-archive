@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
-import { Loader2, Paperclip, X } from "lucide-react";
+import { useState, useTransition } from "react";
+import { Loader2, X } from "lucide-react";
 import { FileThumbnail } from "@/components/projects/file-thumbnail";
 
 import { AppDatePicker } from "@/components/calendar/app-date-picker";
@@ -9,6 +9,7 @@ import { FlexibleDialog } from "@/components/projects/flexible-dialog";
 import { ProjectUserSelector } from "@/components/projects/project-user-selector";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { FileUploadDropzone } from "@/components/ui/file-upload-dropzone";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import type {
   FlexibleMilestoneFieldErrors,
@@ -63,7 +64,6 @@ export function FlexibleMilestoneDialog({
   onClose,
   onSave,
 }: FlexibleMilestoneDialogProps) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [pending, startTransition] = useTransition();
   const [name, setName] = useState(initialMilestone?.name ?? "");
   const [category, setCategory] = useState(initialMilestone?.category ?? "Standard");
@@ -76,8 +76,7 @@ export function FlexibleMilestoneDialog({
   const [errors, setErrors] = useState<FlexibleMilestoneFieldErrors>({});
   const [formError, setFormError] = useState("");
 
-  function addFiles(nextFiles: FileList | null) {
-    if (!nextFiles) return;
+  function addFiles(nextFiles: File[]) {
     setFiles((current) => {
       const byKey = new Map(
         current.map((file) => [`${file.name}:${file.size}:${file.lastModified}`, file]),
@@ -159,25 +158,7 @@ export function FlexibleMilestoneDialog({
         {canUploadAttachments ? (
           <div className="sm:col-span-2">
             <Label>Attachments</Label>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              disabled={pending}
-              className="sr-only"
-              onChange={(event) => {
-                addFiles(event.target.files);
-                event.target.value = "";
-              }}
-            />
-            <button
-              type="button"
-              disabled={pending}
-              onClick={() => fileInputRef.current?.click()}
-              className="flex min-h-20 w-full items-center justify-center gap-3 rounded-[16px] border border-dashed border-[#bfcfc3] bg-white px-4 text-[13px] font-[650] text-[#47715a] transition hover:border-[#72a484] hover:bg-[#f7fbf7]"
-            >
-              <Paperclip className="size-4" /> Attach files to this milestone
-            </button>
+            <FileUploadDropzone label="Milestone attachments" multiple compact disabled={pending} onFilesSelected={addFiles} />
             {files.length ? (
               <div className="mt-3 space-y-2">
                 {files.map((file) => {

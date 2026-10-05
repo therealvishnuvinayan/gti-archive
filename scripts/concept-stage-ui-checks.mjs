@@ -126,8 +126,8 @@ assert(
   workspace.includes("border-[#cfdad1] bg-[#fbfdfb]") &&
     workspace.includes('minHeightClassName="min-h-[112px]"') &&
     workspace.includes('ariaLabel="Concept brief"') &&
-    workspace.includes("border border-dashed border-[#b9c9bc]") &&
-    workspace.includes('className="sr-only"') &&
+    workspace.includes("<FileUploadDropzone") &&
+    workspace.includes("disabled={detailsLocked}") &&
     workspace.includes("Selected brief attachments"),
   "Concept fields and brief attachments must use clearly bordered, aligned containers.",
 );

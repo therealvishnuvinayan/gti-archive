@@ -1,9 +1,10 @@
 "use client";
 
+import { FileUploadDropzone } from "@/components/ui/file-upload-dropzone";
+
 import {
   useEffect,
   useMemo,
-  useRef,
   useState,
   useTransition,
   type ReactNode,
@@ -12,7 +13,6 @@ import { useRouter } from "next/navigation";
 import {
   Archive,
   CheckCircle2,
-  ImagePlus,
   LockKeyhole,
   PencilLine,
   RotateCcw,
@@ -607,7 +607,6 @@ function EditUserModal({
   onSelectAvatar: (file: File | null) => void;
   onSave: () => void;
 }) {
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!isOpen) {
@@ -683,31 +682,9 @@ function EditUserModal({
               <div className="min-w-0 flex-1">
                 <p className="text-[20px] font-[700] text-[#1a221c]">{user.name}</p>
                 <p className="truncate text-[14px] text-[#6f776f]">{user.email}</p>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept={profilePhotoAccept}
-                  className="hidden"
-                  onChange={(event) => {
-                    onSelectAvatar(event.target.files?.[0] ?? null);
-                    event.currentTarget.value = "";
-                  }}
-                />
-                <div className="mt-3 flex flex-wrap items-center gap-3">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={saving}
-                    onClick={() => fileInputRef.current?.click()}
-                    className="h-10 gap-2 rounded-xl border-[#b8d8c0] px-4 text-[13px] font-[600] text-brand"
-                  >
-                    <ImagePlus className="h-4 w-4" />
-                    Change Profile Photo
-                  </Button>
-                  <span className="text-[12px] text-[#7a847b]">
-                    {selectedAvatarFileName || "JPG, PNG, GIF or WebP. Max 2MB."}
-                  </span>
-                </div>
+                <FileUploadDropzone label="User profile photo" compact className="mt-3" accept={profilePhotoAccept} disabled={saving}
+                  buttonLabel="Change Profile Photo" description={selectedAvatarFileName || "JPG, PNG, GIF or WebP. Max 2MB."}
+                  onFilesSelected={(files) => onSelectAvatar(files[0] ?? null)} />
                 {avatarError ? (
                   <p className="mt-2 text-[12px] font-[600] text-[#c34945]">{avatarError}</p>
                 ) : null}

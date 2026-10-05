@@ -1,13 +1,14 @@
 "use client";
 
+import { FileUploadDropzone } from "@/components/ui/file-upload-dropzone";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   CalendarDays,
   Eye,
   EyeOff,
-  ImagePlus,
   Info,
   LockKeyhole,
   PencilLine,
@@ -400,7 +401,6 @@ function EditProfileDrawer({
     form.department && !departmentOptions.includes(form.department as (typeof departmentOptions)[number])
       ? [form.department, ...departmentOptions]
       : departmentOptions;
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   if (!isOpen) {
     return null;
@@ -448,29 +448,9 @@ function EditProfileDrawer({
               />
 
               <div className="space-y-3">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept={profilePhotoAccept}
-                  className="hidden"
-                  onChange={(event) => {
-                    onSelectAvatar(event.target.files?.[0] ?? null);
-                    event.currentTarget.value = "";
-                  }}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={saving}
-                  onClick={() => fileInputRef.current?.click()}
-                  className="h-[46px] rounded-[14px] border-[#b8d8c0] px-6 text-[18px] font-[600] text-brand"
-                >
-                  <ImagePlus className="h-4 w-4" />
-                  Change Photo
-                </Button>
-                <p className="text-[14px] text-[#808981]">
-                  {selectedAvatarFileName || "JPG, PNG, GIF or WebP. Max size 2MB."}
-                </p>
+                <FileUploadDropzone label="Profile photo" compact accept={profilePhotoAccept} disabled={saving}
+                  buttonLabel="Change Photo" description={selectedAvatarFileName || "JPG, PNG, GIF or WebP. Max size 2MB."}
+                  onFilesSelected={(files) => onSelectAvatar(files[0] ?? null)} />
                 <FieldError message={avatarError} />
               </div>
             </div>

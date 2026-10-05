@@ -1,7 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { FileUp, Upload, X } from "lucide-react";
+import { FileUploadDropzone } from "@/components/ui/file-upload-dropzone";
+
+import { useState } from "react";
+import { Upload, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { AssetTagSelector } from "@/components/assets/asset-tag-selector";
@@ -492,7 +494,6 @@ export function LibraryUploadButton({
   assetTagOptions,
   onUploaded,
 }: LibraryUploadButtonProps) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [assetName, setAssetName] = useState("");
   const [createdByName, setCreatedByName] = useState("");
@@ -500,7 +501,6 @@ export function LibraryUploadButton({
   const [category, setCategory] = useState<LibraryUploadCategory>("PROJECT_ASSET");
   const [assetTagIds, setAssetTagIds] = useState<string[]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [uploadState, setUploadState] = useState<LibraryUploadState | null>(null);
@@ -518,7 +518,6 @@ export function LibraryUploadButton({
     setCategory("PROJECT_ASSET");
     setAssetTagIds([]);
     setSelectedFile(null);
-    setIsDragging(false);
     setUploadProgress(null);
     setUploadState(null);
     setFormError(undefined);
@@ -931,59 +930,16 @@ export function LibraryUploadButton({
                 <span className="mb-2 block text-[13px] font-[700] text-[#2d372f]">
                   File upload <span className="text-[#d3554d]">*</span>
                 </span>
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  onDragOver={(event) => {
-                    event.preventDefault();
-                    if (!isUploading) {
-                      setIsDragging(true);
-                    }
-                  }}
-                  onDragLeave={(event) => {
-                    event.preventDefault();
-                    setIsDragging(false);
-                  }}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    setIsDragging(false);
-
-                    if (!isUploading) {
-                      setUploadFile(event.dataTransfer.files.item(0));
-                    }
-                  }}
-                  disabled={isUploading}
-                  className={`flex min-h-[140px] w-full flex-col items-center justify-center rounded-[24px] border-2 border-dashed px-5 py-6 text-center transition-colors ${
-                    isDragging
-                      ? "border-brand bg-[#f3faf5]"
-                      : "border-[#d8e3d8] bg-[#fbfcfa] hover:bg-[#f7faf7]"
-                  }`}
-                >
-                  <div className="grid h-12 w-12 place-items-center rounded-full bg-[#edf4ee] text-brand">
-                    <FileUp className="h-5 w-5" />
-                  </div>
-                  <p className="mt-3 text-[15px] font-[700] text-[#162019]">
-                    {selectedFile ? selectedFile.name : "Drop a file here or click to browse"}
-                  </p>
-                  <p className="mt-1 text-[12px] text-[#748078]">
-                    {isUploading && uploadState
-                      ? getUploadStateLabel(uploadState)
+                <FileUploadDropzone
+                  label={selectedFile ? selectedFile.name : "Library file"}
+                  accept={ACCEPTED_FILE_TYPES} disabled={isUploading}
+                  description={isUploading && uploadState
+                    ? getUploadStateLabel(uploadState) ?? undefined
                     : isUploading && uploadProgress !== null
                       ? `${uploadProgress}% uploaded`
-                      : selectedFile
-                      ? formatFileSize(selectedFile.size)
-                      : "Supported: JPG, PNG, WebP, GIF, PDF, AI, PSD, ZIP, RAR, DOCX, XLSX, PPTX"}
-                  </p>
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept={ACCEPTED_FILE_TYPES}
-                  className="hidden"
-                  onChange={(event) => {
-                    setUploadFile(event.target.files?.item(0) ?? null);
-                    event.target.value = "";
-                  }}
+                      : selectedFile ? formatFileSize(selectedFile.size)
+                        : "Supported: JPG, PNG, WebP, GIF, PDF, AI, PSD, ZIP, RAR, DOCX, XLSX, PPTX"}
+                  onFilesSelected={(files) => setUploadFile(files[0] ?? null)}
                 />
               </div>
 

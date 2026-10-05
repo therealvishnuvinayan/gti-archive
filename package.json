@@ -32,6 +32,7 @@
     "projects:user-integration-check": "tsc --project scripts/tsconfig.user-projects-integration.json && COMPILED_ALIAS_ROOT=.tmp/user-projects-integration node -r ./scripts/register-compiled-alias.cjs .tmp/user-projects-integration/scripts/user-projects-integration-check.js",
     "projects:flexible-integration-check": "tsc --project scripts/tsconfig.flexible-projects-integration.json && node scripts/run-flexible-projects-isolated-integration.mjs",
     "projects:milestone-attachment-check": "node scripts/flexible-milestone-attachment-check.cjs",
+    "uploads:ui-check": "node scripts/file-upload-dropzone-check.cjs",
     "project-workspace:user-check": "node scripts/user-project-workspace-checks.mjs",
     "project-workspace:user-integration-check": "tsc --project scripts/tsconfig.user-project-workspace-integration.json && COMPILED_ALIAS_ROOT=.tmp/user-project-workspace-integration node -r ./scripts/register-compiled-alias.cjs .tmp/user-project-workspace-integration/scripts/user-project-workspace-integration-check.js",
     "project-list:workflow-check": "tsc --project scripts/tsconfig.project-list-workflow.json && COMPILED_ALIAS_ROOT=.tmp/project-list-workflow node -r ./scripts/register-compiled-alias.cjs .tmp/project-list-workflow/scripts/project-list-workflow-check.js",

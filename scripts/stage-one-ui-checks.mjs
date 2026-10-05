@@ -64,8 +64,8 @@ assert(
   workspace.includes('import { RichTextEditor } from "@/components/ui/rich-text-editor"') &&
     workspace.includes('<RichTextEditor') &&
     workspace.includes('minHeightClassName="min-h-[112px]"') &&
-    workspace.includes('[&_.rich-text-prose]:pb-12'),
-  "Stage 1 description fields must use the shared rich-text editor while preserving attachment space.",
+    workspace.includes('<FileUploadDropzone') && workspace.includes('disabled={disabled || uploading}'),
+  "Stage 1 description fields must use the rich-text editor and shared upload area with permission and upload guards.",
 );
 assert(
   workspace.includes('label="Legal Notes"') &&

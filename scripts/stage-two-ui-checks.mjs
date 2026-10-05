@@ -116,10 +116,9 @@ assert(
 );
 
 assert(
-  workspace.includes("onDropFiles(folder, Array.from(event.dataTransfer.files))") &&
-    workspace.includes("Drop to upload") &&
-    workspace.includes("dragDepth.current") &&
-    workspace.includes("if (!canWrite || !isFileDrag(event)) return"),
+  workspace.includes("onDropFiles(folder, files)") &&
+    workspace.includes("useFileDrop") && workspace.includes("<FileDropOverlay") &&
+    workspace.includes("disabled: !canWrite || Boolean(upload)"),
   "Writable folder cards must be stable, exact drag/drop targets while read-only cards remain inactive.",
 );
 assert(
@@ -137,10 +136,10 @@ assert(
   "Folder overview and opened folders must share the existing upload-url/completion implementation.",
 );
 assert(
-  folderWorkspace.includes('type="file"') &&
+  folderWorkspace.includes("<FileUploadDropzone") &&
     folderWorkspace.includes("multiple") &&
     folderWorkspace.includes("Promise.allSettled") &&
-    folderWorkspace.includes("Drop files to upload to {data.folder.name}"),
+    folderWorkspace.includes("useFileDrop") && folderWorkspace.includes("<FileDropOverlay"),
   "Opened folders must support progress-aware independent multi-file button and content-area drops.",
 );
 assert(

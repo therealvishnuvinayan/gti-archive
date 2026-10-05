@@ -1,11 +1,11 @@
 "use client";
 
+import { FileDropOverlay, useFileDrop } from "@/components/ui/file-upload-dropzone";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  type DragEvent,
   useMemo,
-  useRef,
   useState,
   useTransition,
 } from "react";
@@ -27,7 +27,6 @@ import {
   MoreVertical,
   SlidersHorizontal,
   Trash2,
-  UploadCloud,
 } from "lucide-react";
 
 import {
@@ -131,43 +130,17 @@ function FolderTile({
   onColor: (folder: FolderRecord, color: FolderColor | null) => void;
   colorPending: boolean;
 }) {
-  const dragDepth = useRef(0);
-  const [dragActive, setDragActive] = useState(false);
+  const { dragProps, isDragging: dragActive } = useFileDrop({
+    multiple: true, disabled: !canWrite || Boolean(upload),
+    onFilesSelected: (files) => onDropFiles(folder, files),
+  });
   const itemCount = folder.folderCount + folder.fileCount;
   const countLabel = `${itemCount} ${itemCount === 1 ? "item" : "items"}: ${folder.folderCount} ${folder.folderCount === 1 ? "subfolder" : "subfolders"}, ${folder.fileCount} ${folder.fileCount === 1 ? "file" : "files"}`;
-
-  function isFileDrag(event: DragEvent<HTMLElement>) {
-    return event.dataTransfer.types.includes("Files");
-  }
 
   return (
     <div
       aria-busy={Boolean(upload)}
-      onDragEnter={(event) => {
-        if (!canWrite || !isFileDrag(event)) return;
-        event.preventDefault();
-        dragDepth.current += 1;
-        setDragActive(true);
-      }}
-      onDragOver={(event) => {
-        if (!canWrite || !isFileDrag(event)) return;
-        event.preventDefault();
-        event.dataTransfer.dropEffect = "copy";
-      }}
-      onDragLeave={(event) => {
-        if (!canWrite || !isFileDrag(event)) return;
-        event.preventDefault();
-        dragDepth.current = Math.max(0, dragDepth.current - 1);
-        if (dragDepth.current === 0) setDragActive(false);
-      }}
-      onDrop={(event) => {
-        if (!canWrite || !isFileDrag(event)) return;
-        event.preventDefault();
-        event.stopPropagation();
-        dragDepth.current = 0;
-        setDragActive(false);
-        onDropFiles(folder, Array.from(event.dataTransfer.files));
-      }}
+      {...dragProps}
       className={cn(
         "group relative overflow-hidden border bg-white text-left shadow-[0_10px_28px_rgba(23,39,28,0.045)] transition hover:-translate-y-0.5 hover:border-[#bcd4c3] hover:shadow-[0_18px_38px_rgba(28,75,48,0.09)]",
         dragActive
@@ -213,12 +186,7 @@ function FolderTile({
           </DropdownMenuContent>
         </DropdownMenu>
       ) : null}
-      {dragActive ? (
-        <span className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[#eaf5ed]/95 text-[#216643]">
-          <UploadCloud className="h-7 w-7" />
-          <span className="mt-2 text-[13px] font-[760]">Drop to upload</span>
-        </span>
-      ) : null}
+      {dragActive ? <FileDropOverlay label={`Drop files into ${folder.name}`} /> : null}
     </div>
   );
 }

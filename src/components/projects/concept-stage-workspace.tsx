@@ -1,8 +1,10 @@
 "use client";
 
+import { FileUploadDropzone } from "@/components/ui/file-upload-dropzone";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useId, useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import {
   ArrowRight,
   CalendarClock,
@@ -10,7 +12,6 @@ import {
   ListTodo,
   Loader2,
   MoreVertical,
-  Paperclip,
   Pencil,
   Plus,
   Trash2,
@@ -162,7 +163,6 @@ function ConceptDetailsDialog({
       setBrief(draft.brief);
     },
   });
-  const attachmentInputId = useId();
   const cleanName = name.trim().replace(/\s+/g, " ");
   const cleanBrief = richTextToPlainText(brief);
   const parsedDeadline = deadline ? new Date(deadline) : null;
@@ -316,30 +316,11 @@ function ConceptDetailsDialog({
 
               <div className="w-full min-w-0 space-y-2">
                 <span className="block text-[12px] font-[700] text-[#2d372f]">Brief Attachments</span>
-                <Input
-                  id={attachmentInputId}
-                  type="file"
-                  multiple
-                  disabled={detailsLocked}
-                  className="sr-only"
-                  onChange={(event) => setFiles(Array.from(event.target.files ?? []))}
+                <FileUploadDropzone
+                  label="Concept brief attachments" multiple compact disabled={detailsLocked}
+                  description="Attach concept references or supporting documents."
+                  onFilesSelected={(selected) => setFiles((current) => [...current, ...selected])}
                 />
-                <label
-                  htmlFor={attachmentInputId}
-                  aria-disabled={detailsLocked}
-                  className={`flex min-h-[76px] min-w-0 items-center gap-3 rounded-[14px] border border-dashed border-[#b9c9bc] bg-[#f8fbf8] px-4 py-3 transition ${detailsLocked ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:border-[#65a47d] hover:bg-[#f3f9f5]"}`}
-                >
-                  <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-[#e7f2ea] text-[#2f8057]">
-                    <Paperclip className="h-4 w-4" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[12px] font-[700] text-[#2b3730]">
-                      {files.length ? `${files.length} ${files.length === 1 ? "file" : "files"} selected` : "Choose files"}
-                    </span>
-                    <span className="mt-0.5 block text-[11px] text-[#7a857d]">Attach concept references or supporting documents.</span>
-                  </span>
-                  <span className="shrink-0 rounded-full border border-[#cfdad1] bg-white px-3 py-1.5 text-[11px] font-[700] text-[#356d4e]">Browse</span>
-                </label>
 
                 {files.length ? (
                   <div className="flex flex-wrap gap-2" aria-label="Selected brief attachments">

@@ -1,5 +1,7 @@
 "use client";
 
+import { FileUploadDropzone } from "@/components/ui/file-upload-dropzone";
+
 import { FileThumbnail } from "@/components/projects/file-thumbnail";
 
 import Link from "next/link";
@@ -24,7 +26,6 @@ import {
   FileText,
   ListChecks,
   Loader2,
-  Paperclip,
   Search,
   X,
 } from "lucide-react";
@@ -621,7 +622,6 @@ function AttachmentTextarea({
   onValueChange: (value: string) => void;
   onAttachmentsChange: (files: ProjectInquiryAttachmentRecord[]) => void;
 }) {
-  const inputRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string>();
 
@@ -683,7 +683,7 @@ function AttachmentTextarea({
     } satisfies ProjectInquiryAttachmentRecord;
   }
 
-  async function handleFiles(files: FileList | null) {
+  async function handleFiles(files: File[]) {
     if (!files?.length || disabled || uploading) return;
     setUploading(true);
     setUploadError(undefined);
@@ -699,7 +699,6 @@ function AttachmentTextarea({
       showErrorToast("Attachment upload failed.", message);
     } finally {
       setUploading(false);
-      if (inputRef.current) inputRef.current.value = "";
     }
   }
 
@@ -714,31 +713,9 @@ function AttachmentTextarea({
           placeholder={placeholder}
           error={error}
           minHeightClassName="min-h-[112px]"
-          className="[&_.rich-text-prose]:pb-12 [&_.rich-text-prose]:pr-14"
+          className="[&_.rich-text-prose]:pb-4"
         />
-        <input
-          ref={inputRef}
-          type="file"
-          multiple
-          className="hidden"
-          onChange={(event) => void handleFiles(event.target.files)}
-        />
-        <button
-          type="button"
-          disabled={disabled || uploading}
-          aria-label={`Attach a file to ${ariaLabel}`}
-          onClick={() => inputRef.current?.click()}
-          className={cn(
-            "absolute bottom-3 grid size-8 place-items-center rounded-full text-[#6f7b73] hover:bg-[#eef5ef] hover:text-brand disabled:opacity-50",
-            "right-3",
-          )}
-        >
-          {uploading ? (
-            <Loader2 className="h-[18px] w-[18px] animate-spin" />
-          ) : (
-            <Paperclip className="h-[18px] w-[18px]" />
-          )}
-        </button>
+        <FileUploadDropzone label={`${ariaLabel} attachments`} multiple compact className="mt-2" disabled={disabled || uploading} buttonLabel={uploading ? "Uploading…" : "Attach files"} onFilesSelected={(files) => void handleFiles(files)} />
       </div>
       {attachments.length ? (
         <div className="mt-2 flex flex-wrap gap-2" data-attachment-field={field}>

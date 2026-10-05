@@ -173,7 +173,7 @@ async function checkDialog() {
   const pendingHook = { ...hook.react, useTransition: () => [true, () => {}] };
   const PendingDialog = load("src/components/projects/flexible-milestone-dialog.tsx", { react: pendingHook }).FlexibleMilestoneDialog;
   const pendingNodes = elements(hook.render(PendingDialog, props));
-  assert.equal(pendingNodes.find(({ type, props }) => type === "input" && props.type === "file").props.disabled, true);
+  assert.equal(pendingNodes.find(({ type }) => type === "FileUploadDropzone").props.disabled, true);
   assert(pendingNodes.filter(({ type, props }) => type === "button" && (props.onClick || props["aria-label"]?.startsWith("Remove"))).every(({ props }) => props.disabled), "File selection cannot change during upload");
   assert(nodes.some(({ props }) => props["aria-label"] === `Remove ${files[1].name}`));
 }

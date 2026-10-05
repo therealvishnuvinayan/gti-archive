@@ -1,12 +1,13 @@
 "use client";
 
+import { FileUploadDropzone } from "@/components/ui/file-upload-dropzone";
+
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import {
   Archive,
   Check,
   FolderKanban,
-  ImagePlus,
   Pencil,
   Plus,
   Tags,
@@ -981,31 +982,8 @@ function MasterDataDrawer({
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap gap-2">
-                            <Button
-                              asChild
-                              type="button"
-                              variant="outline"
-                              className="h-10 rounded-full"
-                            >
-                              <label className="cursor-pointer">
-                                <ImagePlus className="h-4 w-4" />
-                                Upload icon
-                                <input
-                                  type="file"
-                                  accept={archiveCategoryIconAccept}
-                                  className="sr-only"
-                                  onChange={(event) => {
-                                    const file = event.target.files?.[0];
-
-                                    if (file) {
-                                      onIconFileChange(file);
-                                    }
-
-                                    event.target.value = "";
-                                  }}
-                                />
-                              </label>
-                            </Button>
+                            <FileUploadDropzone label="Archive category icon" compact accept={archiveCategoryIconAccept}
+                              buttonLabel="Upload icon" onFilesSelected={(files) => { if (files[0]) onIconFileChange(files[0]); }} />
                             {iconPreviewSrc ? (
                               <Button
                                 type="button"

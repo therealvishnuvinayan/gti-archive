@@ -212,15 +212,12 @@ const checklistFilePicker = filePicker.slice(
   filePicker.length,
 );
 assert(
-  checklistFilePicker.includes("useRef<HTMLInputElement>(null)") &&
-    checklistFilePicker.includes('type="file"') &&
+  checklistFilePicker.includes("<FileUploadDropzone") &&
     checklistFilePicker.includes("multiple={multiple}") &&
-    checklistFilePicker.includes("hidden") &&
-    checklistFilePicker.includes("fileInputRef.current?.click()") &&
-    checklistFilePicker.includes("<Button") &&
-    !checklistFilePicker.includes("htmlFor") &&
-    !checklistFilePicker.includes("sr-only"),
-  "Stage 5 must trigger single and multiple hidden file inputs through the shared GTI Button/ref picker.",
+    checklistFilePicker.includes("accept={accept}") &&
+    checklistFilePicker.includes("disabled={disabled}") &&
+    checklistFilePicker.includes("onFilesSelected={selectFiles}"),
+  "Stage 5 must use the shared drag/drop and attach control for single and multiple files with format and permission guards.",
 );
 assert(
   workspace.includes("STAGE_FIVE_FIELD_DEFINITIONS.map") &&
