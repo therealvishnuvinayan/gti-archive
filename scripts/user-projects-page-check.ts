@@ -182,7 +182,8 @@ assert.match(page, /getProjectTypeSwitcherVisibility\(user\)/);
 assert.match(page, /showProjectTypeSwitcher=\{showProjectTypeSwitcher\}/);
 assert.match(permissions, /canViewProjectTypeSwitcher/);
 
-assert.match(browser, /gti:user-projects:view/);
+assert.match(browser, /useProjectsLayout\(\)/);
+assert.match(read("src/components/projects/project-layout-toggle.tsx"), /gti:user-projects:view/);
 assert.match(browser, /slice\(0, 5\)/);
 assert.match(browser, /role="tooltip"/);
 assert.match(browser, /task\.name/);

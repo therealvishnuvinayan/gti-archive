@@ -19,6 +19,7 @@ import {
 import { ProjectPageHeader } from "@/components/projects/project-page-header";
 import { ProjectCard, type ProjectCardItem } from "@/components/projects/project-card";
 import { ProjectTypeSwitcher } from "@/components/projects/project-type-switcher";
+import { ProjectLayoutToggle, useProjectsLayout, type ProjectsLayout } from "@/components/projects/project-layout-toggle";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -93,7 +94,16 @@ function getUserFilterLabel(option: ProjectUserFilterOption) {
     : `${option.name} (${option.email})`;
 }
 
-function ProjectsGridSkeleton() {
+function ProjectsGridSkeleton({ layout }: { layout: ProjectsLayout }) {
+  if (layout === "list") {
+    return (
+      <div className="space-y-3">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <Skeleton key={index} className="h-24 w-full rounded-[16px]" />
+        ))}
+      </div>
+    );
+  }
   return (
     <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
       {Array.from({ length: 6 }).map((_, index) => (
@@ -145,6 +155,7 @@ export function ProjectsBrowser({
   const searchParams = useSearchParams();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [isPending, startTransition] = useTransition();
+  const [layout, changeLayout] = useProjectsLayout();
   const hasActiveFilters = Boolean(
     query ||
       activeStatus !== "ALL" ||
@@ -231,7 +242,7 @@ export function ProjectsBrowser({
       ) : null}
 
       {activeProjectView === "flexible" ? (
-        <ProjectsGridSkeleton />
+        <ProjectsGridSkeleton layout={layout} />
       ) : (
         <div className="space-y-5">
           <MotionSection>
@@ -277,11 +288,14 @@ export function ProjectsBrowser({
               ))}
             </div>
 
-            {canCreateProject ? (
-              <Button asChild size="lg" className="h-12 min-w-[168px] self-start px-6 text-[15px] xl:self-auto">
-                <Link href="/projects/new">+ New Project</Link>
-              </Button>
-            ) : null}
+            <div className="flex flex-wrap items-center gap-3">
+              <ProjectLayoutToggle layout={layout} onChange={changeLayout} />
+              {canCreateProject ? (
+                <Button asChild size="lg" className="h-12 min-w-[168px] self-start px-6 text-[15px] xl:self-auto">
+                  <Link href="/projects/new">+ New Project</Link>
+                </Button>
+              ) : null}
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -389,15 +403,15 @@ export function ProjectsBrowser({
       </MotionSection>
 
       {isPending ? (
-        <ProjectsGridSkeleton />
+        <ProjectsGridSkeleton layout={layout} />
       ) : projects.length > 0 ? (
         <MotionStaggerGroup
-          className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3"
+          className={layout === "grid" ? "grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3" : "space-y-3"}
           stagger={0.04}
         >
           {projects.map((project) => (
             <MotionItem key={project.id} y={8} layout>
-              <ProjectCard project={project} returnHref={currentProjectsHref} />
+              <ProjectCard project={project} returnHref={currentProjectsHref} layout={layout} />
             </MotionItem>
           ))}
         </MotionStaggerGroup>

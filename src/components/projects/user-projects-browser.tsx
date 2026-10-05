@@ -2,15 +2,13 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { type FormEvent, useRef, useSyncExternalStore, useTransition } from "react";
+import { type FormEvent, useRef, useTransition } from "react";
 import {
   ArrowRight,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
   Clock3,
-  LayoutGrid,
-  List,
   Search,
   SlidersHorizontal,
 } from "lucide-react";
@@ -23,6 +21,7 @@ import {
 import { ProjectPageHeader } from "@/components/projects/project-page-header";
 import { ProjectTypeSwitcher } from "@/components/projects/project-type-switcher";
 import { ProjectTagBadges } from "@/components/projects/project-tag-badges";
+import { ProjectLayoutToggle, useProjectsLayout, type ProjectsLayout } from "@/components/projects/project-layout-toggle";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -53,11 +52,6 @@ type UserProjectsBrowserProps = {
   query: string;
   showProjectTypeSwitcher: boolean;
 };
-
-type UserProjectsView = "grid" | "list";
-
-const USER_PROJECTS_VIEW_STORAGE_KEY = "gti:user-projects:view";
-const USER_PROJECTS_VIEW_EVENT = "gti:user-projects:view-change";
 
 const filters: Array<{ label: string; value: UserProjectFilter }> = [
   { label: "All", value: "ALL" },
@@ -140,25 +134,6 @@ function formatDate(value: string) {
 
 function taskCountLabel(count: number) {
   return `${count} assigned ${count === 1 ? "task" : "tasks"}`;
-}
-
-function subscribeToViewPreference(onStoreChange: () => void) {
-  window.addEventListener("storage", onStoreChange);
-  window.addEventListener(USER_PROJECTS_VIEW_EVENT, onStoreChange);
-  return () => {
-    window.removeEventListener("storage", onStoreChange);
-    window.removeEventListener(USER_PROJECTS_VIEW_EVENT, onStoreChange);
-  };
-}
-
-function getViewPreferenceSnapshot(): UserProjectsView {
-  return window.localStorage.getItem(USER_PROJECTS_VIEW_STORAGE_KEY) === "list"
-    ? "list"
-    : "grid";
-}
-
-function getServerViewPreferenceSnapshot(): UserProjectsView {
-  return "grid";
 }
 
 function ProjectStatusBadge({ project }: { project: UserProjectListItem }) {
@@ -363,7 +338,7 @@ function UserProjectListRow({
   );
 }
 
-function UserProjectsSkeleton({ view }: { view: UserProjectsView }) {
+function UserProjectsSkeleton({ view }: { view: ProjectsLayout }) {
   if (view === "list") {
     return (
       <div className="space-y-3">
@@ -398,22 +373,13 @@ export function UserProjectsBrowser({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const view = useSyncExternalStore(
-    subscribeToViewPreference,
-    getViewPreferenceSnapshot,
-    getServerViewPreferenceSnapshot,
-  );
+  const [view, changeView] = useProjectsLayout();
   const [isPending, startTransition] = useTransition();
 
   const currentSearch = searchParams.toString();
   const currentProjectsHref = currentSearch ? `${pathname}?${currentSearch}` : pathname;
   const hasActiveFilters = Boolean(query || activeFilter !== "ALL");
   const totalPages = Math.max(1, Math.ceil(projectCount / pageSize));
-
-  function changeView(nextView: UserProjectsView) {
-    window.localStorage.setItem(USER_PROJECTS_VIEW_STORAGE_KEY, nextView);
-    window.dispatchEvent(new Event(USER_PROJECTS_VIEW_EVENT));
-  }
 
   function navigate(next: {
     filter?: UserProjectFilter;
@@ -459,28 +425,7 @@ export function UserProjectsBrowser({
             title="My Projects"
             description="Your workspace for assigned work and deliverables."
             actions={
-              <div
-                role="group"
-                aria-label="Project layout"
-                className="inline-flex w-fit rounded-[14px] border border-[#d6ded7] bg-white p-1 shadow-[0_8px_22px_rgba(18,34,25,0.035)]"
-              >
-                {(["grid", "list"] as const).map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    aria-pressed={view === option}
-                    onClick={() => changeView(option)}
-                    className={`flex h-10 items-center gap-2 rounded-[10px] px-4 text-[13px] font-[700] capitalize transition ${
-                      view === option
-                        ? "bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] text-white shadow-[0_8px_18px_rgba(31,112,70,0.2)]"
-                        : "text-[#445047] hover:bg-[#f1f5f1]"
-                    }`}
-                  >
-                    {option === "grid" ? <LayoutGrid className="size-4" /> : <List className="size-4" />}
-                    {option}
-                  </button>
-                ))}
-              </div>
+              <ProjectLayoutToggle layout={view} onChange={changeView} />
             }
           />
 
