@@ -29,13 +29,13 @@ for (const snippet of [
   "assertCanUseArchives(",
   "assertCanAccessArchivedProjectFileAsset(",
   "assertCanAccessManualArchiveFileAsset(",
-  "await assertProjectAccess(user, archivedProjectFile.projectId)",
-  "await assertProjectTimestampVisibleForUser(user, {",
 ]) {
   includes(editGuard, snippet, `Archive edit guard must include ${snippet}`);
 }
 
 for (const forbidden of [
+  "assertProjectAccess(",
+  "assertProjectTimestampVisibleForUser(",
   "isProjectOwner(",
   "isProjectExecutor(",
   "isSuperAdminRole(",
@@ -92,11 +92,7 @@ includes(
   "Archive edit dialog must persist through the server action",
 );
 
-for (const privilegedMutation of ["delete", "restore"]) {
-  assert.ok(
-    !action.toLowerCase().includes(privilegedMutation),
-    `Archive editing must not add ${privilegedMutation} authority`,
-  );
-}
+includes(action, "await deleteArchivedFileForUser(user, archivedFileId)", "Archive delete action must delegate to the authenticated service");
+includes(workspace, "confirmLabel=\"Delete file\"", "Archive deletion must ask for confirmation");
 
 console.log("Archive edit permission checks passed.");

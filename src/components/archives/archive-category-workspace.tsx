@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import {
   ChevronDown,
   ChevronUp,
   Download,
   FolderKanban,
   Pencil,
+  Trash2,
   X,
 } from "lucide-react";
 
@@ -26,6 +27,10 @@ import {
   MotionStaggerGroup,
 } from "@/components/motion/motion-primitives";
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
+import { deleteArchivedFileAction } from "@/app/(dashboard)/archives/actions";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
+import { showErrorToast, showSuccessToast } from "@/lib/toast";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RichTextContent } from "@/components/ui/rich-text-editor";
@@ -192,6 +197,33 @@ export function ArchiveCategoryWorkspace({
   canUploadArchives,
   currentUserDisplayName,
 }: ArchiveCategoryWorkspaceProps) {
+  const router = useRouter();
+  const [deleteTarget, setDeleteTarget] = useState<ArchivedProjectFileRecord | null>(null);
+  const [deleteError, setDeleteError] = useState<string>();
+  const [deleting, startDelete] = useTransition();
+
+  function confirmDelete() {
+    if (!deleteTarget || deleting) return;
+    const id = deleteTarget.id;
+    startDelete(async () => {
+      try {
+        const result = await deleteArchivedFileAction(id);
+        if ("error" in result) {
+          setDeleteError(result.error);
+          return;
+        }
+        setArchiveItems((current) => current.filter((item) => item.id !== id));
+        setDeleteTarget(null);
+        showSuccessToast("Archive file deleted.");
+        if (result.storageCleanupPending) {
+          showErrorToast("The file was removed from Archives, but storage cleanup needs to be retried.");
+        }
+        router.refresh();
+      } catch (error) {
+        setDeleteError(error instanceof Error ? error.message : "Unable to delete the archive file.");
+      }
+    });
+  }
   const [filters, setFilters] = useState<ArchiveFilters>(() => ({
     ...defaultFilters,
     search: initialSearch,
@@ -594,6 +626,15 @@ export function ArchiveCategoryWorkspace({
                         <Pencil className="h-4 w-4 text-brand" />
                         Edit
                       </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => { setDeleteError(undefined); setDeleteTarget(item); }}
+                        className="h-10 rounded-full border border-[#ecefed] bg-white px-3 text-[13px] text-[#bb4d49]"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Delete
+                      </Button>
                       {item.artworkMetadata ? (
                         <button
                           type="button"
@@ -729,6 +770,19 @@ export function ArchiveCategoryWorkspace({
           </MotionStaggerGroup>
         </div>
       </MotionSection>
+
+      <ConfirmationDialog
+        isOpen={Boolean(deleteTarget)}
+        title="Delete archive file?"
+        description={`Remove "${deleteTarget?.finalArchiveFileName ?? ""}" from Archives and disable its share links? Original project attachments will be kept.`}
+        confirmLabel="Delete file"
+        pendingLabel="Deleting..."
+        tone="destructive"
+        pending={deleting}
+        error={deleteError}
+        onConfirm={confirmDelete}
+        onClose={() => { if (!deleting) setDeleteTarget(null); }}
+      />
 
       {editingArchiveItem ? (
         <ArchiveItemDialog

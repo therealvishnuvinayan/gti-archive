@@ -23,7 +23,7 @@ import {
   type LibraryItemRecord,
   type LibraryUploadCategory,
 } from "@/lib/library-shared";
-import type { AssetTagRecord } from "@/lib/asset-tags";
+import type { AssetTagRecord } from "@/lib/asset-tags-shared";
 import {
   getDevTimingDurationMs,
   getDevTimingNow,

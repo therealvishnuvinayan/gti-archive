@@ -1,4 +1,4 @@
-import type { AssetTagRecord } from "@/lib/asset-tags";
+import type { AssetTagRecord } from "@/lib/asset-tags-shared";
 
 export const libraryQuickMenuOptions = [
   "assets",

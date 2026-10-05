@@ -149,6 +149,8 @@ export function isProjectExecutor(
 }
 
 export function hasPermission(user: PermissionUser, permissionKey: PermissionKey) {
+  // Archives are shared by every authenticated account, independent of role profiles.
+  if (permissionKey.startsWith("archive.")) return Boolean(user.id);
   return getBasePermissionSet(user).has(permissionKey);
 }
 
@@ -160,12 +162,8 @@ export function canCreateProjects(user: PermissionUser) {
   return user.projectCreationAccessGranted === true;
 }
 
-export function getArchiveAccessLevel(user: PermissionUser) {
-  if (isGlobalProjectAdministrator(user)) {
-    return "FULL" as const;
-  }
-
-  return user.permissionProfileSnapshot?.archiveAccessLevel ?? "NONE";
+export function getArchiveAccessLevel(user: PermissionUser): "NONE" | "FULL" | "PARTIAL" {
+  return user.id ? "FULL" as const : "NONE" as const;
 }
 
 export function canUseArchives(user: PermissionUser) {

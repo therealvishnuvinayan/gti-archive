@@ -56,6 +56,9 @@ const expectedUserPermissions: PermissionKey[] = [
   "file.uploadSubmission",
   "library.view",
   "library.filter",
+  "archive.view",
+  "archive.uploadFile",
+  "archive.download",
   "completion.viewChecklist",
   "completion.uploadInvoice",
   "calendar.view",
@@ -118,7 +121,7 @@ assert.deepEqual(
     user: { role: UserRole.USER },
     rolePermissions: new Set(defaultRolePermissions.USER),
   })],
-  expectedUserPermissions,
+  [...new Set([...expectedUserPermissions, "archive.view", "archive.uploadFile", "archive.download"])],
 );
 assert.equal(
   hasPermission({ id: "user", role: UserRole.USER }, "dashboard.view"),
@@ -146,7 +149,7 @@ function userWithProjectPermissions(permissionKeys: PermissionKey[]) {
 const userWithProjectListOnly = userWithProjectPermissions(["project.list"]);
 assert.equal(canUseProjects(userWithProjectListOnly), false);
 assert.equal(getSidebarVisibility(userWithProjectListOnly).projects, false);
-assert.equal(getAuthenticatedDefaultRoute(userWithProjectListOnly), "/no-access");
+assert.equal(getAuthenticatedDefaultRoute(userWithProjectListOnly), "/archives");
 
 const userWithProjectViewOnly = userWithProjectPermissions(["project.view"]);
 assert.equal(canUseProjects(userWithProjectViewOnly), false);
@@ -276,10 +279,10 @@ const archiveScopeWithoutPermissionUser = {
 };
 assert.equal(
   canUseArchives(archiveScopeWithoutPermissionUser),
-  false,
-  "A per-user archive asset scope must not bypass a disabled archive.view permission.",
+  true,
+  "Archive access is available even when the saved role permission is disabled.",
 );
-assert.equal(getSidebarVisibility(archiveScopeWithoutPermissionUser).archives, false);
+assert.equal(getSidebarVisibility(archiveScopeWithoutPermissionUser).archives, true);
 
 const restrictedAdmin = {
   id: "admin",

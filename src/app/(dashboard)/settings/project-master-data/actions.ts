@@ -626,7 +626,7 @@ export async function saveAssetTagAction(input: SaveMasterDataInput) {
 }
 
 export async function saveArchiveCategoryAction(input: SaveMasterDataInput) {
-  const user = await requireAdminUser();
+  const user = await requireUser();
 
   const parsed = normalizeMasterDataInput(input);
 
@@ -637,6 +637,9 @@ export async function saveArchiveCategoryAction(input: SaveMasterDataInput) {
   if (!parsed.slug) {
     return { error: "Archive category slug is required." };
   }
+
+  // Archive categories are always shared; legacy restrictions are cleared when saved.
+  parsed.allowedUserIds = [];
 
   const descriptionError = validateMasterDataDescription(
     parsed.description,
@@ -757,6 +760,7 @@ export async function saveArchiveCategoryAction(input: SaveMasterDataInput) {
 
   await revalidateProjectMasterData();
   revalidatePath("/archives");
+  revalidatePath("/archives/settings/categories");
   revalidatePath(`/archives/${category.slug}`);
 
   return {
@@ -870,7 +874,7 @@ export async function setAssetTagStatusAction(input: ToggleMasterDataInput) {
 }
 
 export async function setArchiveCategoryStatusAction(input: ToggleMasterDataInput) {
-  await requireAdminUser();
+  await requireUser();
 
   const category = await withPrismaRetry(() =>
     prisma.archiveCategory.update({
@@ -888,6 +892,7 @@ export async function setArchiveCategoryStatusAction(input: ToggleMasterDataInpu
 
   await revalidateProjectMasterData();
   revalidatePath("/archives");
+  revalidatePath("/archives/settings/categories");
   revalidatePath(`/archives/${category.slug}`);
 
   return { success: true };
@@ -1104,7 +1109,7 @@ export async function deleteAssetTagAction(id: string) {
 }
 
 export async function deleteArchiveCategoryAction(id: string) {
-  await requireMasterDataDeletePermission();
+  await requireUser();
 
   const category = await withPrismaRetry(() =>
     prisma.archiveCategory.findUnique({
@@ -1158,6 +1163,7 @@ export async function deleteArchiveCategoryAction(id: string) {
 
   await revalidateProjectMasterData();
   revalidatePath("/archives");
+  revalidatePath("/archives/settings/categories");
   revalidatePath(`/archives/${category.slug}`);
 
   return { success: true };

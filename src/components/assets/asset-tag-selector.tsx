@@ -14,7 +14,7 @@ import {
   ASSET_TAG_LIMIT_ERROR,
   MAX_ASSET_TAGS,
   type AssetTagRecord,
-} from "@/lib/asset-tags";
+} from "@/lib/asset-tags-shared";
 
 type AssetTagSelectorProps = {
   value: string[];
