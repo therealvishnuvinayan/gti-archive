@@ -44,6 +44,8 @@ export type SidebarVisibility = {
   projectCounts: boolean;
   calendar: boolean;
   collaboration: boolean;
+  clients: boolean;
+  finalBeneficiaries: boolean;
   users: boolean;
   notifications: boolean;
   library: boolean;
@@ -250,6 +252,10 @@ function isProjectOwnerManagePermission(permissionKey: PermissionKey) {
   );
 }
 
+export function canManageContactDirectories(user: PermissionUser) {
+  return isBusinessAdministratorRole(user.role) && hasPermission(user, "project.update");
+}
+
 export function getSidebarVisibility(user: PermissionUser): SidebarVisibility {
   const projects = canUseProjects(user);
 
@@ -263,6 +269,8 @@ export function getSidebarVisibility(user: PermissionUser): SidebarVisibility {
       projects && hasPermission(user, "dashboard.viewProjectCounts"),
     calendar: hasPermission(user, "calendar.view"),
     collaboration: hasPermission(user, "collaboration.viewDirectory"),
+    clients: canManageContactDirectories(user),
+    finalBeneficiaries: canManageContactDirectories(user),
     users: isBusinessAdministratorRole(user.role) && hasPermission(user, "users.view"),
     notifications: hasPermission(user, "notification.view"),
     library: hasPermission(user, "library.view"),

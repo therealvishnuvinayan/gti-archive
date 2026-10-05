@@ -13,6 +13,7 @@ import {
 } from "@prisma/client";
 
 import { getUserDisplayName } from "@/lib/auth";
+import { getContactDirectoryRole, type ContactDirectoryKind } from "@/lib/contact-directory";
 import {
   type ProjectContactInput,
   type ProjectContactEntityType,
@@ -82,6 +83,7 @@ const projectAccessSelect = {
 } satisfies Prisma.ProjectSelect;
 
 export type ProjectInquiryPartyOption = {
+  directoryRoles?: ProjectInquiryPartyRole[];
   source: ProjectInquiryPartySource;
   entityType: ProjectContactEntityType;
   id: string;
@@ -97,7 +99,7 @@ export type ProjectInquiryPartyOption = {
 
 export type ProjectInquiryPartySelection = Pick<
   ProjectInquiryPartyOption,
-  "source" | "entityType" | "id" | "name" | "company" | "companyEmail" | "companyPhone" | "companyWebsite" | "position" | "email" | "phone"
+  "source" | "entityType" | "id" | "name" | "company" | "companyEmail" | "companyPhone" | "companyWebsite" | "position" | "email" | "phone" | "directoryRoles"
 >;
 
 export type ProjectInquiryTargetMarketInput = {
@@ -279,6 +281,7 @@ function mapPartyOptionFromUser(user: {
 }
 
 function mapPartyOptionFromContact(contact: {
+  directoryRoles: ProjectInquiryPartyRole[];
   entityType: ProjectContactEntityType;
   id: string;
   name: string;
@@ -292,6 +295,7 @@ function mapPartyOptionFromContact(contact: {
 }): ProjectInquiryPartyOption {
   return {
     source: ProjectInquiryPartySource.MANUAL_CONTACT,
+    directoryRoles: contact.directoryRoles,
     entityType: contact.entityType,
     id: contact.id,
     name: contact.name,
@@ -387,6 +391,7 @@ export async function createContactDirectoryEntry(
     prisma.contactDirectoryEntry.create({
       data: {
         entityType: validation.data.entityType,
+        directoryRoles: [getContactDirectoryRole(validation.data.kind)],
         name: validation.data.name,
         company: validation.data.company || null,
         companyEmail: validation.data.companyEmail || null,
@@ -401,6 +406,7 @@ export async function createContactDirectoryEntry(
         id: true,
         name: true,
         entityType: true,
+        directoryRoles: true,
         company: true,
         companyEmail: true,
         companyPhone: true,
@@ -544,6 +550,7 @@ export async function searchProjectInquiryPartyOptions(
   user: ProjectAccessUser,
   projectId: string,
   query: string,
+  kind?: ContactDirectoryKind,
 ) {
   await assertProjectInquiryOptionsAccess(user, projectId);
   const search = query.trim().slice(0, MAX_LABEL_LENGTH);
@@ -588,13 +595,20 @@ export async function searchProjectInquiryPartyOptions(
     ),
     withPrismaRetry(() =>
       prisma.contactDirectoryEntry.findMany({
-        where: contactWhere,
+        where: {
+          AND: [
+            { deletedAt: null },
+            ...(kind ? [{ directoryRoles: { has: getContactDirectoryRole(kind) } }] : []),
+            ...(contactWhere ? [contactWhere] : []),
+          ],
+        },
         orderBy: [{ name: "asc" }, { createdAt: "asc" }],
         take: 30,
         select: {
           id: true,
           name: true,
           entityType: true,
+          directoryRoles: true,
           company: true,
           companyEmail: true,
           companyPhone: true,
@@ -799,6 +813,8 @@ function normalizeIds(
 async function resolvePartySnapshot(
   tx: Prisma.TransactionClient,
   value: NonNullable<ReturnType<typeof validatePartyInput>>,
+  projectId: string,
+  role: ProjectInquiryPartyRole,
 ) {
   if (value.source === ProjectInquiryPartySource.USER) {
     const selectedUser = await tx.user.findUnique({
@@ -839,6 +855,8 @@ async function resolvePartySnapshot(
       id: true,
       name: true,
       entityType: true,
+      directoryRoles: true,
+      deletedAt: true,
       company: true,
       companyEmail: true,
       companyPhone: true,
@@ -852,6 +870,29 @@ async function resolvePartySnapshot(
   if (!contact) {
     return null;
   }
+
+  if (contact.deletedAt) {
+    // A removed contact remains usable only as an existing historical selection.
+    const saved = await tx.projectInquiryParty.findFirst({
+      where: { contactId: contact.id, role, inquiry: { projectId } },
+    });
+    if (!saved) return null;
+    return {
+      source: saved.source,
+      userId: saved.userId,
+      contactId: saved.contactId,
+      snapshotEntityType: saved.snapshotEntityType,
+      snapshotName: saved.snapshotName,
+      snapshotCompany: saved.snapshotCompany,
+      snapshotCompanyEmail: saved.snapshotCompanyEmail,
+      snapshotCompanyPhone: saved.snapshotCompanyPhone,
+      snapshotCompanyWebsite: saved.snapshotCompanyWebsite,
+      snapshotPosition: saved.snapshotPosition,
+      snapshotEmail: saved.snapshotEmail,
+      snapshotPhone: saved.snapshotPhone,
+    };
+  }
+  if (!contact.directoryRoles.includes(role)) return null;
 
   return {
     source: ProjectInquiryPartySource.MANUAL_CONTACT,
@@ -971,10 +1012,10 @@ export async function completeProjectInquiry(
         } as const;
       }
 
-      const clientSnapshot = await resolvePartySnapshot(tx, client);
+      const clientSnapshot = await resolvePartySnapshot(tx, client, projectId, ProjectInquiryPartyRole.CLIENT);
       const finalBeneficiarySnapshots = await Promise.all(
         finalBeneficiaries.map((beneficiary) =>
-          resolvePartySnapshot(tx, beneficiary),
+          resolvePartySnapshot(tx, beneficiary, projectId, ProjectInquiryPartyRole.FINAL_BENEFICIARY),
         ),
       );
 

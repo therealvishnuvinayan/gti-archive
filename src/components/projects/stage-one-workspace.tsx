@@ -72,6 +72,7 @@ import type {
   ProjectInquiryRecord,
 } from "@/lib/project-inquiry";
 import type { ProjectStageShellRecord } from "@/lib/projects";
+import type { ContactDirectoryKind } from "@/lib/contact-directory";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
@@ -183,6 +184,7 @@ function PartySelector({
     const normalizedQuery = query.trim().toLocaleLowerCase("en");
     const matches = options.filter((option) => {
       if (companyFirst && !hasProjectClientCompany(option)) return false;
+      if (option.directoryRoles && !option.directoryRoles.includes(companyFirst ? "CLIENT" : "FINAL_BENEFICIARY")) return false;
       if (multiple && selectedKeys.has(`${option.source}:${option.id}`)) {
         return false;
       }
@@ -787,23 +789,7 @@ export function StageOneWorkspace({
     pageData.canEdit ? "edit" : "view",
   );
   const [submitting, startSubmitting] = useTransition();
-  const [partyOptions, setPartyOptions] = useState(() => {
-    const options = [...pageData.partyOptions];
-    for (const savedParty of [
-      saved?.client,
-      ...(saved?.finalBeneficiaries ?? []),
-    ]) {
-      if (
-        savedParty &&
-        !options.some(
-          (option) => option.id === savedParty.id && option.source === savedParty.source,
-        )
-      ) {
-        options.push(savedParty);
-      }
-    }
-    return options;
-  });
+  const [partyOptions, setPartyOptions] = useState(pageData.partyOptions);
   const [client, setClient] = useState(saved?.client ?? null);
   const [finalBeneficiaries, setFinalBeneficiaries] = useState(
     saved?.finalBeneficiaries ?? [],
@@ -904,15 +890,6 @@ export function StageOneWorkspace({
           LEGAL_NOTES: [],
         },
       );
-      setPartyOptions((current) => {
-        const merged = new Map(
-          current.map((option) => [`${option.source}:${option.id}`, option]),
-        );
-        for (const option of [draft.client, ...(draft.finalBeneficiaries ?? [])]) {
-          if (option) merged.set(`${option.source}:${option.id}`, option);
-        }
-        return [...merged.values()];
-      });
     },
   });
   const viewInquiry = pageData.canEdit ? draftInquiry : saved;
@@ -927,26 +904,27 @@ export function StageOneWorkspace({
     [pageData.countryOptions, targetMarketHistory],
   );
   const loadPartyOptions = useCallback(
-    async (query: string) => {
+    async (query: string, kind: ContactDirectoryKind) => {
       try {
         const options = await searchProjectInquiryPartyOptionsAction(
           project.id,
           query,
+          kind,
         );
-        setPartyOptions((current) => {
-          const merged = new Map(
-            current.map((option) => [`${option.source}:${option.id}`, option]),
-          );
-          for (const option of options) {
-            merged.set(`${option.source}:${option.id}`, option);
-          }
-          return [...merged.values()];
-        });
+        setPartyOptions(options);
       } catch {
         showErrorToast("Unable to load directory results.");
       }
     },
     [project.id],
+  );
+  const loadClientOptions = useCallback(
+    (query: string) => loadPartyOptions(query, "CLIENT"),
+    [loadPartyOptions],
+  );
+  const loadBeneficiaryOptions = useCallback(
+    (query: string) => loadPartyOptions(query, "CONTACT"),
+    [loadPartyOptions],
   );
   const loadTargetMarketHistory = useCallback(
     async (query: string) => {
@@ -1199,7 +1177,7 @@ export function StageOneWorkspace({
                   values={client ? [client] : []}
                   disabled={readOnly || submitting}
                   error={clientError}
-                  onSearch={loadPartyOptions}
+                  onSearch={loadClientOptions}
                   onChange={(values) => {
                     setClient(values[0] ?? null);
                     clearFieldError("client");
@@ -1253,7 +1231,7 @@ export function StageOneWorkspace({
                   multiple
                   disabled={readOnly || submitting}
                   error={fieldErrors.finalBeneficiaries}
-                  onSearch={loadPartyOptions}
+                  onSearch={loadBeneficiaryOptions}
                   onChange={(values) => {
                     setFinalBeneficiaries(values);
                     clearFieldError("finalBeneficiaries");

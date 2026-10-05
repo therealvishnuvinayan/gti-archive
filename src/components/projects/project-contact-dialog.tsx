@@ -17,6 +17,7 @@ type ProjectContactDialogProps = {
   title: string;
   description: string;
   submitLabel: string;
+  pendingLabel?: string;
   form: ProjectContactForm;
   fieldErrors?: Partial<Record<keyof ProjectContactForm, string>>;
   error?: string;
@@ -56,6 +57,7 @@ export function ProjectContactDialog({
   title,
   description,
   submitLabel,
+  pendingLabel = "Adding...",
   form,
   fieldErrors,
   error,
@@ -230,7 +232,7 @@ export function ProjectContactDialog({
               disabled={saving}
               className="rounded-[13px]"
             >
-              {saving ? "Adding..." : submitLabel}
+              {saving ? pendingLabel : submitLabel}
             </Button>
           </div>
         </CardContent>

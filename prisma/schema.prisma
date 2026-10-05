@@ -937,6 +937,8 @@ model ProjectWorkflowStage {
 
 model ContactDirectoryEntry {
   id             String                @id @default(cuid())
+  directoryRoles ProjectInquiryPartyRole[] @default([CLIENT, FINAL_BENEFICIARY])
+  deletedAt      DateTime?
   entityType     ProjectContactEntityType @default(PERSON)
   name           String
   company        String?
@@ -955,6 +957,7 @@ model ContactDirectoryEntry {
   @@index([name])
   @@index([email])
   @@index([createdById])
+  @@index([deletedAt])
 }
 
 model ProjectInquiry {

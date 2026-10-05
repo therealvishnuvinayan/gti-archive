@@ -39,6 +39,7 @@
     "project-overview:ui-check": "node scripts/project-overview-ui-checks.mjs",
     "project-inquiry:check": "node scripts/project-inquiry-migration-checks.mjs && node scripts/stage-one-ui-checks.mjs && node scripts/project-overview-ui-checks.mjs",
     "project-inquiry:contact-validation-check": "tsc --project scripts/tsconfig.project-contact-validation.json && node .tmp/project-contact-validation/scripts/project-contact-validation-check.js",
+    "contact-directory:integration-check": "tsc --project scripts/tsconfig.contact-directory-integration.json && node scripts/run-contact-directory-isolated-integration.mjs",
     "project-owner:workflow-check": "node scripts/project-owner-workflow-permission-checks.mjs",
     "stage-one:ui-check": "node scripts/stage-one-ui-checks.mjs",
     "stage-two:ui-check": "node scripts/stage-two-ui-checks.mjs",
