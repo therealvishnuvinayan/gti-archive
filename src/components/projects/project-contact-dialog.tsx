@@ -139,7 +139,7 @@ export function ProjectContactDialog({
           <fieldset className="mt-6" disabled={saving}>
             <legend className="mb-2 text-[13px] font-[650] text-[#2d372f]">Type</legend>
             <div className="grid grid-cols-2 gap-2">
-              {(["PERSON", "COMPANY"] as const).map((entityType) => (
+              {(kind === "CLIENT" ? ["COMPANY", "PERSON"] as const : ["PERSON", "COMPANY"] as const).map((entityType) => (
                 <label key={entityType} className="cursor-pointer">
                   <input
                     type="radio"

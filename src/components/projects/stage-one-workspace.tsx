@@ -58,7 +58,10 @@ import {
   ProjectFormAutosaveStatus,
   useProjectFormAutosave,
 } from "@/components/ui/project-form-autosave";
-import { validateProjectContactInput } from "@/lib/project-contact-validation";
+import {
+  hasProjectClientCompany,
+  validateProjectContactInput,
+} from "@/lib/project-contact-validation";
 import type {
   CompleteProjectInquiryInput,
   ProjectInquiryAttachmentRecord,
@@ -137,7 +140,6 @@ function PartySelector({
   values,
   multiple = false,
   companyFirst = false,
-  showPersonName = false,
   disabled,
   error,
   onChange,
@@ -149,7 +151,6 @@ function PartySelector({
   values: ProjectInquiryPartySelection[];
   multiple?: boolean;
   companyFirst?: boolean;
-  showPersonName?: boolean;
   disabled: boolean;
   error?: string;
   onChange: (values: ProjectInquiryPartySelection[]) => void;
@@ -166,9 +167,13 @@ function PartySelector({
   );
   const singleValue = multiple ? null : values[0] ?? null;
   function partyLabel(party: ProjectInquiryPartySelection) {
+    if (companyFirst) return party.company?.trim() || "Select a client";
     return party.entityType === "COMPANY" ? party.company || party.name : party.name;
   }
   function partyDescription(party: ProjectInquiryPartySelection) {
+    if (companyFirst) {
+      return [party.name, party.position, party.companyEmail || party.email].filter(Boolean).join(" · ");
+    }
     return party.entityType === "COMPANY"
       ? [party.name, party.position, party.companyEmail || party.email].filter(Boolean).join(" · ")
       : [party.company, party.position, party.email].filter(Boolean).join(" · ");
@@ -177,6 +182,7 @@ function PartySelector({
   const filteredOptions = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase("en");
     const matches = options.filter((option) => {
+      if (companyFirst && !hasProjectClientCompany(option)) return false;
       if (multiple && selectedKeys.has(`${option.source}:${option.id}`)) {
         return false;
       }
@@ -346,10 +352,9 @@ function PartySelector({
           ) : filteredOptions.length ? (
             filteredOptions.map((option) => {
               const selected = selectedKeys.has(`${option.source}:${option.id}`);
-              const optionName = showPersonName ? option.name.trim() || partyLabel(option) : partyLabel(option);
-              const companyName = option.source === "MANUAL_CONTACT" ? option.company?.trim() : null;
-              const optionDetails = showPersonName
-                ? companyName || "Company name not available."
+              const optionName = partyLabel(option);
+              const optionDetails = companyFirst
+                ? partyDescription(option)
                 : [option.entityType === "COMPANY" ? "Company" : "Person", partyDescription(option)].filter(Boolean).join(" · ");
               return (
                 <button
@@ -371,7 +376,7 @@ function PartySelector({
                       .toUpperCase()}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className={cn("block min-w-0 whitespace-normal break-words font-[650] text-[#202923]", showPersonName ? "text-[15px]" : "text-[13px]")}>
+                    <span className={cn("block min-w-0 whitespace-normal break-words font-[650] text-[#202923]", companyFirst ? "text-[15px]" : "text-[13px]")}>
                       {optionName}
                     </span>
                     <span className="block whitespace-normal break-words text-[11px] text-[#7d8780]">
@@ -834,6 +839,11 @@ export function StageOneWorkspace({
     },
   );
   const [fieldErrors, setFieldErrors] = useState<ProjectInquiryFieldErrors>({});
+  const clientError = fieldErrors.client || (
+    client && !hasProjectClientCompany(client)
+      ? "Select a client with a company name or add a new client."
+      : undefined
+  );
   const [formError, setFormError] = useState<string>();
   const [contactTarget, setContactTarget] = useState<PartyField | null>(null);
   const [contactForm, setContactForm] = useState<ProjectContactForm>(getDefaultContactForm);
@@ -1180,16 +1190,15 @@ export function StageOneWorkspace({
 
           <form onSubmit={handleSubmit}>
             <div className="grid gap-x-10 gap-y-6 lg:grid-cols-2">
-              <StageOneFormField label="Client" required error={fieldErrors.client}>
+              <StageOneFormField label="Client" required error={clientError}>
                 <PartySelector
                   ariaLabel="Client"
                   companyFirst
-                  showPersonName
-                  placeholder="Search or select a person or company"
+                  placeholder="Search or select a company or person"
                   options={partyOptions}
                   values={client ? [client] : []}
                   disabled={readOnly || submitting}
-                  error={fieldErrors.client}
+                  error={clientError}
                   onSearch={loadPartyOptions}
                   onChange={(values) => {
                     setClient(values[0] ?? null);

@@ -16,6 +16,7 @@ import { getUserDisplayName } from "@/lib/auth";
 import {
   type ProjectContactInput,
   type ProjectContactEntityType,
+  hasProjectClientCompany,
   validateProjectContactInput,
 } from "@/lib/project-contact-validation";
 import {
@@ -989,6 +990,13 @@ export async function completeProjectInquiry(
               ? { finalBeneficiaries: "Select only valid final beneficiaries." }
               : {}),
           },
+        } as const;
+      }
+
+      if (!hasProjectClientCompany({ company: clientSnapshot.snapshotCompany })) {
+        return {
+          error: "The selected client must have a company name.",
+          fieldErrors: { client: "Select a client with a company name or add a new client." },
         } as const;
       }
 
