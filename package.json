@@ -79,7 +79,9 @@
     "prisma:push": "prisma db push",
     "users:create": "node scripts/create-user.mjs",
     "project-tags:integration-check": "tsc --project scripts/tsconfig.project-tags-integration.json && node scripts/run-project-tags-isolated-integration.mjs",
-    "project-tags:ui-check": "node scripts/project-tags-ui-check.cjs"
+    "project-tags:ui-check": "node scripts/project-tags-ui-check.cjs",
+    "tasks:integration-check": "tsc --project scripts/tsconfig.tasks-integration.json && node scripts/run-tasks-isolated-integration.mjs",
+    "tasks:ui-check": "tsc --project scripts/tsconfig.tasks-integration.json && COMPILED_ALIAS_ROOT=.tmp/tasks-integration node -r ./scripts/register-compiled-alias.cjs scripts/tasks-ui-check.cjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1053.0",

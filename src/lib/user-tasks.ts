@@ -1,6 +1,6 @@
 import {
   ProjectWorkflowStageKey,
-  UserRole,
+  type Prisma,
 } from "@prisma/client";
 import { unstable_cache } from "next/cache";
 
@@ -8,7 +8,12 @@ import {
   getNeedsAttentionItems,
   type DashboardAttentionItem,
 } from "@/lib/dashboard";
-import { canUseProjects, type PermissionUser } from "@/lib/permissions/resolver";
+import {
+  canUseTasks,
+  getAccessibleProjectsWhere,
+  type PermissionUser,
+} from "@/lib/permissions/resolver";
+import { isBusinessAdministratorRole } from "@/lib/user-role-compatibility";
 import {
   compareProjectsByPriority,
   normalizeProjectPriority,
@@ -29,6 +34,8 @@ const conceptTaskStageKeys = [
 export type UserTaskListItem = {
   id: string;
   name: string;
+  assignedToName: string | null;
+  assignedByName: string | null;
   stageNumber: 3 | 4;
   stageLabel: "Initial Concept" | "Final Concept";
   href: string;
@@ -48,6 +55,7 @@ export type UserTaskProjectGroup = {
 };
 
 export type UserTasksPageData = {
+  view: "RECEIVED" | "GIVEN";
   projects: UserTaskProjectGroup[];
   attentionItems: DashboardAttentionItem[];
   summary: {
@@ -71,38 +79,24 @@ function displayName(user: { name: string | null; email: string }) {
   return user.name?.trim() || user.email;
 }
 
-function canListExecutorTasks(user: PermissionUser) {
-  return user.role === UserRole.USER && canUseProjects(user);
+function getTaskListWhere(user: PermissionUser): Prisma.ProjectConceptFolderWhereInput {
+  return {
+    workflowStageKey: { in: [...conceptTaskStageKeys] },
+    project: { is: getAccessibleProjectsWhere(user) },
+    ...(isBusinessAdministratorRole(user.role)
+      ? { assignedById: user.id, assignedExecutorId: { not: null } }
+      : { assignedExecutorId: user.id }),
+  };
 }
 
 export async function getUserTaskSidebarCount(user: PermissionUser) {
-  if (!canListExecutorTasks(user)) return 0;
+  if (!canUseTasks(user)) return 0;
 
   return unstable_cache(
-    async () =>
-      withPrismaRetry(async () => {
-        const projectAssignments = await prisma.projectExecutor.findMany({
-          where: { userId: user.id },
-          select: {
-            _count: {
-              select: {
-                assignedConceptFolders: {
-                  where: {
-                    workflowStageKey: { in: [...conceptTaskStageKeys] },
-                  },
-                },
-              },
-            },
-          },
-        });
-
-        return projectAssignments.reduce(
-          (total, assignment) =>
-            total + assignment._count.assignedConceptFolders,
-          0,
-        );
-      }),
-    ["user-task-sidebar-count-v1", user.id],
+    () => withPrismaRetry(() => prisma.projectConceptFolder.count({
+      where: getTaskListWhere(user),
+    })),
+    ["task-sidebar-count-v2", user.id, user.role, JSON.stringify(getAccessibleProjectsWhere(user))],
     { revalidate: 20, tags: [USER_TASKS_CACHE_TAG] },
   )();
 }
@@ -110,8 +104,10 @@ export async function getUserTaskSidebarCount(user: PermissionUser) {
 export async function getUserTasksPageData(
   user: PermissionUser,
 ): Promise<UserTasksPageData> {
-  if (!canListExecutorTasks(user)) {
+  const view = isBusinessAdministratorRole(user.role) ? "GIVEN" : "RECEIVED";
+  if (!canUseTasks(user)) {
     return {
+      view,
       projects: [],
       attentionItems: [],
       summary: {
@@ -127,13 +123,12 @@ export async function getUserTasksPageData(
   const [records, attentionItems] = await Promise.all([
     withPrismaRetry(() =>
       prisma.projectConceptFolder.findMany({
-        where: {
-          assignedExecutorId: user.id,
-          workflowStageKey: { in: [...conceptTaskStageKeys] },
-        },
+        where: getTaskListWhere(user),
         select: {
           id: true,
           name: true,
+          assignedExecutor: { select: { user: { select: { name: true, email: true } } } },
+          assignedBy: { select: { name: true, email: true } },
           workflowStageKey: true,
           approvedAttachmentId: true,
           completionRequestedAt: true,
@@ -168,7 +163,7 @@ export async function getUserTasksPageData(
         },
       }),
     ),
-    getNeedsAttentionItems(user),
+    view === "RECEIVED" ? getNeedsAttentionItems(user) : Promise.resolve([]),
   ]);
 
   const projectGroupById = new Map<
@@ -194,6 +189,8 @@ export async function getUserTasksPageData(
     const task: UserTaskListItem = {
       id: record.id,
       name: record.name,
+      assignedToName: record.assignedExecutor ? displayName(record.assignedExecutor.user) : null,
+      assignedByName: record.assignedBy ? displayName(record.assignedBy) : null,
       stageNumber,
       stageLabel: stageNumber === 3 ? "Initial Concept" : "Final Concept",
       href: `/projects/${encodeURIComponent(record.project.id)}/stages/${stageNumber}/concepts/${encodeURIComponent(record.id)}?returnTo=%2Ftasks`,
@@ -286,12 +283,15 @@ export async function getUserTasksPageData(
   const tasks = projects.flatMap((project) => project.tasks);
 
   return {
+    view,
     projects,
     attentionItems,
     summary: {
       total: tasks.length,
       open: tasks.filter((task) => task.display.status !== "COMPLETED").length,
-      needsAttention: attentionItems.length,
+      needsAttention: view === "RECEIVED"
+        ? attentionItems.length
+        : tasks.filter((task) => task.display.status === "NEEDS_ATTENTION").length,
       waitingForReview: tasks.filter(
         (task) => task.display.status === "WAITING_FOR_REVIEW",
       ).length,

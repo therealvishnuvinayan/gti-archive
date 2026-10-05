@@ -245,6 +245,7 @@ async function reopenConceptWork(
         await tx.projectConceptFolder.update({ where: { id: input.folderId }, data: {
           completedWithoutFileAt: null, completionRequestedAt: null, completionRequestNote: null,
           assignedExecutorId: resolution.assignedExecutorId,
+          ...(resolution.assignmentChanged ? { assignedById: user.id } : {}),
         } });
         await tx.projectComment.create({ data: {
           projectId: input.projectId, stageId: resolution.taskerStageId, authorId: user.id,

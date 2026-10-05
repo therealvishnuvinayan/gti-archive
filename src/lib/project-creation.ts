@@ -504,7 +504,7 @@ export async function updateProjectV2(
             projectId,
             assignedExecutorId: { in: removedExecutorIds },
           },
-          data: { assignedExecutorId: null },
+          data: { assignedExecutorId: null, assignedById: null },
         });
       }
 

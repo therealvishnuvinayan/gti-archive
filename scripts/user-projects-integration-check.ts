@@ -355,7 +355,11 @@ async function main() {
     );
     const userTwoTasks = await getUserTasksPageData(userTwo);
     check(userTwoTasks.summary.total === 1, "USER task page leaked another executor's assignments");
-    check((await getUserTasksPageData(owner)).summary.total === 0, "ADMIN accounts received the executor Tasks page data");
+    const ownerTasks = await getUserTasksPageData(owner);
+    check(ownerTasks.view === "GIVEN", "ADMIN Tasks page must show given tasks");
+    check(ownerTasks.summary.total === await prisma.projectConceptFolder.count({
+      where: { assignedById: owner.id, assignedExecutorId: { not: null } },
+    }), "ADMIN Tasks page must include only tasks they assigned");
 
     const mixed = all.projects.find((project) => project.id === mixedProjectId);
     check(mixed, "mixed assignment project is missing");

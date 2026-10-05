@@ -172,9 +172,10 @@ for (const forbidden of [
   assert.ok(!browser.includes(forbidden), `USER Projects UI leaked: ${forbidden}`);
 }
 
-assert.match(browser, /Artwork Projects/);
-assert.match(browser, /Flexible Projects/);
-assert.match(browser, /href="\/projects\?view=flexible"/);
+const typeSwitcher = read("src/components/projects/project-type-switcher.tsx");
+assert.match(browser, /ProjectTypeSwitcher activeView="collaborative"/);
+assert.match(typeSwitcher, /Collaborative Projects/);
+assert.match(typeSwitcher, /Private Projects/);
 assert.match(browser, /showProjectTypeSwitcher \? \(/);
 assert.match(flexibleRoute, /showProjectTypeSwitcher \? \(/);
 assert.match(page, /getProjectTypeSwitcherVisibility\(user\)/);
@@ -200,10 +201,13 @@ assert.match(query, /isCompleted: left\.status === "COMPLETED"/);
 assert.doesNotMatch(query, /inquiry:/);
 assert.doesNotMatch(query, /researchWorkspaces:/);
 
-assert.match(tasksPage, /user\.role !== UserRole\.USER/);
+assert.match(tasksPage, /canUseTasks\(user\)/);
+assert.doesNotMatch(tasksPage, /user\.role !== UserRole\.USER/);
 assert.match(tasksPage, /getUserTasksPageData\(user\)/);
 assert.match(tasksWorkspace, /My Tasks/);
-assert.match(tasksWorkspace, /Executor Workspace/);
+assert.match(tasksWorkspace, /Received Tasks/);
+assert.match(tasksWorkspace, /Tasks I Assigned/);
+assert.match(tasksWorkspace, /Assigned to/);
 assert.match(tasksWorkspace, /Open a project folder/);
 assert.match(tasksWorkspace, /Open task/);
 assert.match(tasksWorkspace, /Stage \{task\.stageNumber\}/);
@@ -213,7 +217,8 @@ assert.match(tasksService, /ProjectWorkflowStageKey\.CONCEPT_CREATION/);
 assert.match(tasksService, /ProjectWorkflowStageKey\.PROJECT_DEVELOPMENT/);
 assert.match(tasksService, /returnTo=%2Ftasks/);
 assert.match(tasksService, /getNeedsAttentionItems\(user\)/);
-assert.match(tasksService, /needsAttention: attentionItems\.length/);
+assert.match(tasksService, /needsAttention: view === "RECEIVED"[\s\S]*?attentionItems\.length/);
+assert.match(tasksService, /assignedById: user\.id/);
 assert.match(tasksWorkspace, /data\.attentionItems/);
 assert.match(tasksWorkspace, /<AttentionRow key=\{item\.id\} item=\{item\} \/>/);
 assert.match(tasksWorkspace, /onClick=\{\(\) => setFilter\(card\.filter\)\}/);
@@ -228,7 +233,9 @@ assert.match(
   conceptActions,
   /function revalidateConceptStage\([\s\S]*?revalidatePath\("\/tasks"\)/,
 );
-assert.match(dashboardLayout, /tasks: taskBadgeCount > 0/);
+assert.match(dashboardLayout, /getSidebarVisibility\(user\)/);
+assert.doesNotMatch(dashboardLayout, /tasks: taskBadgeCount > 0/);
+assert.match(permissions, /tasks: canUseTasks\(user\)/);
 assert.match(sidebar, /label: "Tasks", href: "\/tasks"/);
 assert.match(sidebar, /item\.href === "\/tasks"/);
 

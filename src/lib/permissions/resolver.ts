@@ -183,6 +183,10 @@ export function canUseProjects(user: PermissionUser) {
   );
 }
 
+export function canUseTasks(user: PermissionUser) {
+  return canUseProjects(user);
+}
+
 export type ProjectTypeSwitcherAuthority = {
   isProjectOwner: boolean;
   isProjectCoOwner: boolean;
@@ -264,7 +268,7 @@ export function getSidebarVisibility(user: PermissionUser): SidebarVisibility {
     fluxAi: canUseFluxAi(user),
     projects,
     projectTracker: projects && hasPermission(user, "project.update"),
-    tasks: false,
+    tasks: canUseTasks(user),
     projectCounts:
       projects && hasPermission(user, "dashboard.viewProjectCounts"),
     calendar: hasPermission(user, "calendar.view"),
