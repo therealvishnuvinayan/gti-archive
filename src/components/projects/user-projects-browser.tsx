@@ -22,6 +22,7 @@ import {
 } from "@/components/motion/motion-primitives";
 import { ProjectPageHeader } from "@/components/projects/project-page-header";
 import { ProjectTypeSwitcher } from "@/components/projects/project-type-switcher";
+import { ProjectTagBadges } from "@/components/projects/project-tag-badges";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -228,6 +229,7 @@ function UserProjectGridCard({
       <CardContent className="flex h-full flex-col p-0">
         <ProjectStatusBadge project={project} />
 
+        <ProjectTagBadges tags={project.tags} className="mt-3" />
         <h2 className="mt-3 line-clamp-2 text-[18px] font-[750] leading-[1.25] tracking-[-0.025em] text-[#111612]">
           {project.title}
         </h2>
@@ -303,6 +305,7 @@ function UserProjectListRow({
         <ProjectStatusBadge project={project} />
 
         <div className="min-w-0">
+          <ProjectTagBadges tags={project.tags} className="mb-2" />
           <h2 className="truncate text-[17px] font-[750] tracking-[-0.02em] text-[#111612]">
             {project.title}
           </h2>

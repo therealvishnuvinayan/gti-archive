@@ -270,6 +270,7 @@ async function main() {
     check(!isError(editedProject), "project edit failed");
 
     const artwork = await createProjectV2(admin, {
+      tags: ["Integration test"],
       name: "Artwork Regression Project",
       ownerId: ids.admin,
       coOwnerIds: [],

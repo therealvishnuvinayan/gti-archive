@@ -137,6 +137,7 @@ async function mustCreateProject(name: string) {
     { id: users.owner.id },
     {
       name,
+      tags: ["Integration test"],
       ownerId: users.owner.id,
       coOwnerIds: [users.coOwner.id],
       executorIds: [users.executor.id],
@@ -153,6 +154,7 @@ async function mustCreateSelfManagedProject(name: string) {
     { id: users.owner.id },
     {
       name,
+      tags: ["Integration test"],
       ownerId: users.owner.id,
       coOwnerIds: [],
       executorIds: [],

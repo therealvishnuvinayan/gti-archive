@@ -17,6 +17,7 @@ import {
   deleteProjectAction,
   toggleProjectPinAction,
 } from "@/app/(dashboard)/projects/actions";
+import { ProjectTagBadges } from "@/components/projects/project-tag-badges";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
@@ -36,6 +37,7 @@ type ProjectCardPerson = {
 export type ProjectCardItem = {
   id: string;
   title: string;
+  tags?: string[];
   businessStatus: "ACTIVE" | "COMPLETED" | null;
   statusLabel: "Active" | "Completed" | null;
   workflowHealth: "VALID" | "MISSING" | "INVALID";
@@ -234,6 +236,7 @@ export function ProjectCard({ project, returnHref }: ProjectCardProps) {
             ) : null}
           </div>
 
+          <ProjectTagBadges tags={project.tags} className="mt-3" />
           <h2 className="mt-3 line-clamp-2 min-h-[30px] text-[20px] font-[700] leading-[1.25] tracking-[-0.025em] text-[#111612]">
             {project.title}
           </h2>

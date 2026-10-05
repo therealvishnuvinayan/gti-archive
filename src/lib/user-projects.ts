@@ -70,6 +70,7 @@ export type UserProjectDisplayStatus =
 export type UserProjectListItem = {
   id: string;
   title: string;
+  tags?: string[];
   description: string | null;
   owner: {
     id: string;
@@ -248,6 +249,7 @@ export async function getUserProjectsList(
           accessibleWhere,
           {
             OR: [
+              { tags: { some: { tag: { name: { contains: query, mode: "insensitive" as const } } } } },
               { name: { contains: query, mode: "insensitive" as const } },
               { description: { contains: query, mode: "insensitive" as const } },
               {
@@ -287,6 +289,10 @@ export async function getUserProjectsList(
         select: {
           id: true,
           name: true,
+          tags: {
+            orderBy: [{ createdAt: "asc" }, { tagId: "asc" }],
+            select: { tag: { select: { name: true } } },
+          },
           description: true,
           priority: true,
           updatedAt: true,
@@ -358,6 +364,7 @@ export async function getUserProjectsList(
     return {
       id: project.id,
       title: project.name,
+      tags: project.tags.map(({ tag }) => tag.name),
       description: project.description?.trim() || null,
       owner: project.owner
         ? {

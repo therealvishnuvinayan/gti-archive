@@ -302,6 +302,7 @@ async function main() {
   );
 
   const createdProject = await createProjectV2(owner, {
+    tags: ["Integration test"],
     name: `E2E QA - Concept Workflow - ${runLabel}`,
     ownerId: owner.id,
     coOwnerIds: [coOwner.id],

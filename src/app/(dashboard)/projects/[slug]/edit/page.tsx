@@ -7,6 +7,7 @@ import { getCollaborators } from "@/lib/collaboration";
 import { hasPermission, hasProjectPermission } from "@/lib/permissions/resolver";
 import { getEligibleProjectOwnerCandidates } from "@/lib/project-owner-candidates";
 import { getProjectStageAccessRecordById } from "@/lib/project-stage-data";
+import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { isProjectStatusCompleted } from "@/lib/project-statuses";
 
 export default async function EditProjectPage({
@@ -29,9 +30,14 @@ export default async function EditProjectPage({
 
   if (!canEdit) redirect(`/projects/${slug}`);
 
-  const [collaborators, eligibleOwnerCandidates] = await Promise.all([
+  const [collaborators, eligibleOwnerCandidates, assignments] = await Promise.all([
     getCollaborators(),
     getEligibleProjectOwnerCandidates(),
+    withPrismaRetry(() => prisma.projectTagAssignment.findMany({
+      where: { projectId: project.id },
+      orderBy: [{ createdAt: "asc" }, { tagId: "asc" }],
+      select: { tag: { select: { name: true } } },
+    })),
   ]);
   const executorIds = project.executors.map((executor) => executor.userId);
   const ownerIds = new Set([
@@ -47,6 +53,7 @@ export default async function EditProjectPage({
         initialProject={{
           id: project.id,
           name: project.name,
+          tags: assignments.map(({ tag }) => tag.name),
           ownerId: project.ownerId ?? user.id,
           coOwnerIds: project.coOwners.map((coOwner) => coOwner.userId),
           executorIds,

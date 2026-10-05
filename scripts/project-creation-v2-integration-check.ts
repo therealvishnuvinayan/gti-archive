@@ -97,6 +97,7 @@ async function main() {
   const success = await createProjectV2(
     { id: ids.creator },
     {
+      tags: ["Integration test"],
       name: "V2 collaborator integration success",
       ownerId: ids.owner,
       coOwnerIds: [ids.coOwner],
@@ -110,6 +111,7 @@ async function main() {
   const forgedUserCreate = await createProjectV2(
     { id: ids.executorA },
     {
+      tags: ["Integration test"],
       name: "Forged USER project creation",
       ownerId: ids.creator,
       coOwnerIds: [],
@@ -140,6 +142,7 @@ async function main() {
   const selectedUserCreate = await createProjectV2(
     { id: ids.executorA },
     {
+      tags: ["Integration test"],
       name: "Selected USER project creation",
       ownerId: ids.creator,
       coOwnerIds: [],
@@ -407,6 +410,7 @@ async function main() {
   const overlap = await createProjectV2(
     { id: ids.creator },
     {
+      tags: ["Integration test"],
       name: "V2 executor collaborator overlap",
       ownerId: ids.owner,
       coOwnerIds: [],
@@ -444,6 +448,7 @@ async function main() {
   const zeroCollaborators = await createProjectV2(
     { id: ids.creator },
     {
+      tags: ["Integration test"],
       name: "V2 zero collaborators",
       ownerId: ids.owner,
       coOwnerIds: [],
@@ -462,6 +467,7 @@ async function main() {
   const legacyFourFieldInput = await createProjectV2(
     { id: ids.creator },
     {
+      tags: ["Integration test"],
       name: "V2 omitted collaborators",
       ownerId: ids.owner,
       coOwnerIds: [],
@@ -478,6 +484,7 @@ async function main() {
   const duplicateExecutors = await createProjectV2(
     { id: ids.creator },
     {
+      tags: ["Integration test"],
       name: "Duplicate executors",
       ownerId: ids.owner,
       coOwnerIds: [],
@@ -489,6 +496,7 @@ async function main() {
   const invalidUsers = await createProjectV2(
     { id: ids.creator },
     {
+      tags: ["Integration test"],
       name: "Invalid users",
       ownerId: "missing-owner",
       coOwnerIds: [],
@@ -506,6 +514,7 @@ async function main() {
   const ineligibleCollaborator = await createProjectV2(
     { id: ids.creator },
     {
+      tags: ["Integration test"],
       name: "Ineligible collaborator role",
       ownerId: ids.owner,
       coOwnerIds: [],
@@ -518,6 +527,7 @@ async function main() {
   const malformedCollaborator = await createProjectV2(
     { id: ids.creator },
     {
+      tags: ["Integration test"],
       name: "Malformed collaborator ID",
       ownerId: ids.owner,
       coOwnerIds: [],
@@ -530,6 +540,7 @@ async function main() {
   const ownerAsCoOwner = await createProjectV2(
     { id: ids.creator },
     {
+      tags: ["Integration test"],
       name: "Owner overlap",
       ownerId: ids.owner,
       coOwnerIds: [ids.creator],
@@ -541,6 +552,7 @@ async function main() {
   const noExecutors = await createProjectV2(
     { id: ids.creator },
     {
+      tags: ["Integration test"],
       name: "No executors",
       ownerId: ids.owner,
       coOwnerIds: [],
@@ -576,6 +588,7 @@ async function main() {
   const superAdminCoOwner = await createProjectV2(
     { id: ids.creator },
     {
+      tags: ["Integration test"],
       name: "SA co-owner",
       ownerId: ids.owner,
       coOwnerIds: [ids.otherSuperAdmin],
@@ -607,6 +620,7 @@ async function main() {
     await createProjectV2(
       { id: ids.creator },
       {
+        tags: ["Integration test"],
         name: "Must roll back",
         ownerId: ids.owner,
         coOwnerIds: [ids.coOwner],

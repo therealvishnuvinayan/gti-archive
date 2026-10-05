@@ -175,6 +175,7 @@ type ProjectCardProject = Pick<
   | "isPinned"
   | "priority"
 > & {
+  tags: Array<{ tag: { name: string } }>;
   owner: Pick<User, "id" | "name" | "email"> | null;
   closure: { id: string } | null;
   workflowStages: Array<
@@ -191,6 +192,7 @@ type ProjectCardProject = Pick<
 export type ProjectCardRecord = {
   id: string;
   title: string;
+  tags: string[];
   businessStatus: "ACTIVE" | "COMPLETED" | null;
   statusLabel: "Active" | "Completed" | null;
   workflowHealth: "VALID" | "MISSING" | "INVALID";
@@ -1092,6 +1094,7 @@ function mapProjectToCard(
   return {
     id: project.id,
     title: project.name,
+    tags: project.tags.map(({ tag }) => tag.name),
     ...workflowState,
     showWorkflowDiagnostic: currentUser.role === UserRole.SUPER_ADMIN,
     owner: project.owner
@@ -1903,6 +1906,7 @@ function buildProjectsWhere(
   if (query) {
     clauses.push({
       OR: [
+        { tags: { some: { tag: { name: { contains: query, mode: "insensitive" } } } } },
         {
           name: {
             contains: query,
@@ -2311,6 +2315,10 @@ export async function getProjectsList(
   const projectCardSelect = {
     id: true,
     name: true,
+    tags: {
+      orderBy: [{ createdAt: "asc" as const }, { tagId: "asc" as const }],
+      select: { tag: { select: { name: true } } },
+    },
     priority: true,
     updatedAt: true,
     completedAt: true,
@@ -2431,7 +2439,7 @@ export async function getProjectsList(
         };
       }),
     [
-      "projects-list-v3-priority-dashboard",
+      "projects-list-v4-tags-dashboard",
       filter.status ?? "all",
       filter.query?.trim().toLowerCase() ?? "",
       String(filter.stage ?? "all"),

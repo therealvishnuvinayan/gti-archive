@@ -105,6 +105,7 @@ async function createProject(input: {
   const result = await createProjectV2(
     { id: input.ownerId },
     {
+      tags: ["Integration test"],
       name: input.name,
       ownerId: input.ownerId,
       coOwnerIds: [],

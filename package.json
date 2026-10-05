@@ -77,7 +77,9 @@
     "prisma:generate": "prisma generate",
     "prisma:client-check": "node scripts/prisma-client-regression-checks.mjs",
     "prisma:push": "prisma db push",
-    "users:create": "node scripts/create-user.mjs"
+    "users:create": "node scripts/create-user.mjs",
+    "project-tags:integration-check": "tsc --project scripts/tsconfig.project-tags-integration.json && node scripts/run-project-tags-isolated-integration.mjs",
+    "project-tags:ui-check": "node scripts/project-tags-ui-check.cjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1053.0",

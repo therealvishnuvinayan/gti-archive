@@ -210,6 +210,7 @@ async function main() {
     const created = await createProjectV2(
       { id: users.owner.id },
       {
+        tags: ["Integration test"],
         name: "USER Stage Neutral Workspace",
         ownerId: users.owner.id,
         coOwnerIds: [users.coOwner.id],
@@ -513,6 +514,7 @@ async function main() {
     const secondCreated = await createProjectV2(
       { id: users.owner.id },
       {
+        tags: ["Integration test"],
         name: "USER Workspace Cross Project",
         ownerId: users.owner.id,
         coOwnerIds: [],
