@@ -14,7 +14,6 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
-  File,
   FileDown,
   Folder,
   FolderKey,
@@ -74,7 +73,12 @@ const sortLabels: Record<FolderSort, string> = {
   colour: "Colour label",
 };
 
-function FolderArtwork({ action = false, colorLabel = null }: { action?: boolean; colorLabel?: FolderColor | null }) {
+function FolderArtwork({ action = false, colorLabel = null, itemCount = 0, countLabel }: {
+  action?: boolean;
+  colorLabel?: FolderColor | null;
+  itemCount?: number;
+  countLabel?: string;
+}) {
   const color = getFolderColor(colorLabel);
   return (
     <span
@@ -87,6 +91,15 @@ function FolderArtwork({ action = false, colorLabel = null }: { action?: boolean
       )}
     >
       {action ? <Plus className="h-5 w-5" /> : <Folder className="h-7 w-7 fill-current opacity-90" />}
+      {itemCount > 0 ? (
+        <span
+          title={countLabel}
+          aria-label={countLabel}
+          className="absolute -right-1.5 -top-1.5 flex h-6 min-w-6 items-center justify-center rounded-full border-2 border-white bg-[#24764e] px-1.5 text-[10px] font-[750] tabular-nums text-white shadow-sm"
+        >
+          {itemCount}
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -120,6 +133,8 @@ function FolderTile({
 }) {
   const dragDepth = useRef(0);
   const [dragActive, setDragActive] = useState(false);
+  const itemCount = folder.folderCount + folder.fileCount;
+  const countLabel = `${itemCount} ${itemCount === 1 ? "item" : "items"}: ${folder.folderCount} ${folder.folderCount === 1 ? "subfolder" : "subfolders"}, ${folder.fileCount} ${folder.fileCount === 1 ? "file" : "files"}`;
 
   function isFileDrag(event: DragEvent<HTMLElement>) {
     return event.dataTransfer.types.includes("Files");
@@ -159,7 +174,7 @@ function FolderTile({
           ? "border-[#2b8056] bg-[#eaf5ed] ring-2 ring-[#2b8056]/20"
           : "border-[#dfe6df]",
         view === "grid"
-          ? "min-h-[154px] rounded-[20px]"
+          ? "min-h-[96px] rounded-[20px]"
           : "w-full rounded-[17px]",
       )}
     >
@@ -169,33 +184,29 @@ function FolderTile({
         className={cn(
           "flex h-full w-full",
           view === "grid"
-            ? "min-h-[152px] flex-col p-5"
-            : "items-center gap-4 px-4 py-3.5",
+            ? "min-h-[94px] flex-col justify-center p-4"
+            : "flex-col justify-center px-4 py-3.5",
         )}
       >
-        <div className={cn("flex w-full items-center gap-4", canWrite ? "pr-20" : canDelete && "pr-10")}>
-          <FolderArtwork colorLabel={folder.colorLabel} />
+        <div className={cn("flex w-full items-center gap-3", canWrite ? "pr-20" : canDelete && "pr-10")}>
+          <FolderArtwork colorLabel={folder.colorLabel} itemCount={itemCount} countLabel={countLabel} />
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[14px] font-[720] text-[#202a23]">{folder.name}</span>
-            <span className="mt-1 block text-[11px] text-[#7c867f]">
-              {folder.isSystem ? "System folder" : "Custom folder"}
-              {folder.pinnedAt ? <span className="ml-2 inline-flex items-center gap-1 text-[#24764e]"><Pin className="size-3" />Pinned</span> : null}
-            </span>
+            <span title={folder.name} className="line-clamp-2 break-words text-[14px] font-[720] leading-5 text-[#202a23]">{folder.name}</span>
+            {folder.pinnedAt ? <span className="mt-1 inline-flex items-center gap-1 text-[11px] text-[#24764e]"><Pin className="size-3" />Pinned</span> : null}
             <FolderColorBadge value={folder.colorLabel} className="mt-1" />
           </span>
-          <ChevronRight className="h-4 w-4 shrink-0 text-[#8a948d] transition group-hover:translate-x-0.5 group-hover:text-brand" />
         </div>
-        <span className={cn("flex items-center gap-1.5 text-[11px] text-[#6f7a72]", view === "grid" && "mt-auto border-t border-[#edf1ed] pt-3.5")}>
-          {upload ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <File className="h-3.5 w-3.5" />}
-          {upload
-            ? `Uploading ${upload.fileCount} ${upload.fileCount === 1 ? "file" : "files"} · ${upload.progress}%`
-            : `${folder.folderCount} ${folder.folderCount === 1 ? "folder" : "folders"} · ${folder.fileCount} ${folder.fileCount === 1 ? "file" : "files"}`}
-        </span>
+        {upload ? (
+          <span role="status" className="mt-2 flex items-center gap-1.5 text-[11px] text-[#6f7a72]">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            {`Uploading ${upload.fileCount} ${upload.fileCount === 1 ? "file" : "files"} · ${upload.progress}%`}
+          </span>
+        ) : null}
       </Link>
-      {canWrite ? <FolderPinButton name={folder.name} pinned={Boolean(folder.pinnedAt)} pending={pinPending} onClick={() => onPin(folder)} className={cn("absolute z-20", view === "grid" ? "right-14 top-4" : "right-14 top-1/2 -translate-y-1/2")} /> : null}
+      {canWrite ? <FolderPinButton name={folder.name} pinned={Boolean(folder.pinnedAt)} pending={pinPending} onClick={() => onPin(folder)} className="absolute right-14 top-1/2 z-20 -translate-y-1/2" /> : null}
       {canWrite || canDelete ? (
         <DropdownMenu>
-          <DropdownMenuTrigger asChild><button type="button" aria-label={`Actions for folder ${folder.name}`} className={cn("absolute z-20 grid size-9 place-items-center rounded-[10px] border border-[#dfe6df] bg-white text-[#68736b] hover:bg-[#f1f5f2]", view === "grid" ? "right-4 top-4" : "right-4 top-1/2 -translate-y-1/2")}><MoreVertical className="size-4" /></button></DropdownMenuTrigger>
+          <DropdownMenuTrigger asChild><button type="button" aria-label={`Actions for folder ${folder.name}`} className="absolute right-4 top-1/2 z-20 grid size-9 -translate-y-1/2 place-items-center rounded-[10px] border border-[#dfe6df] bg-white text-[#68736b] hover:bg-[#f1f5f2]"><MoreVertical className="size-4" /></button></DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             {canWrite ? <FolderColorMenu value={folder.colorLabel} pending={colorPending} onChange={(color) => onColor(folder, color)} /> : null}
             {canDelete ? <DropdownMenuItem disabled={Boolean(upload)} onSelect={() => onDelete(folder)} variant="destructive"><Trash2 className="size-4" />Delete folder</DropdownMenuItem> : null}
@@ -504,8 +515,8 @@ export function StageTwoWorkspace({
                 />
               ))}
               {data.sharedWorkspace.canWrite ? (
-                <button type="button" onClick={() => { setFolderError(undefined); setDialogOpen(true); }} className={cn("group border border-dashed border-[#a9c6b2] bg-[linear-gradient(145deg,#f8fcf9,#eef7f1)] text-[#286b49]", view === "grid" ? "flex min-h-[154px] flex-col items-center justify-center rounded-[20px] p-5" : "flex w-full items-center gap-4 rounded-[17px] px-4 py-3.5")}>
-                  <FolderArtwork action /><span className={view === "grid" ? "mt-3" : "flex-1 text-left"}><span className="block text-[14px] font-[720]">New Folder</span><span className="text-[11px] text-[#718079]">Create a new folder</span></span>
+                <button type="button" onClick={() => { setFolderError(undefined); setDialogOpen(true); }} className={cn("group border border-dashed border-[#a9c6b2] bg-[linear-gradient(145deg,#f8fcf9,#eef7f1)] text-[#286b49]", view === "grid" ? "flex min-h-[96px] items-center justify-center gap-3 rounded-[20px] p-4" : "flex w-full items-center gap-4 rounded-[17px] px-4 py-3.5")}>
+                  <FolderArtwork action /><span className="text-left"><span className="block text-[14px] font-[720]">New Folder</span></span>
                 </button>
               ) : null}
             </div>
