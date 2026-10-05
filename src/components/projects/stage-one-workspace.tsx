@@ -1015,7 +1015,7 @@ export function StageOneWorkspace({
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const stageTwoHref = `/projects/${project.id}/stages/2`;
+    const projectWorkspaceHref = `/projects/${project.id}`;
     if (!pageData.canEdit || submitting) return;
     const nextErrors: ProjectInquiryFieldErrors = {};
     if (!client) nextErrors.client = "Select a client.";
@@ -1073,7 +1073,7 @@ export function StageOneWorkspace({
         return;
       }
       showSuccessToast("Project Inquiry completed.", "Stage 2 is now available.");
-      router.push(stageTwoHref);
+      router.push(projectWorkspaceHref);
       router.refresh();
     });
   }
@@ -1369,7 +1369,7 @@ export function StageOneWorkspace({
                       : "Completing..."
                     : pageData.workflowStatus === "COMPLETED"
                       ? "Save Changes"
-                      : "Next Stage"}
+                      : "Continue"}
                   {!submitting && pageData.workflowStatus !== "COMPLETED" ? (
                     <ArrowRight className="h-4 w-4" />
                   ) : null}
@@ -1377,8 +1377,8 @@ export function StageOneWorkspace({
               ) : null}
               {pageData.workflowStatus === "COMPLETED" ? (
                 <Button asChild type="button" variant="secondary" className="min-w-[170px] rounded-[13px] shadow-none">
-                  <Link href={`/projects/${project.id}/stages/2`}>
-                    Next Stage
+                  <Link href={`/projects/${project.id}`}>
+                    Continue
                     <ArrowRight className="h-4 w-4" />
                   </Link>
                 </Button>

@@ -107,7 +107,7 @@ for (const content of [
   "Project participant",
   "Manual email",
   "All Stages",
-  "Next Stage",
+  "Continue",
 ]) {
   assert(workspace.includes(content), `Missing Stage 5 UI content: ${content}`);
 }
@@ -342,10 +342,12 @@ assert(
   "The Request Information dialog must fit the viewport, scroll its body, and keep its actions visible.",
 );
 assert(
-  workspace.includes('href={`/projects/${project.id}/stages/6`}') &&
+  workspace.includes('href={`/projects/${project.id}`}') &&
+    workspace.includes('router.push(`/projects/${project.id}`)') &&
+    !workspace.includes('href={`/projects/${project.id}/stages/6`}') &&
     !workspace.includes("completeProject") &&
     !workspace.includes("completeProjectStage"),
-  "Next Stage must open Stage 6 directly without mutating Stage 5 workflow state.",
+  "Stage 5 Continue and successful completion must return to the project workspace.",
 );
 assert(
   workspace.includes("href={`/projects/${project.id}`}") && workspace.includes("All Stages"),

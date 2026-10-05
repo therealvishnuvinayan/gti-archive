@@ -1409,7 +1409,7 @@ export function StageFiveWorkspace({
       showSuccessToast(
         `Stage 5 completed. ${result.productionUnitCount} Production Unit${result.productionUnitCount === 1 ? " was" : "s were"} created.`,
       );
-      router.push(`/projects/${project.id}/stages/6`);
+      router.push(`/projects/${project.id}`);
       router.refresh();
     });
   }
@@ -2237,8 +2237,8 @@ export function StageFiveWorkspace({
             </Button>
             {pageData.stageCompleted ? (
               <Button asChild type="button" className="min-w-[180px] rounded-[13px]">
-                <Link href={`/projects/${project.id}/stages/6`}>
-                  Next Stage <ArrowRight className="h-4 w-4" />
+                <Link href={`/projects/${project.id}`}>
+                  Continue <ArrowRight className="h-4 w-4" />
                 </Link>
               </Button>
             ) : pageData.canComplete ? (

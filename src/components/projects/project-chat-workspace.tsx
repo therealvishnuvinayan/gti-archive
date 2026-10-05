@@ -4956,14 +4956,9 @@ export function ProjectChatWorkspace({
     });
   }
 
-  function navigateToStage(nextStageId: string) {
+  function navigateToProjectWorkspace() {
     setCompletionPrompt(null);
-    router.push(
-      `/projects/${encodeURIComponent(project.id)}/chat?stage=${encodeURIComponent(nextStageId)}`,
-    );
-    window.requestAnimationFrame(() => {
-      chatScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-    });
+    router.push(`/projects/${encodeURIComponent(project.id)}`);
   }
 
   async function loadEarlierMessages() {
@@ -8193,7 +8188,7 @@ export function ProjectChatWorkspace({
                         Stage completed
                       </p>
                       <p className="mt-1 text-[14px] font-[800] leading-5 text-[#173120]">
-                        You can now move to the next stage.
+                        Return to the project workspace to select a stage.
                       </p>
                       {completionPrompt.nextStageLabel ? (
                         <p className="mt-1 text-[12px] leading-5 text-[#5f6b62]">
@@ -8205,9 +8200,9 @@ export function ProjectChatWorkspace({
                       <Button
                         type="button"
                         className="min-h-[44px] rounded-full px-5 text-[14px] font-[800] shadow-[0_12px_24px_rgba(34,102,70,0.2)]"
-                        onClick={() => navigateToStage(completionPrompt.nextStageId as string)}
+                        onClick={navigateToProjectWorkspace}
                       >
-                        Go to Next Stage
+                        Continue
                       </Button>
                       <Button
                         type="button"

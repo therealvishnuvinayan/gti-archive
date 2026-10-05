@@ -1685,8 +1685,8 @@ export function StageSixWorkspace({
                   </Button>
                 ) : null}
                 <Button asChild type="button" className="min-w-[180px]">
-                  <Link href={`/projects/${project.id}/stages/7`}>
-                    Next Stage <ArrowRight className="h-4 w-4" />
+                  <Link href={`/projects/${project.id}`}>
+                    Continue <ArrowRight className="h-4 w-4" />
                   </Link>
                 </Button>
               </div>

@@ -387,10 +387,10 @@ export function StageTwoWorkspace({
   }
 
   function completeStage() {
-    const nextStageHref = `/projects/${data.project.id}/stages/${data.nextStage}`;
+    const projectWorkspaceHref = `/projects/${data.project.id}`;
 
     if (data.workflowStatus === "COMPLETED") {
-      router.push(nextStageHref);
+      router.push(projectWorkspaceHref);
       return;
     }
 
@@ -408,7 +408,7 @@ export function StageTwoWorkspace({
             : "Concept Creation is now available.",
         );
       }
-      router.push(`/projects/${data.project.id}/stages/${result.nextStage}`);
+      router.push(projectWorkspaceHref);
       router.refresh();
     });
   }
@@ -553,7 +553,7 @@ export function StageTwoWorkspace({
 
           <div className="flex flex-col gap-3 border-t border-[#e7ece7] bg-white px-5 py-5 sm:flex-row sm:px-7 lg:px-9">
             <Button type="button" className="min-w-[180px] rounded-[13px]" onClick={completeStage} disabled={isPending}>
-              {isPending ? "Saving..." : "Next Stage"}<ArrowRight className="h-4 w-4" />
+              {isPending ? "Saving..." : "Continue"}<ArrowRight className="h-4 w-4" />
             </Button>
             <Button asChild type="button" variant="outline" className="min-w-[160px] rounded-[13px] shadow-none"><Link href={`/projects/${data.project.id}`}><ListChecks className="h-4 w-4" />All Stages</Link></Button>
           </div>

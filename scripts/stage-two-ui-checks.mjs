@@ -39,7 +39,7 @@ assert(
 for (const folderName of ["Brief", "Market & Competition", "Tech", "Vendors", "Finance", "Legal", "Pitch"]) {
   assert(service.includes(`name: "${folderName}"`), `Missing predefined Stage 2 folder: ${folderName}`);
 }
-for (const text of ["Shared folders", "Shared project research files and folders.", "Private Folders", "My Private Folder", "Classified", "New Folder", "Next Stage", "All Stages", "Default order", "Name (A–Z)"]) {
+for (const text of ["Shared folders", "Shared project research files and folders.", "Private Folders", "My Private Folder", "Classified", "New Folder", "Continue", "All Stages", "Default order", "Name (A–Z)"]) {
   assert(`${workspace}\n${page}`.includes(text), `Missing connected Stage 2 UI content: ${text}`);
 }
 assert(
@@ -70,11 +70,10 @@ assert(
   "Stage 2 private-folder cards must expose only the current participant's folder and classified placeholders.",
 );
 assert(
-  workspace.includes('const nextStageHref = `/projects/${data.project.id}/stages/${data.nextStage}`') &&
-    workspace.includes("router.push(nextStageHref)") &&
-    workspace.includes("result.nextStage") &&
-    !workspace.includes('router.push(`/projects/${data.project.id}`)'),
-  "Completing Stage 2 must open the next applicable stage instead of the project overview.",
+  workspace.includes('const projectWorkspaceHref = `/projects/${data.project.id}`') &&
+    workspace.match(/router\.push\(projectWorkspaceHref\)/g)?.length === 2 &&
+    !workspace.includes('router.push(`/projects/${data.project.id}/stages/'),
+  "Stage 2 Continue must return to the project workspace for both completed and newly completed stages.",
 );
 assert(workspace.includes("createProjectResearchFolderAction") && actions.includes("createProjectResearchFolder"), "New Folder must call the persisted server action.");
 assert(
@@ -92,15 +91,15 @@ assert(
     service.includes("create: PROJECT_RESEARCH_SYSTEM_FOLDERS.map"),
   "Deleted predefined folders must not be silently recreated when an existing workspace is ensured.",
 );
-assert(workspace.includes("completeProjectResearchStageAction") && actions.includes("completeProjectResearchStage"), "Next Stage must call the real completion action.");
+assert(workspace.includes("completeProjectResearchStageAction") && actions.includes("completeProjectResearchStage"), "Continue must call the real completion action.");
 assert(
   workspace.includes('data.workflowStatus === "COMPLETED"') &&
-    workspace.includes("router.push(nextStageHref)") &&
+    workspace.includes("router.push(projectWorkspaceHref)") &&
     workspace.includes("if (!result.alreadyCompleted)") &&
     service.includes("const alreadyCompleted =") &&
     service.includes("nextStage: skippedConceptStages ? 5 : 3") &&
     service.includes("reason: \"SELF_MANAGED_PROJECT\""),
-  "Next Stage must navigate directly from completed Stage 2 and suppress repeated completion notifications for stale pages.",
+  "Continue must return to the project workspace from completed Stage 2 and suppress repeated completion notifications for stale pages.",
 );
 assert(!workspace.includes("predefinedFolders") && !workspace.includes("setCustomFolders"), "Folder cards must not use mock/local folder state.");
 assert(

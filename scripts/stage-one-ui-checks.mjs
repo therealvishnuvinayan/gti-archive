@@ -93,21 +93,21 @@ assert(
   "Manual client and beneficiary dialogs must use contextual headings and add actions.",
 );
 assert(
-  workspace.includes('const stageTwoHref = `/projects/${project.id}/stages/2`') &&
-    workspace.includes("router.push(stageTwoHref)") &&
-    !workspace.includes('router.push(`/projects/${project.id}`)'),
-  "Completing Stage 1 must open Stage 2 directly instead of the project overview.",
+  workspace.includes('const projectWorkspaceHref = `/projects/${project.id}`') &&
+    workspace.includes("router.push(projectWorkspaceHref)") &&
+    !workspace.includes('href={`/projects/${project.id}/stages/2`}'),
+  "Stage 1 Continue must return to the project workspace after completion.",
 );
 assert(
   workspace.includes('pageData.workflowStatus === "COMPLETED"') &&
-    workspace.includes('href={`/projects/${project.id}/stages/2`}') &&
+    workspace.includes('href={`/projects/${project.id}`}') &&
     workspace.includes('enabled: pageData.canEdit') &&
     workspace.includes('"Save Changes"') &&
     workspace.includes('"Project Inquiry updated."') &&
     workspace.includes("if (result.alreadyCompleted)") &&
-    !workspace.includes('if (pageData.workflowStatus === "COMPLETED") {\n      router.push(stageTwoHref)') &&
+    !workspace.includes('if (pageData.workflowStatus === "COMPLETED") {\n      router.push(projectWorkspaceHref)') &&
     service.includes("alreadyCompleted: !isFirstCompletion"),
-  "Authorized users must be able to save completed Stage 1 changes while Next Stage remains a separate navigation action.",
+  "Authorized users must be able to save completed Stage 1 changes while Continue remains a separate navigation action.",
 );
 
 assert(
@@ -155,7 +155,7 @@ for (const snippet of [
   "Project Owner",
   "Project Co-Owners",
   "Open Stage",
-  "Next Stage",
+  "Continue",
   "All Stages",
   "AppDatePicker",
   "AttachmentTextarea",
