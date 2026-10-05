@@ -250,7 +250,7 @@ export function UserTasksWorkspace({ data }: { data: UserTasksPageData }) {
 
   if (data.summary.total === 0 && data.attentionItems.length === 0) {
     return (
-      <section className="mx-auto flex min-h-[520px] w-full max-w-[1180px] items-center justify-center pb-8">
+      <section className="flex min-h-[520px] w-full items-center justify-center pb-8">
         <Card className="w-full rounded-[26px] border border-dashed border-[#cbd8ce] bg-white shadow-[0_18px_50px_rgba(22,49,31,0.05)]">
           <CardContent className="flex min-h-[360px] flex-col items-center justify-center px-6 py-12 text-center">
             <span className="grid size-16 place-items-center rounded-[20px] bg-[#eaf4ed] text-[#2f8057]">
@@ -306,7 +306,7 @@ export function UserTasksWorkspace({ data }: { data: UserTasksPageData }) {
   ];
 
   return (
-    <section className="mx-auto w-full max-w-[1280px] pb-8">
+    <section className="w-full pb-8">
       <header className="rounded-[25px] border border-[#dfe7e0] bg-[linear-gradient(135deg,#ffffff_0%,#f3f8f3_62%,#eaf4ed_100%)] px-5 py-6 shadow-[0_16px_44px_rgba(25,59,38,0.055)] sm:px-7 sm:py-8">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
