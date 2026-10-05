@@ -4,12 +4,18 @@ import type { FlexibleProjectListItem, FlexibleProjectUserOption } from "@/lib/f
 
 export function FlexibleProjectsRouteWorkspace({
   projects,
+  projectCount,
+  currentPage,
+  pageSize,
   users,
   currentUserId,
   canCreateProject,
   showProjectTypeSwitcher,
 }: {
   projects: FlexibleProjectListItem[];
+  projectCount: number;
+  currentPage: number;
+  pageSize: number;
   users: FlexibleProjectUserOption[];
   currentUserId: string;
   canCreateProject: boolean;
@@ -20,7 +26,7 @@ export function FlexibleProjectsRouteWorkspace({
       {showProjectTypeSwitcher ? (
         <ProjectTypeSwitcher activeView="private" />
       ) : null}
-      <FlexibleProjectsBrowser canCreateProject={canCreateProject} projects={projects} users={users} currentUserId={currentUserId} />
+      <FlexibleProjectsBrowser canCreateProject={canCreateProject} projects={projects} projectCount={projectCount} currentPage={currentPage} pageSize={pageSize} users={users} currentUserId={currentUserId} />
     </div>
   );
 }

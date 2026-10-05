@@ -102,7 +102,7 @@ type UserTaskStateInput = {
   };
 };
 
-const USER_PROJECT_PAGE_SIZE = 18;
+const USER_PROJECT_PAGE_SIZE = 20;
 
 export function deriveUserTaskDisplayState(
   task: UserTaskStateInput,

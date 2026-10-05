@@ -53,7 +53,7 @@ import type {
 } from "@/lib/flexible-projects";
 import { uploadFlexibleMilestoneAttachments } from "@/lib/flexible-milestone-upload-client";
 import { formatProjectPriority } from "@/lib/project-priority";
-import { showErrorToast, showSuccessToast, showWarningToast } from "@/lib/toast";
+import { showErrorToast, showSuccessToast } from "@/lib/toast";
 
 type MilestoneDialogState = { mode: "add" } | { mode: "edit"; milestoneId: string } | null;
 
@@ -125,13 +125,15 @@ export function FlexibleProjectDetailWorkspace({
       : await createFlexibleMilestoneAction(project.id, input);
     if (!("error" in result)) {
       if (files.length) {
-        try {
-          await uploadFlexibleMilestoneAttachments(project.id, result.milestoneId, files);
-        } catch (error) {
-          showWarningToast(
-            "Milestone saved, but an attachment could not be uploaded.",
-            error instanceof Error ? error.message : "The milestone was saved without that file.",
-          );
+        const upload = await uploadFlexibleMilestoneAttachments(project.id, result.milestoneId, files);
+        if (upload.error) {
+          // A newly created milestone must be updated on retry, rather than created again.
+          setDialogState({ mode: "edit", milestoneId: result.milestoneId });
+          router.refresh();
+          return {
+            error: `Milestone changes saved, but some attachments failed. ${upload.error} Retry the remaining files or remove them to continue.`,
+            retryFiles: upload.failedFiles,
+          };
         }
       }
       setDialogState(null);

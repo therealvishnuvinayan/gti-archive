@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { ArrowRight, CalendarDays, Milestone, PanelsTopLeft, Plus } from "lucide-react";
+import { ArrowRight, CalendarDays, ChevronLeft, ChevronRight, Milestone, PanelsTopLeft, Plus } from "lucide-react";
 
 import { MotionItem, MotionSection, MotionStaggerGroup } from "@/components/motion/motion-primitives";
 import { FlexibleProjectDialog } from "@/components/projects/flexible-project-dialog";
@@ -127,16 +128,35 @@ function FlexibleProjectListRow({ project }: { project: FlexibleProjectListItem 
 export function FlexibleProjectsBrowser({
   canCreateProject,
   projects,
+  projectCount,
+  currentPage,
+  pageSize,
   users,
   currentUserId,
 }: {
   canCreateProject: boolean;
   projects: FlexibleProjectListItem[];
+  projectCount: number;
+  currentPage: number;
+  pageSize: number;
   users: FlexibleProjectUserOption[];
   currentUserId: string;
 }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [layout, changeLayout] = useProjectsLayout();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const totalPages = Math.max(1, Math.ceil(projectCount / pageSize));
+
+  function changePage(page: number) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("view", "flexible");
+    if (page > 1) params.set("page", String(page));
+    else params.delete("page");
+    router.push(`${pathname}?${params}`);
+  }
+
   return (
     <div className="space-y-5">
       <MotionSection>
@@ -172,6 +192,23 @@ export function FlexibleProjectsBrowser({
           </div>
         </MotionSection>
       )}
+
+      {projects.length > 0 && totalPages > 1 ? (
+        <nav aria-label="Private projects pagination" className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-[12px] text-[#687169]">
+            Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, projectCount)} of {projectCount} projects
+          </p>
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="outline" size="icon" className="size-9 rounded-[11px]" disabled={currentPage <= 1} onClick={() => changePage(currentPage - 1)} aria-label="Previous private projects page">
+              <ChevronLeft className="size-4" />
+            </Button>
+            <span className="px-2 text-[12px] font-[600] text-[#687169]">Page {currentPage} of {totalPages}</span>
+            <Button type="button" variant="outline" size="icon" className="size-9 rounded-[11px]" disabled={currentPage >= totalPages} onClick={() => changePage(currentPage + 1)} aria-label="Next private projects page">
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
+        </nav>
+      ) : null}
 
       {createOpen ? <FlexibleProjectDialog mode="create" users={users} currentUserId={currentUserId} onClose={() => setCreateOpen(false)} /> : null}
     </div>

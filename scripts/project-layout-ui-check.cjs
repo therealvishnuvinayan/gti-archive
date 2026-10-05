@@ -23,6 +23,7 @@ function load(file, mocks = {}) {
 const stored = new Map();
 const listeners = new Map();
 let blockedWrites = false, serverRender = false, lastSubscribe, navigationCount = 0;
+const navigationTargets = [];
 global.window = {
   localStorage: {
     getItem: (key) => stored.get(key) ?? null,
@@ -72,7 +73,7 @@ const ui = {
   "@/components/motion/motion-primitives": { MotionItem: container, MotionSection: container, MotionStaggerGroup: container },
   "@/components/ui/dropdown-menu": new Proxy({}, { get: () => container }),
   "@/lib/project-priority": load("src/lib/project-priority.ts"),
-  "next/navigation": { useRouter: () => ({ push() { navigationCount++; }, refresh() {} }), usePathname: () => "/projects", useSearchParams: () => new URLSearchParams("q=brand&status=ACTIVE&page=2") },
+  "next/navigation": { useRouter: () => ({ push(href) { navigationCount++; navigationTargets.push(href); }, refresh() {} }), usePathname: () => "/projects", useSearchParams: () => new URLSearchParams("q=brand&status=ACTIVE&page=2") },
   "next/link": { default: ({ children, href, className, ...props }) => React.createElement("a", { href, className, ...props }, children) },
 };
 const { ProjectCard } = load("src/components/projects/project-card.tsx", ui);
@@ -88,7 +89,7 @@ const project = {
   updatedAt: "2026-10-05T10:00:00Z", updatedLabel: "Updated today", canPin: true, canEdit: true, canDelete: true,
 };
 const managerProps = { projects: [project], projectCount: 41, currentPage: 2, hasAnyProjects: true, canCreateProject: true, showProjectTypeSwitcher: false, activeStatus: "ACTIVE", activeSort: "priority", activeStage: null, activeOwnerId: "", activeExecutorId: "", activeMyRole: "ALL", query: "brand", ownerOptions: [], executorOptions: [], stageOptions: [], filters: [{ label: "Active", value: "ACTIVE" }] };
-const privateProps = { canCreateProject: false, users: [], currentUserId: "owner", projects: [{ ...project, slug: "private-brand", name: "Private brand", description: "", scope: "INTERNAL", status: "ACTIVE", priority: "MEDIUM", progress: 50, completedMilestones: 2, totalMilestones: 4, deadline: null }] };
+const privateProps = { canCreateProject: false, users: [], currentUserId: "owner", projectCount: 1, currentPage: 1, pageSize: 20, projects: [{ ...project, slug: "private-brand", name: "Private brand", description: "", scope: "INTERNAL", status: "ACTIVE", priority: "MEDIUM", progress: 50, completedMilestones: 2, totalMilestones: 4, deadline: null }] };
 const userProps = { projects: [{ ...project, status: "IN_PROGRESS", statusLabel: "In Progress", tasks: [], description: "", dueAt: null }], projectCount: 1, currentPage: 1, pageSize: 20, hasAnyProjects: true, activeFilter: "ALL", activeSort: "priority", query: "", showProjectTypeSwitcher: false };
 const render = (Component, props) => renderToStaticMarkup(React.createElement(Component, props));
 
@@ -109,12 +110,37 @@ for (const selected of ["grid", "list"]) {
   const privateHtml = render(FlexibleProjectsBrowser, privateProps);
   assert(privateHtml.includes("/projects/flexible/private-brand") && privateHtml.includes("50%"));
   assert(!privateHtml.includes("New Private Project"), "Read-only private projects retain creation restrictions");
+  const paginated = render(FlexibleProjectsBrowser, { ...privateProps, projectCount: 100 });
+  assert(paginated.includes("Showing 1–20 of 100 projects") && paginated.includes("Page 1 of 5"), "Both layouts display the correct page and project totals");
   for (const Component of [ProjectsBrowser, FlexibleProjectsBrowser]) {
     const empty = render(Component, Component === ProjectsBrowser ? { ...managerProps, projects: [] } : { ...privateProps, projects: [] });
     assert(empty.includes('aria-label="List view"'), "Empty pages still offer layout controls");
   }
 }
 assert.equal(navigationCount, 0, "Layout changes do not reset filters or navigate");
+
+function find(element, label) {
+  if (!element || typeof element !== "object") return undefined;
+  if (element.props?.["aria-label"] === label) return element;
+  for (const child of React.Children.toArray(element.props?.children)) {
+    const match = find(child, label);
+    if (match) return match;
+  }
+}
+const directBrowser = load("src/components/projects/flexible-projects-browser.tsx", { ...ui, react: { ...React, useState: (initial) => [initial, () => {}] } }).FlexibleProjectsBrowser;
+const middlePage = directBrowser({ ...privateProps, projectCount: 100, currentPage: 2 });
+find(middlePage, "Next private projects page").props.onClick();
+let target = new URL(navigationTargets.at(-1), "https://example.test");
+assert.equal(target.searchParams.get("view"), "flexible");
+assert.equal(target.searchParams.get("page"), "3");
+assert.equal(target.searchParams.get("q"), "brand", "Paging preserves the current query parameters");
+find(middlePage, "Previous private projects page").props.onClick();
+target = new URL(navigationTargets.at(-1), "https://example.test");
+assert.equal(target.searchParams.get("page"), null, "First-page links omit the page parameter");
+assert.equal(layout.useProjectsLayout()[0], "list", "Paging preserves the selected layout");
+assert.equal(find(directBrowser({ ...privateProps, projectCount: 100 }), "Previous private projects page").props.disabled, true);
+assert.equal(find(directBrowser({ ...privateProps, projectCount: 100, currentPage: 5 }), "Next private projects page").props.disabled, true);
+assert.equal(find(directBrowser({ ...privateProps, projectCount: 20 }), "Private projects pagination"), undefined, "Single-page results hide pagination controls");
 const restricted = render(ProjectCard, { layout: "list", project: { ...project, canPin: false, canEdit: false, canDelete: false, owner: null, executors: [] } });
 assert(!restricted.includes("Project actions for") && restricted.includes("Unassigned") && restricted.includes("Self-managed"));
 blockedWrites = true;
@@ -122,4 +148,4 @@ layout.useProjectsLayout()[1]("grid");
 assert.equal(layout.useProjectsLayout()[0], "grid");
 layout.useProjectsLayout()[1]("list");
 assert.equal(layout.useProjectsLayout()[0], "list", "Layout works when storage writes are blocked");
-console.log("Project layout checks passed: default grid, switching/persistence across all project browsers, compact list rows, tags, workspace links, actions, empty pages and unavailable storage.");
+console.log("Project layout checks passed: default grid, switching/persistence across all project browsers, compact list rows, tags, workspace links, actions, pagination navigation/bounds, empty pages and unavailable storage.");

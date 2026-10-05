@@ -28,6 +28,7 @@ export type FlexibleMilestoneFormValue = {
 type SaveResult = {
   error?: string;
   fieldErrors?: FlexibleMilestoneFieldErrors;
+  retryFiles?: File[];
 };
 
 type FlexibleMilestoneDialogProps = {
@@ -104,6 +105,7 @@ export function FlexibleMilestoneDialog({
         description,
         files,
       });
+      if (result.retryFiles) setFiles(result.retryFiles);
       if (result.error) {
         setFormError(result.error);
         setErrors(result.fieldErrors ?? {});
@@ -161,6 +163,7 @@ export function FlexibleMilestoneDialog({
               ref={fileInputRef}
               type="file"
               multiple
+              disabled={pending}
               className="sr-only"
               onChange={(event) => {
                 addFiles(event.target.files);
@@ -169,6 +172,7 @@ export function FlexibleMilestoneDialog({
             />
             <button
               type="button"
+              disabled={pending}
               onClick={() => fileInputRef.current?.click()}
               className="flex min-h-20 w-full items-center justify-center gap-3 rounded-[16px] border border-dashed border-[#bfcfc3] bg-white px-4 text-[13px] font-[650] text-[#47715a] transition hover:border-[#72a484] hover:bg-[#f7fbf7]"
             >
@@ -185,6 +189,7 @@ export function FlexibleMilestoneDialog({
                       <span className="text-[10px] text-[#7b857e]">{formatBytes(file.size)}</span>
                       <button
                         type="button"
+                        disabled={pending}
                         onClick={() => setFiles((current) => current.filter((item) => `${item.name}:${item.size}:${item.lastModified}` !== key))}
                         aria-label={`Remove ${file.name}`}
                         className="grid size-7 place-items-center rounded-full text-[#7a847c] hover:bg-[#f1f4f1]"

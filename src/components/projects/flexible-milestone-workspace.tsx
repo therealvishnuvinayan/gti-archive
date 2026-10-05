@@ -40,7 +40,7 @@ import type {
   FlexibleMilestoneRecord,
   FlexibleProjectDetailRecord,
 } from "@/lib/flexible-projects";
-import { showErrorToast, showSuccessToast, showWarningToast } from "@/lib/toast";
+import { showErrorToast, showSuccessToast } from "@/lib/toast";
 
 function formatDate(value: string | null) {
   if (!value) return "Not set";
@@ -99,13 +99,13 @@ export function FlexibleMilestoneWorkspace({
     const result = await updateFlexibleMilestoneAction(project.id, milestone.id, input);
     if ("error" in result) return result;
     if (files.length) {
-      try {
-        await uploadFlexibleMilestoneAttachments(project.id, milestone.id, files);
-      } catch (error) {
-        showWarningToast(
-          "Milestone saved, but an attachment could not be uploaded.",
-          error instanceof Error ? error.message : "The milestone was saved without that file.",
-        );
+      const upload = await uploadFlexibleMilestoneAttachments(project.id, milestone.id, files);
+      if (upload.error) {
+        router.refresh();
+        return {
+          error: `Milestone changes saved, but some attachments failed. ${upload.error} Retry the remaining files or remove them to continue.`,
+          retryFiles: upload.failedFiles,
+        };
       }
     }
     setEditOpen(false);

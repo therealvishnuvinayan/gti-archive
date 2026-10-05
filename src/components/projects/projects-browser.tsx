@@ -174,6 +174,7 @@ export function ProjectsBrowser({
     : pathname;
   const privateParams = new URLSearchParams(currentSearch);
   privateParams.set("view", "flexible");
+  privateParams.delete("page");
   const privateHref = `${pathname}?${privateParams}`;
 
   function navigate(next: {
