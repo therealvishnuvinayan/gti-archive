@@ -80,6 +80,7 @@
     "permissions:sync": "tsc --project scripts/tsconfig.permissions-sync.json && node .tmp/permissions-sync/scripts/sync-permissions.js",
     "prisma:generate": "prisma generate",
     "prisma:client-check": "node scripts/prisma-client-regression-checks.mjs",
+    "prisma:file-size-check": "tsc --project scripts/tsconfig.stage-five-integration.json && node scripts/run-file-size-schema-isolated-integration.mjs",
     "assets:client-check": "node scripts/asset-tag-client-check.cjs",
     "prisma:push": "prisma db push",
     "users:create": "node scripts/create-user.mjs",
