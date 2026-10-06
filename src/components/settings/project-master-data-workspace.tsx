@@ -41,7 +41,7 @@ import type {
   ProjectStatusGroupMasterDataRecord,
   ProjectStatusMasterDataRecord,
 } from "@/lib/project-master-data";
-import { PROJECT_MASTER_DATA_DESCRIPTION_MAX_LENGTH } from "@/lib/project-master-data";
+import { PROJECT_MASTER_DATA_DESCRIPTION_MAX_LENGTH } from "@/lib/project-master-data-shared";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
