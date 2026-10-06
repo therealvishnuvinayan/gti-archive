@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   AttachmentAssetType,
   AttachmentStatus,
+  ProjectInquiryAttachmentField,
   ProjectRevisionStatus,
   ProjectWorkflowStageKey,
   ProjectWorkflowStageStatus,
@@ -223,6 +224,60 @@ async function main() {
     projectIds.push(projectId);
     await unlockReferenceAndConceptWork(projectId);
 
+    const initialBrief = `<p>Main project brief ${runId}</p>`;
+    const inquiry = await prisma.projectInquiry.create({
+      data: {
+        projectId,
+        initialBrief,
+        businessObjectives: "Separate business objectives",
+        legalNotes: "Separate legal notes",
+      },
+    });
+    const briefAttachments = [];
+    for (const fixture of [
+      { name: "main-brief.pdf", field: ProjectInquiryAttachmentField.INITIAL_BRIEF, status: AttachmentStatus.READY },
+      { name: "pending-brief.pdf", field: ProjectInquiryAttachmentField.INITIAL_BRIEF, status: AttachmentStatus.UPLOADING },
+      { name: "legal-notes.pdf", field: ProjectInquiryAttachmentField.LEGAL_NOTES, status: AttachmentStatus.READY },
+    ]) {
+      const attachment = await prisma.projectAttachment.create({
+        data: {
+          projectId,
+          uploadedById: users.owner.id,
+          fileName: fixture.name,
+          originalFileName: fixture.name,
+          mimeType: "application/pdf",
+          fileSize: 256,
+          bucket: "workspace-integration",
+          storageKey: `workspace-integration/${runId}/${fixture.name}`,
+          assetType: AttachmentAssetType.GENERAL_PROJECT_ASSET,
+          status: fixture.status,
+        },
+      });
+      await prisma.projectInquiryAttachment.create({
+        data: { inquiryId: inquiry.id, attachmentId: attachment.id, field: fixture.field },
+      });
+      briefAttachments.push(attachment);
+    }
+    const mainBriefAttachment = briefAttachments[0];
+    check(mainBriefAttachment, "main brief attachment fixture must exist");
+    const pendingBriefAttachment = briefAttachments[1];
+    const legalNotesAttachment = briefAttachments[2];
+    check(pendingBriefAttachment && legalNotesAttachment, "non-brief fixtures must exist");
+    for (const attachment of [pendingBriefAttachment, legalNotesAttachment]) {
+      await expectDenied(
+        () => getAttachmentDownloadUrlForUser(users.userOne, attachment.id),
+        "main brief access must not expose pending uploads or unrelated inquiry attachments",
+      );
+    }
+    await expectDenied(
+      () => getAttachmentPreviewUrlForUser(users.userOne, pendingBriefAttachment.id),
+      "main brief preview must not expose pending uploads",
+    );
+    await expectDenied(
+      () => deleteAttachmentForUser(users.userOne, mainBriefAttachment.id),
+      "executor main brief access must remain read-only",
+    );
+
     const privateFolders = await prisma.projectPrivateFolder.findMany({
       where: { projectId },
       orderBy: { ownerUserId: "asc" },
@@ -349,6 +404,37 @@ async function main() {
     });
     const workspace = await getUserProjectWorkspace(projectId, users.userOne);
     check(workspace, "related USER must receive the stage-neutral workspace");
+    check(workspace.projectBrief.text === initialBrief, "executor must receive the actual main project brief");
+    check(
+      workspace.projectBrief.attachments.length === 1 &&
+        workspace.projectBrief.attachments[0]?.id === mainBriefAttachment.id,
+      "project brief must include only ready initial-brief attachments",
+    );
+    check(
+      !JSON.stringify(workspace.projectBrief).includes("Separate business objectives") &&
+        !JSON.stringify(workspace.projectBrief).includes("Separate legal notes"),
+      "main brief must not include unrelated inquiry fields",
+    );
+    for (const executor of [users.userOne, users.userTwo]) {
+      const executorWorkspace = await getUserProjectWorkspace(projectId, executor);
+      check(executorWorkspace?.projectBrief.text === initialBrief, "each executor must receive the main brief");
+      check(
+        Boolean(await getAttachmentDownloadUrlForUser(executor, mainBriefAttachment.id)),
+        "executor must be able to download main brief attachments",
+      );
+      check(
+        Boolean(await getAttachmentPreviewUrlForUser(executor, mainBriefAttachment.id)),
+        "executor must be able to preview main brief attachments",
+      );
+    }
+    await prisma.projectInquiry.update({
+      where: { id: inquiry.id },
+      data: { initialBrief: "Updated main brief" },
+    });
+    check(
+      (await getUserProjectWorkspace(projectId, users.userOne))?.projectBrief.text === "Updated main brief",
+      "executor must receive the latest main brief after it is updated",
+    );
     const listOnlyPermissions = new Set<PermissionKey>(["project.list"]);
     check(
       (await getUserProjectWorkspace(projectId, {
@@ -524,6 +610,15 @@ async function main() {
     );
     check(!isError(secondCreated), "cross-project fixture creation must succeed");
     projectIds.push(secondCreated.projectId);
+    const emptyBriefWorkspace = await getUserProjectWorkspace(secondCreated.projectId, users.userOne);
+    check(
+      emptyBriefWorkspace?.projectBrief.text === "" && emptyBriefWorkspace.projectBrief.attachments.length === 0,
+      "projects without an inquiry must return an empty brief safely",
+    );
+    check(
+      (await getUserProjectWorkspace(secondCreated.projectId, users.userTwo)) === null,
+      "unrelated executor must not receive another project's workspace or main brief",
+    );
     await expectDenied(
       () =>
         getProjectPrivateFolderPageData(users.userOne, {
@@ -588,6 +683,18 @@ async function main() {
     });
     check(!isError(updated), "membership removal update must succeed");
     check(
+      (await getUserProjectWorkspace(projectId, users.collaborator)) === null,
+      "removed participant must lose main project brief access",
+    );
+    await expectDenied(
+      () => getAttachmentDownloadUrlForUser(users.collaborator, mainBriefAttachment.id),
+      "removed participant must not download the main brief attachment",
+    );
+    await expectDenied(
+      () => getAttachmentPreviewUrlForUser(users.collaborator, mainBriefAttachment.id),
+      "removed participant must not preview the main brief attachment",
+    );
+    check(
       Boolean(
         await prisma.projectPrivateFolder.findFirst({
           where: { projectId, ownerUserId: users.collaborator.id, parentFolderId: null },
@@ -613,7 +720,7 @@ async function main() {
     );
 
     console.log(
-      "USER workspace shared-folder, private ownership, lifecycle, concept isolation, and workflow-lock integration checks passed.",
+      "USER workspace main brief access, attachments, shared-folder, private ownership, lifecycle, concept isolation, and workflow-lock integration checks passed.",
     );
   } finally {
     await prisma.project.deleteMany({ where: { id: { in: projectIds } } });

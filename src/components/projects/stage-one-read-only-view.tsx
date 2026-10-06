@@ -227,7 +227,7 @@ function ReadOnlyTextBlock({
   );
 }
 
-function ReadOnlyAttachmentList({
+export function ReadOnlyAttachmentList({
   attachments,
 }: {
   attachments: ProjectInquiryAttachmentRecord[];

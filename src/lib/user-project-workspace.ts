@@ -1,5 +1,6 @@
 import {
   AttachmentStatus,
+  ProjectInquiryAttachmentField,
   ProjectResearchFolderSystemKey,
   ProjectWorkflowStageKey,
   UserRole,
@@ -23,6 +24,15 @@ import {
 } from "@/lib/user-projects";
 
 export type UserProjectWorkspaceData = {
+  projectBrief: {
+    text: string;
+    attachments: Array<{
+      id: string;
+      originalFileName: string;
+      mimeType: string;
+      fileSize: number;
+    }>;
+  };
   project: {
     id: string;
     name: string;
@@ -91,6 +101,23 @@ export async function getUserProjectWorkspace(
         id: true,
         name: true,
         description: true,
+        inquiry: {
+          select: {
+            initialBrief: true,
+            attachments: {
+              where: {
+                field: ProjectInquiryAttachmentField.INITIAL_BRIEF,
+                attachment: { projectId, status: AttachmentStatus.READY },
+              },
+              orderBy: [{ createdAt: "asc" }, { attachmentId: "asc" }],
+              select: {
+                attachment: {
+                  select: { id: true, originalFileName: true, mimeType: true, fileSize: true },
+                },
+              },
+            },
+          },
+        },
         ownerId: true,
         owner: {
           select: {
@@ -314,6 +341,10 @@ export async function getUserProjectWorkspace(
     });
 
   return {
+    projectBrief: {
+      text: project.inquiry?.initialBrief?.trim() || "",
+      attachments: project.inquiry?.attachments.map(({ attachment }) => attachment) ?? [],
+    },
     project: {
       id: project.id,
       name: project.name,

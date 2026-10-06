@@ -4,6 +4,7 @@ import {
   ArrowRight,
   CalendarClock,
   File,
+  FileText,
   Folder,
   FolderKey,
   ListTodo,
@@ -14,7 +15,9 @@ import {
 } from "lucide-react";
 
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
+import { ReadOnlyAttachmentList } from "@/components/projects/stage-one-read-only-view";
 import { Card, CardContent } from "@/components/ui/card";
+import { RichTextContent } from "@/components/ui/rich-text-editor";
 import type { UserProjectWorkspaceData } from "@/lib/user-project-workspace";
 import type {
   UserTaskDisplayStatus,
@@ -152,6 +155,29 @@ export function UserProjectWorkspace({
           ) : null}
         </div>
       </header>
+
+      <section className="mt-8 border-t border-[#dfe6df] pt-6" aria-label="Project brief">
+        <SectionHeading
+          icon={<FileText className="h-5 w-5" />}
+          title="Project Brief"
+          description="The main brief for this project."
+        />
+        <Card className="mt-5 rounded-[20px] border-[#dfe6df] shadow-[0_12px_30px_rgba(23,39,28,0.05)]">
+          <CardContent className="p-5 sm:p-6">
+            <RichTextContent
+              value={data.projectBrief.text}
+              className="text-[14px] leading-7 text-[#465149]"
+              fallback={<p className="text-[13px] text-[#707a73]">{data.projectBrief.attachments.length ? "The project brief is attached below." : "No project brief has been added yet."}</p>}
+            />
+            {data.projectBrief.attachments.length > 0 ? (
+              <div className="mt-5 border-t border-[#edf1ed] pt-4">
+                <p className="text-[11px] font-[700] uppercase tracking-[0.08em] text-[#7b857e]">Brief attachments</p>
+                <ReadOnlyAttachmentList attachments={data.projectBrief.attachments} />
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+      </section>
 
       <section className="mt-8 border-t border-[#dfe6df] pt-6">
         <SectionHeading

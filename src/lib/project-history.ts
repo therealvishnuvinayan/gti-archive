@@ -8,6 +8,7 @@ import {
   ProjectExecutionType,
   ProjectFileChecklistRequestChannel,
   ProjectFileChecklistRequestWorkflowStatus,
+  ProjectInquiryAttachmentField,
   ProjectRevisionStatus,
   ProjectWorkflowStageKey,
   ProjectWorkflowStageStatus,
@@ -22,6 +23,7 @@ import { getUserRoleLabel } from "@/lib/user-role-compatibility";
 import { projectCollaboratorPermissionSelect } from "@/lib/project-collaborator-permissions";
 import type { PermissionKey } from "@/lib/permissions/definitions";
 import {
+  canUseProjects,
   hasPermission,
   hasProjectPermission,
   isGlobalProjectAdministrator,
@@ -6905,6 +6907,35 @@ export async function completePreparedChatAttachmentUpload(
   );
 }
 
+// Project workspace users can download the main brief without granting inquiry
+// editing or downloads of other workflow files. Verify project membership first.
+async function canDownloadMainProjectBriefAttachment(
+  user: AccessUser,
+  attachment: { id: string; projectId: string; stageId: string | null; assetType: AttachmentAssetType },
+) {
+  if (
+    user.role !== UserRole.USER ||
+    !canUseProjects(user) ||
+    attachment.stageId ||
+    attachment.assetType !== AttachmentAssetType.GENERAL_PROJECT_ASSET
+  ) {
+    return false;
+  }
+
+  const association = await withPrismaRetry(() =>
+    prisma.projectInquiryAttachment.findFirst({
+      where: {
+        attachmentId: attachment.id,
+        field: ProjectInquiryAttachmentField.INITIAL_BRIEF,
+        inquiry: { projectId: attachment.projectId },
+      },
+      select: { attachmentId: true },
+    }),
+  );
+
+  return Boolean(association);
+}
+
 export async function getAttachmentDownloadUrlForUser(
   user: AccessUser,
   attachmentId: string,
@@ -6962,12 +6993,14 @@ export async function getAttachmentDownloadUrlForUser(
   }
 
   const project = await assertProjectAccess(user, attachment.projectId);
-  assertProjectWorkflowPermission(
-    user,
-    project,
-    "file.download",
-    "You do not have permission to download this file.",
-  );
+  if (!(await canDownloadMainProjectBriefAttachment(user, attachment))) {
+    assertProjectWorkflowPermission(
+      user,
+      project,
+      "file.download",
+      "You do not have permission to download this file.",
+    );
+  }
   await assertProjectAttachmentVisibilityForUser(user, attachment);
 
   return createPresignedDownloadUrl({
