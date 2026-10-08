@@ -444,6 +444,7 @@ model User {
   taskerEvents                        TaskerEvent[]
   taskerFiles                         TaskerFile[]
   taskerDeliveries                    TaskerDelivery[]
+  taskerFamilyEvents                  TaskerFamilyEvent[]
   id                                  String                               @id @default(cuid())
   email                               String                               @unique
   name                                String?
@@ -633,6 +634,7 @@ model RolePermission {
 }
 
 model Project {
+  taskerFamilies         TaskerFamily[]
   taskerTasks            TaskerTask[]
   taskerFieldChanges     TaskerFieldChange[]
   id                     String                         @id @default(cuid())
@@ -699,6 +701,7 @@ model Project {
 }
 
 model FlexibleProject {
+  taskerFamilies TaskerFamily[]
   taskerTasks   TaskerTask[]
   id            String                        @id @default(cuid())
   slug          String                        @unique
@@ -1145,6 +1148,8 @@ model ProjectPrivateFolder {
 }
 
 model ProjectConceptFolder {
+  taskerFamily                     TaskerFamily?
+  taskerDeliveries                 TaskerDelivery[]
   id                               String                  @id @default(cuid())
   projectId                        String
   project                          Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -2486,6 +2491,10 @@ enum TaskerStatus {
 }
 
 model TaskerTask {
+  originalFamily    TaskerFamily?      @relation("TaskerFamilyOriginal")
+  parentFamilyId    String?
+  parentFamily      TaskerFamily?      @relation("TaskerFamilyChildren", fields: [parentFamilyId], references: [id], onDelete: Restrict)
+  sisterNumber      Int?
   id                String              @id @default(cuid())
   projectId         String?
   project           Project?            @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -2525,6 +2534,46 @@ model TaskerTask {
   @@index([ownerId, status, updatedAt])
   @@index([assigneeId, status, dueAt])
   @@index([coOwnerId, updatedAt])
+  @@unique([parentFamilyId, sisterNumber])
+}
+
+// The original keeps its native workflow. Every later revision is a flat child
+// of this family, even when it is created from another child.
+model TaskerFamily {
+  projectId         String?
+  project           Project?         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  flexibleProjectId String?
+  flexibleProject   FlexibleProject? @relation(fields: [flexibleProjectId], references: [id], onDelete: Cascade)
+  id                String                @id @default(cuid())
+  originalTaskId    String?               @unique
+  originalTask      TaskerTask?           @relation("TaskerFamilyOriginal", fields: [originalTaskId], references: [id], onDelete: SetNull)
+  originalConceptId String?              @unique
+  originalConcept   ProjectConceptFolder? @relation(fields: [originalConceptId], references: [id], onDelete: SetNull)
+  children          TaskerTask[]          @relation("TaskerFamilyChildren")
+  nextSisterNumber  Int                   @default(1)
+  version           Int                   @default(0)
+  finalFileKey      String?
+  cycleDecision     String?
+  createdAt         DateTime              @default(now())
+  events            TaskerFamilyEvent[]
+}
+
+model TaskerFamilyEvent {
+  id              String       @id @default(cuid())
+  familyId        String
+  family          TaskerFamily @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  actorId         String
+  actor           User         @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  action          String
+  note            String       @db.Text
+  // Source references scope history to the tasks the viewer can still access.
+  sourceType      String
+  sourceId        String
+  fileKey         String?
+  version         Int
+  createdAt       DateTime     @default(now())
+
+  @@unique([familyId, version])
 }
 
 model TaskerParticipant {
@@ -2592,8 +2641,10 @@ model TaskerEvent {
 // A durable outbox: task/notification commits never depend on email delivery.
 model TaskerDelivery {
   id          String     @id @default(cuid())
-  taskId      String
-  task        TaskerTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskId      String?
+  task        TaskerTask? @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  conceptId   String?
+  concept     ProjectConceptFolder? @relation(fields: [conceptId], references: [id], onDelete: Cascade)
   userId      String
   user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   dedupeKey   String     @unique

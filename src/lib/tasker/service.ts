@@ -6,11 +6,12 @@ import { deriveUserTaskDisplayState } from "@/lib/user-projects";
 import { getTaskProjectAdapter, assertTaskParticipant, assertTaskDestination, publicTaskField, validateTaskFieldValue, type ProjectTaskContext, type AdapterField, type TaskDb, type PublishedTaskFile } from "./adapters";
 import { TaskerError, taskAssert } from "./errors";
 import { lockTaskerProject } from "./field-changes";
+import { prepareSisterTask, recordSisterTask } from "./families";
 import type { TaskCreateInput, TaskCreateOptions, TaskDetail, TaskField, TaskListItem, TaskMutation, TaskProjectRef, TaskStatus, TaskValue } from "./types";
 
 export const terminalTaskStatuses: TaskStatus[] = ["COMPLETED", "REJECTED", "CANCELLED"];
 const personSelect = { id: true, name: true, email: true } as const;
-const taskInclude = { owner: { select: personSelect }, assignee: { select: personSelect }, coOwner: { select: personSelect }, participants: { select: { userId: true } }, project: { select: { name: true, ownerId: true, coOwners: { select: { userId: true } } } }, flexibleProject: { select: { name: true, ownerId: true } } } satisfies Prisma.TaskerTaskInclude;
+export const taskInclude = { originalFamily: { select: { id: true } }, owner: { select: personSelect }, assignee: { select: personSelect }, coOwner: { select: personSelect }, participants: { select: { userId: true } }, project: { select: { name: true, ownerId: true, coOwners: { select: { userId: true } } } }, flexibleProject: { select: { name: true, ownerId: true } } } satisfies Prisma.TaskerTaskInclude;
 type TaskRecord = Prisma.TaskerTaskGetPayload<{ include: typeof taskInclude }>;
 const option = (u: { id: string; name: string | null; email: string }) => ({ id: u.id, label: u.name || u.email });
 export const taskProjectRef = (task: Pick<TaskerTask, "projectId" | "flexibleProjectId">): TaskProjectRef => task.projectId ? { projectType: "STRUCTURED", projectId: task.projectId } : { projectType: "FLEXIBLE", projectId: task.flexibleProjectId! };
@@ -49,7 +50,7 @@ export function taskAccessWhere(user: PermissionUser): Prisma.TaskerTaskWhereInp
   return { deletedAt: null, AND: [eligible, { OR: [{ ownerId: user.id }, { assigneeId: user.id }, { coOwnerId: user.id }, { participants: { some: { userId: user.id } } }, { project: { ownerId: user.id } }, { flexibleProject: { ownerId: user.id } }] }] };
 }
 
-function conceptTaskAccessWhere(user: PermissionUser, projectId?: string): Prisma.ProjectConceptFolderWhereInput {
+export function conceptTaskAccessWhere(user: PermissionUser, projectId?: string): Prisma.ProjectConceptFolderWhereInput {
   return {
     projectId,
     workflowStageKey: { in: ["CONCEPT_CREATION", "PROJECT_DEVELOPMENT"] },
@@ -66,10 +67,11 @@ function conceptTaskAccessWhere(user: PermissionUser, projectId?: string): Prism
 
 // Concept tasks remain part of the active Stage 3/4 workflow. Their status comes
 // from that workflow so the common task list never invents a second review state.
-async function listConceptTasks(user: PermissionUser, projectId?: string): Promise<TaskListItem[]> {
-  const concepts = await prisma.projectConceptFolder.findMany({
+export async function listConceptTasks(user: PermissionUser, projectId?: string, db: TaskDb = prisma): Promise<TaskListItem[]> {
+  const concepts = await db.projectConceptFolder.findMany({
     where: conceptTaskAccessWhere(user, projectId),
     include: {
+      taskerFamily: { select: { id: true } },
       assignedExecutor: { include: { user: { select: personSelect } } },
       assignedBy: { select: personSelect },
       taskerStage: { select: {
@@ -89,6 +91,7 @@ async function listConceptTasks(user: PermissionUser, projectId?: string): Promi
       .reduce<Date>((latest, date) => date && date > latest ? date : latest, concept.updatedAt);
     const showStage = concept.project.ownerId === user.id || concept.project.coOwners.some((person) => person.userId === user.id);
     return {
+      ...(concept.taskerFamily ? { family: { id: concept.taskerFamily.id, sisterNumber: 0 } } : {}),
       id: concept.id, title: concept.name, kind: "CONCEPT", status: statuses[display.status],
       project: { projectId: concept.projectId, projectType: "STRUCTURED", name: concept.project.name },
       ...(showStage ? { stageLabel: `Stage ${stage}` } : {}),
@@ -129,10 +132,10 @@ export async function loadTaskForUser(db: TaskDb, user: PermissionUser, taskId: 
   return { task, context };
 }
 
-function listItem(task: TaskRecord, userId: string): TaskListItem {
+export function listItem(task: TaskRecord, userId: string): TaskListItem {
   const ref = taskProjectRef(task);
   const showStage = task.project?.ownerId === userId || task.project?.coOwners.some((c) => c.userId === userId) || task.flexibleProject?.ownerId === userId;
-  return { id: task.id, title: task.title, kind: task.kind, status: task.status, project: { ...ref, name: task.project?.name ?? task.flexibleProject?.name ?? "Project" }, ...(showStage && task.stageRef ? { stageLabel: ref.projectType === "STRUCTURED" ? `Stage ${task.stageRef}` : "Milestone task" } : {}), owner: option(task.owner), assignee: option(task.assignee), coOwner: task.coOwner ? option(task.coOwner) : null, dueAt: task.dueAt?.toISOString() ?? null, updatedAt: task.updatedAt.toISOString(), href: `/tasks/${task.id}`, viewOnly: !isManager(task, userId) && task.assigneeId !== userId };
+  return { ...(task.parentFamilyId ? { family: { id: task.parentFamilyId, sisterNumber: task.sisterNumber! } } : task.originalFamily ? { family: { id: task.originalFamily.id, sisterNumber: 0 } } : {}), id: task.id, title: task.title, kind: task.kind, status: task.status, project: { ...ref, name: task.project?.name ?? task.flexibleProject?.name ?? "Project" }, ...(showStage && task.stageRef ? { stageLabel: ref.projectType === "STRUCTURED" ? `Stage ${task.stageRef}` : "Milestone task" } : {}), owner: option(task.owner), assignee: option(task.assignee), coOwner: task.coOwner ? option(task.coOwner) : null, dueAt: task.dueAt?.toISOString() ?? null, updatedAt: task.updatedAt.toISOString(), href: `/tasks/${task.id}`, viewOnly: !isManager(task, userId) && task.assigneeId !== userId };
 }
 
 export async function listTasks(user: PermissionUser, ref?: TaskProjectRef): Promise<TaskListItem[]> {
@@ -194,6 +197,7 @@ export async function createTask(user: PermissionUser, input: TaskCreateInput) {
     assertTaskParticipant(context, input.assigneeId);
     if (input.coOwnerId) assertTaskParticipant(context, input.coOwnerId);
     const observers = participantIds(input.participantIds ?? [], context);
+    const sister = input.sisterOf ? await prepareSisterTask(db, user, input.sisterOf, context) : null;
     const target = input.kind === "FIELD_INPUT" ? context.fields.find((f) => f.id === input.targetId) : null;
     if (input.kind === "FIELD_INPUT") taskAssert(target, "Choose an available editable field.");
     if (input.kind === "FILE_REQUEST") assertTaskDestination(context, input.destinationId ?? "", user.id, input.assigneeId);
@@ -205,12 +209,14 @@ export async function createTask(user: PermissionUser, input: TaskCreateInput) {
     }
     const task = await db.taskerTask.create({ data: {
       ...(input.projectType === "STRUCTURED" ? { projectId: input.projectId } : { flexibleProjectId: input.projectId }),
+      ...(sister ? { parentFamilyId: sister.family.id, sisterNumber: sister.number } : {}),
       title, brief, kind: input.kind, ownerId: user.id, assigneeId: input.assigneeId, coOwnerId: input.coOwnerId || null,
       stageRef, targetId: target?.id, targetDefinition: target ? json(publicTaskField(target)) : Prisma.DbNull,
       targetSnapshot: target ? json(fieldSnapshot(target)) : Prisma.DbNull, activeTargetKey: target ? `${input.projectType}:${input.projectId}:${target.id}` : null,
       destinationId: input.kind === "FILE_REQUEST" ? input.destinationId : null, dueAt: dueDate(input.dueAt), participants: { create: observers.map((userId) => ({ userId })) },
     } });
     await event(db, task, context, user.id, "ASSIGNED");
+    if (sister) await recordSisterTask(db, user, task, sister.family, context);
     return task.id;
   });
 }

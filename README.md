@@ -162,9 +162,41 @@ and a permitted loopback listener. It never uses the application's database.
 `pnpm tasks:ui-check` covers task page access, task views, recipient controls, and
 conflict review rendering. A production build is checked with `pnpm run build`.
 
-Sister tasks, project reopening, and dependency/pause approval flows belong to
-the later phases. New project templates can register an adapter in
-`src/lib/tasker/adapters.ts`; Phase 1 implements the two existing project systems.
+New project templates can register an adapter in `src/lib/tasker/adapters.ts`;
+Tasker implements the two existing project systems.
+
+## Universal Tasker — Phase 2
+
+Open **Sister Tasks & files** from a task row, task details, or the Stage 3/4
+task header. Create a linked revision without changing the original task's
+status, submissions, files, or review history. Revisions of revisions stay
+under the first parent and appear together in the task list. Sister Tasks can
+be created after a stage or project is completed.
+
+Every child has its own owner, recipient, review, and optional co-owner. Access
+is checked separately for each family member: receiving a Sister Task does not
+grant access to its parent or siblings. The same rule applies to file downloads,
+selection history, and notifications. Deleting one task hides that task while
+preserving the remaining revisions.
+
+Project owners and project co-owners can select the final file from the versions
+they can access. The default requires an accepted Tasker submission or an approved
+native concept revision. All submitted versions remain available to download.
+Selection changes are recorded, and concurrent choices require refreshing rather
+than silently replacing a newer choice. Download the chosen file to use in the
+existing project workflow; the selection does not replace native concept approval,
+production files, or issued approval and handover snapshots.
+
+After production approval or handover exists, creating a revision or changing
+the selected file requests the project owner's decision about another cycle.
+The owner records a reason and whether a cycle is required. This decision does
+not start or reopen a workflow automatically. Dependency tasks, owner-approved
+pausing, and explicit project reopening remain for the next phase.
+
+Apply `20261008180000_tasker_sister_tasks` before starting the updated app. The
+additive migration preserves existing task data. `pnpm tasker:integration-check`
+now also covers family permissions, numbering and selection races, native concept
+originals, completed flexible projects, late revisions, and outbox access checks.
 
 ## Learn More
 

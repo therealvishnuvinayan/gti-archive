@@ -91,6 +91,20 @@ async function main() {
   assert(!recipient.includes("Accept submission") && !recipient.includes("Manage task") && !recipient.includes("Delete task"), "Recipient UI must not offer owner actions");
   const review = renderToStaticMarkup(React.createElement(tasker.TaskerDetailWorkspace, { initialTask: { ...detail, canSubmit: false, canReview: true, hasConflict: true, currentValue: "Changed legal notes" } }));
   assert(review.includes("Changed legal notes") && review.includes("I reviewed the current value"), "Conflict review must show current data and require explicit confirmation");
+  const grouped = renderToStaticMarkup(React.createElement(tasker.TaskerWorkspace, { currentUserId: "admin", initialTasks: [
+    { ...universalTask, family: { id: "family", sisterNumber: 0 } },
+    { ...universalTask, id: "sister", title: "Later correction", href: "/tasks/sister", family: { id: "family", sisterNumber: 1 } },
+  ] }));
+  assert(grouped.includes("<details") && grouped.includes("2 matching tasks") && grouped.includes("Sister Task 1"));
+  assert(recipient.includes("/tasks/universal/revisions"), "Every task provides a way to create a Sister Task, even before any submission");
+  const familyWorkspace = load("src/components/tasks/tasker-family-workspace.tsx", {
+    ...mocks, "./tasker-workspace": { CreateTask: () => null, useTaskUpdates() {} }, "@/lib/tasker/types": load("src/lib/tasker/types.ts"),
+  }).TaskerFamilyWorkspace;
+  const family = { source: { type: "TASK", id: "universal" }, project: universalTask.project, version: 0, original: universalTask, children: [], files: [], finalFile: null, canSelectFinal: false, canDecideCycle: false, cycleDecision: null, history: [] };
+  const familyRecipient = renderToStaticMarkup(React.createElement(familyWorkspace, { initialFamily: family }));
+  assert(familyRecipient.includes("Create Sister Task") && !familyRecipient.includes("Select final file") && !familyRecipient.includes("Record decision"));
+  const familyOwner = renderToStaticMarkup(React.createElement(familyWorkspace, { initialFamily: { ...family, canSelectFinal: true, canDecideCycle: true, cycleDecision: "PENDING" } }));
+  assert(familyOwner.includes("Select final file") && familyOwner.includes("Record decision") && familyOwner.includes("Previous records remain intact"));
   console.log("Tasker UI passed: all-role access, received/sent/co-owner/observer filters, search, concept links, recipient controls and conflict review.");
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });

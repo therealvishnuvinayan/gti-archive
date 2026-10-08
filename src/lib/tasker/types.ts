@@ -17,6 +17,7 @@ export type TaskField = {
   help?: string;
 };
 export type TaskProjectRef = { projectType: TaskProjectType; projectId: string };
+export type TaskSource = { type: "TASK" | "CONCEPT"; id: string };
 export type TaskCreateOptions = TaskProjectRef & {
   name: string;
   people: TaskOption[];
@@ -26,6 +27,7 @@ export type TaskCreateOptions = TaskProjectRef & {
   showStages: boolean;
 };
 export type TaskCreateInput = TaskProjectRef & {
+  sisterOf?: TaskSource;
   kind: TaskKind;
   title: string;
   brief: string;
@@ -38,6 +40,7 @@ export type TaskCreateInput = TaskProjectRef & {
   dueAt?: string | null;
 };
 export type TaskListItem = {
+  family?: { id: string; sisterNumber: number };
   id: string;
   title: string;
   kind: TaskKind | "CONCEPT";
@@ -92,3 +95,34 @@ export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   CORRECTIONS_REQUESTED: "Corrections requested", COMPLETED: "Completed", REJECTED: "Rejected", CANCELLED: "Cancelled",
 };
 export const TASK_KIND_LABELS = { FIELD_INPUT: "Field input", FILE_REQUEST: "File request", GENERAL: "General task", CONCEPT: "Concept task" };
+
+export type TaskFamilyFile = {
+  key: string;
+  name: string;
+  size: number;
+  source: TaskSource;
+  taskTitle: string;
+  revisionLabel: string;
+  submittedAt: string;
+  canSelect: boolean;
+};
+export type TaskFamilyDetail = {
+  source: TaskSource;
+  project: TaskProjectRef & { name: string };
+  version: number;
+  original: TaskListItem | null;
+  children: TaskListItem[];
+  files: TaskFamilyFile[];
+  finalFile: TaskFamilyFile | null;
+  canSelectFinal: boolean;
+  canDecideCycle: boolean;
+  cycleDecision: "PENDING" | "REQUIRED" | "NOT_REQUIRED" | null;
+  history: { id: string; action: string; note: string; actor: TaskOption; createdAt: string; fileName: string | null }[];
+};
+export type TaskFamilyMutation = {
+  action: "SELECT_FINAL" | "DECIDE_CYCLE";
+  version: number;
+  fileKey?: string;
+  decision?: "REQUIRED" | "NOT_REQUIRED";
+  note?: string;
+};

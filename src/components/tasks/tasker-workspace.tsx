@@ -10,7 +10,7 @@ import { FileUploadDropzone } from "@/components/ui/file-upload-dropzone";
 import { TaskInput as Input, TaskTextarea as Textarea, TaskSelect, TaskMultiSelect, TaskDatePicker } from "./tasker-form-controls";
 import { RichTextContent } from "@/components/ui/rich-text-editor";
 import { useNotificationCenter } from "@/components/notifications/notification-center";
-import { TASK_KIND_LABELS, TASK_STATUS_LABELS, type TaskCreateOptions, type TaskDetail, type TaskField, type TaskKind, type TaskListItem, type TaskMutation, type TaskProjectRef, type TaskValue } from "@/lib/tasker/types";
+import { TASK_KIND_LABELS, TASK_STATUS_LABELS, type TaskCreateOptions, type TaskDetail, type TaskField, type TaskKind, type TaskListItem, type TaskMutation, type TaskProjectRef, type TaskValue, type TaskSource } from "@/lib/tasker/types";
 
 const panelClass = "rounded-[22px] border border-[#dfe6df] bg-white p-5 sm:p-6";
 const ended = (status: string) => ["COMPLETED", "CANCELLED", "REJECTED"].includes(status);
@@ -25,7 +25,7 @@ function query(ref: TaskProjectRef) { return new URLSearchParams(ref).toString()
 function ErrorNote({ children }: { children: React.ReactNode }) { return <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{children}</p>; }
 function Label({ title, children }: { title: string; children: React.ReactNode }) { return <div className="grid min-w-0 gap-2 text-sm font-medium text-[#46584b]"><span>{title}</span>{children}</div>; }
 
-function useTaskUpdates(reload: () => Promise<void>, enabled = true) {
+export function useTaskUpdates(reload: () => Promise<void>, enabled = true) {
   const router = useRouter();
   const { refreshVersion } = useNotificationCenter();
   const lastRefresh = useRef(refreshVersion);
@@ -48,12 +48,12 @@ function useTaskUpdates(reload: () => Promise<void>, enabled = true) {
     };
   }, [enabled, reload]);
 }
-function CreateTask({ initialProject, onClose, onCreated }: { initialProject?: TaskProjectRef; onClose: () => void; onCreated: () => void }) {
+export function CreateTask({ initialProject, sisterOf, sourceTitle, onClose, onCreated }: { initialProject?: TaskProjectRef; sisterOf?: TaskSource; sourceTitle?: string; onClose: () => void; onCreated: (id: string) => void }) {
   const formId = useId();
   const [projects, setProjects] = useState<Array<TaskProjectRef & { name: string }>>([]);
   const [project, setProject] = useState<TaskProjectRef | undefined>(initialProject);
   const [options, setOptions] = useState<TaskCreateOptions | null>(null);
-  const [kind, setKind] = useState<TaskKind>("GENERAL"), [title, setTitle] = useState(""), [brief, setBrief] = useState("");
+  const [kind, setKind] = useState<TaskKind>("GENERAL"), [title, setTitle] = useState(sourceTitle ? `Revision: ${sourceTitle}`.slice(0, 160) : ""), [brief, setBrief] = useState("");
   const [assigneeId, setAssigneeId] = useState(""), [coOwnerId, setCoOwnerId] = useState(""), [stageRef, setStageRef] = useState(""), [targetId, setTargetId] = useState(""), [destinationId, setDestinationId] = useState(""), [dueAt, setDueAt] = useState("");
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   useEffect(() => {
@@ -69,14 +69,14 @@ function CreateTask({ initialProject, onClose, onCreated }: { initialProject?: T
     return () => { active = false; };
   }, [project]);
   const fields = options?.fields.filter((f) => !stageRef || f.stageRef === stageRef) ?? [];
-  return <FlexibleDialog open title="Create task" onClose={() => { if (!busy) onClose(); }} footer={<>
+  return <FlexibleDialog open title={sisterOf ? "Create Sister Task" : "Create task"} onClose={() => { if (!busy) onClose(); }} footer={<>
     <Button type="button" variant="secondary" disabled={busy} onClick={onClose}>Cancel</Button>
-    <Button type="submit" form={formId} disabled={busy || !options}>{busy ? "Creating…" : "Create task"}</Button>
+    <Button type="submit" form={formId} disabled={busy || !options}>{busy ? "Creating…" : sisterOf ? "Create Sister Task" : "Create task"}</Button>
   </>}>
     <form id={formId} className="grid gap-5" onSubmit={async (e) => {
       e.preventDefault(); if (!project || !options || busy) return;
       setBusy(true); setError("");
-      try { await api("/api/tasker", { ...project, kind, title, brief, assigneeId, coOwnerId: coOwnerId || null, stageRef: stageRef || null, targetId: targetId || null, destinationId: destinationId || null, dueAt: dueAt || null }); onCreated(); }
+      try { const created = await api<{ id: string }>("/api/tasker", { ...project, sisterOf, kind, title, brief, assigneeId, coOwnerId: coOwnerId || null, stageRef: stageRef || null, targetId: targetId || null, destinationId: destinationId || null, dueAt: dueAt || null }); onCreated(created.id); }
       catch (e) { setError((e as Error).message); } finally { setBusy(false); }
     }}>
       {!initialProject && <Label title="Project"><TaskSelect label="Project" required value={project ? `${project.projectType}:${project.projectId}` : ""} placeholder="Choose project" options={projects.map((p) => ({ id: `${p.projectType}:${p.projectId}`, label: `${p.name}${p.projectType === "FLEXIBLE" ? " · Flexible" : ""}` }))} onChange={(value) => {
@@ -84,7 +84,7 @@ function CreateTask({ initialProject, onClose, onCreated }: { initialProject?: T
       }} /></Label>}
       {project && !options && !error && <p className="text-sm text-slate-500">Loading available fields and participants…</p>}
       {options && <>
-        <div className="rounded-xl bg-[#eff6f0] p-3 text-sm text-[#33513c]">{options.name}</div>
+        <div className="rounded-xl bg-[#eff6f0] p-3 text-sm text-[#33513c]">{options.name}{sisterOf && <p className="mt-1 text-xs">Linked revision of {sourceTitle || "this task"}. The original task and submissions are preserved.</p>}</div>
         <Label title="Task type"><TaskSelect label="Task type" value={kind} onChange={(value) => setKind(value as TaskKind)} options={(["GENERAL", "FIELD_INPUT", "FILE_REQUEST"] as const).map((id) => ({ id, label: TASK_KIND_LABELS[id] }))} /></Label>
         {options.showStages && <Label title="Stage or milestone (optional)"><TaskSelect label="Stage or milestone" value={stageRef} emptyLabel="Any stage" options={options.stages} onChange={(value) => { setStageRef(value); setTargetId(""); }} /></Label>}
         {kind === "FIELD_INPUT" && <Label title="Input to request"><TaskSelect label="Input to request" value={targetId} required onChange={setTargetId} placeholder="Choose an editable field" options={fields.map((f) => ({ id: f.id, label: `${f.stageRef && !stageRef && project?.projectType === "STRUCTURED" ? `Stage ${f.stageRef} · ` : ""}${f.label}` }))} />{!fields.length && <span className="text-xs text-slate-500">No editable data fields are available here yet. Existing concept creation and approvals use their usual workflows.</span>}</Label>}
@@ -97,6 +97,14 @@ function CreateTask({ initialProject, onClose, onCreated }: { initialProject?: T
       {error && <ErrorNote>{error}</ErrorNote>}
     </form>
   </FlexibleDialog>;
+}
+
+function revisionHref(task: TaskListItem) { return task.kind === "CONCEPT" ? `/tasks/concepts/${task.id}/revisions` : `/tasks/${task.id}/revisions`; }
+function TaskRow({ task, now }: { task: TaskListItem; now: number }) {
+  return <article className="flex flex-wrap items-center justify-between gap-4 py-4">
+    <Link href={task.href} className="min-w-0 flex-1 rounded-lg hover:bg-[#fafcf9] focus-visible:outline-2 focus-visible:outline-green-700"><p className="text-xs text-[#6a8272]">{task.project.name} · {TASK_KIND_LABELS[task.kind]}{task.stageLabel ? ` · ${task.stageLabel}` : ""}{task.family ? task.family.sisterNumber ? ` · Sister Task ${task.family.sisterNumber}` : " · Parent task" : ""}</p><p className="mt-1 break-words font-semibold text-[#26392b]">{task.title}</p><p className="mt-1 text-xs text-[#7a837c]">{task.owner.label} → {task.assignee.label}</p></Link>
+    <div className="flex flex-wrap items-center gap-3 text-xs"><span className={`rounded-full px-3 py-1.5 ${task.status === "COMPLETED" ? "bg-green-50 text-green-800" : task.status === "IN_REVIEW" ? "bg-amber-50 text-amber-800" : "bg-slate-100 text-slate-600"}`}>{TASK_STATUS_LABELS[task.status]}</span>{task.dueAt && <span className={!ended(task.status) && Date.parse(task.dueAt) < now ? "text-red-700" : "text-slate-500"}>{new Date(task.dueAt).toLocaleDateString()}</span>}<Link href={revisionHref(task)} className="font-semibold text-[#26734d] underline">Sister Tasks &amp; files</Link></div>
+  </article>;
 }
 
 export function TaskerWorkspace({ project, currentUserId, initialTasks, compact = false }: { project?: TaskProjectRef; currentUserId: string; initialTasks?: TaskListItem[]; compact?: boolean }) {
@@ -126,10 +134,12 @@ export function TaskerWorkspace({ project, currentUserId, initialTasks, compact 
       <div className="my-5 flex flex-wrap gap-2" role="group" aria-label="Task views">{[["ALL", "All"], ["RECEIVED", "Received"], ["SENT", "Sent"], ["CO_OWNED", "Co-owned"], ["VIEW_ONLY", "View only"]].map(([id, label]) => <Button key={id} variant={view === id ? "default" : "secondary"} aria-pressed={view === id} onClick={() => setView(id)}>{label}</Button>)}</div>
       <div className="mb-5 grid gap-3 sm:grid-cols-[1fr_180px_160px]"><label className="relative"><Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" /><Input className="pl-9" aria-label="Search tasks" placeholder="Search tasks, projects or people" value={search} onChange={(e) => setSearch(e.target.value)} /></label><TaskSelect label="Task status" value={status} onChange={setStatus} options={[{ id: "OPEN", label: "Open tasks" }, { id: "ALL", label: "All statuses" }, ...Object.entries(TASK_STATUS_LABELS).map(([id, label]) => ({ id, label }))]} /><TaskSelect label="Sort tasks" value={sort} onChange={setSort} options={[{ id: "UPDATED", label: "Recently updated" }, { id: "DUE", label: "Deadline" }]} /></div>
       {error && <ErrorNote>{error} <button onClick={() => void reload()} className="underline">Retry</button></ErrorNote>}
-      {loading ? <p className="py-8 text-center text-sm text-slate-500">Loading tasks…</p> : !filtered.length ? <p className="rounded-xl bg-[#f7f9f7] py-10 text-center text-sm text-[#7a867e]">No tasks match this view.</p> : <div className="divide-y divide-[#e7ece8]">{filtered.map((task) => <Link key={`${task.kind}:${task.id}`} href={task.href} className="flex flex-wrap items-center justify-between gap-4 py-4 hover:bg-[#fafcf9] focus-visible:outline-2 focus-visible:outline-green-700">
-        <div className="min-w-0"><p className="text-xs text-[#6a8272]">{task.project.name} · {TASK_KIND_LABELS[task.kind]}{task.stageLabel ? ` · ${task.stageLabel}` : ""}</p><p className="mt-1 font-semibold text-[#26392b]">{task.title}</p><p className="mt-1 text-xs text-[#7a837c]">{task.owner.label} → {task.assignee.label}</p></div>
-        <div className="flex items-center gap-3 text-xs"><span className={`rounded-full px-3 py-1.5 ${task.status === "COMPLETED" ? "bg-green-50 text-green-800" : task.status === "IN_REVIEW" ? "bg-amber-50 text-amber-800" : "bg-slate-100 text-slate-600"}`}>{TASK_STATUS_LABELS[task.status]}</span>{task.dueAt && <span className={!ended(task.status) && Date.parse(task.dueAt) < now ? "text-red-700" : "text-slate-500"}>{new Date(task.dueAt).toLocaleDateString()}</span>}</div>
-      </Link>)}</div>}
+      {loading ? <p className="py-8 text-center text-sm text-slate-500">Loading tasks…</p> : !filtered.length ? <p className="rounded-xl bg-[#f7f9f7] py-10 text-center text-sm text-[#7a867e]">No tasks match this view.</p> : <div className="divide-y divide-[#e7ece8]">{Array.from(new Set(filtered.map((task) => task.family?.id ?? `${task.kind}:${task.id}`))).map((groupId) => {
+        const rows = filtered.filter((task) => (task.family?.id ?? `${task.kind}:${task.id}`) === groupId);
+        if (!rows[0].family) return <TaskRow key={groupId} task={rows[0]} now={now} />;
+        const parent = tasks.find((task) => task.family?.id === groupId && task.family.sisterNumber === 0);
+        return <details key={groupId} className="py-4" open={Boolean(search)}><summary className="cursor-pointer rounded-xl bg-[#eff6f0] p-4 text-sm font-semibold text-[#26392b]">{parent?.title ?? "Linked task revisions"}<span className="ml-3 text-xs font-normal">{rows.length} matching task{rows.length === 1 ? "" : "s"}</span></summary><div className="ml-3 border-l-2 border-[#dceade] pl-4">{rows.sort((a, b) => a.family!.sisterNumber - b.family!.sisterNumber).map((task) => <TaskRow key={task.id} task={task} now={now} />)}</div></details>;
+      })}</div>}
     </div>
     <Button className="fixed bottom-6 right-5 z-40 rounded-full shadow-lg sm:right-8" onClick={() => setCreating(true)} aria-label="Create Tasker task"><Plus className="h-5 w-5" /><span className="hidden sm:inline">Create task</span></Button>
     {creating && <CreateTask initialProject={project} onClose={() => setCreating(false)} onCreated={() => { setCreating(false); void reload(); }} />}
@@ -204,7 +214,7 @@ export function TaskerDetailWorkspace({ initialTask }: { initialTask: TaskDetail
   }
   return <section className="mx-auto grid w-full max-w-[1100px] gap-5 pb-10">
     <Link href="/tasks" className="flex items-center gap-2 text-sm text-[#458565]"><ArrowLeft className="h-4 w-4" />Tasks</Link>
-    <header className={panelClass}><div className="flex flex-wrap justify-between gap-3"><div><p className="text-xs text-[#63816e]">{task.project.name} · {TASK_KIND_LABELS[task.kind]}{task.stageLabel ? ` · ${task.stageLabel}` : ""}</p><h1 className="mt-2 text-2xl font-semibold">{task.title}</h1></div><span className="h-fit rounded-full bg-[#eef5ef] px-3 py-2 text-sm text-[#376045]">{TASK_STATUS_LABELS[task.status]}</span></div><p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-slate-700">{task.brief}</p><p className="mt-4 text-xs text-slate-500">Owner: {task.owner.label} · Assigned to: {task.assignee.label}{task.coOwner ? ` · Co-owner: ${task.coOwner.label}` : ""}{task.dueAt ? ` · Due ${new Date(task.dueAt).toLocaleDateString()}` : ""}</p>{task.field && <p className="mt-3 text-sm font-medium">Requested input: {task.field.label}</p>}{task.destination && <p className="mt-3 text-sm">Destination: {task.destination}</p>}</header>
+    <header className={panelClass}><div className="flex flex-wrap justify-between gap-3"><div><p className="text-xs text-[#63816e]">{task.project.name} · {TASK_KIND_LABELS[task.kind]}{task.stageLabel ? ` · ${task.stageLabel}` : ""}</p><h1 className="mt-2 text-2xl font-semibold">{task.title}</h1></div><span className="h-fit rounded-full bg-[#eef5ef] px-3 py-2 text-sm text-[#376045]">{TASK_STATUS_LABELS[task.status]}</span></div><p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-slate-700">{task.brief}</p><p className="mt-4 text-xs text-slate-500">Owner: {task.owner.label} · Assigned to: {task.assignee.label}{task.coOwner ? ` · Co-owner: ${task.coOwner.label}` : ""}{task.dueAt ? ` · Due ${new Date(task.dueAt).toLocaleDateString()}` : ""}</p>{task.field && <p className="mt-3 text-sm font-medium">Requested input: {task.field.label}</p>}{task.destination && <p className="mt-3 text-sm">Destination: {task.destination}</p>}<Link href={revisionHref(task)} className="mt-4 inline-block text-sm font-semibold text-[#26734d] underline">Create a Sister Task or choose the final file</Link></header>
     {(task.projectBrief || task.deliverables?.length || task.referenceFolders?.length) ? <details className={panelClass}><summary className="cursor-pointer font-semibold">Project brief, deliverables and files</summary><div className="mt-4 grid gap-4 text-sm">{task.projectBrief && <RichTextContent value={task.projectBrief} />}{Boolean(task.deliverables?.length) && <ul className="list-inside list-disc">{task.deliverables?.map((d) => <li key={d}>{d}</li>)}</ul>}<div className="flex flex-wrap gap-2">{task.referenceFolders?.map((f) => <Link key={f.id} href={f.href} className="rounded-lg bg-green-50 px-3 py-2 text-green-800">{f.label}</Link>)}</div></div></details> : null}
     {error && <ErrorNote>{error}</ErrorNote>}{notice && <p role="status" className="rounded-xl bg-green-50 p-3 text-sm text-green-800">{notice}</p>}
     {task.canSubmit && <div className={panelClass}><h2 className="mb-4 text-lg font-semibold">Your response</h2><div className="grid gap-4">
@@ -214,7 +224,7 @@ export function TaskerDetailWorkspace({ initialTask }: { initialTask: TaskDetail
       {task.pendingFiles.filter((f) => f.status !== "DELETED").map((f) => <div key={f.id} className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 p-3 text-sm"><span>{f.name} · {f.status === "READY" ? "Ready" : "Upload incomplete"}</span><Button variant="ghost" disabled={busy} onClick={async () => { try { await api(`/api/tasker/${task.id}/files`, { action: "DISCARD", fileId: f.id }); await reload(); } catch (e) { setError((e as Error).message); } }}>Remove</Button></div>)}
       <div className="flex flex-wrap gap-3">{task.status === "ASSIGNED" && <Button variant="secondary" disabled={busy} onClick={() => void mutate("START")}>Accept task</Button>}<Button disabled={busy} onClick={() => void mutate("SUBMIT", { value: value ?? (task.field?.control === "boolean" ? false : task.field?.control === "checklist" ? {} : ""), fileIds: task.pendingFiles.filter((f) => f.status === "READY").map((f) => f.id) })}>{busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}Submit for review</Button><Button variant="ghost" disabled={busy || !note.trim()} onClick={() => void mutate("DECLINE")}>Decline with reason</Button></div>
     </div></div>}
-    {task.submissions.length > 0 && <div className={panelClass}><h2 className="mb-4 text-lg font-semibold">Submissions</h2><div className="grid gap-4">{task.submissions.map((s, index) => <article key={s.id} className="rounded-xl border p-4"><p className="mb-3 text-xs text-slate-500">{index === 0 ? "Latest · " : ""}{s.submittedBy.label} · {new Date(s.createdAt).toLocaleString()}</p>{task.field && <div className="mb-2 text-sm"><ValueDisplay value={s.value} field={task.field} /></div>}<p className="whitespace-pre-wrap text-sm">{s.note}</p><div className="mt-3 flex flex-wrap gap-2">{s.files.map((f) => <button key={f.id} onClick={() => void download(f.id)} className="flex items-center gap-2 rounded-lg bg-[#eff6f0] p-2 text-xs text-green-800"><Paperclip className="h-3 w-3" />{f.name}</button>)}</div></article>)}</div></div>}
+    {task.submissions.length > 0 && <div className={panelClass}><div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-semibold">Submissions</h2><Link className="text-sm font-semibold text-[#26734d] underline" href={`/tasks/${task.id}/revisions`}>Sister Tasks and final file</Link></div><div className="grid gap-4">{task.submissions.map((s, index) => <article key={s.id} className="rounded-xl border p-4"><p className="mb-3 text-xs text-slate-500">{index === 0 ? "Latest · " : ""}{s.submittedBy.label} · {new Date(s.createdAt).toLocaleString()}</p>{task.field && <div className="mb-2 text-sm"><ValueDisplay value={s.value} field={task.field} /></div>}<p className="whitespace-pre-wrap text-sm">{s.note}</p><div className="mt-3 flex flex-wrap gap-2">{s.files.map((f) => <button key={f.id} onClick={() => void download(f.id)} className="flex items-center gap-2 rounded-lg bg-[#eff6f0] p-2 text-xs text-green-800"><Paperclip className="h-3 w-3" />{f.name}</button>)}</div></article>)}</div></div>}
     {task.canReview && <div className={panelClass}><h2 className="mb-4 text-lg font-semibold">Review submission</h2>
       {task.hasConflict && <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm"><p className="mb-2 font-medium">The field changed while this task was pending.</p><p className="mb-2 text-xs">Current value:</p><ValueDisplay value={task.currentValue} field={task.field} /><label className="mt-4 flex items-start gap-2"><input type="checkbox" className="accent-[#26734d]" checked={conflictReviewed} onChange={(e) => setConflictReviewed(e.target.checked)} />I reviewed the current value and want to replace it with this submission.</label></div>}
       <Label title="Review note (required for corrections or rejection)"><Textarea aria-label="Review note (required for corrections or rejection)" value={note} onChange={(e) => setNote(e.target.value)} rows={3} /></Label><div className="mt-4 flex flex-wrap gap-3"><Button disabled={busy || task.hasConflict && !conflictReviewed} onClick={() => void mutate("ACCEPT", { ...(task.hasConflict && conflictReviewed ? { conflictToken: task.conflictToken! } : {}) })}>Accept submission</Button><Button variant="secondary" disabled={busy || !note.trim()} onClick={() => void mutate("CORRECTIONS")}>Request corrections</Button><Button variant="ghost" disabled={busy || !note.trim()} onClick={() => void mutate("REJECT")}>Reject submission</Button></div>

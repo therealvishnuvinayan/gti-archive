@@ -28,6 +28,7 @@ try {
   run("pnpm", ["exec", "prisma", "migrate", "deploy", "--schema", join(root, "prisma", "schema.prisma")]);
   console.log("Universal Tasker: all migrations applied to a disposable local database.");
   console.log(run("node", ["-r", "./scripts/register-compiled-alias.cjs", "-r", "./scripts/project-tags-next-cache-stub.cjs", ".tmp/tasker-integration/scripts/tasker-integration-check.js"]).trim());
+  console.log(run("node", ["-r", "./scripts/register-compiled-alias.cjs", "-r", "./scripts/project-tags-next-cache-stub.cjs", ".tmp/tasker-integration/scripts/tasker-sisters-integration-check.js"]).trim());
 } finally {
   if (started) run("pg_ctl", ["-D", data, "-m", "fast", "-w", "stop"]);
   rmSync(root, { recursive: true, force: true });

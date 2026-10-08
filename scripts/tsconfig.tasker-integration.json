@@ -1,5 +1,5 @@
 {
   "extends": "./tsconfig.project-v2-integration.json",
   "compilerOptions": { "outDir": "../.tmp/tasker-integration" },
-  "include": ["tasker-integration-check.ts"]
+  "include": ["tasker-integration-check.ts", "tasker-sisters-integration-check.ts"]
 }

@@ -121,6 +121,7 @@ export type ProjectConceptFolderRecord = {
 export type ConceptCompletionRequest = { requestedAt: string; note: string | null };
 
 export type ProjectConceptChatMode = {
+  sisterTasksHref?: string;
   type: "concept";
   stageNeutral?: boolean;
   folderId: string;

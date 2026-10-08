@@ -19,7 +19,7 @@ export async function taskerRoute(run: (user: NonNullable<Awaited<ReturnType<typ
   }
 }
 
-export function afterTaskMutation(taskId: string) {
+export function afterTaskMutation(taskId?: string) {
   revalidateTag("projects", "max");
   revalidateTag("flexible-projects", "max");
   revalidatePath("/tasks", "layout");

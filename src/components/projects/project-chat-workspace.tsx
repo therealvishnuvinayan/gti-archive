@@ -7755,6 +7755,7 @@ export function ProjectChatWorkspace({
                 </div>
               ))}
             </dl>
+            {conceptMode.sisterTasksHref && <Button asChild variant="secondary" size="sm" className="h-9 w-fit shrink-0 rounded-full px-3 text-[11px]"><Link href={conceptMode.sisterTasksHref}>Sister Tasks &amp; files</Link></Button>}
             {conceptMode.completedWithoutFile ? <span className="rounded-full bg-[#e7f5eb] px-3 py-1.5 text-[11px] font-semibold text-[#247247]">Completed · No file</span> : null}
             <RevokeTaskCompletionButton projectId={project.id} folderId={conceptMode.folderId} stageKey={conceptMode.workflowStageKey}
               name={conceptMode.conceptName} eligibility={conceptMode.completionRevocationEligibility}

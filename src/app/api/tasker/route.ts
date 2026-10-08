@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     const input = await request.json();
     taskAssert(input && typeof input === "object", "Invalid task request.");
     const id = await createTask(user, input);
-    afterTaskMutation(id);
+    afterTaskMutation(input.sisterOf ? undefined : id);
     return { id };
   });
 }
