@@ -5,6 +5,7 @@ import { FlexibleMilestoneWorkspace } from "@/components/projects/flexible-miles
 import { requireUser } from "@/lib/auth";
 import { getFlexibleMilestoneDetail } from "@/lib/flexible-projects";
 import { canUseProjects } from "@/lib/permissions/resolver";
+import { TaskerWorkspace } from "@/components/tasks/tasker-workspace";
 
 export default async function FlexibleMilestonePage({
   params,
@@ -26,6 +27,7 @@ export default async function FlexibleMilestonePage({
         project={detail.project}
         milestone={detail.milestone}
       />
+      <TaskerWorkspace project={{ projectType: "FLEXIBLE", projectId: detail.project.id }} currentUserId={user.id} compact />
     </DashboardLayout>
   );
 }

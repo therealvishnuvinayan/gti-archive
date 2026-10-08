@@ -10,7 +10,7 @@ import {
 } from "../src/lib/project-concepts";
 import { createStageRevision, startProjectStageWork } from "../src/lib/project-history";
 import { getUserProjectWorkspace } from "../src/lib/user-project-workspace";
-import { getUserTasksPageData } from "../src/lib/user-tasks";
+import { listTasks } from "../src/lib/tasker/service";
 import { getUserProjectsList } from "../src/lib/user-projects";
 import { notifyConceptTaskCompletion } from "../src/lib/notification-center/triggers";
 
@@ -85,7 +85,7 @@ async function runStage(stageKey: ConceptWorkflowStageKey) {
   assert.equal((await getProjectConceptChatContext(executor, { ...input, stageKey }))?.chatMode.canRequestCompletion, false);
   assert.equal((await getProjectConceptFolders(owner, projectId, stageKey))?.folders[0].completionRequest?.note, note);
   assert.equal((await getUserProjectWorkspace(projectId, executor))?.assignedConcepts[0].display.status, "WAITING_FOR_REVIEW");
-  assert.equal((await getUserTasksPageData(executor)).projects.find((project) => project.id === projectId)?.tasks[0].display.status, "WAITING_FOR_REVIEW");
+  assert.equal((await listTasks(executor, { projectId, projectType: "STRUCTURED" }))[0]?.status, "IN_REVIEW");
   assert.equal((await getUserProjectsList({ filter: "ALL", query: "", sort: "updated", page: 1 }, executor)).projects.find((project) => project.id === projectId)?.tasks[0].display.status, "WAITING_FOR_REVIEW");
   assert.ok("error" in await completeStage(owner, { projectId }), "A request alone must not allow stage completion");
   await notifyConceptTaskCompletion({ ...input, actorId: executor.id, event: "requested" });

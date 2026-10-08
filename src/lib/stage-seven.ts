@@ -1,3 +1,4 @@
+import { checkTaskerFormRevision, consumeTaskerFormChanges } from "@/lib/tasker/field-changes";
 import {
   AttachmentStatus,
   NotificationEntityType,
@@ -989,6 +990,7 @@ async function ensureInternalSampleRequestNotification(
 export async function createProductionSampleRound(
   user: PermissionUser,
   input: {
+    taskerRevision?: number;
     projectId: string;
     productionUnitId: string;
     clientRequestId: string;
@@ -1020,6 +1022,8 @@ export async function createProductionSampleRound(
   }
   const recipient = resolveSampleRecipient(project, input);
   const prepared = await serializable(async (tx) => {
+    if (!(await checkTaskerFormRevision(tx, input.projectId, `stage-seven-sample-request:${input.productionUnitId}`, input.taskerRevision ?? 0))) throw new StageSevenWorkflowError("Tasker updated this form. Review the accepted input before sending.");
+    await consumeTaskerFormChanges(tx, input.projectId, `stage-seven-sample-request:${input.productionUnitId}`);
     await assertStageSevenActive(tx, input.projectId);
     const duplicate = await tx.productionSampleRound.findUnique({
       where: { clientRequestId: input.clientRequestId },

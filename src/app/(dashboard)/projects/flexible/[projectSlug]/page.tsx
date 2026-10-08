@@ -8,6 +8,7 @@ import {
   getFlexibleProjectUserOptions,
 } from "@/lib/flexible-projects";
 import { canUseProjects } from "@/lib/permissions/resolver";
+import { TaskerWorkspace } from "@/components/tasks/tasker-workspace";
 
 export default async function FlexibleProjectPage({
   params,
@@ -33,6 +34,7 @@ export default async function FlexibleProjectPage({
         userOptions={userOptions}
         currentUserId={user.id}
       />
+      <TaskerWorkspace project={{ projectType: "FLEXIBLE", projectId: project.id }} currentUserId={user.id} compact />
     </DashboardLayout>
   );
 }

@@ -1,10 +1,10 @@
 import { redirect } from "next/navigation";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
-import { UserTasksWorkspace } from "@/components/tasks/user-tasks-workspace";
+import { TaskerWorkspace } from "@/components/tasks/tasker-workspace";
 import { requireUser } from "@/lib/auth";
 import { canUseTasks } from "@/lib/permissions/resolver";
-import { getUserTasksPageData } from "@/lib/user-tasks";
+import { listTasks } from "@/lib/tasker/service";
 
 export default async function TasksPage() {
   const user = await requireUser();
@@ -13,11 +13,11 @@ export default async function TasksPage() {
     redirect("/no-access");
   }
 
-  const data = await getUserTasksPageData(user);
+  const tasks = await listTasks(user);
 
   return (
     <DashboardLayout>
-      <UserTasksWorkspace data={data} />
+      <TaskerWorkspace currentUserId={user.id} initialTasks={tasks} />
     </DashboardLayout>
   );
 }

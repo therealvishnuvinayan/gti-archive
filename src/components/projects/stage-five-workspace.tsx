@@ -1640,6 +1640,7 @@ export function StageFiveWorkspace({
         });
 
         const result = await saveStageFiveChecklistAction({
+          taskerRevision: autosave.taskerRevision,
           projectId: project.id,
           handoffId: submittedHandoffId,
           items: CHECKLIST_ITEMS.map((item) => ({

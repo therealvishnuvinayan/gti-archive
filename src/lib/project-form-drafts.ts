@@ -2,12 +2,22 @@ import { Prisma } from "@prisma/client";
 
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { assertProjectAccess } from "@/lib/project-history";
+import { applyFieldPatches, checkTaskerFormRevision, lockTaskerProject } from "@/lib/tasker/field-changes";
+import { TaskerError } from "@/lib/tasker/errors";
+import { isGlobalProjectAdministrator } from "@/lib/permissions/resolver";
 
 const FORM_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9:_-]{0,190}$/;
 const MAX_DRAFT_BYTES = 2 * 1024 * 1024;
 const MAX_CLIENT_ID_LENGTH = 64;
 
 type ProjectDraftUser = Parameters<typeof assertProjectAccess>[0];
+
+async function assertDraftAccess(user: ProjectDraftUser, projectId: string, formKey: string) {
+  await assertProjectAccess(user, projectId);
+  if (!/^stage-(one|two|five|six|seven)-/.test(formKey) || isGlobalProjectAdministrator(user)) return;
+  const project = await prisma.project.findUnique({ where: { id: projectId }, select: { ownerId: true, coOwners: { select: { userId: true } } } });
+  if (project?.ownerId !== user.id && !project?.coOwners.some((c) => c.userId === user.id)) throw new TaskerError("You do not have access to this stage form. Respond through your task instead.", 403);
+}
 
 export type ProjectFormDraftPayload = Record<string, unknown>;
 
@@ -17,6 +27,7 @@ export type SaveProjectFormDraftInput = {
   payload: ProjectFormDraftPayload;
   clientId: string;
   clientRevision: number;
+  taskerRevision?: number;
 };
 
 function validateFormKey(formKey: string) {
@@ -57,7 +68,7 @@ export async function getProjectFormDraft(
   formKey: string,
 ) {
   validateFormKey(formKey);
-  await assertProjectAccess(user, projectId);
+  await assertDraftAccess(user, projectId, formKey);
 
   const draft = await withPrismaRetry(() =>
     prisma.projectFormDraft.findUnique({
@@ -72,17 +83,30 @@ export async function getProjectFormDraft(
         payload: true,
         clientRevision: true,
         updatedAt: true,
+        taskerRevision: true,
       },
     }),
   );
 
+  const changes = await getTaskerFormChanges(user, projectId, formKey, draft?.taskerRevision ?? 0);
   return draft
     ? {
-        payload: draft.payload as ProjectFormDraftPayload,
+        payload: applyFieldPatches(draft.payload as ProjectFormDraftPayload, changes.patches),
         revision: draft.clientRevision,
+        taskerRevision: changes.revision,
         updatedAt: draft.updatedAt.toISOString(),
       }
-    : null;
+    : changes.patches.length ? { payload: applyFieldPatches<ProjectFormDraftPayload>({}, changes.patches), isTaskerOverlay: true, revision: 0, taskerRevision: changes.revision, updatedAt: new Date().toISOString() } : null;
+}
+
+export async function getTaskerFormChanges(user: ProjectDraftUser, projectId: string, formKey: string, since = 0) {
+  validateFormKey(formKey);
+  await assertDraftAccess(user, projectId, formKey);
+  const project = await prisma.project.findUnique({ where: { id: projectId }, select: { ownerId: true, coOwners: { select: { userId: true } } } });
+  // Task recipients respond in Tasker. Shared form data is for existing stage managers only.
+  if (!isGlobalProjectAdministrator(user) && project?.ownerId !== user.id && !project?.coOwners.some((c) => c.userId === user.id)) return { revision: 0, patches: [] };
+  const rows = await prisma.taskerFieldChange.findMany({ where: { projectId, formKey }, orderBy: { id: "asc" } });
+  return { revision: rows.at(-1)?.id ?? 0, patches: rows.filter((r) => r.id > since && !r.consumedAt).map((r) => ({ id: r.id, path: r.path, value: r.value })) };
 }
 
 export async function saveProjectFormDraft(
@@ -92,9 +116,10 @@ export async function saveProjectFormDraft(
   validateFormKey(input.formKey);
   validatePayload(input.payload);
   validateClient(input);
-  await assertProjectAccess(user, input.projectId);
+  await assertDraftAccess(user, input.projectId, input.formKey);
 
-  return withPrismaRetry(async () => {
+  return withPrismaRetry(() => prisma.$transaction(async (tx) => {
+    if (!(await checkTaskerFormRevision(tx, input.projectId, input.formKey, input.taskerRevision ?? 0))) throw new TaskerError("Tasker updated this form. Review the accepted input before saving.", 409);
     const key = {
       projectId: input.projectId,
       userId: user.id,
@@ -104,9 +129,10 @@ export async function saveProjectFormDraft(
       payload: input.payload as Prisma.InputJsonValue,
       clientId: input.clientId,
       clientRevision: input.clientRevision,
+      taskerRevision: input.taskerRevision ?? 0,
     } as const;
     const updateExisting = () =>
-      prisma.projectFormDraft.updateMany({
+      tx.projectFormDraft.updateMany({
         where: {
           ...key,
           OR: [
@@ -120,7 +146,7 @@ export async function saveProjectFormDraft(
     let updated = await updateExisting();
     if (updated.count === 0) {
       try {
-        await prisma.projectFormDraft.create({
+        await tx.projectFormDraft.create({
           data: { ...key, ...data },
         });
       } catch (error) {
@@ -136,7 +162,7 @@ export async function saveProjectFormDraft(
       }
     }
 
-    const draft = await prisma.projectFormDraft.findUniqueOrThrow({
+    const draft = await tx.projectFormDraft.findUniqueOrThrow({
       where: {
         projectId_userId_formKey: key,
       },
@@ -156,7 +182,7 @@ export async function saveProjectFormDraft(
       updatedAt: draft.updatedAt.toISOString(),
       ignored,
     };
-  });
+  }));
 }
 
 export async function deleteProjectFormDraft(
@@ -165,15 +191,16 @@ export async function deleteProjectFormDraft(
   formKey: string,
 ) {
   validateFormKey(formKey);
-  await assertProjectAccess(user, projectId);
+  await assertDraftAccess(user, projectId, formKey);
 
-  await withPrismaRetry(() =>
-    prisma.projectFormDraft.deleteMany({
+  await withPrismaRetry(() => prisma.$transaction(async (tx) => {
+    await lockTaskerProject(tx, projectId);
+    await tx.projectFormDraft.deleteMany({
       where: {
         projectId,
         userId: user.id,
         formKey,
       },
-    }),
-  );
+    });
+  }));
 }

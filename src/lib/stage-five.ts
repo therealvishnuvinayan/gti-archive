@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { checkTaskerFormRevision, consumeTaskerFormChanges, lockTaskerProject } from "@/lib/tasker/field-changes";
+import { TaskerError } from "@/lib/tasker/errors";
 
 import {
   AttachmentAssetType,
@@ -735,6 +737,7 @@ function valueIsFilled(value: StageFiveChecklistValue, attachmentIds: string[]) 
 export async function saveStageFiveChecklist(
   user: PermissionUser,
   input: {
+    taskerRevision?: number;
     projectId: string;
     handoffId: string;
     items: Array<{
@@ -799,6 +802,8 @@ export async function saveStageFiveChecklist(
   const savedItems = await withPrismaRetry(() =>
     prisma.$transaction(
       async (tx) => {
+        if (!(await checkTaskerFormRevision(tx, input.projectId, `stage-five-checklist:${input.handoffId}`, input.taskerRevision ?? 0))) throw new TaskerError("Tasker updated this checklist. Review the accepted input before saving.", 409);
+        await consumeTaskerFormChanges(tx, input.projectId, `stage-five-checklist:${input.handoffId}`);
         const [checklist] = await tx.$queryRaw<Array<{ id: string }>>(
           Prisma.sql`
             SELECT checklist."id"
@@ -948,6 +953,11 @@ function validateEmail(value: string) {
 
 type ChecklistEmailSender = typeof sendResendEmail;
 
+async function assertNoTaskerChecklistRequest(tx: Prisma.TransactionClient, projectId: string, checklistId: string, fieldKey: ProjectFileChecklistField) {
+  await lockTaskerProject(tx, projectId);
+  if (await tx.taskerTask.count({ where: { activeTargetKey: `STRUCTURED:${projectId}:checklist:${checklistId}:${fieldKey}` } })) throw new TaskerError("This field already has an active Tasker request.", 409);
+}
+
 export async function requestStageFiveChecklistInformation(
   user: PermissionUser,
   input: {
@@ -1078,6 +1088,7 @@ export async function requestStageFiveChecklistInformation(
     try {
       const request = await withPrismaRetry(() =>
         prisma.$transaction(async (tx) => {
+        await assertNoTaskerChecklistRequest(tx, input.projectId, checklist.id, input.fieldKey);
         const item = await tx.projectFileChecklistItem.upsert({
           where: { checklistId_fieldKey: { checklistId: checklist.id, fieldKey: input.fieldKey } },
           update: {},
@@ -1134,6 +1145,7 @@ export async function requestStageFiveChecklistInformation(
       });
       return { request, duplicate: false } as const;
     } catch (error) {
+      if (error instanceof TaskerError) return { error: error.message } as const;
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
         const duplicate = await withPrismaRetry(() =>
           prisma.projectFileChecklistRequest.findFirst({
@@ -1193,6 +1205,7 @@ export async function requestStageFiveChecklistInformation(
   try {
     pending = await withPrismaRetry(() =>
       prisma.$transaction(async (tx) => {
+        await assertNoTaskerChecklistRequest(tx, input.projectId, checklist.id, input.fieldKey);
         const item = await tx.projectFileChecklistItem.upsert({
           where: { checklistId_fieldKey: { checklistId: checklist.id, fieldKey: input.fieldKey } },
           update: {},
@@ -1223,6 +1236,7 @@ export async function requestStageFiveChecklistInformation(
       }),
     );
   } catch (error) {
+    if (error instanceof TaskerError) return { error: error.message } as const;
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       const duplicate = await withPrismaRetry(() =>
         prisma.projectFileChecklistRequest.findFirst({

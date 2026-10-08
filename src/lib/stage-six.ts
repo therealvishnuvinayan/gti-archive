@@ -1,3 +1,5 @@
+import { checkTaskerFormRevision, consumeTaskerFormChanges } from "@/lib/tasker/field-changes";
+import { TaskerError } from "@/lib/tasker/errors";
 import {
   ArchiveRecordStatus,
   AttachmentAssetType,
@@ -2727,6 +2729,7 @@ export async function removeProductionUnitFile(
 export async function handoverProductionUnit(
   user: PermissionUser,
   input: {
+    taskerRevision?: number;
     clientRequestId: string;
     projectId: string;
     productionUnitId: string;
@@ -2806,6 +2809,8 @@ export async function handoverProductionUnit(
     prepared = await withPrismaRetry(() =>
       prisma.$transaction(
       async (tx) => {
+      if (!(await checkTaskerFormRevision(tx, input.projectId, `stage-six-handover:${input.productionUnitId}`, input.taskerRevision ?? 0))) throw new TaskerError("Tasker updated this form. Review the accepted input before sending.", 409);
+      await consumeTaskerFormChanges(tx, input.projectId, `stage-six-handover:${input.productionUnitId}`);
       const unit = await tx.projectProductionUnit.findFirst({
           where: {
             id: input.productionUnitId,

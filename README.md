@@ -116,6 +116,56 @@ intact. Blocked actions display the reason. The task discussion records who
 revoked completion, and the server rechecks permissions and dependencies when
 confirming. Task-only reopening leaves the current workflow stage open.
 
+## Universal Tasker — Phase 1
+
+Tasker supports structured projects and flexible projects through a shared task
+engine and project adapters. The Tasks page includes Received, Sent, Co-owned,
+View only, and All views. Project and milestone pages provide a Tasker section
+and a floating Create task button. One Tasker service supplies the page, API,
+and sidebar count for every role. Stage 3/4 concept tasks appear in that same
+list and open their existing concept screens, retaining their approval workflow.
+The old role-specific Tasks workspace and compatibility adapter are removed.
+
+Field Input, File Request, and General tasks support one recipient, an optional
+task co-owner, deadlines, submissions, correction requests, cancellation,
+reassignment, participants, conversation, and retained history. The creator and
+task co-owner review submissions. Project owners can see and delete any task in
+their project; other participants see only their associated tasks.
+
+Accepted field input updates current data, including completed stages, without
+changing issued approval or handover snapshots. Handover and sample request input
+fills the editable request form; sending and approving remain native workflow
+actions. Conflicting values require review, and stale form saves are rejected.
+File requests publish accepted copies into existing Brief/Tech subfolders or
+flexible milestone files; submission objects remain separate and immutable.
+Tasker tasks do not block stage completion.
+
+Before running the updated application, apply the additive migration:
+
+```bash
+pnpm exec prisma migrate deploy
+pnpm exec prisma generate
+```
+
+Configure `APP_URL`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, and `CRON_SECRET`
+(see `.env.example`). Existing S3 settings and upload CORS rules are reused.
+In-app notifications and email outbox records commit with task actions. Email
+delivery runs after the response; the authenticated
+`GET /api/cron/tasker-deliveries` retries failures every five minutes through
+`vercel.json`. Other hosts must schedule that endpoint with
+`Authorization: Bearer <CRON_SECRET>`. These retries are delivery recovery;
+recurring deadline reminders are deferred.
+
+`pnpm tasker:integration-check` runs migrations and tests in a disposable local
+PostgreSQL cluster with mocked storage and email. It requires `initdb`, `pg_ctl`,
+and a permitted loopback listener. It never uses the application's database.
+`pnpm tasks:ui-check` covers task page access, task views, recipient controls, and
+conflict review rendering. A production build is checked with `pnpm run build`.
+
+Sister tasks, project reopening, and dependency/pause approval flows belong to
+the later phases. New project templates can register an adapter in
+`src/lib/tasker/adapters.ts`; Phase 1 implements the two existing project systems.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

@@ -114,6 +114,7 @@ export function AppDatePicker({
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
+        event.stopPropagation();
         setOpen(false);
         containerRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
       }

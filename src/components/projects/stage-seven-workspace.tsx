@@ -307,6 +307,7 @@ function NewSampleRequestDialog({
     if (!ready || pending) return;
     startPending(async () => {
       const result = await createProductionSampleRoundAction({
+        taskerRevision: autosave.taskerRevision,
         projectId,
         productionUnitId: unit.id,
         clientRequestId: requestId.current,
