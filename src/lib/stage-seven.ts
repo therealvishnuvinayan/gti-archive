@@ -1,3 +1,5 @@
+import { lockTaskerProject } from "@/lib/tasker/field-changes";
+import { checkTaskerFormRevision, consumeTaskerFormChanges } from "@/lib/tasker/field-changes";
 import {
   AttachmentStatus,
   NotificationEntityType,
@@ -136,7 +138,7 @@ function stageStatus(project: StageProject) {
 
 export function canManageStageSeven(
   user: PermissionUser,
-  project: StageProject,
+  project: Parameters<typeof hasProjectPermission>[1],
 ) {
   return (
     isGlobalProjectAdministrator(user) &&
@@ -400,6 +402,7 @@ export async function getStageSevenWorkspaceData(
       prisma.projectProductionUnit.findMany({
         where: {
           projectId,
+          retiredAt: null,
           status: {
             in: [
               ProjectProductionUnitStatus.HANDOVER_READY,
@@ -457,7 +460,7 @@ export async function getStageSevenWorkspaceData(
           },
         },
       }),
-      prisma.projectClosure.findUnique({ where: { projectId } }),
+      prisma.projectClosure.findFirst({ where: { projectId, reopenedAt: null } }),
     ]),
   );
 
@@ -500,7 +503,7 @@ export async function getStageSevenWorkspaceData(
           emailError: round.emailError,
           status: round.status,
           receivedAt: round.deliveredAt?.toISOString() ?? null,
-          canReview: canReviewPhysicalSampleRound({
+          canReview: round.sequence > (unit.supervision?.resumeAfterSequence ?? 0) && canReviewPhysicalSampleRound({
             userId: user.id,
             canManage,
             recipientUserId: round.recipientUserId,
@@ -510,10 +513,12 @@ export async function getStageSevenWorkspaceData(
           decidedBy: round.decidedBy ? displayName(round.decidedBy) : null,
           decidedAt: round.decidedAt?.toISOString() ?? null,
           overdue:
+            round.sequence > (unit.supervision?.resumeAfterSequence ?? 0) &&
             round.decision === null &&
             round.deadline.getTime() < currentDate.getTime(),
           reminder: mapRequestReminder(round.reminder),
           reminderManageable:
+            round.sequence > (unit.supervision?.resumeAfterSequence ?? 0) &&
             canManage &&
             !round.decision &&
             round.status !== ProductionSampleRoundStatus.COMPLETED &&
@@ -587,16 +592,25 @@ async function serializable<T>(operation: (tx: Prisma.TransactionClient) => Prom
   throw new StageSevenWorkflowError("Unable to save after multiple attempts.");
 }
 
+async function assertSampleRoundCurrent(tx: Prisma.TransactionClient, projectId: string, roundId: string) {
+  const round = await tx.productionSampleRound.findUnique({ where: { id: roundId }, select: { projectId: true, sequence: true, supervision: { select: { resumeAfterSequence: true, productionUnit: { select: { retiredAt: true } } } } } });
+  if (round && (round.projectId !== projectId || round.supervision.productionUnit.retiredAt || round.sequence <= round.supervision.resumeAfterSequence)) {
+    throw new StageSevenWorkflowError("This sample request belongs to a previous completed workflow and is read-only.");
+  }
+}
+
 async function refreshProductionSupervisionStatus(
   tx: Prisma.TransactionClient,
   supervisionId: string,
 ) {
+  const supervision = await tx.projectProductionSupervision.findUniqueOrThrow({ where: { id: supervisionId }, select: { resumeAfterSequence: true } });
+  const currentRounds = { supervisionId, sequence: { gt: supervision.resumeAfterSequence } };
   const [undecidedRoundCount, latestRound] = await Promise.all([
     tx.productionSampleRound.count({
-      where: { supervisionId, decision: null },
+      where: { ...currentRounds, decision: null },
     }),
     tx.productionSampleRound.findFirst({
-      where: { supervisionId },
+      where: currentRounds,
       orderBy: [{ sequence: "desc" }, { id: "desc" }],
       select: {
         decision: true,
@@ -636,7 +650,7 @@ async function assertStageSevenActive(
       id: projectId,
       archivedAt: null,
       completedAt: null,
-      closure: null,
+      closures: { none: { reopenedAt: null } },
       workflowStages: {
         some: {
           stageKey: ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION,
@@ -989,6 +1003,7 @@ async function ensureInternalSampleRequestNotification(
 export async function createProductionSampleRound(
   user: PermissionUser,
   input: {
+    taskerRevision?: number;
     projectId: string;
     productionUnitId: string;
     clientRequestId: string;
@@ -1020,6 +1035,8 @@ export async function createProductionSampleRound(
   }
   const recipient = resolveSampleRecipient(project, input);
   const prepared = await serializable(async (tx) => {
+    if (!(await checkTaskerFormRevision(tx, input.projectId, `stage-seven-sample-request:${input.productionUnitId}`, input.taskerRevision ?? 0))) throw new StageSevenWorkflowError("Tasker updated this form. Review the accepted input before sending.");
+    await consumeTaskerFormChanges(tx, input.projectId, `stage-seven-sample-request:${input.productionUnitId}`);
     await assertStageSevenActive(tx, input.projectId);
     const duplicate = await tx.productionSampleRound.findUnique({
       where: { clientRequestId: input.clientRequestId },
@@ -1034,6 +1051,7 @@ export async function createProductionSampleRound(
       },
     });
     if (duplicate) {
+      await assertSampleRoundCurrent(tx, input.projectId, duplicate.id);
       if (
         duplicate.projectId !== input.projectId ||
         duplicate.supervision.productionUnitId !== input.productionUnitId
@@ -1057,6 +1075,7 @@ export async function createProductionSampleRound(
       where: {
         id: input.productionUnitId,
         projectId: input.projectId,
+        retiredAt: null,
         status: {
           in: [
             ProjectProductionUnitStatus.HANDOVER_READY,
@@ -1181,6 +1200,7 @@ export async function configureStageSevenSampleRequestReminder(
   },
 ) {
   await getManagerProject(user, input.projectId);
+  await assertSampleRoundCurrent(prisma, input.projectId, input.sampleRoundId);
   const round = await withPrismaRetry(() =>
     prisma.productionSampleRound.findFirst({
       where: {
@@ -1242,6 +1262,7 @@ export async function retryProductionSampleRequestEmail(
   await getManagerProject(user, input.projectId);
   await serializable(async (tx) => {
     await assertStageSevenActive(tx, input.projectId);
+    await assertSampleRoundCurrent(tx, input.projectId, input.sampleRoundId);
     const round = await tx.productionSampleRound.findFirst({
       where: {
         id: input.sampleRoundId,
@@ -1249,6 +1270,7 @@ export async function retryProductionSampleRequestEmail(
         supervision: {
           productionUnitId: input.productionUnitId,
           productionUnit: {
+            retiredAt: null,
             projectId: input.projectId,
             status: {
               in: [
@@ -1317,6 +1339,7 @@ export async function deleteProductionSampleRound(
   await getManagerProject(user, input.projectId);
   const deleted = await serializable(async (tx) => {
     await assertStageSevenActive(tx, input.projectId);
+    await assertSampleRoundCurrent(tx, input.projectId, input.sampleRoundId);
     const round = await tx.productionSampleRound.findFirst({
       where: {
         id: input.sampleRoundId,
@@ -1324,6 +1347,7 @@ export async function deleteProductionSampleRound(
         supervision: {
           productionUnitId: input.productionUnitId,
           productionUnit: {
+            retiredAt: null,
             projectId: input.projectId,
             status: {
               in: [
@@ -1395,6 +1419,7 @@ export async function decidePhysicalSampleRound(
   }
   return serializable(async (tx) => {
     await assertStageSevenActive(tx, input.projectId);
+    await assertSampleRoundCurrent(tx, input.projectId, input.sampleRoundId);
     const round = await tx.productionSampleRound.findFirst({
       where: {
         id: input.sampleRoundId,
@@ -1402,6 +1427,7 @@ export async function decidePhysicalSampleRound(
         supervision: {
           productionUnitId: input.productionUnitId,
           productionUnit: {
+            retiredAt: null,
             projectId: input.projectId,
             status: {
               in: [
@@ -1494,6 +1520,7 @@ export async function markPhysicalSampleRoundReceived(
   const reviewer = await getSampleReviewerProject(user, input.projectId);
   return serializable(async (tx) => {
     await assertStageSevenActive(tx, input.projectId);
+    await assertSampleRoundCurrent(tx, input.projectId, input.sampleRoundId);
     const round = await tx.productionSampleRound.findFirst({
       where: {
         id: input.sampleRoundId,
@@ -1501,6 +1528,7 @@ export async function markPhysicalSampleRoundReceived(
         supervision: {
           productionUnitId: input.productionUnitId,
           productionUnit: {
+            retiredAt: null,
             projectId: input.projectId,
             status: {
               in: [
@@ -1579,8 +1607,11 @@ export async function closeStageSevenProject(
   if (project.archivedAt) throw new StageSevenWorkflowError("Archived projects are read-only.");
 
   return serializable(async (tx) => {
-    const existing = await tx.projectClosure.findUnique({
-      where: { projectId: input.projectId },
+    await lockTaskerProject(tx, input.projectId);
+    const live = await tx.project.findUniqueOrThrow({ where: { id: input.projectId }, include: { coOwners: { select: { userId: true } } } });
+    if (live.archivedAt || !canManageStageSeven(user, { ...project, ...live })) throw new StageSevenWorkflowError("You can no longer complete this project.");
+    const existing = await tx.projectClosure.findFirst({
+      where: { projectId: input.projectId, reopenedAt: null },
     });
     if (existing) {
       return { duplicate: true, closedAt: existing.closedAt.toISOString() } as const;
@@ -1605,6 +1636,7 @@ export async function closeStageSevenProject(
     const units = await tx.projectProductionUnit.findMany({
       where: {
         projectId: input.projectId,
+        retiredAt: null,
         status: {
           in: [
             ProjectProductionUnitStatus.HANDOVER_READY,
@@ -1695,6 +1727,7 @@ export async function processStageSevenOverdueDeadlines(now = new Date()) {
   );
   const notifications: Prisma.NotificationCreateManyInput[] = [];
   for (const round of rounds) {
+    if (round.supervision.productionUnit.retiredAt || round.sequence <= round.supervision.resumeAfterSequence) continue;
     const recipients = Array.from(
       new Set([
         round.project.ownerId,

@@ -1,3 +1,4 @@
+import { ProjectReopeningSection } from "@/components/projects/project-reopening-section";
 import { Suspense } from "react";
 import { UserRole } from "@prisma/client";
 import { redirect } from "next/navigation";
@@ -54,10 +55,13 @@ async function ProjectOverviewContent({
   }
 
   return (
+    <>
     <ProjectOverviewWorkspace
       project={project}
       currentUserId={user.id}
     />
+    <ProjectReopeningSection user={user} project={{ projectType: "STRUCTURED", projectId: project.id }} />
+    </>
   );
 }
 
@@ -74,7 +78,7 @@ async function UserProjectWorkspaceContent({
     return <ProjectUnavailableContent slug={slug} user={user} />;
   }
 
-  return <UserProjectWorkspace data={data} currentUserId={user.id} />;
+  return <><UserProjectWorkspace data={data} currentUserId={user.id} /><ProjectReopeningSection user={user} project={{ projectType: "STRUCTURED", projectId: slug }} /></>;
 }
 
 function UserProjectWorkspaceLoadingShell() {

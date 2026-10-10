@@ -2,7 +2,6 @@ import {
   ProjectResearchFolderSystemKey,
   ProjectWorkflowStageKey,
   ProjectWorkflowStageStatus,
-  UserRole,
   type Prisma,
 } from "@prisma/client";
 
@@ -102,7 +101,6 @@ export function getProjectResearchAccess(
       isProjectStatusCompleted(context.project.status),
   );
   const isCanonicalSharedFolder =
-    user.role === UserRole.USER &&
     isCanonicalWorkspace &&
     (context.folderSystemKey === ProjectResearchFolderSystemKey.BRIEF ||
       context.folderSystemKey === ProjectResearchFolderSystemKey.TECH) &&

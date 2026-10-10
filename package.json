@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "tasker:integration-check": "tsc --project scripts/tsconfig.tasker-integration.json && node scripts/run-tasker-isolated-integration.mjs",
     "dev": "prisma generate && next dev",
     "build": "prisma generate && next build",
     "vercel-build": "node scripts/prisma-migrate-deploy.mjs && pnpm run build",

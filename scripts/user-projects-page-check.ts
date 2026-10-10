@@ -116,8 +116,8 @@ const query = read("src/lib/user-projects.ts");
 const managerBrowser = read("src/components/projects/projects-browser.tsx");
 const managerCard = read("src/components/projects/project-card.tsx");
 const tasksPage = read("src/app/(dashboard)/tasks/page.tsx");
-const tasksWorkspace = read("src/components/tasks/user-tasks-workspace.tsx");
-const tasksService = read("src/lib/user-tasks.ts");
+const tasksWorkspace = read("src/components/tasks/tasker-workspace.tsx");
+const tasksService = read("src/lib/tasker/service.ts");
 const projectActions = read("src/app/(dashboard)/projects/actions.ts");
 const conceptActions = read(
   "src/app/(dashboard)/projects/[slug]/stages/concept-actions.ts",
@@ -204,27 +204,19 @@ assert.doesNotMatch(query, /researchWorkspaces:/);
 
 assert.match(tasksPage, /canUseTasks\(user\)/);
 assert.doesNotMatch(tasksPage, /user\.role !== UserRole\.USER/);
-assert.match(tasksPage, /getUserTasksPageData\(user\)/);
-assert.match(tasksWorkspace, /My Tasks/);
-assert.match(tasksWorkspace, /Received Tasks/);
-assert.match(tasksWorkspace, /Tasks I Assigned/);
-assert.match(tasksWorkspace, /Assigned to/);
-assert.match(tasksWorkspace, /Open a project folder/);
-assert.match(tasksWorkspace, /Open task/);
-assert.match(tasksWorkspace, /Stage \{task\.stageNumber\}/);
-assert.match(tasksWorkspace, /Search project folders, tasks, or attention items/);
+assert.match(tasksPage, /listTasks\(user\)/);
+assert.match(tasksWorkspace, /Your tasks/);
+assert.match(tasksWorkspace, /Received/);
+assert.match(tasksWorkspace, /Sent/);
+assert.match(tasksWorkspace, /Co-owned/);
+assert.match(tasksWorkspace, /View only/);
+assert.match(tasksWorkspace, /Search tasks, projects or people/);
 assert.match(tasksService, /assignedExecutorId: user\.id/);
-assert.match(tasksService, /ProjectWorkflowStageKey\.CONCEPT_CREATION/);
-assert.match(tasksService, /ProjectWorkflowStageKey\.PROJECT_DEVELOPMENT/);
+assert.match(tasksService, /CONCEPT_CREATION/);
+assert.match(tasksService, /PROJECT_DEVELOPMENT/);
 assert.match(tasksService, /returnTo=%2Ftasks/);
-assert.match(tasksService, /getNeedsAttentionItems\(user\)/);
-assert.match(tasksService, /needsAttention: view === "RECEIVED"[\s\S]*?attentionItems\.length/);
 assert.match(tasksService, /assignedById: user\.id/);
-assert.match(tasksWorkspace, /data\.attentionItems/);
-assert.match(tasksWorkspace, /<AttentionRow key=\{item\.id\} item=\{item\} \/>/);
-assert.match(tasksWorkspace, /onClick=\{\(\) => setFilter\(card\.filter\)\}/);
 assert.match(tasksWorkspace, /useNotificationCenter\(\)/);
-assert.match(tasksWorkspace, /router\.refresh\(\)/);
 assert.match(tasksWorkspace, /visibilitychange/);
 assert.match(
   projectActions,

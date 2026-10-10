@@ -16,6 +16,7 @@ import {
 } from "react";
 
 import { cn } from "@/lib/utils";
+import { applyFieldPatches, type FieldPatch } from "@/lib/tasker/patches";
 
 export type ProjectFormAutosaveStatus =
   | "idle"
@@ -23,6 +24,7 @@ export type ProjectFormAutosaveStatus =
   | "dirty"
   | "saving"
   | "saved"
+  | "conflict"
   | "error";
 
 type ProjectFormDraftPayload = Record<string, unknown>;
@@ -37,9 +39,12 @@ type UseProjectFormAutosaveOptions<TValue extends ProjectFormDraftPayload> = {
 };
 
 type DraftResponse<TValue> = {
+  tasker?: { revision: number; patches: FieldPatch[] };
   draft: {
     payload: TValue;
     revision: number;
+    taskerRevision?: number;
+    isTaskerOverlay?: boolean;
     updatedAt: string;
   } | null;
 };
@@ -87,6 +92,9 @@ export function useProjectFormAutosave<TValue extends ProjectFormDraftPayload>({
   const suspendedRef = useRef(false);
   const mountedRef = useRef(true);
   const revisionRef = useRef(0);
+  const taskerRevisionRef = useRef(0);
+  const pendingTaskerRef = useRef<{ revision: number; patches: FieldPatch[] } | null>(null);
+  const [taskerRevision, setTaskerRevision] = useState(0);
   const saveLatestRef = useRef<() => Promise<void>>(async () => undefined);
 
   const clearTimer = useCallback(() => {
@@ -97,7 +105,7 @@ export function useProjectFormAutosave<TValue extends ProjectFormDraftPayload>({
   }, []);
 
   const saveLatest = useCallback(async () => {
-    if (!enabled || !hydrated || suspendedRef.current) return;
+    if (!enabled || !hydrated || suspendedRef.current || pendingTaskerRef.current) return;
 
     clearTimer();
     if (inFlightRef.current) {
@@ -120,6 +128,7 @@ export function useProjectFormAutosave<TValue extends ProjectFormDraftPayload>({
       setRestoredAt(null);
     }
 
+    let failed = false;
     const request = (async () => {
       try {
         const response = await fetch(apiUrl, {
@@ -129,9 +138,14 @@ export function useProjectFormAutosave<TValue extends ProjectFormDraftPayload>({
             payload: snapshot,
             clientId,
             clientRevision,
+            taskerRevision: taskerRevisionRef.current,
           }),
         });
         if (!response.ok) {
+          if (response.status === 409) {
+            const latest = await fetch(`${apiUrl}?taskerRevision=${taskerRevisionRef.current}`, { cache: "no-store" }).then((r) => r.json()) as DraftResponse<TValue>;
+            if (latest.tasker) { pendingTaskerRef.current = latest.tasker; setStatus("conflict"); failed = true; return; }
+          }
           const body = (await response.json().catch(() => null)) as { error?: string } | null;
           throw new Error(body?.error || "Unable to autosave this form.");
         }
@@ -145,6 +159,7 @@ export function useProjectFormAutosave<TValue extends ProjectFormDraftPayload>({
           );
         }
       } catch {
+        failed = true;
         if (mountedRef.current) setStatus("error");
       }
     })();
@@ -154,8 +169,8 @@ export function useProjectFormAutosave<TValue extends ProjectFormDraftPayload>({
     inFlightRef.current = null;
 
     if (
-      saveAgainRef.current ||
-      serializedRef.current !== persistedSerializedRef.current
+      !failed && !pendingTaskerRef.current && (saveAgainRef.current ||
+      serializedRef.current !== persistedSerializedRef.current)
     ) {
       saveAgainRef.current = false;
       await saveLatestRef.current();
@@ -184,8 +199,11 @@ export function useProjectFormAutosave<TValue extends ProjectFormDraftPayload>({
     suspendedRef.current = false;
     persistedSerializedRef.current = null;
     revisionRef.current = 0;
+    taskerRevisionRef.current = 0;
+    pendingTaskerRef.current = null;
     queueMicrotask(() => {
       if (cancelled) return;
+      setTaskerRevision(0);
       setPersistedSerialized(null);
       setSavedAt(null);
       setRestoredAt(null);
@@ -212,12 +230,19 @@ export function useProjectFormAutosave<TValue extends ProjectFormDraftPayload>({
         if (!response.ok) throw new Error("Unable to load the saved draft.");
         return (await response.json()) as DraftResponse<TValue>;
       })
-      .then(({ draft }) => {
+      .then(({ draft, tasker }) => {
         if (cancelled) return;
+        const nextTaskerRevision = tasker?.revision ?? draft?.taskerRevision ?? 0;
+        if (serializedRef.current !== valueBeforeLoad && tasker?.patches.length) {
+          pendingTaskerRef.current = tasker;
+          setStatus("conflict"); setHydrated(true); return;
+        }
+        taskerRevisionRef.current = nextTaskerRevision;
+        setTaskerRevision(nextTaskerRevision);
 
         if (draft) {
           // Shallow defaults keep older drafts compatible when a form gains a field.
-          const restoredPayload = {
+          const restoredPayload = draft.isTaskerOverlay ? applyFieldPatches(JSON.parse(valueBeforeLoad) as TValue, tasker?.patches ?? []) : {
             ...(JSON.parse(valueBeforeLoad) as TValue),
             ...draft.payload,
           };
@@ -256,7 +281,7 @@ export function useProjectFormAutosave<TValue extends ProjectFormDraftPayload>({
   }, [apiUrl, enabled]);
 
   useEffect(() => {
-    if (!enabled || !hydrated || suspendedRef.current) return;
+    if (!enabled || !hydrated || suspendedRef.current || pendingTaskerRef.current) return;
     if (serialized === persistedSerializedRef.current) {
       queueMicrotask(() => {
         if (mountedRef.current) {
@@ -285,6 +310,7 @@ export function useProjectFormAutosave<TValue extends ProjectFormDraftPayload>({
     const persistBeforeLeaving = () => {
       if (
         suspendedRef.current ||
+        pendingTaskerRef.current ||
         persistedSerializedRef.current === null ||
         serializedRef.current === persistedSerializedRef.current
       ) {
@@ -299,6 +325,7 @@ export function useProjectFormAutosave<TValue extends ProjectFormDraftPayload>({
           payload: valueRef.current,
           clientId,
           clientRevision: revisionRef.current,
+          taskerRevision: taskerRevisionRef.current,
         }),
         keepalive: true,
       });
@@ -323,6 +350,42 @@ export function useProjectFormAutosave<TValue extends ProjectFormDraftPayload>({
     };
   }, [apiUrl, clientId, enabled]);
 
+  useEffect(() => {
+    if (!enabled || !hydrated) return;
+    let cancelled = false;
+    const check = async () => {
+      if (document.hidden || suspendedRef.current || pendingTaskerRef.current) return;
+      try {
+        const response = await fetch(`${apiUrl}?taskerRevision=${taskerRevisionRef.current}`, { cache: "no-store" });
+        if (!response.ok) return;
+        const { tasker } = await response.json() as DraftResponse<TValue>;
+        if (cancelled || !tasker || tasker.revision <= taskerRevisionRef.current) return;
+        pendingTaskerRef.current = tasker;
+        clearTimer(); setStatus("conflict");
+      } catch { /* Normal autosave continues to report connection errors. */ }
+    };
+    const timer = setInterval(() => void check(), 15000);
+    window.addEventListener("focus", check);
+    return () => { cancelled = true; clearInterval(timer); window.removeEventListener("focus", check); };
+  }, [apiUrl, clearTimer, enabled, hydrated]);
+
+  const retry = useCallback(async () => {
+    const pending = pendingTaskerRef.current;
+    if (!pending) return saveLatest();
+    if (!pending.patches.length) {
+      if (window.confirm("This form was updated and saved elsewhere. Reload to review its current values? Unsaved browser edits will be lost.")) window.location.reload();
+      return;
+    }
+    const fields = [...new Set(pending.patches.map((p) => p.path.join(" → ")))];
+    if (!window.confirm(`Tasker has accepted new input for this form. Apply the accepted values to ${fields.join(", ") || "the changed fields"}? Your other edits will be kept. You can review the updated fields before submitting.`)) return;
+    const merged = applyFieldPatches(valueRef.current, pending.patches);
+    valueRef.current = merged; serializedRef.current = serializeDraft(merged);
+    onRestoreRef.current(merged);
+    taskerRevisionRef.current = pending.revision; setTaskerRevision(pending.revision);
+    pendingTaskerRef.current = null; setStatus("dirty");
+    await saveLatest();
+  }, [saveLatest]);
+
   const clearDraft = useCallback(async (options?: {
     resume?: boolean;
     baseline?: TValue;
@@ -346,12 +409,13 @@ export function useProjectFormAutosave<TValue extends ProjectFormDraftPayload>({
 
   return {
     status,
+    taskerRevision,
     savedAt,
     restoredAt,
     hasUnsavedChanges:
       hydrated && serialized !== persistedSerialized,
     flush: saveLatest,
-    retry: saveLatest,
+    retry,
     clearDraft,
   };
 }
@@ -369,6 +433,7 @@ export function ProjectFormAutosaveStatus({
   onRetry?: () => void;
   className?: string;
 }) {
+  if (status === "conflict") return <button type="button" onClick={onRetry} className={cn("rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900", className)}>Tasker updated this form · Review accepted input</button>;
   if (status === "idle") {
     return (
       <span className={cn("text-[12px] font-[620] text-[#718078]", className)}>

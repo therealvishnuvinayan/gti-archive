@@ -172,6 +172,9 @@ enum ProjectFileChecklistRequestStatus {
 }
 
 enum ProjectFileChecklistRequestWorkflowStatus {
+  IN_REVIEW
+  CORRECTIONS_REQUESTED
+  REJECTED
   REQUESTED
   ACCEPTED
   COMPLETED
@@ -369,6 +372,7 @@ enum ProjectCompletionDocumentType {
 }
 
 enum NotificationType {
+  TASKER_UPDATED
   PROJECT_ASSIGNED
   PROJECT_CREATED
   PROJECT_UPDATED
@@ -407,6 +411,7 @@ enum NotificationType {
 }
 
 enum NotificationEntityType {
+  TASKER_TASK
   PROJECT
   STAGE
   REVISION
@@ -434,6 +439,17 @@ enum FluxAiMessageRole {
 }
 
 model User {
+  projectReopenings ProjectReopening[]
+  taskerOwnedTasks                    TaskerTask[]                         @relation("TaskerOwner")
+  taskerAssignedTasks                 TaskerTask[]                         @relation("TaskerAssignee")
+  taskerCoOwnedTasks                  TaskerTask[]                         @relation("TaskerCoOwner")
+  taskerMemberships                   TaskerParticipant[]
+  taskerSubmissions                   TaskerSubmission[]
+  taskerEvents                        TaskerEvent[]
+  taskerFiles                         TaskerFile[]
+  taskerDeliveries                    TaskerDelivery[]
+  taskerFamilyEvents                  TaskerFamilyEvent[]
+  taskerDependencyEvents              TaskerDependencyEvent[]
   id                                  String                               @id @default(cuid())
   email                               String                               @unique
   name                                String?
@@ -510,6 +526,8 @@ model User {
   importedStageThreeConceptReferences ProjectConceptFolder[]               @relation("ProjectConceptFolderStageThreeReferenceImporter")
   createdStageFileHandoffs            ProjectStageFileHandoff[]            @relation("ProjectStageFileHandoffCreator")
   updatedFileChecklistItems           ProjectFileChecklistItem[]           @relation("ProjectFileChecklistItemUpdater")
+  checklistSubmissions ProjectFileChecklistResponse[] @relation("ChecklistResponseSubmitter")
+  checklistReviews ProjectFileChecklistResponse[] @relation("ChecklistResponseReviewer")
   fileChecklistRequestsMade           ProjectFileChecklistRequest[]        @relation("ProjectFileChecklistRequestRequester")
   fileChecklistRequestsReceived       ProjectFileChecklistRequest[]        @relation("ProjectFileChecklistRequestRecipient")
   fileChecklistRequestsResponded      ProjectFileChecklistRequest[]        @relation("ProjectFileChecklistRequestResponder")
@@ -623,6 +641,12 @@ model RolePermission {
 }
 
 model Project {
+  reopenings             ProjectReopening[]
+  workflowCycle          Int @default(1)
+  taskerFamilies         TaskerFamily[]
+  taskerDependencies     TaskerDependency[]
+  taskerTasks            TaskerTask[]
+  taskerFieldChanges     TaskerFieldChange[]
   id                     String                         @id @default(cuid())
   name                   String
   category               String?
@@ -661,7 +685,7 @@ model Project {
   productionSupervisions ProjectProductionSupervision[]
   productionSampleRounds ProductionSampleRound[]
   requestReminders       RequestReminder[]
-  closure                ProjectClosure?
+  closures               ProjectClosure[]
   archive                ProjectArchive?
   archivedFiles          ArchivedProjectFile[]
   archiveArtworkMetadata ArchiveArtworkMetadata[]
@@ -687,6 +711,10 @@ model Project {
 }
 
 model FlexibleProject {
+  reopenings    ProjectReopening[]
+  taskerFamilies TaskerFamily[]
+  taskerDependencies TaskerDependency[]
+  taskerTasks   TaskerTask[]
   id            String                        @id @default(cuid())
   slug          String                        @unique
   name          String
@@ -767,6 +795,8 @@ model FlexibleMilestoneNote {
 }
 
 model FlexibleProjectAttachment {
+  taskerImportId String? @unique
+  taskerImport TaskerFileImport? @relation(fields: [taskerImportId], references: [id], onDelete: SetNull)
   id               String             @id @default(cuid())
   projectId        String
   project          FlexibleProject    @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -889,6 +919,7 @@ model ProjectTrackerActivity {
 }
 
 model ProjectFormDraft {
+  taskerRevision Int      @default(0)
   id             String   @id @default(cuid())
   projectId      String
   project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -1131,6 +1162,8 @@ model ProjectPrivateFolder {
 }
 
 model ProjectConceptFolder {
+  taskerFamily                     TaskerFamily?
+  taskerDeliveries                 TaskerDelivery[]
   id                               String                  @id @default(cuid())
   projectId                        String
   project                          Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -1186,7 +1219,7 @@ model ProjectStageFileHandoff {
   handedOffBy            User                    @relation("ProjectStageFileHandoffCreator", fields: [handedOffById], references: [id], onDelete: Restrict)
   handedOffAt            DateTime                @default(now())
   checklist              ProjectFileChecklist?
-  productionUnit         ProjectProductionUnit?
+  productionUnits        ProjectProductionUnit[]
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
 
@@ -1206,7 +1239,7 @@ model ProjectFileChecklist {
   sourceAttachment   ProjectAttachment             @relation("ProjectFileChecklistSourceAttachment", fields: [sourceAttachmentId], references: [id], onDelete: Cascade)
   items              ProjectFileChecklistItem[]
   requests           ProjectFileChecklistRequest[]
-  productionUnit     ProjectProductionUnit?
+  productionUnits    ProjectProductionUnit[]
   createdAt          DateTime                      @default(now())
   updatedAt          DateTime                      @updatedAt
 
@@ -1245,7 +1278,29 @@ model ProjectFileChecklistItemAttachment {
   @@index([attachmentId])
 }
 
+model ProjectFileChecklistResponse {
+  id String @id @default(cuid())
+  requestId String
+  request ProjectFileChecklistRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  submittedById String
+  submittedBy User @relation("ChecklistResponseSubmitter", fields: [submittedById], references: [id], onDelete: Restrict)
+  value Json
+  // Immutable copied objects, retained even when a later response replaces them.
+  files Json
+  status TaskerStatus @default(IN_REVIEW)
+  reviewedById String?
+  reviewedBy User? @relation("ChecklistResponseReviewer", fields: [reviewedById], references: [id], onDelete: Restrict)
+  reviewNote String? @db.Text
+  reviewedAt DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([requestId, createdAt])
+}
+
 model ProjectFileChecklistRequest {
+  targetToken String?
+  responses ProjectFileChecklistResponse[]
+  taskerDeliveries TaskerDelivery[]
   id                     String                                    @id @default(cuid())
   clientRequestId        String                                    @unique
   projectId              String
@@ -1301,12 +1356,14 @@ model ProjectFileChecklistRequest {
 }
 
 model ProjectProductionUnit {
+  cycle              Int @default(1)
+  retiredAt          DateTime?
   id                 String                        @id @default(cuid())
   projectId          String
   project            Project                       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  sourceHandoffId    String                        @unique
+  sourceHandoffId    String
   sourceHandoff      ProjectStageFileHandoff       @relation(fields: [sourceHandoffId], references: [id], onDelete: Cascade)
-  sourceChecklistId  String                        @unique
+  sourceChecklistId  String
   sourceChecklist    ProjectFileChecklist          @relation(fields: [sourceChecklistId], references: [id], onDelete: Cascade)
   sourceAttachmentId String
   sourceAttachment   ProjectAttachment             @relation("ProjectProductionUnitSourceAttachment", fields: [sourceAttachmentId], references: [id], onDelete: Cascade)
@@ -1322,13 +1379,16 @@ model ProjectProductionUnit {
   createdAt          DateTime                      @default(now())
   updatedAt          DateTime                      @updatedAt
 
-  @@unique([projectId, sourceAttachmentId])
+  @@unique([projectId, sourceAttachmentId, cycle])
+  @@unique([sourceHandoffId, cycle])
+  @@unique([sourceChecklistId, cycle])
   @@index([projectId, status, createdAt])
   @@index([sourceChecklistId])
   @@index([createdById])
 }
 
 model ProjectProductionSupervision {
+  resumeAfterSequence Int @default(0)
   id               String                      @id @default(cuid())
   projectId        String
   project          Project                     @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -1537,8 +1597,9 @@ model ProductionSampleFeedback {
 }
 
 model ProjectClosure {
+  reopenedAt DateTime?
   id         String   @id @default(cuid())
-  projectId  String   @unique
+  projectId  String
   project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   closedById String
   closedBy   User     @relation("ProjectClosureCloser", fields: [closedById], references: [id], onDelete: Restrict)
@@ -1546,6 +1607,7 @@ model ProjectClosure {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
+  @@index([projectId, reopenedAt])
   @@index([closedById])
   @@index([closedAt])
 }
@@ -2019,6 +2081,9 @@ model FluxAiSearchHistory {
 }
 
 model ProjectAttachment {
+  reopeningFiles ProjectReopeningFile[]
+  taskerImportId String? @unique
+  taskerImport TaskerFileImport? @relation(fields: [taskerImportId], references: [id], onDelete: SetNull)
   id                         String                                @id @default(cuid())
   projectId                  String
   project                    Project                               @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -2454,6 +2519,294 @@ model ManualLibraryAsset {
   @@index([status])
 }
 
+// Universal Tasker is independent of concept tasks and workflow approval state.
+enum TaskerKind {
+  FIELD_INPUT
+  FILE_REQUEST
+  GENERAL
+}
+
+enum TaskerStatus {
+  ASSIGNED
+  IN_PROGRESS
+  IN_REVIEW
+  CORRECTIONS_REQUESTED
+  COMPLETED
+  REJECTED
+  CANCELLED
+}
+
+model TaskerTask {
+  originalFamily    TaskerFamily?      @relation("TaskerFamilyOriginal")
+  parentFamilyId    String?
+  parentFamily      TaskerFamily?      @relation("TaskerFamilyChildren", fields: [parentFamilyId], references: [id], onDelete: Restrict)
+  sisterNumber      Int?
+  id                String              @id @default(cuid())
+  projectId         String?
+  project           Project?            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  flexibleProjectId String?
+  flexibleProject   FlexibleProject?    @relation(fields: [flexibleProjectId], references: [id], onDelete: Cascade)
+  kind              TaskerKind
+  status            TaskerStatus        @default(ASSIGNED)
+  title             String
+  brief             String              @db.Text
+  stageRef          String?
+  ownerId           String
+  owner             User                @relation("TaskerOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  assigneeId        String
+  assignee          User                @relation("TaskerAssignee", fields: [assigneeId], references: [id], onDelete: Restrict)
+  coOwnerId         String?
+  coOwner           User?               @relation("TaskerCoOwner", fields: [coOwnerId], references: [id], onDelete: SetNull)
+  participants      TaskerParticipant[]
+  // Target descriptors are resolved and validated by the project adapter on every write.
+  targetId          String?
+  targetDefinition  Json?
+  targetSnapshot    Json?
+  activeTargetKey   String?             @unique
+  destinationId     String?
+  dueAt             DateTime?
+  reminderIntervalHours Int?
+  reminderNextAt    DateTime?
+  reminderLastAt    DateTime?
+  reminderGeneration Int                @default(0)
+  version           Int                 @default(1)
+  deletedAt         DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  submissions       TaskerSubmission[]
+  events            TaskerEvent[]
+  files             TaskerFile[]
+  deliveries        TaskerDelivery[]
+
+  @@index([projectId, updatedAt])
+  @@index([flexibleProjectId, updatedAt])
+  @@index([ownerId, status, updatedAt])
+  @@index([assigneeId, status, dueAt])
+  @@index([reminderNextAt, id])
+  @@index([coOwnerId, updatedAt])
+  @@unique([parentFamilyId, sisterNumber])
+}
+
+// The original keeps its native workflow. Every later revision is a flat child
+// of this family, even when it is created from another child.
+model TaskerFamily {
+  imports TaskerFileImport[]
+  projectId         String?
+  project           Project?         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  flexibleProjectId String?
+  flexibleProject   FlexibleProject? @relation(fields: [flexibleProjectId], references: [id], onDelete: Cascade)
+  id                String                @id @default(cuid())
+  originalTaskId    String?               @unique
+  originalTask      TaskerTask?           @relation("TaskerFamilyOriginal", fields: [originalTaskId], references: [id], onDelete: SetNull)
+  originalConceptId String?              @unique
+  originalConcept   ProjectConceptFolder? @relation(fields: [originalConceptId], references: [id], onDelete: SetNull)
+  children          TaskerTask[]          @relation("TaskerFamilyChildren")
+  nextSisterNumber  Int                   @default(1)
+  version           Int                   @default(0)
+  finalFileKey      String?
+  cycleDecision     String?
+  createdAt         DateTime              @default(now())
+  events            TaskerFamilyEvent[]
+}
+
+model TaskerFileImport {
+  id String @id @default(cuid())
+  familyId String
+  family TaskerFamily @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  fileKey String
+  sourceType String
+  sourceId String
+  sourceName String
+  sourceLabel String
+  sourceSubmissionId String?
+  destinationId String
+  destinationLabel String
+  destinationAttachmentId String
+  importedById String
+  importedByLabel String
+  createdAt DateTime @default(now())
+  attachment ProjectAttachment?
+  flexibleAttachment FlexibleProjectAttachment?
+
+  @@index([familyId, createdAt])
+}
+
+model TaskerFamilyEvent {
+  id              String       @id @default(cuid())
+  familyId        String
+  family          TaskerFamily @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  actorId         String
+  actor           User         @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  action          String
+  note            String       @db.Text
+  // Source references scope history to the tasks the viewer can still access.
+  sourceType      String
+  sourceId        String
+  fileKey         String?
+  version         Int
+  createdAt       DateTime     @default(now())
+
+  @@unique([familyId, version])
+}
+
+enum TaskerPauseStatus {
+  NONE
+  REQUESTED
+  APPROVED
+  REJECTED
+}
+
+// Source identities survive native concept deletion so the other task retains
+// its dependency history. All links are validated under the project lock.
+model TaskerDependency {
+  id                String @id @default(cuid())
+  projectId         String?
+  project           Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  flexibleProjectId String?
+  flexibleProject   FlexibleProject? @relation(fields: [flexibleProjectId], references: [id], onDelete: Cascade)
+  mainType          String
+  mainId            String
+  requiredType      String
+  requiredId        String
+  pauseStatus       TaskerPauseStatus @default(NONE)
+  requestedById     String
+  reason            String @db.Text
+  reviewedById      String?
+  reviewNote        String? @db.Text
+  reviewedAt        DateTime?
+  resolvedAt        DateTime?
+  outcome           String?
+  version           Int @default(1)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  events            TaskerDependencyEvent[]
+
+  @@unique([mainType, mainId, requiredType, requiredId])
+  @@index([projectId, resolvedAt])
+  @@index([flexibleProjectId, resolvedAt])
+  @@index([mainType, mainId, resolvedAt, pauseStatus])
+  @@index([requiredType, requiredId, resolvedAt])
+}
+
+model TaskerDependencyEvent {
+  id           String @id @default(cuid())
+  dependencyId String
+  dependency   TaskerDependency @relation(fields: [dependencyId], references: [id], onDelete: Cascade)
+  actorId      String
+  actor        User @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  action       String
+  note         String @db.Text
+  createdAt    DateTime @default(now())
+
+  @@index([dependencyId, createdAt])
+}
+
+model TaskerParticipant {
+  taskId    String
+  task      TaskerTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime   @default(now())
+
+  @@id([taskId, userId])
+  @@index([userId])
+}
+
+model TaskerSubmission {
+  id            String       @id @default(cuid())
+  taskId        String
+  task          TaskerTask   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  submittedById String
+  submittedBy   User         @relation(fields: [submittedById], references: [id], onDelete: Restrict)
+  value         Json?
+  note          String       @db.Text
+  // Each submission is immutable. Review decisions live in the append-only event history.
+  createdAt     DateTime     @default(now())
+  files         TaskerFile[]
+
+  @@index([taskId, createdAt])
+}
+
+model TaskerFile {
+  id               String            @id @default(cuid())
+  taskId           String
+  task             TaskerTask        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  submissionId     String?
+  submission       TaskerSubmission? @relation(fields: [submissionId], references: [id], onDelete: Restrict)
+  uploadedById     String
+  uploadedBy       User              @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  originalFileName String
+  mimeType         String
+  fileSize         Int
+  bucket           String
+  // Upload into a temporary key; finalize copies to a key with no issued PUT URL.
+  uploadKey        String            @unique
+  storageKey       String            @unique
+  status           AttachmentStatus  @default(UPLOADING)
+  publishedId      String?
+  createdAt        DateTime          @default(now())
+
+  @@index([taskId, createdAt])
+}
+
+model TaskerEvent {
+  id        String     @id @default(cuid())
+  taskId    String
+  task      TaskerTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  actorId   String
+  actor     User       @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  action    String
+  note      String     @db.Text
+  detail    Json?
+  createdAt DateTime   @default(now())
+
+  @@index([taskId, createdAt])
+}
+
+// A durable outbox: task/notification commits never depend on email delivery.
+model TaskerDelivery {
+  checklistRequestId String?
+  checklistRequest ProjectFileChecklistRequest? @relation(fields: [checklistRequestId], references: [id], onDelete: Cascade)
+  id          String     @id @default(cuid())
+  taskId      String?
+  task        TaskerTask? @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  conceptId   String?
+  concept     ProjectConceptFolder? @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dedupeKey   String     @unique
+  // Present only for deadline reminders; stale outbox entries are skipped.
+  reminderGeneration Int?
+  reminderExpiresAt DateTime?
+  subject     String
+  message     String     @db.Text
+  attempts    Int        @default(0)
+  availableAt DateTime   @default(now())
+  leaseToken  String?
+  sentAt      DateTime?
+  lastError   String?
+  createdAt   DateTime   @default(now())
+
+  @@index([sentAt, availableAt])
+}
+
+// Shared, field-scoped overlays hydrate every user's form without replacing other draft edits.
+// Revision guards prevent a stale form from overwriting accepted task responses.
+model TaskerFieldChange {
+  consumedAt DateTime?
+  id         Int       @id @default(autoincrement())
+  projectId  String
+  project    Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  formKey    String
+  path       String[]
+  value      Json
+  taskId     String
+  createdAt  DateTime  @default(now())
+
+  @@index([projectId, formKey, id])
+}
+
 model Notification {
   id           String                  @id @default(cuid())
   userId       String
@@ -2511,4 +2864,33 @@ model CalendarEvent {
   @@index([startAt])
   @@index([endAt])
   @@index([createdById])
+}
+
+// Append-only owner decisions and the completed workflow before each reopening.
+model ProjectReopening {
+  id          String            @id @default(cuid())
+  projectId    String?
+  project           Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  flexibleProjectId String?
+  flexibleProject   FlexibleProject? @relation(fields: [flexibleProjectId], references: [id], onDelete: Cascade)
+  actorId   String
+  actor     User       @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  targetRef         String
+  targetLabel       String
+  reason            String @db.Text
+  snapshot          Json
+  files             ProjectReopeningFile[]
+  createdAt   DateTime          @default(now())
+
+  @@index([projectId, createdAt])
+  @@index([flexibleProjectId, createdAt])
+}
+
+model ProjectReopeningFile {
+  reopeningId  String
+  reopening    ProjectReopening  @relation(fields: [reopeningId], references: [id], onDelete: Cascade)
+  attachmentId String
+  attachment   ProjectAttachment @relation(fields: [attachmentId], references: [id], onDelete: Restrict)
+
+  @@id([reopeningId, attachmentId])
 }

@@ -1,3 +1,4 @@
+import { assertConceptNotPaused } from "@/lib/tasker/dependency-runtime";
 import { randomUUID } from "node:crypto";
 import { unstable_cache } from "next/cache";
 import {
@@ -6,8 +7,6 @@ import {
   AttachmentStatus,
   Prisma,
   ProjectExecutionType,
-  ProjectFileChecklistRequestChannel,
-  ProjectFileChecklistRequestWorkflowStatus,
   ProjectInquiryAttachmentField,
   ProjectRevisionStatus,
   ProjectWorkflowStageKey,
@@ -3027,6 +3026,7 @@ export async function createStageRevision(
       const revisionNumber = reviewState.latestRevisionNumber + 1;
 
       return prisma.$transaction(async (tx) => {
+        await assertConceptNotPaused(tx, input.projectId, { stageId: input.stageId });
         const stagedAttachmentCount = await tx.projectAttachment.count({
           where: {
             id: { in: stagedAttachmentIds },
@@ -4341,6 +4341,7 @@ export async function cancelStagedConceptRevisionAttachments(
         stageId: input.stageId,
         revisionId: null,
         commentId: null,
+        reopeningFiles: { none: {} },
         uploadedById: user.id,
         assetType: AttachmentAssetType.REVISION_ORIGINAL,
       },
@@ -5214,24 +5215,11 @@ function getUploadAction(assetType: AttachmentAssetType) {
     : ActivityLogAction.ASSET_UPLOADED;
 }
 
-async function hasChecklistResponseUploadAccess(
-  user: AccessUser,
-  input: { requestId?: string; projectId: string },
-) {
+async function hasChecklistResponseUploadAccess(user: AccessUser, input: { requestId?: string; projectId: string }) {
   if (!input.requestId) return false;
-  const request = await withPrismaRetry(() =>
-    prisma.projectFileChecklistRequest.findFirst({
-      where: {
-        id: input.requestId,
-        projectId: input.projectId,
-        channel: ProjectFileChecklistRequestChannel.IN_APP,
-        workflowStatus: ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
-        ...(user.role === UserRole.SUPER_ADMIN ? {} : { recipientUserId: user.id }),
-      },
-      select: { id: true },
-    }),
-  );
-  return Boolean(request);
+  const { getStageFiveChecklistRequestUploadContext } = await import("@/lib/stage-five");
+  const context = await getStageFiveChecklistRequestUploadContext(user, input.requestId);
+  return context?.projectId === input.projectId;
 }
 
 async function hasStageSevenEvidenceUploadAccess(
@@ -7111,13 +7099,14 @@ export async function deleteAttachmentForUser(
         stageFileHandoffs: { select: { id: true }, take: 1 },
         sourceProductionUnits: { select: { id: true }, take: 1 },
         productionUnitFile: { select: { id: true } },
+        reopeningFiles: { select: { reopeningId: true }, take: 1 },
         fileChecklistItems: {
           select: {
             checklistItem: {
               select: {
                 checklist: {
                   select: {
-                    productionUnit: { select: { status: true } },
+                    productionUnits: { select: { status: true } },
                   },
                 },
               },
@@ -7140,6 +7129,7 @@ export async function deleteAttachmentForUser(
 
   if (attachment.assetType === AttachmentAssetType.PROJECT_RESEARCH_FILE) {
     await assertProjectResearchFileAccess(user, attachment.id, "write");
+    if (attachment.reopeningFiles.length) throw new Error("This file is preserved in a completed project snapshot and cannot be deleted.");
 
     await deleteObjectIfNeeded(attachment.storageKey, attachment.bucket).catch(
       () => undefined,
@@ -7160,6 +7150,7 @@ export async function deleteAttachmentForUser(
 
   if (attachment.assetType === AttachmentAssetType.PROJECT_PRIVATE_FILE) {
     await assertProjectPrivateAttachmentAccess(user, attachment.id);
+    if (attachment.reopeningFiles.length) throw new Error("This file is preserved in a completed project snapshot and cannot be deleted.");
 
     await deleteObjectIfNeeded(attachment.storageKey, attachment.bucket).catch(
       () => undefined,
@@ -7181,6 +7172,7 @@ export async function deleteAttachmentForUser(
     "You do not have permission to delete this file.",
   );
   await assertProjectAttachmentVisibilityForUser(user, attachment);
+  if (attachment.reopeningFiles.length) throw new Error("This file is preserved in a completed project snapshot and cannot be deleted.");
 
   if (attachment.approvedConceptFolder || attachment.conceptStartingReference) {
     throw new Error(
@@ -7208,8 +7200,7 @@ export async function deleteAttachmentForUser(
 
   if (
     attachment.fileChecklistItems.some(({ checklistItem }) => {
-      const status = checklistItem.checklist.productionUnit?.status;
-      return status && status !== "PREPARATION";
+      return checklistItem.checklist.productionUnits.some((unit) => unit.status !== "PREPARATION");
     })
   ) {
     throw new Error(

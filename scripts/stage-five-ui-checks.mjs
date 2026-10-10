@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
+const checklistReview = await readFile("src/lib/tasker/checklist-review.ts", "utf8");
 const fileThumbnail = await readFile("src/components/projects/file-thumbnail.tsx", "utf8");
 
 const [workspace, fieldDefinitions, filePicker, requestWorkspace, requestPage, requestActions, summaryAlias, summary, page, workflowAccess, overview, schema, chatWorkspace, service, actions, uploadClient, requestUploadRoute, requestCompleteRoute, requestSourcePreviewRoute, requestSourceDownloadRoute, stageFourWorkspace, conceptActions, emailTemplate, migration, integrityMigration, responseMigration, attachmentScopeMigration, auth, signInPage, signInActions, confirmationDialog] =
@@ -374,9 +375,9 @@ assert(
   "The centralized workflow policy and overview must enforce Stage 5 without a role bypass.",
 );
 assert(
-  service.includes("accessibleStageFiveProjectWhere") &&
-    service.includes("ACCESSIBLE_WORKFLOW_STAGE_STATUSES"),
-  "Authenticated Stage 5 request pages, files, uploads, and mutations must inherit the Stage 5 lock.",
+  checklistReview.includes("assertTaskParticipant(context, user.id)") &&
+    checklistReview.includes("request.requestedById, request.recipientUserId, context.ownerId"),
+  "Internal requests use scoped current membership and remain answerable across stage transitions.",
 );
 
 assert(
@@ -491,10 +492,9 @@ assert(
     service.includes("acceptStageFiveChecklistRequest") &&
     service.includes("declineStageFiveChecklistRequest") &&
     service.includes("submitStageFiveChecklistResponse") &&
-    service.includes("canRespondToChecklistRequest") &&
+    checklistReview.includes("request.recipientUserId === user.id") &&
     service.includes("ProjectFileChecklistItemStatus.FILLED") &&
-    service.includes("CHECKLIST_INFORMATION_COMPLETED") &&
-    service.includes("CHECKLIST_INFORMATION_DECLINED"),
+    checklistReview.includes("notifyChecklistReview") && checklistReview.includes("reviewChecklistResponse"),
   "The Stage 5 service must authorize and persist accept, decline, completion, checklist updates, and requester notifications.",
 );
 assert(
@@ -513,7 +513,7 @@ assert(
     requestPage.includes("checklistContextHref") &&
     requestPage.includes("encodeURIComponent(data.handoffId)") &&
     requestPage.includes("encodeURIComponent(data.field.key)") &&
-    requestPage.includes('label: "Stage 5 Checklist"') &&
+    requestPage.includes('data.canOpenStage ? "Stage 5 Checklist" : "Tasks"') &&
     requestPage.includes("backNavigation={{") &&
     requestWorkspace.includes("Stage 5 · File Checklist") &&
     requestWorkspace.includes("{data.project.name}") &&
@@ -529,7 +529,7 @@ assert(
     requestSourcePreviewRoute.includes("getStageFiveChecklistRequestSourceFileUrl") &&
     requestSourceDownloadRoute.includes("getStageFiveChecklistRequestSourceFileUrl") &&
     service.includes("getStageFiveChecklistRequestSourceFileUrl") &&
-    service.includes("recipientUserId: user.id"),
+    checklistReview.includes("assertTaskParticipant(context, user.id)"),
   "The exact request recipient must be able to preview and download the requested source file.",
 );
 assert(
@@ -546,10 +546,10 @@ assert(
   uploadClient.includes("checklistRequestId") &&
     requestUploadRoute.includes("getStageFiveChecklistRequestUploadContext") &&
     requestCompleteRoute.includes("getStageFiveChecklistRequestUploadContext") &&
-    service.includes("uploadedById: user.id") &&
-    service.includes("checklistResponseRequestId: request.id") &&
-    service.includes("fileChecklistItems: { none: {} }") &&
-    service.includes("status: AttachmentStatus.READY") &&
+    checklistReview.includes("uploadedById: user.id") &&
+    checklistReview.includes("checklistResponseRequestId: input.requestId") &&
+    checklistReview.includes("fileChecklistItems: { none: {} }") &&
+    (service.includes("status: AttachmentStatus.READY") || checklistReview.includes('status: "READY"')) &&
     attachmentScopeMigration.includes("ProjectAttachment_checklistResponseRequestId_fkey"),
   "Response attachments must reuse ProjectAttachment while enforcing recipient, project, READY, and one-field association constraints.",
 );

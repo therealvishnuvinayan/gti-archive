@@ -1,92 +1,34 @@
-import { randomUUID } from "node:crypto";
-import {
-  copyFileSync,
-  cpSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  readdirSync,
-  rmSync,
-} from "node:fs";
 import { spawnSync } from "node:child_process";
-import { tmpdir } from "node:os";
+import { cpSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
+import { createServer } from "node:net";
 
-import { PrismaClient } from "@prisma/client";
-
-function readDatabaseUrl() {
-  const line = readFileSync(".env", "utf8")
-    .split(/\r?\n/)
-    .find((entry) => entry.startsWith("DATABASE_URL="));
-  if (!line) throw new Error("DATABASE_URL is missing from .env.");
-  const raw = line.slice("DATABASE_URL=".length).trim();
-  return raw.startsWith('"') && raw.endsWith('"') ? raw.slice(1, -1) : raw;
+// Never read the application's .env database. Fixtures/migrations run in a local,
+// disposable PostgreSQL process, with email and realtime disabled.
+const root = mkdtempSync(join(process.platform === "darwin" ? "/private/tmp" : tmpdir(), "gti-flexible-"));
+const data = join(root, "data"), socket = join(root, "socket");
+mkdirSync(socket);
+const port = await new Promise((resolve, reject) => {
+  const server = createServer(); server.on("error", reject);
+  server.listen(0, "127.0.0.1", () => { const port = server.address().port; server.close(() => resolve(port)); });
+});
+const env = { ...process.env, STAGE_FIVE_ISOLATED: "1", DATABASE_URL: `postgresql://${encodeURIComponent(userInfo().username)}@127.0.0.1:${port}/postgres`, NEXT_PUBLIC_REALTIME_PROVIDER: "none", APP_URL: "https://tasker.example.test", RESEND_API_KEY: "", RESEND_FROM_EMAIL: "", COMPILED_ALIAS_ROOT: ".tmp/flexible-projects-integration" };
+function run(command, args) {
+  const result = spawnSync(command, args, { env, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
+  if (result.status !== 0) throw new Error(result.stderr || result.stdout || result.error?.message || `${command} failed`);
+  return result.stdout;
 }
-
-function run(command, args, env) {
-  const result = spawnSync(command, args, {
-    cwd: process.cwd(),
-    env,
-    stdio: "inherit",
-  });
-  if (result.status !== 0) {
-    throw new Error(`${command} ${args.join(" ")} exited with status ${result.status ?? "unknown"}.`);
-  }
-}
-
-const databaseUrl = readDatabaseUrl();
-const schemaName = `flexible_projects_test_${Date.now()}_${randomUUID().slice(0, 8)}`;
-const directDatabaseUrl = new URL(databaseUrl);
-directDatabaseUrl.hostname = directDatabaseUrl.hostname.replace(/-pooler(?=\.)/, "");
-const testUrl = new URL(directDatabaseUrl);
-testUrl.searchParams.set("schema", schemaName);
-const connectionOptions = testUrl.searchParams.get("options");
-testUrl.searchParams.set(
-  "options",
-  [connectionOptions, `-c search_path=${schemaName}`].filter(Boolean).join(" "),
-);
-const testEnvironment = { ...process.env, DATABASE_URL: testUrl.toString() };
-const migrationRoot = mkdtempSync(join(tmpdir(), "gti-flexible-migrations-"));
-const temporaryPrismaDirectory = join(migrationRoot, "prisma");
-mkdirSync(join(temporaryPrismaDirectory, "migrations"), { recursive: true });
-copyFileSync("prisma/schema.prisma", join(temporaryPrismaDirectory, "schema.prisma"));
-copyFileSync(
-  "prisma/migrations/migration_lock.toml",
-  join(temporaryPrismaDirectory, "migrations", "migration_lock.toml"),
-);
-for (const directory of readdirSync("prisma/migrations")) {
-  const source = join("prisma/migrations", directory, "migration.sql");
-  if (existsSync(source)) {
-    cpSync(join("prisma/migrations", directory), join(temporaryPrismaDirectory, "migrations", directory), {
-      recursive: true,
-    });
-  }
-}
-
+let started = false;
 try {
-  run(
-    "pnpm",
-    ["exec", "prisma", "migrate", "deploy", "--schema", join(temporaryPrismaDirectory, "schema.prisma")],
-    testEnvironment,
-  );
-  run(
-    "node",
-    [
-      "-r",
-      "./scripts/register-compiled-alias.cjs",
-      ".tmp/flexible-projects-integration/scripts/flexible-projects-integration-check.js",
-    ],
-    { ...testEnvironment, COMPILED_ALIAS_ROOT: ".tmp/flexible-projects-integration" },
-  );
+  run("initdb", ["-D", data, "-A", "trust", "--no-locale"]);
+  run("pg_ctl", ["-D", data, "-l", join(root, "postgres.log"), "-o", `-F -p ${port} -k ${socket} -h 127.0.0.1`, "-w", "start"]);
+  started = true;
+  cpSync("prisma", join(root, "prisma"), { recursive: true });
+  run("pnpm", ["exec", "prisma", "migrate", "deploy", "--schema", join(root, "prisma", "schema.prisma")]);
+  console.log("Flexible projects: all migrations applied to a disposable local database.");
+  console.log(run("node", ["-r", "./scripts/register-compiled-alias.cjs", "-r", "./scripts/project-tags-next-cache-stub.cjs", ".tmp/flexible-projects-integration/scripts/flexible-projects-integration-check.js"]).trim());
 } finally {
-  const cleanupUrl = new URL(directDatabaseUrl);
-  cleanupUrl.searchParams.set("schema", "public");
-  const cleanup = new PrismaClient({ datasourceUrl: cleanupUrl.toString() });
-  try {
-    await cleanup.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
-  } finally {
-    await cleanup.$disconnect();
-    rmSync(migrationRoot, { recursive: true, force: true });
-  }
+  if (started) run("pg_ctl", ["-D", data, "-m", "fast", "-w", "stop"]);
+  rmSync(root, { recursive: true, force: true });
 }

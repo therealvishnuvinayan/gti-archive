@@ -1,3 +1,4 @@
+import { getProjectReopening, reopenProject } from "../src/lib/project-reopening";
 import { randomUUID } from "node:crypto";
 
 import {
@@ -254,7 +255,10 @@ async function main() {
       "Priority sorting must keep the active Medium project ahead of the completed Urgent project",
     );
 
-    check(!isError(await setFlexibleMilestoneCompleted(owner, created.projectId, milestoneOne.milestoneId, false)), "reopen failed");
+    check(isError(await setFlexibleMilestoneCompleted(owner, created.projectId, milestoneOne.milestoneId, false)), "completed projects must use explicit reopening");
+    const reopeningRef = { projectType: "FLEXIBLE" as const, projectId: created.projectId };
+    const reopeningView = await getProjectReopening(owner, reopeningRef);
+    await reopenProject(owner, { ...reopeningRef, targetRef: milestoneOne.milestoneId, reason: "Review the brief", expectedUpdatedAt: reopeningView.expectedUpdatedAt });
     detail = await getFlexibleProjectDetail(created.slug, owner);
     check(detail?.progress === 0, "progress did not recalculate after reopen");
 

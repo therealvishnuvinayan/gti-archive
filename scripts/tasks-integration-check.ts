@@ -7,16 +7,10 @@ import { createProjectConceptFolder, editProjectConceptFolder } from "../src/lib
 import { revokeConceptTaskCompletion } from "../src/lib/project-stage-skip-revocation";
 import { canUseTasks, getSidebarVisibility, type PermissionUser } from "../src/lib/permissions/resolver";
 import { prisma } from "../src/lib/prisma";
-import { getUserTaskSidebarCount, getUserTasksPageData } from "../src/lib/user-tasks";
+import { createTask, listTasks } from "../src/lib/tasker/service";
+import { getTaskSidebarCount } from "../src/lib/tasker/sidebar";
 
 async function main() {
-  const legacy = await prisma.projectConceptFolder.findUniqueOrThrow({ where: { id: "legacy-assigned-task" } });
-  assert.equal(legacy.assignedById, "legacy-task-admin", "Migration attributes existing assigned tasks to their recorded creator");
-  assert.equal((await prisma.projectConceptFolder.findUniqueOrThrow({ where: { id: "legacy-unassigned-task" } })).assignedById, null);
-  assert.equal((await prisma.projectConceptFolder.findUniqueOrThrow({ where: { id: "legacy-unknown-creator-task" } })).assignedById, null, "Do not invent an assigner when history is unknown");
-  assert.equal((await getUserTasksPageData({ id: "legacy-task-admin", role: UserRole.ADMIN })).summary.total, 1);
-  assert.equal((await getUserTasksPageData({ id: "legacy-task-user", role: UserRole.USER })).summary.total, 2, "Unknown historical assigners do not hide received tasks");
-
   const actors = await Promise.all([
     { name: "Admin One", role: UserRole.ADMIN },
     { name: "Admin Two", role: UserRole.ADMIN },
@@ -39,11 +33,9 @@ async function main() {
     for (const actor of actors) {
       assert(canUseTasks(actor));
       assert(getSidebarVisibility(actor).tasks, "Tasks is visible for admin and user accounts with zero assignments");
-      assert.equal(await getUserTaskSidebarCount(actor), 0);
+      assert.equal(await getTaskSidebarCount(actor), 0);
     }
-    assert.equal((await getUserTasksPageData(emptyUser)).summary.total, 0);
-    assert.equal((await getUserTasksPageData(adminOne)).view, "GIVEN");
-    assert.equal((await getUserTasksPageData(userOne)).view, "RECEIVED");
+    assert.equal((await listTasks(emptyUser)).length, 0);
     await prisma.projectWorkflowStage.updateMany({
       where: { projectId, stageKey: { in: [ProjectWorkflowStageKey.PROJECT_INQUIRY, ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING] } },
       data: { status: ProjectWorkflowStageStatus.COMPLETED, unlockedAt: new Date(), completedAt: new Date() },
@@ -65,19 +57,19 @@ async function main() {
     const b = await giveTask(adminTwo, userOne.id, "Admin Two initial task");
     const c = await giveTask(superAdmin, userTwo.id, "Super Admin final task", ProjectWorkflowStageKey.PROJECT_DEVELOPMENT);
     const d = await giveTask(adminOne, userTwo.id, "Admin One second task");
-    const taskIds = async (actor: typeof adminOne) => new Set((await getUserTasksPageData(actor)).projects.flatMap((project) => project.tasks.map((task) => task.id)));
-    assert.deepEqual(await taskIds(adminOne), new Set([a.id, d.id]), "Admin only sees tasks they gave, even when another admin assigns within their project");
+    const taskIds = async (actor: typeof adminOne) => new Set((await listTasks(actor)).map((task) => task.id));
+    assert.deepEqual(await taskIds(adminOne), new Set([a.id, b.id, c.id, d.id]), "The project owner sees all project tasks");
     assert.deepEqual(await taskIds(adminTwo), new Set([b.id]));
     assert.deepEqual(await taskIds(superAdmin), new Set([c.id]), "Super admin also sees their own given tasks");
     assert.deepEqual(await taskIds(userOne), new Set([a.id, b.id]), "User sees only received tasks");
     assert.deepEqual(await taskIds(userTwo), new Set([c.id, d.id]));
-    assert.equal(await getUserTaskSidebarCount(userOne), 2);
-    assert.equal(await getUserTaskSidebarCount(adminOne), 2);
-    const finalTask = (await getUserTasksPageData(superAdmin)).projects[0].tasks[0];
-    assert.equal(finalTask.stageNumber, 4);
-    assert.equal(finalTask.assignedToName, "User Two");
+    assert.equal(await getTaskSidebarCount(userOne), 2);
+    assert.equal(await getTaskSidebarCount(adminOne), 4, "Universal Tasker includes all concept tasks in the owner's project");
+    const finalTask = (await listTasks(superAdmin))[0];
+    assert.equal(finalTask.stageLabel, undefined, "Only the project owner/co-owners receive stage labels");
+    assert.equal(finalTask.assignee.label, "User Two");
     assert(finalTask.href.includes("/stages/4/concepts/") && finalTask.href.endsWith("returnTo=%2Ftasks"));
-    assert.equal((await getUserTasksPageData(userOne)).projects[0].tasks.find((task) => task.id === a.id)?.assignedByName, "Admin One");
+    assert.equal((await listTasks(userOne)).find((task) => task.id === a.id)?.owner.label, "Admin One");
     assert("error" in await editProjectConceptFolder(userOne, {
       projectId, stageKey: ProjectWorkflowStageKey.CONCEPT_CREATION, folderId: a.id,
       name: "Forged user reassignment", assignedExecutorId: userTwo.id,
@@ -88,19 +80,19 @@ async function main() {
       projectId, stageKey: ProjectWorkflowStageKey.CONCEPT_CREATION, folderId: a.id,
       name: "Renamed by Admin Two", assignedExecutorId: userOne.id,
     }));
-    assert.deepEqual(await taskIds(adminOne), new Set([a.id, d.id]));
+    assert.deepEqual(await taskIds(adminOne), new Set([a.id, b.id, c.id, d.id]));
     assert("folder" in await editProjectConceptFolder(adminTwo, {
       projectId, stageKey: ProjectWorkflowStageKey.CONCEPT_CREATION, folderId: a.id,
       name: "Reassigned by Admin Two", assignedExecutorId: userTwo.id,
     }));
-    assert.deepEqual(await taskIds(adminOne), new Set([d.id]));
+    assert.deepEqual(await taskIds(adminOne), new Set([a.id, b.id, c.id, d.id]));
     assert.deepEqual(await taskIds(adminTwo), new Set([a.id, b.id]));
     assert.deepEqual(await taskIds(userOne), new Set([b.id]));
     assert.deepEqual(await taskIds(userTwo), new Set([a.id, c.id, d.id]));
-    assert.equal(await getUserTaskSidebarCount(userOne), 1);
-    assert.equal(await getUserTaskSidebarCount(adminTwo), 2);
+    assert.equal(await getTaskSidebarCount(userOne), 1);
+    assert.equal(await getTaskSidebarCount(adminTwo), 2);
     await prisma.projectStage.update({ where: { id: a.taskerStageId }, data: { status: StageStatus.COMPLETED, completedAt: new Date() } });
-    assert.equal((await getUserTasksPageData(adminTwo)).summary.completed, 1, "Given tasks retain completed work and its status");
+    assert.equal((await listTasks(adminTwo)).filter((task) => task.status === "COMPLETED").length, 1, "Given tasks retain completed work and its status");
 
     const denied: PermissionUser = {
       ...adminOne,
@@ -108,12 +100,12 @@ async function main() {
     };
     assert(!canUseTasks(denied));
     assert(!getSidebarVisibility(denied).tasks);
-    assert.equal((await getUserTasksPageData(denied)).summary.total, 0);
-    assert.equal(await getUserTaskSidebarCount(denied), 0, "Service and count respect disabled project access");
+    await assert.rejects(listTasks(denied), /not enabled/);
+    assert.equal(await getTaskSidebarCount(denied), 0, "Service and count respect disabled project access");
 
     assert("projectId" in await updateProjectV2(adminOne, projectId, { ...input, executorIds: [userOne.id] }));
     assert.deepEqual(await taskIds(userTwo), new Set(), "Removing an executor removes their received tasks");
-    assert.deepEqual(await taskIds(adminOne), new Set(), "Unassigned work disappears from the given list");
+    assert.deepEqual(await taskIds(adminOne), new Set([b.id]), "Owner retains assigned work; unassigned concepts are not tasks");
     assert.deepEqual(await taskIds(adminTwo), new Set([b.id]));
     assert.equal((await prisma.projectConceptFolder.findUniqueOrThrow({ where: { id: d.id } })).assignedById, null);
 
@@ -138,7 +130,16 @@ async function main() {
       projectId, stageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT, folderId: c.id,
     }));
     assert.equal((await prisma.projectConceptFolder.findUniqueOrThrow({ where: { id: c.id } })).assignedById, adminTwo.id, "Reopening without reassignment preserves the assigner");
-    console.log("Tasks integration passed: migration, visible empty menu, admin/user isolation, both stages, counts, assignment attribution, reassignment, completion/reopening, permissions, and removed executors.");
+    const generalTaskId = await createTask(userOne, {
+      projectType: "STRUCTURED", projectId, kind: "GENERAL", title: "Input from the project owner",
+      brief: "Please supply the required input", assigneeId: adminOne.id,
+    });
+    assert((await listTasks(adminOne)).some(task => task.id === generalTaskId && task.assignee.id === adminOne.id), "Administrators can receive tasks in the same list as concepts");
+    assert((await listTasks(userOne)).some(task => task.id === generalTaskId && task.owner.id === userOne.id), "Executors can send tasks in the same list as received concepts");
+    for (const actor of actors) {
+      assert.equal(await getTaskSidebarCount(actor), (await listTasks(actor)).length, "Sidebar and API count the same accessible tasks across both task workflows");
+    }
+    console.log("Tasks integration passed: unified list, owner visibility, sender/recipient isolation, both stages, counts, assignment attribution, reassignment, completion/reopening, permissions, and removed executors.");
   } finally {
     await prisma.project.deleteMany({ where: { id: projectId } });
     await prisma.user.deleteMany({ where: { id: { in: actors.map((actor) => actor.id) } } });

@@ -1,5 +1,3 @@
-import { UserRole } from "@prisma/client";
-
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { ProjectBackButton } from "@/components/projects/project-back-button";
 import { ProjectAccessUnavailableState } from "@/components/projects/project-route-state";
@@ -18,15 +16,13 @@ export default async function UserSharedFolderPage({
   const user = await requireUser();
   let data = null;
 
-  if (user.role === UserRole.USER) {
-    try {
-      data = await getProjectResearchFolderPageData(user, {
-        projectId: slug,
-        folderId,
-      });
-    } catch {
-      data = null;
-    }
+  try {
+    data = await getProjectResearchFolderPageData(user, {
+      projectId: slug,
+      folderId,
+    });
+  } catch {
+    data = null;
   }
 
   return (

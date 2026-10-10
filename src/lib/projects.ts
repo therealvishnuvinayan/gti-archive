@@ -177,7 +177,7 @@ type ProjectCardProject = Pick<
 > & {
   tags: Array<{ tag: { name: string } }>;
   owner: Pick<User, "id" | "name" | "email"> | null;
-  closure: { id: string } | null;
+  closures: Array<{ id: string }>;
   workflowStages: Array<
     Pick<ProjectWorkflowStage, "stageKey" | "status">
   >;
@@ -2327,7 +2327,7 @@ export async function getProjectsList(
     owner: {
       select: { id: true, name: true, email: true },
     },
-    closure: {
+    closures: {
       select: { id: true },
     },
     workflowStages: {

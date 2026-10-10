@@ -2,6 +2,8 @@
 
 import { revalidatePath, revalidateTag } from "next/cache";
 
+import { afterTaskMutation } from "@/lib/tasker/http";
+
 import { requireUser } from "@/lib/auth";
 import {
   notifyConceptBriefAssigned,
@@ -47,6 +49,7 @@ export async function revokeConceptTaskCompletionAction(input: {
         eventType: "stage_status_changed", changedEntityId: result.taskerStageId, actorId: user.id,
       });
     }
+    if (!("error" in result)) afterTaskMutation();
     return result;
   } catch (error) {
     console.error("[project-concepts] revoke task completion failed", error);
@@ -70,6 +73,7 @@ export async function revokeSkippedConceptStageAction(input: {
         projectId: input.projectId, stageId: null, eventType: "timeline_updated", actorId: user.id,
       });
     }
+    if (!("error" in result)) afterTaskMutation();
     return result;
   } catch (error) {
     console.error("[project-concepts] undo skip failed", error);
@@ -125,6 +129,7 @@ export async function createProjectConceptFolderAction(input: {
       );
     }
 
+    if (!("error" in result)) afterTaskMutation();
     return result;
   } catch (error) {
     console.error("[project-concepts] create failed", error);
@@ -154,6 +159,7 @@ export async function deleteProjectConceptFolderAction(input: {
       });
     }
 
+    if (!("error" in result)) afterTaskMutation();
     return result;
   } catch (error) {
     console.error("[project-concepts] delete failed", error);
@@ -196,6 +202,7 @@ export async function editProjectConceptFolderAction(input: {
       }
     }
 
+    if (!("error" in result)) afterTaskMutation();
     return result;
   } catch (error) {
     console.error("[project-concepts] edit failed", error);
@@ -229,6 +236,7 @@ export async function importStageThreeConceptReferenceAction(input: {
       }
     }
 
+    if (!("error" in result)) afterTaskMutation();
     return result;
   } catch (error) {
     console.error("[project-concepts] Stage 3 reference import failed", error);
@@ -253,6 +261,7 @@ export async function renameProjectConceptFolderAction(input: {
       revalidateConceptStage(input.projectId, input.stageKey);
     }
 
+    if (!("error" in result)) afterTaskMutation();
     return result;
   } catch (error) {
     console.error("[project-concepts] rename failed", error);
@@ -290,6 +299,7 @@ export async function markProjectConceptApprovedAttachmentAction(input: {
 
     }
 
+    if (!("error" in result)) afterTaskMutation();
     return result;
   } catch (error) {
     console.error("[project-concepts] approval failed", error);
@@ -317,6 +327,7 @@ export async function requestProjectConceptTaskCompletionAction(input: { project
         }));
       }
     }
+    if (!("error" in result)) afterTaskMutation();
     return result;
   } catch (error) {
     console.error("[project-concepts] completion request failed", error);
@@ -344,6 +355,7 @@ export async function completeProjectConceptTaskWithoutFileAction(input: { proje
         }));
       }
     }
+    if (!("error" in result)) afterTaskMutation();
     return result;
   } catch (error) {
     console.error("[project-concepts] completion without file failed", error);
@@ -395,6 +407,7 @@ export async function completeStageThreeConceptsAction(input: {
       }
     }
 
+    if (!("error" in result)) afterTaskMutation();
     return result;
   } catch (error) {
     console.error("[project-concepts] Stage 3 completion failed", error);
@@ -428,6 +441,7 @@ export async function markStageFourFinalApprovedAttachmentAction(input: {
 
     }
 
+    if (!("error" in result)) afterTaskMutation();
     return result;
   } catch (error) {
     console.error("[project-concepts] Stage 4 final approval failed", error);
@@ -457,6 +471,7 @@ export async function revokeProjectConceptApprovedAttachmentAction(input: {
       );
     }
 
+    if (!("error" in result)) afterTaskMutation();
     return result;
   } catch (error) {
     console.error("[project-concepts] approval revocation failed", error);
@@ -481,6 +496,7 @@ export async function revokeStageFourFinalApprovedAttachmentAction(input: {
       );
     }
 
+    if (!("error" in result)) afterTaskMutation();
     return result;
   } catch (error) {
     console.error("[project-concepts] Stage 4 approval revocation failed", error);
@@ -523,6 +539,7 @@ export async function completeStageFourConceptsAction(input: {
       }
     }
 
+    if (!("error" in result)) afterTaskMutation();
     return result;
   } catch (error) {
     console.error("[project-concepts] Stage 4 completion failed", error);

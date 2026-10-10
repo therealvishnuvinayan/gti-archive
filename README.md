@@ -116,6 +116,241 @@ intact. Blocked actions display the reason. The task discussion records who
 revoked completion, and the server rechecks permissions and dependencies when
 confirming. Task-only reopening leaves the current workflow stage open.
 
+## Universal Tasker — Phase 1
+
+Tasker supports structured projects and flexible projects through a shared task
+engine and project adapters. The Tasks page includes Received, Sent, Co-owned,
+View only, and All views. Project and milestone pages provide a Tasker section
+and a floating Create task button. One Tasker service supplies the page, API,
+and sidebar count for every role. Stage 3/4 concept tasks appear in that same
+list and open their existing concept screens, retaining their approval workflow.
+The old role-specific Tasks workspace and compatibility adapter are removed.
+
+Field Input, File Request, and General tasks support one recipient, an optional
+task co-owner, deadlines, submissions, correction requests, cancellation,
+reassignment, participants, conversation, and retained history. The creator and
+task co-owner review submissions. Project owners can see and delete any task in
+their project; other participants see only their associated tasks.
+
+Accepted field input updates current data, including completed stages, without
+changing issued approval or handover snapshots. Handover and sample request input
+fills the editable request form; sending and approving remain native workflow
+actions. Conflicting values require review, and stale form saves are rejected.
+File requests publish accepted copies into existing Brief/Tech subfolders or
+flexible milestone files; submission objects remain separate and immutable.
+Tasker tasks do not block stage completion.
+
+Before running the updated application, apply the additive migration:
+
+```bash
+pnpm exec prisma migrate deploy
+pnpm exec prisma generate
+```
+
+Configure `APP_URL`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, and `CRON_SECRET`
+(see `.env.example`). Existing S3 settings and upload CORS rules are reused.
+In-app notifications and email outbox records commit with task actions. Email
+delivery runs after the response; the authenticated
+`GET /api/cron/tasker-deliveries` retries failures every five minutes through
+`vercel.json`. Other hosts must schedule that endpoint with
+`Authorization: Bearer <CRON_SECRET>`. These retries are delivery recovery;
+the separate deadline reminder worker is described below.
+
+`pnpm tasker:integration-check` runs migrations and tests in a disposable local
+PostgreSQL cluster with mocked storage and email. It requires `initdb`, `pg_ctl`,
+and a permitted loopback listener. It never uses the application's database.
+`pnpm tasks:ui-check` covers task page access, task views, recipient controls, and
+conflict review rendering. A production build is checked with `pnpm run build`.
+
+New project templates can register an adapter in `src/lib/tasker/adapters.ts`;
+Tasker implements the two existing project systems.
+
+## Universal Tasker — Phase 2
+
+Open **Sister Tasks & files** from a task row, task details, or the Stage 3/4
+task header. Create a linked revision without changing the original task's
+status, submissions, files, or review history. Revisions of revisions stay
+under the first parent and appear together in the task list. Sister Tasks can
+be created after a stage or project is completed.
+
+Every child has its own owner, recipient, review, and optional co-owner. Access
+is checked separately for each family member: receiving a Sister Task does not
+grant access to its parent or siblings. The same rule applies to file downloads,
+selection history, and notifications. Deleting one task hides that task while
+preserving the remaining revisions.
+
+Project owners and project co-owners can select the final file from the versions
+they can access. The default requires an accepted Tasker submission or an approved
+native concept revision. All submitted versions remain available to download.
+Selection changes are recorded, and concurrent choices require refreshing rather
+than silently replacing a newer choice. **Import selected final file** copies it
+into an accessible Brief/Tech folder, a flexible milestone, or a new Stage 5
+file/checklist while Stage 5 is active and the viewer has its native upload
+permission. Each import records the original task/revision, submission, chosen
+file, destination, actor, and time. Stage 5 imports follow the normal production
+workflow; no existing file, approval, or handover snapshot is replaced.
+
+After production approval or handover exists, creating a revision or changing
+the selected file requests the project owner's decision about another cycle.
+The owner records a reason and whether a cycle is required. This decision does
+not start or reopen a workflow automatically. Dependency tasks and owner-approved
+pausing are delivered in Phase 3 below. Explicit project reopening is described below.
+
+Apply `20261008180000_tasker_sister_tasks` before starting the updated app. The
+additive migration preserves existing task data. `pnpm tasker:integration-check`
+now also covers family permissions, numbering and selection races, native concept
+originals, completed flexible projects, late revisions, and outbox access checks.
+
+## Phase 1–2 completion
+
+Create Task preselects the current stage or milestone and allows choosing another.
+Task and family submissions reuse the project's preview and image-comparison
+viewer, including zoom, pan, opacity and fullscreen. File requests use task-scoped
+preview/download endpoints; comparison does not grant stage or sibling access.
+
+Open tasks flag owners, recipients or co-owners who have left the project. Task
+managers can reassign recipients; the project owner can explicitly recover an
+abandoned task, with a reason and a version check. Recovery preserves submissions
+and review state and cannot replace an owner who is still a participant.
+
+Existing internal Stage 5 requests now store submissions separately until the
+requester approves them. Corrections and rejection retain previous submissions;
+file submissions and published copies use separate immutable storage keys.
+Acceptance checks current field values and form drafts, applies only the requested
+field, and preserves issued production snapshots. Task-only access requires current
+project membership and association with the request (or project ownership); existing
+native collaborator recipients retain that scoped access. External email requests
+keep their existing response workflow. Pre-migration pending requests require
+explicit conflict review because no original field snapshot was recorded.
+Notifications and the durable email outbox cover internal request submissions and
+reviews. Existing reminder settings are retained; reminders pause during review.
+
+Apply both `20261008215900_tasker_checklist_review_states` and
+`20261008220000_tasker_phase_one_two_completion` before running these changes.
+The enum additions are separated so PostgreSQL commits them before the active
+request index uses them. No existing business records are deleted or rewritten.
+The isolated Tasker suite also runs the Stage 5 internal/external regression tests.
+Dependency tasks are delivered in Phase 3 below. Explicit project reopening is described below.
+
+## Universal Tasker — Phase 3
+
+Open **Dependencies** from any Tasker row, task details, or the Stage 3/4 task
+header. Create a Field Input, File Request, or General dependency request, or link
+an existing task you can access in the same project. Sister relationships remain
+separate. Structured, flexible, and native Stage 3/4 tasks use the same dependency
+controls; linking tasks never grants access to another task or its files.
+
+**Create request** keeps the main task running. **Create request and ask to pause**
+creates the request and its pending pause decision atomically. The project owner
+alone approves or rejects pauses, including requests made by a task owner or
+co-owner. Rejection requires a reason. A rejected or nonblocking request can later
+request a pause, and all decisions remain in history.
+
+An approved pause is an overlay: the task retains its assignment, deadline,
+submissions and review state. Discussion, references and management remain
+available; submission and completion are blocked in the server transaction.
+Every approved blocker must resolve before the task automatically resumes.
+Submission or requested corrections do not resolve a dependency. Completion,
+rejection/decline, cancellation or deletion releases its blocker; unsuccessful
+outcomes remain visible. Ending the main task closes its pending pause decisions
+without cancelling the independent requests. Reopening a native task does not
+reactivate already-resolved dependencies.
+
+Project locks and version checks protect concurrent decisions, submissions,
+completion and graph changes. Self-links, duplicate links, cross-project links,
+and dependency cycles are rejected. History and in-app/email outbox notifications
+are written with each action. Native concept dependencies resolve through their
+existing approval/completion or deletion actions. These overlays do not add
+stage-completion blockers, change approval authority, or reopen projects.
+
+Apply `20261010120000_tasker_dependencies` before running the updated app. It adds
+dependency and history tables and preserves existing data. The isolated
+`pnpm tasker:integration-check` suite includes Phase 3 permissions, multiple and
+nested dependencies, concurrent graph/decision/completion races, native workflow
+guards, flexible projects and notification checks. `pnpm tasks:ui-check` also
+covers dependency controls and paused-task discussion access.
+
+## Owner-controlled project reopening
+
+The project overview includes **Reopen project** for the current project owner
+when the project is completed. The owner chooses a stage or milestone and records
+a reason. Co-owners can read reopening decisions and stage summaries; full snapshots
+remain owner-only so unrelated task content stays private. Co-owners cannot reopen the project.
+Administrator status alone does not grant reopening authority.
+
+For structured projects, stages before the chosen stage stay completed, the chosen
+stage becomes available, and later stages lock until reached again. Resuming at
+Stage 6 or earlier starts a new production cycle: previous units, approvals and
+handovers remain retained, while new units require fresh approval through the
+existing workflow. Resuming at Stage 7 preserves production approvals and requires
+a new physical sample review. Previous sample requests remain read-only. Completing
+the project again adds a new closure record rather than replacing the old closure.
+
+For flexible projects, only the selected milestone becomes pending. The other
+milestones retain their completion state. Existing milestone actions cannot bypass
+owner-controlled reopening of a completed project.
+
+Each reopening preserves a completed-workflow snapshot, including stage states,
+inquiry/checklist values, concept history, issued approval/handover snapshots and
+archive metadata. History is available on the project overview, with an export of
+the complete record. Referenced files remain protected from deletion. Existing
+Tasker tasks, Sister Tasks and dependencies continue without being reset.
+Choosing a new final file or recording that another cycle is needed still does
+not reopen the project automatically.
+
+Apply `20261010150000_project_reopening` before running the updated application.
+The migration preserves existing data and adds reopening history and production
+cycle support. The isolated Tasker suite covers owner-only access, all seven resume
+points, flexible milestones, stale/concurrent requests, repeated closure, fresh
+approvals, sample review and snapshot/file preservation. The flexible-project test
+runner also uses a disposable local PostgreSQL cluster, with no application database
+connection.
+
+## Tasker deadline reminders
+
+Field Input, File Request, General, Sister and Dependency Tasks can opt into
+**Deadline reminders** in Create Task or Manage task. The task owner/co-owner
+can select Off (the default), Every 24 hours, Every 48 hours or Every 72 hours.
+A deadline is required; removing it also turns reminders off. Existing tasks
+remain opted out. Native Stage 3/4 concept workflows and Stage 5/7 request
+reminder settings remain unchanged.
+
+The first reminder is queued after the deadline (the existing date-only Tasker
+deadline ends at 23:59:59.999 UTC). Subsequent reminders use the selected interval.
+The assignee receives both an in-app notification and an email while work is
+pending. While a submission awaits review, only the current task owner/co-owner
+are reminded. A change of responsible person or review state starts a new
+interval; changing the deadline or cadence recalculates the schedule. Removed
+participants and accounts without Tasker access are excluded.
+
+Approved dependency holds pause reminders; unapproved pause requests do not.
+Reminders resume when all approved blockers resolve, and stop when the task is
+completed, rejected, declined, cancelled or deleted. Independently active tasks
+continue after stage/project completion. Completing a task does not affect the
+separate schedules of its Sister Tasks or dependencies.
+
+Apply `20261010180000_tasker_deadline_reminders` before using this version.
+`GET /api/cron/tasker-reminders` requires `Authorization: Bearer <CRON_SECRET>`
+and is scheduled every 15 minutes in `vercel.json`. Other hosts must schedule it
+alongside the existing five-minute `/api/cron/tasker-deliveries` worker. The
+reminder endpoint queues notifications; the delivery worker sends/retries email.
+No real reminders run until a scheduler is configured and tasks opt in.
+
+Each invocation processes up to 50 due tasks and returns `processed`, `queued`
+(recipient count) and `failed`. Monitor non-2xx results; a consistently full batch
+needs more frequent invocations or additional runs to drain the backlog. Queuing
+is atomic and serialized with task changes, so overlapping runs do not duplicate
+notifications. Missed intervals produce one current reminder, never a catch-up
+burst. Failed emails retain their provider idempotency key and expire at the next
+interval. Delivery rechecks current task state, membership, permissions, recipient,
+deadline, cadence and approved holds to suppress stale queued reminders. Reminder
+activity does not change task versions or invalidate open forms. No task fields,
+submission contents or restricted stage details appear in reminder previews.
+
+The isolated Tasker suite covers cadence boundaries, concurrent cron/outbox runs,
+review/correction/reassignment routing, approved holds, cancellation/deletion,
+deadline changes, late tasks, flexible projects, Sister Tasks and delivery retries.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

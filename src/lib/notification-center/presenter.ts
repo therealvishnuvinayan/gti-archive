@@ -13,6 +13,7 @@ import type {
 } from "@/lib/notifications";
 
 export const workflowNotificationTypes = [
+  "TASKER_UPDATED",
   "PROJECT_ASSIGNED",
   "PROJECT_CREATED",
   "PROJECT_UPDATED",
@@ -54,6 +55,7 @@ export function mapTypeFilterToNotificationTypes(
   switch (filter) {
     case "Project":
       return [
+        "TASKER_UPDATED",
         "PROJECT_ASSIGNED",
         "PROJECT_CREATED",
         "PROJECT_UPDATED",

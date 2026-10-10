@@ -180,7 +180,12 @@ const realtime = source("src/app/api/realtime/ably/token/route.ts");
 assert(realtime.includes("canOpenProjectStageChatContainer"));
 
 const stageFive = source("src/lib/stage-five.ts");
-assert(stageFive.includes("accessibleStageFiveProjectWhere"));
+// Internal field requests now use Tasker access and can finish after stage completion.
+// Keep checking membership and request association at their shared authorization boundary.
+assert(stageFive.includes("loadChecklistReview"));
+const checklistReview = source("src/lib/tasker/checklist-review.ts");
+assert(checklistReview.includes("assertTaskParticipant(context, user.id)"));
+assert(checklistReview.includes("[request.requestedById, request.recipientUserId, context.ownerId].includes(user.id)"));
 for (const operation of [
   "getStageFiveChecklistRequestData",
   "getStageFiveChecklistRequestSourceFileUrl",

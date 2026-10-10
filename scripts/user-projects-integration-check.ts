@@ -21,9 +21,7 @@ import { prisma } from "../src/lib/prisma";
 import { getProjectTypeSwitcherVisibility } from "../src/lib/projects";
 import { getUserProjectWorkspace } from "../src/lib/user-project-workspace";
 import { getUserProjectsList } from "../src/lib/user-projects";
-import {
-  getUserTasksPageData,
-} from "../src/lib/user-tasks";
+import { listTasks } from "../src/lib/tasker/service";
 
 function check(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`USER Projects integration failed: ${message}`);
@@ -326,40 +324,23 @@ async function main() {
       "Priority sort must rank active High, Medium, and Low work before a completed Urgent project",
     );
 
-    const userTasks = await getUserTasksPageData(userOne);
+    const userTasks = await listTasks(userOne);
     const userDashboard = await getDashboardSnapshot(userOne);
-    check(userTasks.summary.total === 5, "USER task page must include all five assigned concept taskers");
-    check(userTasks.summary.open === 4, "USER task page open count is incorrect");
-    check(userTasks.summary.needsAttention === 1, "USER task page attention count is incorrect");
-    check(userTasks.summary.waitingForReview === 1, "USER task page review count is incorrect");
-    check(userTasks.summary.completed === 1, "USER task page completed count is incorrect");
-    check(
-      userTasks.summary.needsAttention === userDashboard.attentionCount,
-      "Dashboard and Tasks Needs Attention counts must match",
-    );
-    check(
-      userTasks.attentionItems.map(({ id }) => id).join(",") ===
-        userDashboard.attention.map(({ id }) => id).join(","),
-      "Dashboard and Tasks must expose the same Needs Attention items",
-    );
-    check(userTasks.projects.length === 3, "USER task page must group assignments into three project folders");
-    check(userTasks.projects[0]?.id === mixedProjectId, "project folder with changes requested must sort first");
-    check(userTasks.projects.at(-1)?.id === completedProjectId, "completed project folder must sort last");
-    const stageFourTask = userTasks.projects
-      .flatMap(({ tasks }) => tasks)
-      .find(({ id }) => id === activeConcept.id);
-    check(stageFourTask?.stageNumber === 4, "Stage 4 executor task was not identified correctly");
-    check(
-      stageFourTask?.href.includes(`/stages/4/concepts/${activeConcept.id}?returnTo=%2Ftasks`),
-      "Stage 4 task does not link directly to its workspace and back to Tasks",
-    );
-    const userTwoTasks = await getUserTasksPageData(userTwo);
-    check(userTwoTasks.summary.total === 1, "USER task page leaked another executor's assignments");
-    const ownerTasks = await getUserTasksPageData(owner);
-    check(ownerTasks.view === "GIVEN", "ADMIN Tasks page must show given tasks");
-    check(ownerTasks.summary.total === await prisma.projectConceptFolder.count({
-      where: { assignedById: owner.id, assignedExecutorId: { not: null } },
-    }), "ADMIN Tasks page must include only tasks they assigned");
+    check(userTasks.length === 5, "Tasker must include all five assigned concept tasks");
+    check(userTasks.filter(task => task.status !== "COMPLETED").length === 4, "Open task count is incorrect");
+    check(userTasks.filter(task => task.status === "CORRECTIONS_REQUESTED").length === 1, "Attention count is incorrect");
+    check(userTasks.filter(task => task.status === "IN_REVIEW").length === 1, "Review count is incorrect");
+    check(userTasks.filter(task => task.status === "COMPLETED").length === 1, "Completed count is incorrect");
+    check(userTasks.filter(task => task.status === "CORRECTIONS_REQUESTED").length === userDashboard.attentionCount, "Dashboard and Tasker attention counts must match");
+    check(new Set(userTasks.map(task => task.project.projectId)).size === 3, "Tasker must include assignments across three projects");
+    const stageFourTask = userTasks.find(({ id }) => id === activeConcept.id);
+    check(stageFourTask?.stageLabel === undefined, "Task list must not expose stage labels to executors");
+    check(stageFourTask?.href.includes(`/stages/4/concepts/${activeConcept.id}?returnTo=%2Ftasks`), "Stage 4 task must use its existing workspace");
+    check((await listTasks(userTwo)).length === 1, "Tasker leaked another executor's assignments");
+    const ownerTasks = await listTasks(owner);
+    check(ownerTasks.length === await prisma.projectConceptFolder.count({
+      where: { assignedExecutorId: { not: null }, assignedById: { not: null }, OR: [{ project: { ownerId: owner.id } }, { assignedById: owner.id }] },
+    }), "Project owners see all assigned tasks in their projects");
 
     const mixed = all.projects.find((project) => project.id === mixedProjectId);
     check(mixed, "mixed assignment project is missing");

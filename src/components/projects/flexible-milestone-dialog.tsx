@@ -18,6 +18,7 @@ import type {
 } from "@/lib/flexible-projects";
 
 export type FlexibleMilestoneFormValue = {
+  expectedUpdatedAt?: string;
   name: string;
   category: string;
   responsibleUserId: string;
@@ -65,6 +66,7 @@ export function FlexibleMilestoneDialog({
   onSave,
 }: FlexibleMilestoneDialogProps) {
   const [pending, startTransition] = useTransition();
+  const [expectedUpdatedAt] = useState(initialMilestone?.updatedAt);
   const [name, setName] = useState(initialMilestone?.name ?? "");
   const [category, setCategory] = useState(initialMilestone?.category ?? "Standard");
   const [responsibleIds, setResponsibleIds] = useState<string[]>(
@@ -97,6 +99,7 @@ export function FlexibleMilestoneDialog({
     }
     startTransition(async () => {
       const result = await onSave({
+        expectedUpdatedAt,
         name,
         category,
         responsibleUserId: responsibleIds[0] ?? "",

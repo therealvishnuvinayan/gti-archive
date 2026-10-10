@@ -1,3 +1,5 @@
+import { checkTaskerFormRevision, consumeTaskerFormChanges } from "@/lib/tasker/field-changes";
+import { TaskerError } from "@/lib/tasker/errors";
 import {
   ArchiveRecordStatus,
   AttachmentAssetType,
@@ -469,8 +471,8 @@ async function buildSharedSnapshot(
     return { error: "The shared-information selection is invalid." } as const;
   }
 
-  const unit = await tx.projectProductionUnit.findUnique({
-    where: { id: input.productionUnitId },
+  const unit = await tx.projectProductionUnit.findFirst({
+    where: { id: input.productionUnitId, retiredAt: null },
     select: {
       id: true,
       projectId: true,
@@ -632,7 +634,7 @@ export async function getStageSixWorkspaceData(
   const [records, savedArchive] = await withPrismaRetry(() =>
     Promise.all([
       prisma.projectProductionUnit.findMany({
-        where: { projectId },
+        where: { projectId, retiredAt: null },
         relationLoadStrategy: "join",
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
         select: workspaceUnitSelect,
@@ -793,6 +795,8 @@ export async function getStageFiveCompletionState(
             in: [
               ProjectFileChecklistRequestWorkflowStatus.REQUESTED,
               ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
+              ProjectFileChecklistRequestWorkflowStatus.IN_REVIEW,
+              ProjectFileChecklistRequestWorkflowStatus.CORRECTIONS_REQUESTED,
             ],
           },
         },
@@ -824,6 +828,7 @@ export async function completeStageFive(
             where: { id: input.projectId },
             select: {
               id: true,
+              workflowCycle: true,
               name: true,
               ownerId: true,
               coOwners: { select: { userId: true } },
@@ -874,6 +879,8 @@ export async function completeStageFive(
                     in: [
                       ProjectFileChecklistRequestWorkflowStatus.REQUESTED,
                       ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
+                      ProjectFileChecklistRequestWorkflowStatus.IN_REVIEW,
+                      ProjectFileChecklistRequestWorkflowStatus.CORRECTIONS_REQUESTED,
                     ],
                   },
                 },
@@ -965,11 +972,12 @@ export async function completeStageFive(
           for (const handoff of project.stageFileHandoffs) {
             const checklist = handoff.checklist!;
             const unit = await tx.projectProductionUnit.upsert({
-              where: { sourceHandoffId: handoff.id },
+              where: { sourceHandoffId_cycle: { sourceHandoffId: handoff.id, cycle: project.workflowCycle } },
               update: {},
               create: {
                 projectId: project.id,
                 sourceHandoffId: handoff.id,
+                cycle: project.workflowCycle,
                 sourceChecklistId: checklist.id,
                 sourceAttachmentId: handoff.sourceAttachmentId,
                 createdById: user.id,
@@ -1280,6 +1288,7 @@ export async function configureMarketingDirector(
         }
         const unit = await tx.projectProductionUnit.findFirst({
           where: {
+            retiredAt: null,
             id: input.productionUnitId,
             projectId: input.projectId,
             status: {
@@ -1410,6 +1419,7 @@ export async function addProductionApprover(
         }
         const unit = await tx.projectProductionUnit.findFirst({
           where: {
+            retiredAt: null,
             id: input.productionUnitId,
             projectId: input.projectId,
             status: {
@@ -1539,6 +1549,7 @@ export async function removeProductionApprover(
       async (tx) => {
         const unit = await tx.projectProductionUnit.findFirst({
           where: {
+            retiredAt: null,
             id: input.productionUnitId,
             projectId: input.projectId,
             status: {
@@ -1745,6 +1756,7 @@ export async function reorderProductionApprover(
         async (tx) => {
           const unit = await tx.projectProductionUnit.findFirst({
             where: {
+              retiredAt: null,
               id: input.productionUnitId,
               projectId: input.projectId,
               status: {
@@ -1842,6 +1854,7 @@ export async function sendProductionApprovalRequest(
     prepared = await withPrismaRetry(() => prisma.$transaction(async (tx) => {
       const unit = await tx.projectProductionUnit.findFirst({
         where: {
+          retiredAt: null,
           id: input.productionUnitId,
           projectId: input.projectId,
           status: { in: [ProjectProductionUnitStatus.PREPARATION, ProjectProductionUnitStatus.APPROVAL_PENDING] },
@@ -1963,7 +1976,7 @@ export async function resendRejectedProductionApproval(
   try {
     prepared = await withPrismaRetry(() => prisma.$transaction(async (tx) => {
       const unit = await tx.projectProductionUnit.findFirst({
-        where: { id: input.productionUnitId, projectId: input.projectId },
+        where: { retiredAt: null, id: input.productionUnitId, projectId: input.projectId },
         include: {
           project: { select: projectStageAccessSelect },
           handover: { select: { id: true } },
@@ -2053,7 +2066,7 @@ export async function retryProductionApprovalDispatch(
     return { error: "This project's approval requests are closed." } as const;
   }
   const step = await withPrismaRetry(() => prisma.productionApprovalStep.findFirst({
-    where: { id: input.stepId, productionUnit: { projectId: input.projectId }, removedAt: null },
+    where: { id: input.stepId, productionUnit: { projectId: input.projectId, retiredAt: null }, removedAt: null },
     select: { isMarketingDirectorRequired: true },
   }));
   if (!step) return { error: "This approval email cannot be retried." } as const;
@@ -2067,6 +2080,7 @@ export async function retryProductionApprovalDispatch(
       where: {
         id: input.stepId,
         productionUnit: {
+          retiredAt: null,
           projectId: input.projectId,
           status: ProjectProductionUnitStatus.APPROVAL_PENDING,
           project: {
@@ -2228,6 +2242,7 @@ export async function decideProductionApproval(
             rejectionHistory: true,
             productionUnit: {
               select: {
+                retiredAt: true,
                 status: true,
                 sourceAttachment: { select: { originalFileName: true } },
                 project: {
@@ -2246,6 +2261,7 @@ export async function decideProductionApproval(
           !step ||
           step.status !== ProductionApprovalStepStatus.ACTIVE ||
           step.dispatchStatus !== ProductionDispatchStatus.SENT ||
+          step.productionUnit.retiredAt !== null ||
           step.productionUnit.status !== ProjectProductionUnitStatus.APPROVAL_PENDING
         ) {
           return { error: "This approval step is not active." } as const;
@@ -2637,6 +2653,7 @@ export async function addProductionUnitFile(
   const unit = await withPrismaRetry(() =>
     prisma.projectProductionUnit.findFirst({
       where: {
+        retiredAt: null,
         id: input.productionUnitId,
         projectId: input.projectId,
         status: { in: [ProjectProductionUnitStatus.PREPARATION, ProjectProductionUnitStatus.REJECTED] },
@@ -2708,6 +2725,7 @@ export async function removeProductionUnitFile(
           productionUnitId: input.productionUnitId,
           attachmentId: input.attachmentId,
           productionUnit: {
+            retiredAt: null,
             projectId: input.projectId,
             status: { in: [ProjectProductionUnitStatus.PREPARATION, ProjectProductionUnitStatus.REJECTED] },
           },
@@ -2727,6 +2745,7 @@ export async function removeProductionUnitFile(
 export async function handoverProductionUnit(
   user: PermissionUser,
   input: {
+    taskerRevision?: number;
     clientRequestId: string;
     projectId: string;
     productionUnitId: string;
@@ -2806,8 +2825,11 @@ export async function handoverProductionUnit(
     prepared = await withPrismaRetry(() =>
       prisma.$transaction(
       async (tx) => {
+      if (!(await checkTaskerFormRevision(tx, input.projectId, `stage-six-handover:${input.productionUnitId}`, input.taskerRevision ?? 0))) throw new TaskerError("Tasker updated this form. Review the accepted input before sending.", 409);
+      await consumeTaskerFormChanges(tx, input.projectId, `stage-six-handover:${input.productionUnitId}`);
       const unit = await tx.projectProductionUnit.findFirst({
           where: {
+            retiredAt: null,
             id: input.productionUnitId,
             projectId: input.projectId,
             status: {
@@ -3360,6 +3382,7 @@ export async function completeStageSix(
               ownerId: true,
               coOwners: { select: { userId: true } },
               productionUnits: {
+                where: { retiredAt: null },
                 select: {
                   id: true,
                   status: true,
