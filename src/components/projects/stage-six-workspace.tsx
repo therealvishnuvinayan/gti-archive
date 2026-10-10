@@ -1,5 +1,7 @@
 "use client";
 
+import { FileUploadDropzone } from "@/components/ui/file-upload-dropzone";
+
 import { FileThumbnail } from "@/components/projects/file-thumbnail";
 
 import Link from "next/link";
@@ -32,7 +34,6 @@ import {
   Send,
   ShieldCheck,
   Trash2,
-  Upload,
   X,
 } from "lucide-react";
 
@@ -250,7 +251,6 @@ function FilesSection({
   canManage: boolean;
   onRefresh: () => void;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [productionFiles, setProductionFiles] = useState(unit.productionFiles);
   const [removingFileId, setRemovingFileId] = useState<string | null>(null);
@@ -258,7 +258,7 @@ function FilesSection({
     unit.status === ProjectProductionUnitStatus.PREPARATION ||
     unit.status === ProjectProductionUnitStatus.REJECTED;
 
-  async function upload(files: FileList | null) {
+  async function upload(files: File[]) {
     const file = files?.[0];
     if (!file || uploading) return;
     setUploading(true);
@@ -280,7 +280,6 @@ function FilesSection({
       showErrorToast("Unable to add production file.", error instanceof Error ? error.message : "Upload failed.");
     } finally {
       setUploading(false);
-      if (inputRef.current) inputRef.current.value = "";
     }
   }
 
@@ -310,12 +309,9 @@ function FilesSection({
           <p className="mt-1 text-[11px] text-[#727d75]">The Stage 5 source remains referenced; add production-specific files as needed.</p>
         </div>
         {canManage && mutable ? (
-          <>
-            <input ref={inputRef} type="file" className="hidden" onChange={(event) => upload(event.target.files)} />
-            <Button type="button" variant="outline" size="sm" disabled={uploading} onClick={() => inputRef.current?.click()}>
-              <Upload className="h-4 w-4" /> {uploading ? "Uploading..." : "Add Production File"}
-            </Button>
-          </>
+          <FileUploadDropzone label="Production file" compact disabled={uploading}
+            buttonLabel={uploading ? "Uploading…" : "Add Production File"}
+            onFilesSelected={(files) => void upload(files)} />
         ) : null}
       </div>
       <div className="mt-4 space-y-3">
@@ -1685,8 +1681,8 @@ export function StageSixWorkspace({
                   </Button>
                 ) : null}
                 <Button asChild type="button" className="min-w-[180px]">
-                  <Link href={`/projects/${project.id}/stages/7`}>
-                    Next Stage <ArrowRight className="h-4 w-4" />
+                  <Link href={`/projects/${project.id}`}>
+                    Continue <ArrowRight className="h-4 w-4" />
                   </Link>
                 </Button>
               </div>

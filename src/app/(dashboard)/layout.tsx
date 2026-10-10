@@ -13,10 +13,7 @@ export default async function DashboardRoutesLayout({
   const user = await requireUser();
   const displayName = getUserDisplayName(user);
   const taskBadgeCount = await getUserTaskSidebarCount(user);
-  const sidebarVisibility = {
-    ...getSidebarVisibility(user),
-    tasks: taskBadgeCount > 0,
-  };
+  const sidebarVisibility = getSidebarVisibility(user);
 
   return (
     <DashboardAppFrame

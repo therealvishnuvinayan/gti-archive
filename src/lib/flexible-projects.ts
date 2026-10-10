@@ -15,6 +15,7 @@ import { compareProjectsByPriority } from "@/lib/project-priority";
 import { sanitizeRichText } from "@/lib/rich-text";
 
 export const FLEXIBLE_PROJECTS_CACHE_TAG = "flexible-projects";
+const FLEXIBLE_PROJECT_PAGE_SIZE = 20;
 
 const FLEXIBLE_PROJECT_PRIORITIES = new Set<ProjectPriority>([
   ProjectPriority.HIGH,
@@ -427,6 +428,45 @@ export async function getFlexibleProjectsList(user: PermissionUser) {
       ),
     )
     .map(mapProjectSummary);
+}
+
+export async function getFlexibleProjectsPage(user: PermissionUser, requestedPage = 1) {
+  const accessibleWhere = getFlexibleProjectAccessWhere(user);
+  return withPrismaRetry(() => prisma.$transaction(async (tx) => {
+    // Sort lightweight records first; only load milestone summaries for this page.
+    const candidates = await tx.flexibleProject.findMany({
+      where: accessibleWhere,
+      select: { id: true, name: true, status: true, priority: true, updatedAt: true },
+    });
+    candidates.sort((left, right) => compareProjectsByPriority(
+      { ...left, isCompleted: left.status === FlexibleProjectStatus.COMPLETED },
+      { ...right, isCompleted: right.status === FlexibleProjectStatus.COMPLETED },
+    ));
+    const total = candidates.length;
+    const totalPages = Math.max(1, Math.ceil(total / FLEXIBLE_PROJECT_PAGE_SIZE));
+    const page = Math.min(totalPages, Math.max(1, Number.isFinite(requestedPage) ? Math.floor(requestedPage) : 1));
+    const pageIds = candidates.slice((page - 1) * FLEXIBLE_PROJECT_PAGE_SIZE, page * FLEXIBLE_PROJECT_PAGE_SIZE).map(({ id }) => id);
+    if (pageIds.length === 0) {
+      return { projects: [], total, page, pageSize: FLEXIBLE_PROJECT_PAGE_SIZE };
+    }
+    const records = await tx.flexibleProject.findMany({
+      where: { AND: [accessibleWhere, { id: { in: pageIds } }] },
+      select: {
+        id: true, slug: true, name: true, description: true, status: true,
+        priority: true, scope: true, deadline: true,
+        owner: { select: { id: true, name: true, email: true } },
+        milestones: { select: { status: true } },
+      },
+    });
+    const byId = new Map(records.map((project) => [project.id, project]));
+    return {
+      projects: pageIds.flatMap((id) => {
+        const project = byId.get(id);
+        return project ? [mapProjectSummary(project)] : [];
+      }),
+      total, page, pageSize: FLEXIBLE_PROJECT_PAGE_SIZE,
+    };
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead }));
 }
 
 export async function getFlexibleProjectDetail(slug: string, user: PermissionUser) {

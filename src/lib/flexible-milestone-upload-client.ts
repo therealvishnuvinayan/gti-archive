@@ -6,8 +6,21 @@ export async function uploadFlexibleMilestoneAttachments(
   files: File[],
 ) {
   const milestonePath = `/api/flexible-projects/${encodeURIComponent(projectId)}/milestones/${encodeURIComponent(milestoneId)}/attachments`;
+  const failedFiles: File[] = [];
+  const errors: string[] = [];
 
   for (const file of files) {
+    try {
+      await uploadFile(file);
+    } catch (error) {
+      failedFiles.push(file);
+      errors.push(`${file.name}: ${error instanceof Error ? error.message : "Unable to upload this file."}`);
+    }
+  }
+
+  return { failedFiles, error: errors.length ? errors.join(" ") : undefined };
+
+  async function uploadFile(file: File) {
     const preparationResponse = await fetch(`${milestonePath}/upload-url`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -27,7 +40,6 @@ export async function uploadFlexibleMilestoneAttachments(
       throw new Error(getUploadErrorMessage(preparation, `Unable to prepare ${file.name} for upload.`));
     }
 
-    let failed = false;
     try {
       const putResponse = await fetch(preparation.uploadUrl, {
         method: "PUT",
@@ -36,18 +48,22 @@ export async function uploadFlexibleMilestoneAttachments(
       });
       if (!putResponse.ok) throw new Error(`Unable to upload ${file.name}.`);
     } catch (error) {
-      failed = true;
-      throw error;
-    } finally {
-      const completionResponse = await fetch(`${milestonePath}/complete`, {
+      // Cleanup is best effort; it must not replace the original upload error.
+      await fetch(`${milestonePath}/complete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ attachmentId: preparation.attachmentId, failed }),
-      });
-      if (!failed && !completionResponse.ok) {
-        const completion = (await completionResponse.json()) as { error?: string };
-        throw new Error(completion.error || `Unable to finish uploading ${file.name}.`);
-      }
+        body: JSON.stringify({ attachmentId: preparation.attachmentId, failed: true }),
+      }).catch(() => undefined);
+      throw error;
+    }
+    const completionResponse = await fetch(`${milestonePath}/complete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ attachmentId: preparation.attachmentId, failed: false }),
+    });
+    if (!completionResponse.ok) {
+      const completion = (await completionResponse.json()) as { error?: string };
+      throw new Error(completion.error || `Unable to finish uploading ${file.name}.`);
     }
   }
 }

@@ -7,7 +7,7 @@ import { FlexibleProjectsRouteWorkspace } from "@/components/projects/flexible-p
 import { UserProjectsBrowser } from "@/components/projects/user-projects-browser";
 import { requireUser } from "@/lib/auth";
 import {
-  getFlexibleProjectsList,
+  getFlexibleProjectsPage,
   getFlexibleProjectUserOptions,
 } from "@/lib/flexible-projects";
 import {
@@ -112,15 +112,18 @@ export default async function ProjectsPage({
 
   if (resolvedSearchParams.view === "flexible") {
     const canCreateProject = canCreateProjects(user);
-    const [flexibleProjects, flexibleUsers] = await Promise.all([
-      getFlexibleProjectsList(user),
+    const [flexiblePage, flexibleUsers] = await Promise.all([
+      getFlexibleProjectsPage(user, Number.parseInt(resolvedSearchParams.page ?? "1", 10)),
       canCreateProject ? getFlexibleProjectUserOptions() : Promise.resolve([]),
     ]);
 
     return (
       <DashboardLayout>
         <FlexibleProjectsRouteWorkspace
-          projects={flexibleProjects}
+          projects={flexiblePage.projects}
+          projectCount={flexiblePage.total}
+          currentPage={flexiblePage.page}
+          pageSize={flexiblePage.pageSize}
           users={flexibleUsers}
           currentUserId={user.id}
           canCreateProject={canCreateProject}

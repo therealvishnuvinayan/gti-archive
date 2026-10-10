@@ -8,6 +8,7 @@ import {
   createProjectV2,
   type CreateProjectV2Input,
   type CreateProjectV2Result,
+  type UpdateProjectV2Input,
   updateProjectV2,
 } from "@/lib/project-creation";
 import { notifyProjectAssignmentChanges, runNotificationTask } from "@/lib/notification-center";
@@ -58,7 +59,7 @@ export async function createProjectV2Action(
 
 export async function updateProjectV2Action(
   projectId: string,
-  input: CreateProjectV2Input,
+  input: UpdateProjectV2Input,
 ): Promise<CreateProjectV2Result> {
   const user = await requireUser();
   const project = await prisma.project.findUnique({

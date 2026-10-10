@@ -134,7 +134,7 @@ assert(
   workspace.includes('const isEmptyStageFour = stageNumber === 4 && completionConcepts.length === 0') &&
     workspace.includes('"Skip Stage 4"') &&
     workspace.includes('"Skip Stage 4?"') &&
-    workspace.includes("A final file will need to be uploaded directly in Stage 5.") &&
+    workspace.includes("Stage 5 will become available, where a final file will need to be uploaded.") &&
     concepts.includes("const skipped = stageFourConcepts.length === 0") &&
     concepts.includes("Stage 4 can be skipped only while it is available and Stage 5 is still locked.") &&
     concepts.includes("action: ActivityLogAction.STAGE_SKIPPED") &&
@@ -147,7 +147,7 @@ for (const label of [
   "Final Approved",
   "In Progress",
   "Changes Requested",
-  "Continue to Stage 5",
+  "Continue",
   "Stage 4 Completed",
   "Final Approved File",
   "will continue to Stage 5",

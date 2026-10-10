@@ -3,7 +3,6 @@ import { revalidateTag, unstable_cache } from "next/cache";
 import { cache } from "react";
 
 import { prisma, withPrismaRetry } from "../prisma";
-import { isBusinessAdministratorRole } from "../user-role-compatibility";
 import {
   allPermissionKeys,
   criticalSuperAdminPermissionKeys,
@@ -388,20 +387,7 @@ export async function resetPermissionProfileToDefaults(
 export async function getPermissionProfileSnapshotForUser(
   user: PermissionProfileUser,
 ): Promise<PermissionProfileSnapshot> {
-  const [roleProfile, archiveAccess] = await Promise.all([
-    getCachedRoleProfile(user.role as PermissionRole),
-    withPrismaRetry(() =>
-      prisma.userArchiveAccess.findUnique({
-        where: {
-          userId: user.id,
-        },
-        select: {
-          id: true,
-          level: true,
-        },
-      }),
-    ),
-  ]);
+  const roleProfile = await getCachedRoleProfile(user.role as PermissionRole);
 
   const rolePermissions = getEnabledPermissionSet(roleProfile.state);
   const effectivePermissions = resolveEffectivePermissionSet({
@@ -412,11 +398,8 @@ export async function getPermissionProfileSnapshotForUser(
   return {
     effectivePermissions,
     rolePermissions,
-    archiveAccessGranted: Boolean(archiveAccess && archiveAccess.level !== "NONE"),
-    archiveAccessLevel:
-      isBusinessAdministratorRole(user.role)
-        ? "FULL"
-        : archiveAccess?.level ?? "NONE",
+    archiveAccessGranted: true,
+    archiveAccessLevel: "FULL",
   };
 }
 

@@ -10,6 +10,7 @@ import {
   Archive,
   Bell,
   BookOpen,
+  Building2,
   CalendarDays,
   FileSpreadsheet,
   Folder,
@@ -21,6 +22,7 @@ import {
   PanelLeftOpen,
   Settings,
   ShieldUser,
+  UsersRound,
   Sparkles,
   X,
 } from "lucide-react";
@@ -48,6 +50,8 @@ const sidebarSections: SidebarSection[] = [
       { label: "Dashboard", href: "/", icon: LayoutDashboard, visibilityKey: "dashboard" },
       { label: "Flux AI", href: "/flux-ai", icon: Sparkles, visibilityKey: "fluxAi" },
       { label: "Projects", href: "/projects", icon: Folder, visibilityKey: "projects" },
+      { label: "Clients", href: "/clients", icon: Building2, visibilityKey: "clients" },
+      { label: "Final Beneficiaries", href: "/final-beneficiaries", icon: UsersRound, visibilityKey: "finalBeneficiaries" },
       {
         label: "Project Tracker",
         href: "/project-tracker",

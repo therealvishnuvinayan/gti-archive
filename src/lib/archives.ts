@@ -26,7 +26,6 @@ import { getFinalCompletionArchiveBlockers } from "@/lib/project-completion";
 import {
   assertCanUseArchives,
   canUseArchives,
-  getAccessibleProjectsWhere,
   getArchiveAccessLevel,
   hasPermission,
   hasProjectPermission,
@@ -36,7 +35,6 @@ import {
 } from "@/lib/permissions/resolver";
 import { projectCollaboratorPermissionSelect } from "@/lib/project-collaborator-permissions";
 import {
-  assertProjectTimestampVisibleForUser,
   canBypassCollaboratorVisibility,
   isTimestampHiddenByPauseWindows,
 } from "@/lib/project-collaborator-visibility";
@@ -54,6 +52,7 @@ import { defaultProjectStatusGroupSlugs } from "@/lib/project-statuses";
 import { isSuperAdminRole } from "@/lib/user-role-compatibility";
 import {
   createPresignedDownloadUrl,
+  deleteObjectIfNeeded,
   createPresignedPreviewUrl,
   createPresignedUploadUrl,
   buildManualArchiveFileKey,
@@ -398,7 +397,7 @@ export function canUploadArchiveFiles(user: ArchiveAccessUser) {
 }
 
 export function canManageArchiveCategoryAccess(user: ArchiveAccessUser) {
-  return canUseArchives(user) && hasPermission(user, "settings.manageMasterData");
+  return canUseArchives(user);
 }
 
 function hasPartialArchiveAccess(user: ArchiveAccessUser) {
@@ -545,7 +544,7 @@ export function canAccessArchiveCategoryRecord(
 function buildArchivedProjectFileProjectWhere(
   user: ArchiveAccessUser,
 ): Prisma.ProjectWhereInput {
-  return buildAccessibleProjectWhere(user);
+  return canUseArchives(user) ? {} : { id: "__no_access__" };
 }
 
 function getArchivedProjectCategoryWhere(
@@ -834,10 +833,6 @@ function getArtworkIdPrefix(artworkType: string, category: string) {
 
 function getUserNameLabel(user: Pick<User, "name" | "email"> | null | undefined) {
   return user ? getUserDisplayName(user) : "";
-}
-
-function buildAccessibleProjectWhere(user: Pick<User, "id" | "role">) {
-  return getAccessibleProjectsWhere(user as ArchiveAccessUser);
 }
 
 async function getProjectArchiveBase(projectId: string) {
@@ -2149,6 +2144,8 @@ function isArchiveTimestampVisibleToUser(
   },
   timestamp: Date,
 ) {
+  if (canUseArchives(user)) return true;
+
   if (
     canBypassCollaboratorVisibility(user, project.ownerId ?? "") ||
     project.coOwners?.some((coOwner) => coOwner.userId === user.id)
@@ -3557,7 +3554,7 @@ export async function requestArchiveFileUpload(
 
     if (activeCategoryCount === 0) {
       return {
-        error: "No archive categories available. Please create a category in Master Data first.",
+        error: "No archive categories available. Please create an archive category first.",
       } as const;
     }
 
@@ -4980,26 +4977,6 @@ export async function assertCanEditArchivedFileInformation(
       deniedMessage,
     );
 
-    if (!hasPartialArchiveAccess(user)) {
-      await assertProjectAccess(user, archivedProjectFile.projectId);
-    }
-
-    if (
-      !canBypassCollaboratorVisibility(
-        user,
-        archivedProjectFile.project.ownerId ?? "",
-      ) &&
-      !archivedProjectFile.project.coOwners.some(
-        (coOwner) => coOwner.userId === user.id,
-      )
-    ) {
-      await assertProjectTimestampVisibleForUser(user, {
-        projectId: archivedProjectFile.projectId,
-        projectOwnerId: archivedProjectFile.project.ownerId ?? "",
-        timestamp: archivedProjectFile.archivedAt,
-        message: deniedMessage,
-      });
-    }
 
     return {
       recordType: "FINAL_ARCHIVE_FILE",
@@ -5285,38 +5262,9 @@ async function getArchiveDownloadFileForUser(
     };
   }
 
-  if (hasPartialArchiveAccess(user)) {
-    if (!hasPermission(user, "archive.download")) {
-      throw new Error("You do not have permission to download archive files.");
-    }
-
-    await assertCanAccessArchivedProjectFileAsset(
-      user,
-      archivedFile,
-      "You do not have permission to download archive files.",
-    );
-  } else {
-    const project = await assertProjectAccess(user, archivedFile.projectId);
-
-    if (!hasProjectPermission(user, project, "archive.download")) {
-      throw new Error("You do not have permission to download archive files.");
-    }
-
-    await assertCanAccessArchivedProjectFileAsset(
-      user,
-      archivedFile,
-      "You do not have permission to download archive files.",
-    );
-
-    if (!hasProjectPermission(user, project, "collaborator.pauseVisibility")) {
-      await assertProjectTimestampVisibleForUser(user, {
-        projectId: archivedFile.projectId,
-        projectOwnerId: archivedFile.project.ownerId ?? "",
-        timestamp: archivedFile.archivedAt,
-        message: "You do not have permission to access this archive file.",
-      });
-    }
-  }
+  await assertCanAccessArchivedProjectFileAsset(
+    user, archivedFile, "You do not have permission to download archive files.",
+  );
 
   return {
     recordType: "FINAL_ARCHIVE_FILE",
@@ -5326,6 +5274,45 @@ async function getArchiveDownloadFileForUser(
     fileName: archivedFile.finalArchiveFileName,
     mimeType: archivedFile.mimeType,
   };
+}
+
+/** Removes only the archive entry; original project attachments remain intact. */
+export async function deleteArchivedFileForUser(
+  user: ArchiveAccessUser,
+  archivedFileId: string,
+) {
+  assertCanUseArchives(user);
+  const file = await getArchiveDownloadFileForUser(user, archivedFileId);
+  await withPrismaRetry(async () => {
+    if (file.recordType === "FINAL_ARCHIVE_FILE") {
+      await prisma.archivedProjectFile.delete({ where: { id: file.id } });
+    } else {
+      await prisma.manualArchiveFile.delete({ where: { id: file.id } });
+    }
+  });
+
+  // Archive entries can share their S3 object with the project's original file.
+  const where = { bucket: file.bucket, storageKey: file.storageKey };
+  let storageCleanupPending = false;
+  try {
+    const references = await withPrismaRetry(() => Promise.all([
+      prisma.projectAttachment.count({ where }),
+      prisma.archivedProjectFile.count({ where }),
+      prisma.manualArchiveFile.count({ where }),
+      prisma.projectCompletionDocument.count({ where }),
+      prisma.manualLibraryAsset.count({ where }),
+      prisma.flexibleProjectAttachment.count({ where }),
+    ]));
+    if (references.every((count) => count === 0)) {
+      await deleteObjectIfNeeded(file.storageKey, file.bucket);
+    }
+  } catch (error) {
+    // The archive entry and its share links are already removed. Report a cleanup
+    // failure separately so the UI does not misleadingly offer deletion again.
+    storageCleanupPending = true;
+    console.error("Archive object cleanup failed", { archivedFileId, error });
+  }
+  return { archivedFileId: file.id, storageCleanupPending };
 }
 
 export async function getArchivedFileDownloadUrlForUser(
@@ -5739,34 +5726,9 @@ export async function getArchivedFilePreviewUrlForUser(
     });
   }
 
-  if (hasPartialArchiveAccess(user)) {
-    await assertCanAccessArchivedProjectFileAsset(
-      user,
-      archivedFile,
-      "You do not have permission to preview archive files.",
-    );
-  } else {
-    const project = await assertProjectAccess(user, archivedFile.projectId);
-
-    if (!hasProjectPermission(user, project, "archive.view")) {
-      throw new Error("You do not have permission to preview archive files.");
-    }
-
-    await assertCanAccessArchivedProjectFileAsset(
-      user,
-      archivedFile,
-      "You do not have permission to preview archive files.",
-    );
-
-    if (!hasProjectPermission(user, project, "collaborator.pauseVisibility")) {
-      await assertProjectTimestampVisibleForUser(user, {
-        projectId: archivedFile.projectId,
-        projectOwnerId: archivedFile.project.ownerId ?? "",
-        timestamp: archivedFile.archivedAt,
-        message: "You do not have permission to access this archive file.",
-      });
-    }
-  }
+  await assertCanAccessArchivedProjectFileAsset(
+    user, archivedFile, "You do not have permission to preview archive files.",
+  );
 
   return createPresignedPreviewUrl({
     bucket: archivedFile.bucket,

@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { FileUploadDropzone } from "@/components/ui/file-upload-dropzone";
+
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FileUp, Loader2, Trash2, Upload, X } from "lucide-react";
+import { Loader2, Trash2, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { AssetTagSelector } from "@/components/assets/asset-tag-selector";
@@ -145,7 +147,6 @@ export function ArchiveUploadButton({
   currentUserDisplayName = "Current user",
 }: ArchiveUploadButtonProps) {
   const router = useRouter();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [wizardStep, setWizardStep] = useState<DirectArchiveWizardStep>(0);
   const [categories, setCategories] = useState<ArchiveCategoryOption[]>([]);
@@ -155,7 +156,6 @@ export function ArchiveUploadButton({
   );
   const [assetTagIds, setAssetTagIds] = useState<string[]>([]);
   const [files, setFiles] = useState<DirectArchiveFile[]>([]);
-  const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [formError, setFormError] = useState<string>();
 
@@ -268,7 +268,6 @@ export function ArchiveUploadButton({
     setSelectedCategoryId(defaultCategoryId ?? "");
     setAssetTagIds([]);
     setFiles([]);
-    setIsDragging(false);
     setFormError(undefined);
   }
 
@@ -520,56 +519,10 @@ export function ArchiveUploadButton({
           <span className="mb-2 block text-[13px] font-[700] text-[#2d372f]">
             Files <span className="text-[#d3554d]">*</span>
           </span>
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            onDragOver={(event) => {
-              event.preventDefault();
-              if (!isUploading) {
-                setIsDragging(true);
-              }
-            }}
-            onDragLeave={(event) => {
-              event.preventDefault();
-              setIsDragging(false);
-            }}
-            onDrop={(event) => {
-              event.preventDefault();
-              setIsDragging(false);
-
-              if (!isUploading) {
-                addFiles(event.dataTransfer.files);
-              }
-            }}
-            disabled={isUploading}
-            className={`flex min-h-[150px] w-full flex-col items-center justify-center rounded-[24px] border-2 border-dashed px-5 py-6 text-center transition-colors ${
-              isDragging
-                ? "border-brand bg-[#f3faf5]"
-                : "border-[#d8e3d8] bg-[#fbfcfa] hover:bg-[#f7faf7]"
-            }`}
-          >
-            <div className="grid h-12 w-12 place-items-center rounded-full bg-[#edf4ee] text-brand">
-              <FileUp className="h-5 w-5" />
-            </div>
-            <p className="mt-3 text-[15px] font-[700] text-[#162019]">
-              Drop files here or click to browse
-            </p>
-            <p className="mt-1 text-[12px] text-[#748078]">
-              Supported: JPG, PNG, WebP, GIF, PDF, AI, PSD, ZIP, RAR, DOCX, XLSX, PPTX
-            </p>
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            accept={ACCEPTED_FILE_TYPES}
-            className="hidden"
-            onChange={(event) => {
-              if (event.target.files) {
-                addFiles(event.target.files);
-              }
-              event.target.value = "";
-            }}
+          <FileUploadDropzone
+            label="Archive files" multiple accept={ACCEPTED_FILE_TYPES} disabled={isUploading}
+            description="Supported: JPG, PNG, WebP, GIF, PDF, AI, PSD, ZIP, RAR, DOCX, XLSX, PPTX"
+            onFilesSelected={addFiles}
           />
         </div>
 

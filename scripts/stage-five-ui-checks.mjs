@@ -107,7 +107,7 @@ for (const content of [
   "Project participant",
   "Manual email",
   "All Stages",
-  "Next Stage",
+  "Continue",
 ]) {
   assert(workspace.includes(content), `Missing Stage 5 UI content: ${content}`);
 }
@@ -212,15 +212,12 @@ const checklistFilePicker = filePicker.slice(
   filePicker.length,
 );
 assert(
-  checklistFilePicker.includes("useRef<HTMLInputElement>(null)") &&
-    checklistFilePicker.includes('type="file"') &&
+  checklistFilePicker.includes("<FileUploadDropzone") &&
     checklistFilePicker.includes("multiple={multiple}") &&
-    checklistFilePicker.includes("hidden") &&
-    checklistFilePicker.includes("fileInputRef.current?.click()") &&
-    checklistFilePicker.includes("<Button") &&
-    !checklistFilePicker.includes("htmlFor") &&
-    !checklistFilePicker.includes("sr-only"),
-  "Stage 5 must trigger single and multiple hidden file inputs through the shared GTI Button/ref picker.",
+    checklistFilePicker.includes("accept={accept}") &&
+    checklistFilePicker.includes("disabled={disabled}") &&
+    checklistFilePicker.includes("onFilesSelected={selectFiles}"),
+  "Stage 5 must use the shared drag/drop and attach control for single and multiple files with format and permission guards.",
 );
 assert(
   workspace.includes("STAGE_FIVE_FIELD_DEFINITIONS.map") &&
@@ -342,10 +339,12 @@ assert(
   "The Request Information dialog must fit the viewport, scroll its body, and keep its actions visible.",
 );
 assert(
-  workspace.includes('href={`/projects/${project.id}/stages/6`}') &&
+  workspace.includes('href={`/projects/${project.id}`}') &&
+    workspace.includes('router.push(`/projects/${project.id}`)') &&
+    !workspace.includes('href={`/projects/${project.id}/stages/6`}') &&
     !workspace.includes("completeProject") &&
     !workspace.includes("completeProjectStage"),
-  "Next Stage must open Stage 6 directly without mutating Stage 5 workflow state.",
+  "Stage 5 Continue and successful completion must return to the project workspace.",
 );
 assert(
   workspace.includes("href={`/projects/${project.id}`}") && workspace.includes("All Stages"),

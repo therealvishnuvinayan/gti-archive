@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 
 import {
+  hasProjectClientCompany,
   isValidProjectContactEmail,
   normalizeInternationalPhone,
   validateProjectContactInput,
@@ -159,6 +160,19 @@ for (const entityType of ["PERSON", "COMPANY"] as const) {
   assert.ok(validateProjectContactInput({ ...client, entityType, phone: "not a phone" }).fieldErrors.phone);
 }
 const companyOnly = validateProjectContactInput({ kind: "CLIENT", entityType: "COMPANY", company: "Example Ltd" });
+for (const entityType of ["PERSON", "COMPANY"] as const) {
+  for (const company of [undefined, "", "   ", "\t\n"]) {
+    assert.equal(
+      validateProjectContactInput({ kind: "CLIENT", entityType, name: "Jane Doe", company }).fieldErrors.company,
+      "Company name is required.",
+      "Every client must have a non-blank company name, including person clients.",
+    );
+  }
+}
+for (const party of [null, undefined, {}, { company: null }, { company: "" }, { company: "  \t\n " }]) {
+  assert.equal(hasProjectClientCompany(party), false);
+}
+assert.equal(hasProjectClientCompany({ company: " RFQ LLC " }), true);
 assert.equal(companyOnly.data.name, "", "Do not invent a representative when none was provided.");
 assert.ok(validateProjectContactInput({ ...client, entityType: "INVALID" as "PERSON" }).fieldErrors.entityType);
 console.log("Project contact validation checks passed.");

@@ -2,7 +2,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function TasksLoading() {
   return (
-    <div className="mx-auto w-full max-w-[1280px] animate-pulse space-y-5 pb-8">
+    <div className="w-full animate-pulse space-y-5 pb-8">
       <Skeleton className="h-[180px] rounded-[25px]" />
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {Array.from({ length: 4 }).map((_, index) => (

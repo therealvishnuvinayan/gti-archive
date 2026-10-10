@@ -96,7 +96,7 @@ function TaskStatusBadge({ task }: { task: UserTaskListItem }) {
   );
 }
 
-function TaskRow({ task }: { task: UserTaskListItem }) {
+function TaskRow({ task, view }: { task: UserTaskListItem; view: UserTasksPageData["view"] }) {
   return (
     <Link
       href={task.href}
@@ -113,6 +113,12 @@ function TaskRow({ task }: { task: UserTaskListItem }) {
         <span className="mt-1 block text-[11px] text-[#7b857e]">
           {task.stageLabel}
         </span>
+        {(view === "GIVEN" ? task.assignedToName : task.assignedByName) ? (
+          <span className="mt-1 block text-[11px] text-[#68736b]">
+            {view === "GIVEN" ? "Assigned to" : "Assigned by"}{" "}
+            {view === "GIVEN" ? task.assignedToName : task.assignedByName}
+          </span>
+        ) : null}
         <span className="mt-2 flex flex-wrap items-center gap-2.5">
           <TaskStatusBadge task={task} />
           {task.dueAt ? (
@@ -169,6 +175,7 @@ function AttentionRow({
 
 export function UserTasksWorkspace({ data }: { data: UserTasksPageData }) {
   const router = useRouter();
+  const isGivenView = data.view === "GIVEN";
   const { refreshVersion } = useNotificationCenter();
   const lastNotificationRefreshVersion = useRef(refreshVersion);
   const [query, setQuery] = useState("");
@@ -188,6 +195,8 @@ export function UserTasksWorkspace({ data }: { data: UserTasksPageData }) {
               project.name.toLocaleLowerCase().includes(normalizedQuery) ||
               project.ownerName?.toLocaleLowerCase().includes(normalizedQuery) ||
               task.name.toLocaleLowerCase().includes(normalizedQuery) ||
+              task.assignedToName?.toLocaleLowerCase().includes(normalizedQuery) ||
+              task.assignedByName?.toLocaleLowerCase().includes(normalizedQuery) ||
               task.stageLabel.toLocaleLowerCase().includes(normalizedQuery);
 
             return matchesQuery && taskMatchesFilter(task, filter);
@@ -241,17 +250,19 @@ export function UserTasksWorkspace({ data }: { data: UserTasksPageData }) {
 
   if (data.summary.total === 0 && data.attentionItems.length === 0) {
     return (
-      <section className="mx-auto flex min-h-[520px] w-full max-w-[1180px] items-center justify-center pb-8">
+      <section className="flex min-h-[520px] w-full items-center justify-center pb-8">
         <Card className="w-full rounded-[26px] border border-dashed border-[#cbd8ce] bg-white shadow-[0_18px_50px_rgba(22,49,31,0.05)]">
           <CardContent className="flex min-h-[360px] flex-col items-center justify-center px-6 py-12 text-center">
             <span className="grid size-16 place-items-center rounded-[20px] bg-[#eaf4ed] text-[#2f8057]">
               <ListTodo className="size-8" />
             </span>
             <h1 className="mt-5 text-[27px] font-[780] tracking-[-0.035em] text-[#172019]">
-              No tasks assigned yet
+              {isGivenView ? "No tasks assigned by you yet" : "No tasks assigned to you yet"}
             </h1>
             <p className="mt-2 max-w-md text-[13px] leading-6 text-[#707a73]">
-              Stage 3 and Stage 4 concept taskers assigned to you will appear here automatically.
+              {isGivenView
+                ? "Tasks you assign to users will appear here automatically."
+                : "Tasks assigned to you will appear here automatically."}
             </p>
           </CardContent>
         </Card>
@@ -271,7 +282,7 @@ export function UserTasksWorkspace({ data }: { data: UserTasksPageData }) {
     {
       label: "Open",
       value: data.summary.open,
-      note: "Ready for your work",
+      note: isGivenView ? "Work assigned to your users" : "Ready for your work",
       filter: "OPEN" as const,
       icon: Clock3,
       tone: "bg-[#edf4fb] text-[#3678a9]",
@@ -279,7 +290,7 @@ export function UserTasksWorkspace({ data }: { data: UserTasksPageData }) {
     {
       label: "Needs Attention",
       value: data.summary.needsAttention,
-      note: "Actionable by you now",
+      note: isGivenView ? "Tasks needing follow-up" : "Actionable by you now",
       filter: "NEEDS_ATTENTION" as const,
       icon: CircleAlert,
       tone: "bg-[#fff0e8] text-[#c75a29]",
@@ -295,18 +306,20 @@ export function UserTasksWorkspace({ data }: { data: UserTasksPageData }) {
   ];
 
   return (
-    <section className="mx-auto w-full max-w-[1280px] pb-8">
+    <section className="w-full pb-8">
       <header className="rounded-[25px] border border-[#dfe7e0] bg-[linear-gradient(135deg,#ffffff_0%,#f3f8f3_62%,#eaf4ed_100%)] px-5 py-6 shadow-[0_16px_44px_rgba(25,59,38,0.055)] sm:px-7 sm:py-8">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-[11px] font-[800] uppercase tracking-[0.14em] text-[#2d8056]">
-              Executor Workspace
+              {isGivenView ? "Given Tasks" : "Received Tasks"}
             </p>
             <h1 className="mt-2 text-[34px] font-[800] leading-none tracking-[-0.045em] text-[#101611] sm:text-[44px]">
-              My Tasks
+              {isGivenView ? "Tasks I Assigned" : "My Tasks"}
             </h1>
             <p className="mt-3 max-w-[680px] text-[13px] leading-6 text-[#68736b] sm:text-[14px]">
-              Open a project folder and jump directly into your assigned concept work.
+              {isGivenView
+                ? "See the tasks you assigned to users, their deadlines and progress."
+                : "Open a project folder and jump directly into your assigned concept work."}
             </p>
           </div>
           <div className="flex w-fit items-center gap-3 rounded-[16px] border border-[#d7e5da] bg-white/80 px-4 py-3 shadow-[0_10px_26px_rgba(27,67,43,0.05)]">
@@ -382,14 +395,14 @@ export function UserTasksWorkspace({ data }: { data: UserTasksPageData }) {
               type="search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search project folders, tasks, or attention items..."
+              placeholder={isGivenView ? "Search projects, tasks, or assigned users..." : "Search project folders, tasks, or attention items..."}
               className="h-12 rounded-[14px] border-[#d9e2da] bg-white pl-11 text-[12px] shadow-[0_8px_24px_rgba(22,48,31,0.035)]"
             />
           </label>
         </div>
 
         <div className="mt-5 space-y-3">
-          {filter === "NEEDS_ATTENTION" ? (
+          {filter === "NEEDS_ATTENTION" && !isGivenView ? (
             <>
               {filteredAttentionItems.map((item) => (
                 <AttentionRow key={item.id} item={item} />
@@ -459,7 +472,7 @@ export function UserTasksWorkspace({ data }: { data: UserTasksPageData }) {
                   <div id={`tasks-${project.id}`} className="border-t border-[#e7ece7] bg-[#f8faf8] p-3 sm:p-4">
                     <div className="space-y-2.5">
                       {project.tasks.map((task) => (
-                        <TaskRow key={task.id} task={task} />
+                        <TaskRow key={task.id} task={task} view={data.view} />
                       ))}
                     </div>
                   </div>
@@ -468,7 +481,7 @@ export function UserTasksWorkspace({ data }: { data: UserTasksPageData }) {
             );
           })}
 
-          {filter !== "NEEDS_ATTENTION" && filteredProjects.length === 0 ? (
+          {(filter !== "NEEDS_ATTENTION" || isGivenView) && filteredProjects.length === 0 ? (
             <div className="rounded-[21px] border border-dashed border-[#cad6cc] bg-white px-6 py-12 text-center">
               <Search className="mx-auto size-7 text-[#6f9b7e]" />
               <h2 className="mt-3 text-[17px] font-[760] text-[#263129]">No matching tasks</h2>

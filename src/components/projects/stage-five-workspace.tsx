@@ -1,5 +1,7 @@
 "use client";
 
+import { FileUploadDropzone } from "@/components/ui/file-upload-dropzone";
+
 import { FileThumbnail } from "@/components/projects/file-thumbnail";
 
 import Link from "next/link";
@@ -36,7 +38,6 @@ import {
   Sparkles,
   Stamp,
   ToggleLeft,
-  Upload,
   X,
   Download,
   Trash2,
@@ -1166,7 +1167,6 @@ export function StageFiveWorkspace({
   const [completionError, setCompletionError] = useState("");
   const [isUploadingSource, setIsUploadingSource] = useState(false);
   const [sourceUploadProgress, setSourceUploadProgress] = useState(0);
-  const sourceFileInputRef = useRef<HTMLInputElement>(null);
   const [requestField, setRequestField] = useState<ChecklistDefinition | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<StageFiveFileRecord | null>(null);
   const [deleteError, setDeleteError] = useState("");
@@ -1409,7 +1409,7 @@ export function StageFiveWorkspace({
       showSuccessToast(
         `Stage 5 completed. ${result.productionUnitCount} Production Unit${result.productionUnitCount === 1 ? " was" : "s were"} created.`,
       );
-      router.push(`/projects/${project.id}/stages/6`);
+      router.push(`/projects/${project.id}`);
       router.refresh();
     });
   }
@@ -1447,9 +1447,6 @@ export function StageFiveWorkspace({
     } finally {
       setIsUploadingSource(false);
       setSourceUploadProgress(0);
-      if (sourceFileInputRef.current) {
-        sourceFileInputRef.current.value = "";
-      }
     }
   }
 
@@ -1911,17 +1908,6 @@ export function StageFiveWorkspace({
 
   return (
     <section className="mx-auto w-full max-w-[1420px] pb-6">
-      <input
-        ref={sourceFileInputRef}
-        type="file"
-        className="hidden"
-        aria-label="Upload Stage 5 final file"
-        disabled={!pageData.canUploadSource || isUploadingSource}
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          if (file) void uploadDirectSource(file);
-        }}
-      />
       {showChrome ? (
         <ProjectAccessRealtimeGuard projectId={project.id} currentUserId={currentUserId} />
       ) : null}
@@ -1987,19 +1973,10 @@ export function StageFiveWorkspace({
                     <p className="mt-1 text-[11px] text-[#77827a]">Select a file to open its checklist.</p>
                   </div>
                   {pageData.canUploadSource ? (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      className="rounded-[12px] shadow-none"
+                    <FileUploadDropzone label="Final file" compact
                       disabled={isUploadingSource || isSwitchingFile || isSaving}
-                      onClick={() => sourceFileInputRef.current?.click()}
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      {isUploadingSource
-                        ? `Uploading ${Math.round(sourceUploadProgress * 100)}%`
-                        : "Add Another Final File"}
-                    </Button>
+                      buttonLabel={isUploadingSource ? `Uploading ${Math.round(sourceUploadProgress * 100)}%` : "Add Another Final File"}
+                      onFilesSelected={(files) => { if (files[0]) void uploadDirectSource(files[0]); }} />
                   ) : null}
                 </div>
                 <FileChecklistSwitcher
@@ -2079,17 +2056,9 @@ export function StageFiveWorkspace({
               </p>
               {pageData.canUploadSource ? (
                 <div className="mt-5">
-                  <Button
-                    type="button"
-                    className="min-w-[180px] rounded-[12px]"
-                    disabled={isUploadingSource}
-                    onClick={() => sourceFileInputRef.current?.click()}
-                  >
-                    <Upload className="h-4 w-4" />
-                    {isUploadingSource
-                      ? `Uploading ${Math.round(sourceUploadProgress * 100)}%`
-                      : "Upload Final File"}
-                  </Button>
+                  <FileUploadDropzone label="Final file" className="mx-auto max-w-[520px]" disabled={isUploadingSource}
+                    buttonLabel={isUploadingSource ? `Uploading ${Math.round(sourceUploadProgress * 100)}%` : "Upload Final File"}
+                    onFilesSelected={(files) => { if (files[0]) void uploadDirectSource(files[0]); }} />
                   {isUploadingSource ? (
                     <div
                       role="progressbar"
@@ -2237,8 +2206,8 @@ export function StageFiveWorkspace({
             </Button>
             {pageData.stageCompleted ? (
               <Button asChild type="button" className="min-w-[180px] rounded-[13px]">
-                <Link href={`/projects/${project.id}/stages/6`}>
-                  Next Stage <ArrowRight className="h-4 w-4" />
+                <Link href={`/projects/${project.id}`}>
+                  Continue <ArrowRight className="h-4 w-4" />
                 </Link>
               </Button>
             ) : pageData.canComplete ? (

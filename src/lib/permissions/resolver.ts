@@ -44,6 +44,8 @@ export type SidebarVisibility = {
   projectCounts: boolean;
   calendar: boolean;
   collaboration: boolean;
+  clients: boolean;
+  finalBeneficiaries: boolean;
   users: boolean;
   notifications: boolean;
   library: boolean;
@@ -147,6 +149,8 @@ export function isProjectExecutor(
 }
 
 export function hasPermission(user: PermissionUser, permissionKey: PermissionKey) {
+  // Archives are shared by every authenticated account, independent of role profiles.
+  if (permissionKey.startsWith("archive.")) return Boolean(user.id);
   return getBasePermissionSet(user).has(permissionKey);
 }
 
@@ -158,12 +162,8 @@ export function canCreateProjects(user: PermissionUser) {
   return user.projectCreationAccessGranted === true;
 }
 
-export function getArchiveAccessLevel(user: PermissionUser) {
-  if (isGlobalProjectAdministrator(user)) {
-    return "FULL" as const;
-  }
-
-  return user.permissionProfileSnapshot?.archiveAccessLevel ?? "NONE";
+export function getArchiveAccessLevel(user: PermissionUser): "NONE" | "FULL" | "PARTIAL" {
+  return user.id ? "FULL" as const : "NONE" as const;
 }
 
 export function canUseArchives(user: PermissionUser) {
@@ -179,6 +179,10 @@ export function canUseProjects(user: PermissionUser) {
     hasPermission(user, "project.list") &&
     hasPermission(user, "project.view")
   );
+}
+
+export function canUseTasks(user: PermissionUser) {
+  return canUseProjects(user);
 }
 
 export type ProjectTypeSwitcherAuthority = {
@@ -250,6 +254,10 @@ function isProjectOwnerManagePermission(permissionKey: PermissionKey) {
   );
 }
 
+export function canManageContactDirectories(user: PermissionUser) {
+  return isBusinessAdministratorRole(user.role) && hasPermission(user, "project.update");
+}
+
 export function getSidebarVisibility(user: PermissionUser): SidebarVisibility {
   const projects = canUseProjects(user);
 
@@ -258,11 +266,13 @@ export function getSidebarVisibility(user: PermissionUser): SidebarVisibility {
     fluxAi: canUseFluxAi(user),
     projects,
     projectTracker: projects && hasPermission(user, "project.update"),
-    tasks: false,
+    tasks: canUseTasks(user),
     projectCounts:
       projects && hasPermission(user, "dashboard.viewProjectCounts"),
     calendar: hasPermission(user, "calendar.view"),
     collaboration: hasPermission(user, "collaboration.viewDirectory"),
+    clients: canManageContactDirectories(user),
+    finalBeneficiaries: canManageContactDirectories(user),
     users: isBusinessAdministratorRole(user.role) && hasPermission(user, "users.view"),
     notifications: hasPermission(user, "notification.view"),
     library: hasPermission(user, "library.view"),

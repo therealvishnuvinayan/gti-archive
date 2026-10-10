@@ -1,5 +1,7 @@
 "use client";
 
+import { FileUploadDropzone } from "@/components/ui/file-upload-dropzone";
+
 import Link from "next/link";
 import {
   ArrowRight,
@@ -28,7 +30,6 @@ import {
   X,
 } from "lucide-react";
 import {
-  type ChangeEvent,
   type ReactNode,
   useEffect,
   useMemo,
@@ -811,7 +812,7 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
   const [lastImportFocus, setLastImportFocus] = useState<Omit<SpreadsheetFocusRequest, "id"> | null>(
     () => findLatestImportFocus(initialWorkspace),
   );
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importOpen, setImportOpen] = useState(false);
   const mutationQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
@@ -1184,10 +1185,9 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
     setSpreadsheetRevision((revision) => revision + 1);
   }
 
-  async function handleImport(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
+  async function handleImport(files: File[]) {
+    const file = files[0];
+    if (!file || !workspace.canEdit || pending || importProgress) return;
     const existingDataRowCount = workspace.rows.filter(
       (row) =>
         Boolean(row.project) ||
@@ -1281,15 +1281,24 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
     setExportRequest({ id: Date.now(), format });
   }
 
+  const importDialog = importOpen ? (
+    <Modal title="Import tracker file" description="Choose a spreadsheet to import into this tracker." onClose={() => setImportOpen(false)} widthClass="max-w-[560px]">
+      <FileUploadDropzone label="Tracker spreadsheet" accept=".xlsx,.xls,.csv,.xml,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/xml,application/xml"
+        disabled={!workspace.canEdit || pending || Boolean(importProgress)}
+        description="Supported: XLSX, XLS, CSV and XML"
+        buttonLabel="Attach spreadsheet" onFilesSelected={(files) => { setImportOpen(false); void handleImport(files); }} />
+    </Modal>
+  ) : null;
+
   if (!workspace.isInitialized) {
     return (
       <>
-        <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv,.xml,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/xml,application/xml" className="hidden" onChange={handleImport} />
+        {importDialog}
         <EmptyState
           canEdit={workspace.canEdit}
           pending={pending || Boolean(importProgress)}
           onBlank={() => runAction(() => initializeProjectTrackerAction("blank"))}
-          onImport={() => fileInputRef.current?.click()}
+          onImport={() => setImportOpen(true)}
           onLayout={() => runAction(() => initializeProjectTrackerAction("layout"))}
           onOpenTrash={() => void openTrash()}
         />
@@ -1311,7 +1320,7 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
 
   return (
     <div className="flex h-full min-h-[620px] min-w-0 flex-col overflow-hidden rounded-[22px] border border-[#e0e7e0] bg-white shadow-[0_16px_44px_rgba(23,39,28,0.04)]">
-      <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv,.xml,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/xml,application/xml" className="hidden" onChange={handleImport} />
+      {importDialog}
 
       <header className="border-b border-[#e4e9e4] bg-[linear-gradient(180deg,#ffffff,#fbfcfb)] px-4 py-4 sm:px-5">
         <div className="flex flex-wrap items-center justify-between gap-4">
@@ -1378,7 +1387,7 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
           </DropdownMenuContent>
         </DropdownMenu>
         {workspace.canEdit ? <Button type="button" variant="secondary" size="sm" onClick={() => setSetupOpen(true)}><Columns3 className="size-4" /> Layouts</Button> : null}
-        {workspace.canEdit ? <Button type="button" variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()}><Download className="size-4" /> Import</Button> : null}
+        {workspace.canEdit ? <Button type="button" variant="secondary" size="sm" onClick={() => setImportOpen(true)}><Download className="size-4" /> Import</Button> : null}
         {lastImportFocus ? (
           <Button
             type="button"
@@ -1529,7 +1538,7 @@ export function ProjectTrackerWorkspace({ initialWorkspace }: ProjectTrackerWork
             }}
             onImport={() => {
               setSetupOpen(false);
-              fileInputRef.current?.click();
+              setImportOpen(true);
             }}
             onLayout={() => runAction(
               () => applyProjectTrackerLayoutAction(),

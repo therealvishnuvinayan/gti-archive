@@ -148,7 +148,7 @@ for (const label of [
   "Not Approved",
   "Changes Requested",
   "Skip Stage 3",
-  "Continue to Stage 4",
+  "Continue",
   "Starting Reference",
   "Stage 3 Completed",
 ]) {

@@ -16,6 +16,12 @@ export type ProjectContactInput = {
 export type ProjectContactField = Exclude<keyof ProjectContactInput, "kind">;
 export type ProjectContactFieldErrors = Partial<Record<ProjectContactField, string>>;
 
+export function hasProjectClientCompany(
+  party: { company?: string | null } | null | undefined,
+) {
+  return Boolean(party?.company?.trim());
+}
+
 export function getRequiredProjectContactFields(
   input: Pick<ProjectContactInput, "kind" | "entityType">,
 ): readonly ProjectContactField[] {

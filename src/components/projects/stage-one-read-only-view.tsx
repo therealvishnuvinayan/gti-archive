@@ -114,12 +114,14 @@ function ReadOnlyValue({
 function PartyDetails({
   label,
   party,
+  companyFirst = false,
 }: {
   label: string;
   party: ProjectInquiryPartySelection | null | undefined;
+  companyFirst?: boolean;
 }) {
-  const displayName = party?.entityType === "COMPANY"
-    ? party.company || party.name
+  const displayName = companyFirst || party?.entityType === "COMPANY"
+    ? party?.company?.trim() || party?.name || ""
     : party?.name ?? "";
   const details = party?.entityType === "COMPANY"
     ? [
@@ -133,7 +135,8 @@ function PartyDetails({
         { label: "Representative Designation", value: party.position },
       ]
     : party ? [
-        { label: "Company Name (if applicable)", value: party.company },
+        { label: companyFirst ? "Company Name" : "Company Name (if applicable)", value: party.company },
+        ...(companyFirst ? [{ label: "Contact Person", value: party.name }] : []),
         { label: "Email", value: party.email, icon: Mail },
         { label: "Contact Number", value: party.phone, icon: Phone },
         { label: "Designation", value: party.position },
@@ -224,7 +227,7 @@ function ReadOnlyTextBlock({
   );
 }
 
-function ReadOnlyAttachmentList({
+export function ReadOnlyAttachmentList({
   attachments,
 }: {
   attachments: ProjectInquiryAttachmentRecord[];
@@ -307,7 +310,7 @@ export function StageOneReadOnlyView({
 
       <StageOneViewSection title="Client Information">
         <div className="grid gap-4 lg:grid-cols-2">
-          <PartyDetails label="Client" party={inquiry?.client} />
+          <PartyDetails label="Client" party={inquiry?.client} companyFirst />
           <div className="grid gap-4">
             {inquiry?.finalBeneficiaries.length ? (
               inquiry.finalBeneficiaries.map((beneficiary, index) => (

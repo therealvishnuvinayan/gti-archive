@@ -1,5 +1,7 @@
 "use client";
 
+import { FileUploadDropzone } from "@/components/ui/file-upload-dropzone";
+
 import { FileThumbnail } from "@/components/projects/file-thumbnail";
 
 import Link from "next/link";
@@ -24,7 +26,6 @@ import {
   FileText,
   ListChecks,
   Loader2,
-  Paperclip,
   Search,
   X,
 } from "lucide-react";
@@ -58,7 +59,10 @@ import {
   ProjectFormAutosaveStatus,
   useProjectFormAutosave,
 } from "@/components/ui/project-form-autosave";
-import { validateProjectContactInput } from "@/lib/project-contact-validation";
+import {
+  hasProjectClientCompany,
+  validateProjectContactInput,
+} from "@/lib/project-contact-validation";
 import type {
   CompleteProjectInquiryInput,
   ProjectInquiryAttachmentRecord,
@@ -69,6 +73,7 @@ import type {
   ProjectInquiryRecord,
 } from "@/lib/project-inquiry";
 import type { ProjectStageShellRecord } from "@/lib/projects";
+import type { ContactDirectoryKind } from "@/lib/contact-directory";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
@@ -137,7 +142,6 @@ function PartySelector({
   values,
   multiple = false,
   companyFirst = false,
-  showPersonName = false,
   disabled,
   error,
   onChange,
@@ -149,7 +153,6 @@ function PartySelector({
   values: ProjectInquiryPartySelection[];
   multiple?: boolean;
   companyFirst?: boolean;
-  showPersonName?: boolean;
   disabled: boolean;
   error?: string;
   onChange: (values: ProjectInquiryPartySelection[]) => void;
@@ -166,9 +169,13 @@ function PartySelector({
   );
   const singleValue = multiple ? null : values[0] ?? null;
   function partyLabel(party: ProjectInquiryPartySelection) {
+    if (companyFirst) return party.company?.trim() || "Select a client";
     return party.entityType === "COMPANY" ? party.company || party.name : party.name;
   }
   function partyDescription(party: ProjectInquiryPartySelection) {
+    if (companyFirst) {
+      return [party.name, party.position, party.companyEmail || party.email].filter(Boolean).join(" · ");
+    }
     return party.entityType === "COMPANY"
       ? [party.name, party.position, party.companyEmail || party.email].filter(Boolean).join(" · ")
       : [party.company, party.position, party.email].filter(Boolean).join(" · ");
@@ -177,6 +184,8 @@ function PartySelector({
   const filteredOptions = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase("en");
     const matches = options.filter((option) => {
+      if (companyFirst && !hasProjectClientCompany(option)) return false;
+      if (option.directoryRoles && !option.directoryRoles.includes(companyFirst ? "CLIENT" : "FINAL_BENEFICIARY")) return false;
       if (multiple && selectedKeys.has(`${option.source}:${option.id}`)) {
         return false;
       }
@@ -346,10 +355,9 @@ function PartySelector({
           ) : filteredOptions.length ? (
             filteredOptions.map((option) => {
               const selected = selectedKeys.has(`${option.source}:${option.id}`);
-              const optionName = showPersonName ? option.name.trim() || partyLabel(option) : partyLabel(option);
-              const companyName = option.source === "MANUAL_CONTACT" ? option.company?.trim() : null;
-              const optionDetails = showPersonName
-                ? companyName || "Company name not available."
+              const optionName = partyLabel(option);
+              const optionDetails = companyFirst
+                ? partyDescription(option)
                 : [option.entityType === "COMPANY" ? "Company" : "Person", partyDescription(option)].filter(Boolean).join(" · ");
               return (
                 <button
@@ -371,7 +379,7 @@ function PartySelector({
                       .toUpperCase()}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className={cn("block min-w-0 whitespace-normal break-words font-[650] text-[#202923]", showPersonName ? "text-[15px]" : "text-[13px]")}>
+                    <span className={cn("block min-w-0 whitespace-normal break-words font-[650] text-[#202923]", companyFirst ? "text-[15px]" : "text-[13px]")}>
                       {optionName}
                     </span>
                     <span className="block whitespace-normal break-words text-[11px] text-[#7d8780]">
@@ -614,7 +622,6 @@ function AttachmentTextarea({
   onValueChange: (value: string) => void;
   onAttachmentsChange: (files: ProjectInquiryAttachmentRecord[]) => void;
 }) {
-  const inputRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string>();
 
@@ -676,7 +683,7 @@ function AttachmentTextarea({
     } satisfies ProjectInquiryAttachmentRecord;
   }
 
-  async function handleFiles(files: FileList | null) {
+  async function handleFiles(files: File[]) {
     if (!files?.length || disabled || uploading) return;
     setUploading(true);
     setUploadError(undefined);
@@ -692,7 +699,6 @@ function AttachmentTextarea({
       showErrorToast("Attachment upload failed.", message);
     } finally {
       setUploading(false);
-      if (inputRef.current) inputRef.current.value = "";
     }
   }
 
@@ -707,31 +713,9 @@ function AttachmentTextarea({
           placeholder={placeholder}
           error={error}
           minHeightClassName="min-h-[112px]"
-          className="[&_.rich-text-prose]:pb-12 [&_.rich-text-prose]:pr-14"
+          className="[&_.rich-text-prose]:pb-4"
         />
-        <input
-          ref={inputRef}
-          type="file"
-          multiple
-          className="hidden"
-          onChange={(event) => void handleFiles(event.target.files)}
-        />
-        <button
-          type="button"
-          disabled={disabled || uploading}
-          aria-label={`Attach a file to ${ariaLabel}`}
-          onClick={() => inputRef.current?.click()}
-          className={cn(
-            "absolute bottom-3 grid size-8 place-items-center rounded-full text-[#6f7b73] hover:bg-[#eef5ef] hover:text-brand disabled:opacity-50",
-            "right-3",
-          )}
-        >
-          {uploading ? (
-            <Loader2 className="h-[18px] w-[18px] animate-spin" />
-          ) : (
-            <Paperclip className="h-[18px] w-[18px]" />
-          )}
-        </button>
+        <FileUploadDropzone label={`${ariaLabel} attachments`} multiple compact className="mt-2" disabled={disabled || uploading} buttonLabel={uploading ? "Uploading…" : "Attach files"} onFilesSelected={(files) => void handleFiles(files)} />
       </div>
       {attachments.length ? (
         <div className="mt-2 flex flex-wrap gap-2" data-attachment-field={field}>
@@ -782,23 +766,7 @@ export function StageOneWorkspace({
     pageData.canEdit ? "edit" : "view",
   );
   const [submitting, startSubmitting] = useTransition();
-  const [partyOptions, setPartyOptions] = useState(() => {
-    const options = [...pageData.partyOptions];
-    for (const savedParty of [
-      saved?.client,
-      ...(saved?.finalBeneficiaries ?? []),
-    ]) {
-      if (
-        savedParty &&
-        !options.some(
-          (option) => option.id === savedParty.id && option.source === savedParty.source,
-        )
-      ) {
-        options.push(savedParty);
-      }
-    }
-    return options;
-  });
+  const [partyOptions, setPartyOptions] = useState(pageData.partyOptions);
   const [client, setClient] = useState(saved?.client ?? null);
   const [finalBeneficiaries, setFinalBeneficiaries] = useState(
     saved?.finalBeneficiaries ?? [],
@@ -834,6 +802,11 @@ export function StageOneWorkspace({
     },
   );
   const [fieldErrors, setFieldErrors] = useState<ProjectInquiryFieldErrors>({});
+  const clientError = fieldErrors.client || (
+    client && !hasProjectClientCompany(client)
+      ? "Select a client with a company name or add a new client."
+      : undefined
+  );
   const [formError, setFormError] = useState<string>();
   const [contactTarget, setContactTarget] = useState<PartyField | null>(null);
   const [contactForm, setContactForm] = useState<ProjectContactForm>(getDefaultContactForm);
@@ -894,15 +867,6 @@ export function StageOneWorkspace({
           LEGAL_NOTES: [],
         },
       );
-      setPartyOptions((current) => {
-        const merged = new Map(
-          current.map((option) => [`${option.source}:${option.id}`, option]),
-        );
-        for (const option of [draft.client, ...(draft.finalBeneficiaries ?? [])]) {
-          if (option) merged.set(`${option.source}:${option.id}`, option);
-        }
-        return [...merged.values()];
-      });
     },
   });
   const viewInquiry = pageData.canEdit ? draftInquiry : saved;
@@ -917,26 +881,27 @@ export function StageOneWorkspace({
     [pageData.countryOptions, targetMarketHistory],
   );
   const loadPartyOptions = useCallback(
-    async (query: string) => {
+    async (query: string, kind: ContactDirectoryKind) => {
       try {
         const options = await searchProjectInquiryPartyOptionsAction(
           project.id,
           query,
+          kind,
         );
-        setPartyOptions((current) => {
-          const merged = new Map(
-            current.map((option) => [`${option.source}:${option.id}`, option]),
-          );
-          for (const option of options) {
-            merged.set(`${option.source}:${option.id}`, option);
-          }
-          return [...merged.values()];
-        });
+        setPartyOptions(options);
       } catch {
         showErrorToast("Unable to load directory results.");
       }
     },
     [project.id],
+  );
+  const loadClientOptions = useCallback(
+    (query: string) => loadPartyOptions(query, "CLIENT"),
+    [loadPartyOptions],
+  );
+  const loadBeneficiaryOptions = useCallback(
+    (query: string) => loadPartyOptions(query, "CONTACT"),
+    [loadPartyOptions],
   );
   const loadTargetMarketHistory = useCallback(
     async (query: string) => {
@@ -1027,7 +992,7 @@ export function StageOneWorkspace({
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const stageTwoHref = `/projects/${project.id}/stages/2`;
+    const projectWorkspaceHref = `/projects/${project.id}`;
     if (!pageData.canEdit || submitting) return;
     const nextErrors: ProjectInquiryFieldErrors = {};
     if (!client) nextErrors.client = "Select a client.";
@@ -1085,7 +1050,7 @@ export function StageOneWorkspace({
         return;
       }
       showSuccessToast("Project Inquiry completed.", "Stage 2 is now available.");
-      router.push(stageTwoHref);
+      router.push(projectWorkspaceHref);
       router.refresh();
     });
   }
@@ -1180,17 +1145,16 @@ export function StageOneWorkspace({
 
           <form onSubmit={handleSubmit}>
             <div className="grid gap-x-10 gap-y-6 lg:grid-cols-2">
-              <StageOneFormField label="Client" required error={fieldErrors.client}>
+              <StageOneFormField label="Client" required error={clientError}>
                 <PartySelector
                   ariaLabel="Client"
                   companyFirst
-                  showPersonName
-                  placeholder="Search or select a person or company"
+                  placeholder="Search or select a company or person"
                   options={partyOptions}
                   values={client ? [client] : []}
                   disabled={readOnly || submitting}
-                  error={fieldErrors.client}
-                  onSearch={loadPartyOptions}
+                  error={clientError}
+                  onSearch={loadClientOptions}
                   onChange={(values) => {
                     setClient(values[0] ?? null);
                     clearFieldError("client");
@@ -1244,7 +1208,7 @@ export function StageOneWorkspace({
                   multiple
                   disabled={readOnly || submitting}
                   error={fieldErrors.finalBeneficiaries}
-                  onSearch={loadPartyOptions}
+                  onSearch={loadBeneficiaryOptions}
                   onChange={(values) => {
                     setFinalBeneficiaries(values);
                     clearFieldError("finalBeneficiaries");
@@ -1382,7 +1346,7 @@ export function StageOneWorkspace({
                       : "Completing..."
                     : pageData.workflowStatus === "COMPLETED"
                       ? "Save Changes"
-                      : "Next Stage"}
+                      : "Continue"}
                   {!submitting && pageData.workflowStatus !== "COMPLETED" ? (
                     <ArrowRight className="h-4 w-4" />
                   ) : null}
@@ -1390,8 +1354,8 @@ export function StageOneWorkspace({
               ) : null}
               {pageData.workflowStatus === "COMPLETED" ? (
                 <Button asChild type="button" variant="secondary" className="min-w-[170px] rounded-[13px] shadow-none">
-                  <Link href={`/projects/${project.id}/stages/2`}>
-                    Next Stage
+                  <Link href={`/projects/${project.id}`}>
+                    Continue
                     <ArrowRight className="h-4 w-4" />
                   </Link>
                 </Button>

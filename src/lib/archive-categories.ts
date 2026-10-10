@@ -1,7 +1,6 @@
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import {
   canUseArchives,
-  hasPermission,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 
@@ -98,29 +97,7 @@ function getAccessibleActiveCategoryWhere(
     };
   }
 
-  if (hasPermission(user, "settings.manageMasterData")) {
-    return {
-      isActive: true,
-    };
-  }
-
-  return {
-    isActive: true,
-    OR: [
-      {
-        allowedUsers: {
-          none: {},
-        },
-      },
-      {
-        allowedUsers: {
-          some: {
-            userId: user.id,
-          },
-        },
-      },
-    ],
-  };
+  return { isActive: true };
 }
 
 export async function getActiveArchiveCategoryOptions(

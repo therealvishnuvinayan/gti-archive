@@ -39,7 +39,7 @@ assert(
 for (const folderName of ["Brief", "Market & Competition", "Tech", "Vendors", "Finance", "Legal", "Pitch"]) {
   assert(service.includes(`name: "${folderName}"`), `Missing predefined Stage 2 folder: ${folderName}`);
 }
-for (const text of ["Shared folders", "Shared project research files and folders.", "Private Folders", "My Private Folder", "Classified", "New Folder", "Next Stage", "All Stages", "Default order", "Name (A–Z)"]) {
+for (const text of ["Shared folders", "Shared project research files and folders.", "Private Folders", "My Private Folder", "Classified", "New Folder", "Continue", "All Stages", "Default order", "Name (A–Z)"]) {
   assert(`${workspace}\n${page}`.includes(text), `Missing connected Stage 2 UI content: ${text}`);
 }
 assert(
@@ -70,11 +70,10 @@ assert(
   "Stage 2 private-folder cards must expose only the current participant's folder and classified placeholders.",
 );
 assert(
-  workspace.includes('const nextStageHref = `/projects/${data.project.id}/stages/${data.nextStage}`') &&
-    workspace.includes("router.push(nextStageHref)") &&
-    workspace.includes("result.nextStage") &&
-    !workspace.includes('router.push(`/projects/${data.project.id}`)'),
-  "Completing Stage 2 must open the next applicable stage instead of the project overview.",
+  workspace.includes('const projectWorkspaceHref = `/projects/${data.project.id}`') &&
+    workspace.match(/router\.push\(projectWorkspaceHref\)/g)?.length === 2 &&
+    !workspace.includes('router.push(`/projects/${data.project.id}/stages/'),
+  "Stage 2 Continue must return to the project workspace for both completed and newly completed stages.",
 );
 assert(workspace.includes("createProjectResearchFolderAction") && actions.includes("createProjectResearchFolder"), "New Folder must call the persisted server action.");
 assert(
@@ -92,19 +91,19 @@ assert(
     service.includes("create: PROJECT_RESEARCH_SYSTEM_FOLDERS.map"),
   "Deleted predefined folders must not be silently recreated when an existing workspace is ensured.",
 );
-assert(workspace.includes("completeProjectResearchStageAction") && actions.includes("completeProjectResearchStage"), "Next Stage must call the real completion action.");
+assert(workspace.includes("completeProjectResearchStageAction") && actions.includes("completeProjectResearchStage"), "Continue must call the real completion action.");
 assert(
   workspace.includes('data.workflowStatus === "COMPLETED"') &&
-    workspace.includes("router.push(nextStageHref)") &&
+    workspace.includes("router.push(projectWorkspaceHref)") &&
     workspace.includes("if (!result.alreadyCompleted)") &&
     service.includes("const alreadyCompleted =") &&
     service.includes("nextStage: skippedConceptStages ? 5 : 3") &&
     service.includes("reason: \"SELF_MANAGED_PROJECT\""),
-  "Next Stage must navigate directly from completed Stage 2 and suppress repeated completion notifications for stale pages.",
+  "Continue must return to the project workspace from completed Stage 2 and suppress repeated completion notifications for stale pages.",
 );
 assert(!workspace.includes("predefinedFolders") && !workspace.includes("setCustomFolders"), "Folder cards must not use mock/local folder state.");
 assert(
-  workspace.includes("<FolderArtwork colorLabel={folder.colorLabel} />") &&
+  workspace.includes("<FolderArtwork colorLabel={folder.colorLabel} itemCount={itemCount} countLabel={countLabel} />") &&
     workspace.includes("<FolderArtwork action") &&
     !workspace.includes("custom={!folder.isSystem}"),
   "Persisted system and custom folders must share one folder treatment while New Folder remains distinct.",
@@ -117,10 +116,9 @@ assert(
 );
 
 assert(
-  workspace.includes("onDropFiles(folder, Array.from(event.dataTransfer.files))") &&
-    workspace.includes("Drop to upload") &&
-    workspace.includes("dragDepth.current") &&
-    workspace.includes("if (!canWrite || !isFileDrag(event)) return"),
+  workspace.includes("onDropFiles(folder, files)") &&
+    workspace.includes("useFileDrop") && workspace.includes("<FileDropOverlay") &&
+    workspace.includes("disabled: !canWrite || Boolean(upload)"),
   "Writable folder cards must be stable, exact drag/drop targets while read-only cards remain inactive.",
 );
 assert(
@@ -138,10 +136,10 @@ assert(
   "Folder overview and opened folders must share the existing upload-url/completion implementation.",
 );
 assert(
-  folderWorkspace.includes('type="file"') &&
+  folderWorkspace.includes("<FileUploadDropzone") &&
     folderWorkspace.includes("multiple") &&
     folderWorkspace.includes("Promise.allSettled") &&
-    folderWorkspace.includes("Drop files to upload to {data.folder.name}"),
+    folderWorkspace.includes("useFileDrop") && folderWorkspace.includes("<FileDropOverlay"),
   "Opened folders must support progress-aware independent multi-file button and content-area drops.",
 );
 assert(

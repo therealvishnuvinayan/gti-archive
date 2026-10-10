@@ -1,9 +1,10 @@
 "use client";
 
+import { FileUploadDropzone, FileDropOverlay, useFileDrop } from "@/components/ui/file-upload-dropzone";
+
 import { FileThumbnail } from "@/components/projects/file-thumbnail";
 import Link from "next/link";
 import {
-  type DragEvent,
   useEffect,
   useMemo,
   useRef,
@@ -39,7 +40,6 @@ import {
   SlidersHorizontal,
   Trash2,
   Upload,
-  UploadCloud,
 } from "lucide-react";
 
 import { StageTwoImportDialog } from "@/components/projects/stage-two-import-dialog";
@@ -612,8 +612,6 @@ export function StageTwoFolderWorkspace({
   context?: "research" | "user-shared" | "private";
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const dragDepth = useRef(0);
-  const [dragging, setDragging] = useState(false);
   const view = useSyncExternalStore(
     subscribeToFileView,
     getStoredFileView,
@@ -858,9 +856,10 @@ export function StageTwoFolderWorkspace({
     }
   }
 
-  function isFileDrag(event: DragEvent<HTMLElement>) {
-    return event.dataTransfer.types.includes("Files");
-  }
+  const { dragProps, isDragging: dragging } = useFileDrop({
+    multiple: true, disabled: !data.canUpload,
+    onFilesSelected: (files) => void uploadFiles(files),
+  });
 
   function changeView(nextView: FileView) {
     window.localStorage.setItem(FILE_VIEW_STORAGE_KEY, nextView);
@@ -1114,17 +1113,8 @@ export function StageTwoFolderWorkspace({
               </div>
             </header>
 
-            <input
-              ref={inputRef}
-              type="file"
-              multiple
-              disabled={!data.canUpload}
-              className="hidden"
-              onChange={(event) => {
-                if (event.target.files) void uploadFiles(event.target.files);
-                event.target.value = "";
-              }}
-            />
+            {data.canUpload ? <FileUploadDropzone label={`Files in ${data.folder.name}`} inputRef={inputRef}
+              multiple compact className="px-5 pb-3 sm:px-8" onFilesSelected={(files) => void uploadFiles(files)} /> : null}
 
             <div className="flex flex-wrap items-center gap-3 border-b border-[#e9eee9] bg-[#fbfcfb] px-5 py-3 sm:px-8">
               <div className="relative min-w-[180px] max-w-[420px] flex-1">
@@ -1144,38 +1134,9 @@ export function StageTwoFolderWorkspace({
           <div
             data-folder-file-scroll
             className="dashboard-scroll-thin relative min-h-0 flex-1 touch-pan-y overflow-x-hidden overflow-y-auto overscroll-contain bg-[#fbfcfb] px-5 py-6 [scrollbar-gutter:stable] sm:px-8"
-            onDragEnter={(event) => {
-              if (!isFileDrag(event)) return;
-              event.preventDefault();
-              dragDepth.current += 1;
-              if (data.canUpload) setDragging(true);
-            }}
-            onDragOver={(event) => {
-              if (!isFileDrag(event)) return;
-              event.preventDefault();
-              event.dataTransfer.dropEffect = data.canUpload ? "copy" : "none";
-            }}
-            onDragLeave={(event) => {
-              if (!isFileDrag(event)) return;
-              event.preventDefault();
-              dragDepth.current = Math.max(0, dragDepth.current - 1);
-              if (dragDepth.current === 0) setDragging(false);
-            }}
-            onDrop={(event) => {
-              if (!isFileDrag(event)) return;
-              event.preventDefault();
-              dragDepth.current = 0;
-              setDragging(false);
-              if (data.canUpload) void uploadFiles(event.dataTransfer.files);
-            }}
+            {...dragProps}
           >
-            {dragging && data.canUpload ? (
-              <div className="absolute inset-3 z-30 flex flex-col items-center justify-center rounded-[22px] border-2 border-dashed border-[#2b8056] bg-[#eaf5ed]/95 text-center text-[#216643] shadow-[0_18px_44px_rgba(25,103,67,0.12)]">
-                <UploadCloud className="h-10 w-10" />
-                <p className="mt-3 text-[17px] font-[760]">Drop files to upload to {data.folder.name}</p>
-                <p className="mt-1 text-[12px] text-[#5c7968]">Multiple files are supported.</p>
-              </div>
-            ) : null}
+            {dragging ? <FileDropOverlay label={`Drop files into ${data.folder.name}`} /> : null}
 
             {uploads.length > 0 ? (
               <div className="mb-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">

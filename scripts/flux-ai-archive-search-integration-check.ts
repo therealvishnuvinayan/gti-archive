@@ -783,8 +783,8 @@ async function main() {
       query: restrictedQuery,
     });
     check(
-      restricted.results.length === 0,
-      `unauthorized search leaked data for ${restrictedQuery}`,
+      restricted.results.some((result) => result.id === source.id),
+      `every signed-in user must be able to search shared Archives for ${restrictedQuery}`,
     );
   }
 

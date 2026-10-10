@@ -505,6 +505,7 @@ model User {
   createdResearchFolders              ProjectResearchFolder[]              @relation("ProjectResearchFolderCreator")
   addedResearchFolderFiles            ProjectResearchFolderFile[]          @relation("ProjectResearchFolderFileAdder")
   createdConceptFolders               ProjectConceptFolder[]               @relation("ProjectConceptFolderCreator")
+  assignedConceptTasks                ProjectConceptFolder[]               @relation("ProjectConceptFolderAssigner")
   approvedConceptFolders              ProjectConceptFolder[]               @relation("ProjectConceptFolderApprover")
   importedStageThreeConceptReferences ProjectConceptFolder[]               @relation("ProjectConceptFolderStageThreeReferenceImporter")
   createdStageFileHandoffs            ProjectStageFileHandoff[]            @relation("ProjectStageFileHandoffCreator")
@@ -937,6 +938,8 @@ model ProjectWorkflowStage {
 
 model ContactDirectoryEntry {
   id             String                @id @default(cuid())
+  directoryRoles ProjectInquiryPartyRole[] @default([CLIENT, FINAL_BENEFICIARY])
+  deletedAt      DateTime?
   entityType     ProjectContactEntityType @default(PERSON)
   name           String
   company        String?
@@ -955,6 +958,7 @@ model ContactDirectoryEntry {
   @@index([name])
   @@index([email])
   @@index([createdById])
+  @@index([deletedAt])
 }
 
 model ProjectInquiry {
@@ -1135,6 +1139,8 @@ model ProjectConceptFolder {
   taskerStage                      ProjectStage            @relation(fields: [taskerStageId], references: [id], onDelete: Cascade)
   assignedExecutorId               String?
   assignedExecutor                 ProjectExecutor?        @relation("ProjectConceptFolderAssignedExecutor", fields: [projectId, assignedExecutorId], references: [projectId, userId], onDelete: Restrict, onUpdate: Cascade)
+  assignedById                     String?
+  assignedBy                       User?                   @relation("ProjectConceptFolderAssigner", fields: [assignedById], references: [id], onDelete: SetNull)
   approvedAttachmentId             String?                 @unique
   approvedAttachment               ProjectAttachment?      @relation("ProjectConceptApprovedAttachment", fields: [approvedAttachmentId], references: [id], onDelete: Restrict)
   approvedById                     String?
@@ -1162,6 +1168,7 @@ model ProjectConceptFolder {
   @@unique([projectId, workflowStageKey, normalizedName])
   @@index([projectId, workflowStageKey, sortOrder])
   @@index([projectId, workflowStageKey, assignedExecutorId, sortOrder])
+  @@index([assignedById, workflowStageKey])
   @@index([approvedById])
   @@index([createdById])
   @@index([sourceStage3ImportedById])

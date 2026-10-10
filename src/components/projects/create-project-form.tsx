@@ -18,6 +18,8 @@ import {
   ProjectUserSelector,
   type ProjectUserOption,
 } from "@/components/projects/project-user-selector";
+import { ProjectTagInput } from "@/components/projects/project-tag-input";
+import { validateProjectTags } from "@/lib/project-tags";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { CollaboratorRecord } from "@/lib/collaboration";
@@ -33,6 +35,7 @@ type CreateProjectFormProps = {
   initialProject?: {
     id: string;
     name: string;
+    tags: string[];
     ownerId: string;
     coOwnerIds: string[];
     executorIds: string[];
@@ -42,6 +45,7 @@ type CreateProjectFormProps = {
 
 type FormErrors = {
   name?: string;
+  tags?: string;
   owner?: string;
   coOwners?: string;
   executors?: string;
@@ -94,6 +98,9 @@ export function CreateProjectForm({
   const editingProjectId = mode === "edit" ? initialProject?.id : undefined;
   const isEditing = Boolean(editingProjectId);
   const [projectName, setProjectName] = useState(initialProject?.name ?? "");
+  const [tags, setTags] = useState<string[]>(initialProject?.tags ?? []);
+  const [tagDraft, setTagDraft] = useState("");
+  const tagsRequired = !isEditing || Boolean(initialProject?.tags.length);
   const [collaborators, setCollaborators] = useState(availableCollaborators);
   const ownerId = initialProject?.ownerId ?? currentUser.id;
   const [coOwnerIds, setCoOwnerIds] = useState<string[]>(
@@ -229,6 +236,14 @@ export function CreateProjectForm({
     }
 
     const nextErrors: FormErrors = {};
+    // Include a typed tag even if the user clicks Save before pressing Add.
+    const tagValidation = validateProjectTags(
+      tagDraft.trim() ? [...tags, tagDraft] : tags,
+    );
+    const keepLegacyTags = !tagsRequired && !tags.length && !tagDraft.trim();
+    if (tagValidation.error && !keepLegacyTags) {
+      nextErrors.tags = tagValidation.error;
+    }
 
     if (!projectName.trim()) {
       nextErrors.name = "Project name is required.";
@@ -248,18 +263,23 @@ export function CreateProjectForm({
     startCreating(async () => {
       const input = {
         name: projectName,
+        tags: tagValidation.tags ?? [],
         ownerId,
         coOwnerIds,
         executorIds: selfManaged ? [] : executorIds,
         collaboratorIds,
       };
       const result = isEditing
-        ? await updateProjectV2Action(editingProjectId!, input)
+        ? await updateProjectV2Action(editingProjectId!, {
+            ...input,
+            tags: keepLegacyTags ? undefined : input.tags,
+          })
         : await createProjectV2Action(input);
 
       if ("error" in result) {
         setErrors({
           name: result.fieldErrors?.name,
+          tags: result.fieldErrors?.tags,
           owner: result.fieldErrors?.ownerId,
           coOwners: result.fieldErrors?.coOwnerIds,
           executors: result.fieldErrors?.executorIds,
@@ -325,6 +345,19 @@ export function CreateProjectForm({
                 <p className="mt-1.5 text-[12px] text-[#b84e48]">{errors.name}</p>
               ) : null}
             </div>
+
+            <label htmlFor="project-tags" className="pt-0 text-[14px] font-[700] text-[#18211b] md:pt-[16px]">
+              Project Tags {tagsRequired ? <span className="text-[#b84e48]">*</span> : null}
+            </label>
+            <ProjectTagInput
+              tags={tags}
+              draft={tagDraft}
+              onChange={setTags}
+              onDraftChange={setTagDraft}
+              error={errors.tags}
+              onError={(error) => setErrors((current) => ({ ...current, tags: error }))}
+              disabled={isCreating}
+            />
 
             <div className="pt-0 text-[14px] font-[700] text-[#18211b] md:pt-[16px]">
               Project Owner

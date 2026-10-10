@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.project-v2-integration.json",
+  "compilerOptions": { "outDir": "../.tmp/project-tags-integration" },
+  "include": ["project-tags-integration-check.ts", "project-creation-v2-integration-check.ts", "user-projects-integration-check.ts"]
+}

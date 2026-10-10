@@ -1,14 +1,11 @@
 import {
   ArchiveAccessLevel,
-  AttachmentStatus,
-  Prisma,
   UserRole,
 } from "@prisma/client";
 
 import type { PermissionRole } from "@/lib/permissions/definitions";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import {
-  isBusinessAdministratorRole,
   isProtectedRootRole,
 } from "@/lib/user-role-compatibility";
 
@@ -160,16 +157,6 @@ function mapArchiveAssetAccess(
   return null;
 }
 
-function getEffectiveManagedArchiveAccessLevel(user: {
-  role: UserRole;
-  archiveAccess?: { level: ArchiveAccessLevel } | null;
-}): ManagedArchiveAccessLevel {
-  if (isBusinessAdministratorRole(user.role)) {
-    return "FULL";
-  }
-
-  return user.archiveAccess?.level ?? "NONE";
-}
 
 function mapManagedUser(user: {
   id: string;
@@ -201,7 +188,7 @@ function mapManagedUser(user: {
     } | null;
   }>;
 }): ManagedUserRecord {
-  const archiveAccessLevel = getEffectiveManagedArchiveAccessLevel(user);
+  const archiveAccessLevel = "FULL" as const;
   const archiveAssetAccesses = (user.archiveAssetAccesses ?? [])
     .map(mapArchiveAssetAccess)
     .filter((asset): asset is ManagedArchiveAssetAccessRecord => Boolean(asset));
@@ -213,7 +200,7 @@ function mapManagedUser(user: {
     avatarUrl: user.avatarUrl,
     role: user.role,
     projectCreationAccessGranted: user.projectCreationAccessGranted,
-    canAccessArchives: archiveAccessLevel !== "NONE",
+    canAccessArchives: true,
     archiveAccessLevel,
     archiveAssetAccesses,
     status: getManagedUserStatus(user),
@@ -358,83 +345,6 @@ export async function getManagedUserPermissionRecord(userId: string) {
   return user ? mapManagedUser(user) : null;
 }
 
-function normalizeArchiveAssetIds(assetIds: string[] | undefined) {
-  const projectFileIds = new Set<string>();
-  const manualFileIds = new Set<string>();
-
-  for (const assetId of assetIds ?? []) {
-    const trimmedId = assetId.trim();
-
-    if (!trimmedId) {
-      continue;
-    }
-
-    const separatorIndex = trimmedId.indexOf(":");
-
-    if (separatorIndex <= 0) {
-      throw new Error("Choose valid archive assets for partial access.");
-    }
-
-    const type = trimmedId.slice(0, separatorIndex);
-    const id = trimmedId.slice(separatorIndex + 1).trim();
-
-    if (!id) {
-      throw new Error("Choose valid archive assets for partial access.");
-    }
-
-    if (type === "project") {
-      projectFileIds.add(id);
-      continue;
-    }
-
-    if (type === "manual") {
-      manualFileIds.add(id);
-      continue;
-    }
-
-    throw new Error("Choose valid archive assets for partial access.");
-  }
-
-  return {
-    projectFileIds: [...projectFileIds],
-    manualFileIds: [...manualFileIds],
-  };
-}
-
-async function validateArchiveAssetSelection(
-  tx: Prisma.TransactionClient,
-  input: ReturnType<typeof normalizeArchiveAssetIds>,
-) {
-  const [projectFileCount, manualFileCount] = await Promise.all([
-    input.projectFileIds.length > 0
-      ? tx.archivedProjectFile.count({
-          where: {
-            id: {
-              in: input.projectFileIds,
-            },
-          },
-        })
-      : Promise.resolve(0),
-    input.manualFileIds.length > 0
-      ? tx.manualArchiveFile.count({
-          where: {
-            id: {
-              in: input.manualFileIds,
-            },
-            status: AttachmentStatus.READY,
-          },
-        })
-      : Promise.resolve(0),
-  ]);
-
-  if (
-    projectFileCount !== input.projectFileIds.length ||
-    manualFileCount !== input.manualFileIds.length
-  ) {
-    throw new Error("One or more selected archive assets are no longer available.");
-  }
-}
-
 function getRequestedArchiveAccessLevel(
   input: Pick<ManagedUserUpdateInput, "role" | "archiveAccessLevel">,
 ) {
@@ -442,11 +352,7 @@ function getRequestedArchiveAccessLevel(
     throw new Error("Choose a valid archive access level.");
   }
 
-  if (isBusinessAdministratorRole(input.role)) {
-    return ArchiveAccessLevel.FULL;
-  }
-
-  return input.archiveAccessLevel as ArchiveAccessLevel;
+  return ArchiveAccessLevel.FULL;
 }
 
 export async function updateManagedUserPermissions(
@@ -476,20 +382,6 @@ export async function updateManagedUserPermissions(
       }
 
       const archiveAccessLevel = getRequestedArchiveAccessLevel(input);
-      const archiveAssetSelection = normalizeArchiveAssetIds(input.archiveAssetIds);
-
-      if (archiveAccessLevel === ArchiveAccessLevel.PARTIAL) {
-        if (
-          archiveAssetSelection.projectFileIds.length +
-            archiveAssetSelection.manualFileIds.length ===
-          0
-        ) {
-          throw new Error("Select at least one archive asset for partial access.");
-        }
-
-        await validateArchiveAssetSelection(tx, archiveAssetSelection);
-      }
-
       await tx.user.update({
         where: {
           id: input.userId,
@@ -507,57 +399,12 @@ export async function updateManagedUserPermissions(
         },
       });
 
-      if (archiveAccessLevel !== ArchiveAccessLevel.NONE) {
-        await tx.userArchiveAccess.upsert({
-          where: {
-            userId: input.userId,
-          },
-          update: {
-            level: archiveAccessLevel,
-            grantedById: input.updatedById ?? undefined,
-          },
-          create: {
-            userId: input.userId,
-            level: archiveAccessLevel,
-            grantedById: input.updatedById ?? undefined,
-          },
-        });
-
-        await tx.userArchiveAssetAccess.deleteMany({
-          where: {
-            userId: input.userId,
-          },
-        });
-
-        if (archiveAccessLevel === ArchiveAccessLevel.PARTIAL) {
-          await tx.userArchiveAssetAccess.createMany({
-            data: [
-              ...archiveAssetSelection.projectFileIds.map((archivedProjectFileId) => ({
-                userId: input.userId,
-                archivedProjectFileId,
-                grantedById: input.updatedById ?? null,
-              })),
-              ...archiveAssetSelection.manualFileIds.map((manualArchiveFileId) => ({
-                userId: input.userId,
-                manualArchiveFileId,
-                grantedById: input.updatedById ?? null,
-              })),
-            ],
-            skipDuplicates: true,
-          });
-        }
-      } else {
-        await tx.userArchiveAssetAccess.deleteMany({
-          where: {
-            userId: input.userId,
-          },
-        });
-        await tx.userArchiveAccess.deleteMany({
-          where: {
-            userId: input.userId,
-          },
-        });
-      }
+      await tx.userArchiveAccess.upsert({
+        where: { userId: input.userId },
+        update: { level: archiveAccessLevel, grantedById: input.updatedById ?? undefined },
+        create: { userId: input.userId, level: archiveAccessLevel, grantedById: input.updatedById ?? undefined },
+      });
+      await tx.userArchiveAssetAccess.deleteMany({ where: { userId: input.userId } });
 
       return tx.user.findUniqueOrThrow({
         where: {

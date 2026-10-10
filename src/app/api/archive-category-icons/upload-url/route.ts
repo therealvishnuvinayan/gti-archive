@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
-import { hasPermission } from "@/lib/permissions/resolver";
+import { canUseArchives } from "@/lib/permissions/resolver";
 import {
   buildArchiveCategoryIconKey,
   createPresignedUploadUrl,
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  if (!hasPermission(user, "settings.manageMasterData")) {
+  if (!canUseArchives(user)) {
     return NextResponse.json(
       { error: "You do not have permission to manage archive category icons." },
       { status: 403 },

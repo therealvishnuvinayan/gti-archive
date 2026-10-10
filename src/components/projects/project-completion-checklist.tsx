@@ -1,8 +1,10 @@
 "use client";
 
+import { FileUploadDropzone } from "@/components/ui/file-upload-dropzone";
+
 import Link from "next/link";
-import { useRef, useState, type ReactNode } from "react";
-import { Download, Loader2, Lock, Upload } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { Download, Loader2, Lock } from "lucide-react";
 
 import {
   configureProjectCompletionWorkflowAction,
@@ -637,9 +639,6 @@ function ProjectCompletionChecklistBody({
   const [uploadingDocumentType, setUploadingDocumentType] =
     useState<CompletionDocumentTypeValue | null>(null);
   const [workflowError, setWorkflowError] = useState<string | null>(null);
-  const approvalProofInputRef = useRef<HTMLInputElement | null>(null);
-  const copyrightInputRef = useRef<HTMLInputElement | null>(null);
-  const invoiceInputRef = useRef<HTMLInputElement | null>(null);
 
   const approvalStatusMeta = getStepStatusMeta("approval", workflowState);
   const copyrightStatusMeta = getStepStatusMeta("copyright", workflowState);
@@ -869,7 +868,7 @@ function ProjectCompletionChecklistBody({
 
   async function handleDocumentUpload(
     documentType: CompletionDocumentTypeValue,
-    files: FileList | null,
+    files: File[],
   ) {
     const file = files?.[0];
 
@@ -907,51 +906,11 @@ function ProjectCompletionChecklistBody({
       showErrorToast("Unable to upload completion document.", message);
     } finally {
       setUploadingDocumentType(null);
-
-      if (approvalProofInputRef.current) {
-        approvalProofInputRef.current.value = "";
-      }
-
-      if (copyrightInputRef.current) {
-        copyrightInputRef.current.value = "";
-      }
-
-      if (invoiceInputRef.current) {
-        invoiceInputRef.current.value = "";
-      }
     }
   }
 
   const checklistContent = (
     <>
-      <input
-        ref={approvalProofInputRef}
-        type="file"
-        accept={completionDocumentAccept}
-        className="sr-only"
-        onChange={(event) => {
-          void handleDocumentUpload(COMPLETION_DOCUMENT_TYPES.approval, event.target.files);
-        }}
-      />
-      <input
-        ref={copyrightInputRef}
-        type="file"
-        accept={completionDocumentAccept}
-        className="sr-only"
-        onChange={(event) => {
-          void handleDocumentUpload(COMPLETION_DOCUMENT_TYPES.copyright, event.target.files);
-        }}
-      />
-      <input
-        ref={invoiceInputRef}
-        type="file"
-        accept={completionDocumentAccept}
-        className="sr-only"
-        onChange={(event) => {
-          void handleDocumentUpload(COMPLETION_DOCUMENT_TYPES.invoice, event.target.files);
-        }}
-      />
-
       <CardHeader className="space-y-3 pb-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -1231,19 +1190,9 @@ function ProjectCompletionChecklistBody({
 
               {workflowState.canUploadApprovalProof ? (
                 <div className="flex justify-end">
-                  <Button
-                    type="button"
-                    className="rounded-full text-[12px]"
-                    disabled={uploadingDocumentType === COMPLETION_DOCUMENT_TYPES.approval}
-                    onClick={() => approvalProofInputRef.current?.click()}
-                  >
-                    {uploadingDocumentType === COMPLETION_DOCUMENT_TYPES.approval ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Upload className="h-3.5 w-3.5" />
-                    )}
-                    Upload Approval Proof
-                  </Button>
+                  <FileUploadDropzone label="Upload Approval Proof" compact accept={completionDocumentAccept}
+                    disabled={uploadingDocumentType !== null}
+                    buttonLabel="Upload Approval Proof" onFilesSelected={(files) => void handleDocumentUpload(COMPLETION_DOCUMENT_TYPES.approval, files)} />
                 </div>
               ) : (
                 <div className="rounded-[16px] border border-[#dce6dd] bg-white px-4 py-3 text-[12px] leading-5 text-[#5f6b62]">
@@ -1392,19 +1341,9 @@ function ProjectCompletionChecklistBody({
 
               {workflowState.canUploadCopyrightDocument ? (
                 <div className="flex justify-end">
-                  <Button
-                    type="button"
-                    className="rounded-full text-[12px]"
-                    disabled={uploadingDocumentType === COMPLETION_DOCUMENT_TYPES.copyright}
-                    onClick={() => copyrightInputRef.current?.click()}
-                  >
-                    {uploadingDocumentType === COMPLETION_DOCUMENT_TYPES.copyright ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Upload className="h-3.5 w-3.5" />
-                    )}
-                    Upload Signed Copyright Document
-                  </Button>
+                  <FileUploadDropzone label="Upload Signed Copyright Document" compact accept={completionDocumentAccept}
+                    disabled={uploadingDocumentType !== null}
+                    buttonLabel="Upload Signed Copyright Document" onFilesSelected={(files) => void handleDocumentUpload(COMPLETION_DOCUMENT_TYPES.copyright, files)} />
                 </div>
               ) : null}
             </div>
@@ -1579,22 +1518,9 @@ function ProjectCompletionChecklistBody({
                 ) : null}
 
               {workflowState.canUploadInvoice ? (
-                <Button
-                  type="button"
-                  className="rounded-full text-[12px]"
-                  disabled={
-                    pendingAction === "invoice" ||
-                    uploadingDocumentType === COMPLETION_DOCUMENT_TYPES.invoice
-                  }
-                  onClick={() => invoiceInputRef.current?.click()}
-                >
-                  {uploadingDocumentType === COMPLETION_DOCUMENT_TYPES.invoice ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Upload className="h-3.5 w-3.5" />
-                  )}
-                  Upload Final Invoice
-                </Button>
+                <FileUploadDropzone label="Upload Final Invoice" compact accept={completionDocumentAccept}
+                    disabled={uploadingDocumentType !== null || pendingAction === "invoice"}
+                    buttonLabel="Upload Final Invoice" onFilesSelected={(files) => void handleDocumentUpload(COMPLETION_DOCUMENT_TYPES.invoice, files)} />
               ) : null}
             </div>
             </div>

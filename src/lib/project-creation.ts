@@ -1,5 +1,7 @@
 import { UserRole, type User } from "@prisma/client";
 
+import { resolveProjectTagIdsTx } from "./project-tag-assignments";
+import { validateProjectTags } from "./project-tags";
 import { normalizeProjectCollaboratorPermissions } from "./project-collaborator-permissions";
 import { prisma, withPrismaRetry } from "./prisma";
 import { ensureCanonicalProjectResearchWorkspaceTx } from "./project-research";
@@ -9,6 +11,7 @@ import { isBusinessAdministratorRole } from "./user-role-compatibility";
 
 export type CreateProjectV2Input = {
   name: string;
+  tags: string[];
   ownerId: string;
   coOwnerIds: string[];
   executorIds: string[];
@@ -17,6 +20,7 @@ export type CreateProjectV2Input = {
 
 export type CreateProjectV2FieldErrors = {
   name?: string;
+  tags?: string;
   ownerId?: string;
   coOwnerIds?: string;
   executorIds?: string;
@@ -33,6 +37,10 @@ export type CreateProjectV2Result =
     };
 
 type ProjectCreator = Pick<User, "id">;
+
+export type UpdateProjectV2Input = Omit<CreateProjectV2Input, "tags"> & {
+  tags?: string[];
+};
 
 export type UpdateProjectV2Result = CreateProjectV2Result;
 
@@ -68,6 +76,9 @@ export async function createProjectV2(
     ? [...new Set(normalizeIdList(rawCollaboratorIds))]
     : [];
   const fieldErrors: CreateProjectV2FieldErrors = {};
+
+  const tagValidation = validateProjectTags(input.tags);
+  if (tagValidation.error) fieldErrors.tags = tagValidation.error;
 
   if (!name) {
     fieldErrors.name = "Project name is required.";
@@ -175,9 +186,11 @@ export async function createProjectV2(
 
   const createdProject = await withPrismaRetry(() =>
     prisma.$transaction(async (tx) => {
+      const tagIds = await resolveProjectTagIdsTx(tx, tagValidation.tags!);
       const project = await tx.project.create({
         data: {
           name,
+          tags: { create: tagIds.map((tagId) => ({ tagId })) },
           ownerId,
           createdById: creator.id,
           coOwners:
@@ -330,7 +343,7 @@ export async function createProjectV2(
 export async function updateProjectV2(
   actor: ProjectCreator,
   projectId: string,
-  input: CreateProjectV2Input,
+  input: UpdateProjectV2Input,
 ): Promise<UpdateProjectV2Result> {
   const name = input.name.trim();
 
@@ -365,6 +378,11 @@ export async function updateProjectV2(
     ? [...new Set(normalizeIdList(rawCollaboratorIds))]
     : [];
   const fieldErrors: CreateProjectV2FieldErrors = {};
+
+  const tagValidation = input.tags === undefined
+    ? undefined
+    : validateProjectTags(input.tags);
+  if (tagValidation?.error) fieldErrors.tags = tagValidation.error;
 
   if (!name) fieldErrors.name = "Project name is required.";
   if (hasDuplicates(coOwnerIds)) {
@@ -486,13 +504,26 @@ export async function updateProjectV2(
             projectId,
             assignedExecutorId: { in: removedExecutorIds },
           },
-          data: { assignedExecutorId: null },
+          data: { assignedExecutorId: null, assignedById: null },
         });
       }
 
+      const tagIds = tagValidation?.tags
+        ? await resolveProjectTagIdsTx(tx, tagValidation.tags)
+        : undefined;
       await tx.project.update({
         where: { id: projectId },
-        data: { name },
+        data: {
+          name,
+          ...(tagIds
+            ? {
+                tags: {
+                  deleteMany: {},
+                  create: tagIds.map((tagId) => ({ tagId })),
+                },
+              }
+            : {}),
+        },
       });
       await tx.projectCoOwner.deleteMany({
         where: {

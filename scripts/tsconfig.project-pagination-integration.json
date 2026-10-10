@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.flexible-projects-integration.json",
+  "compilerOptions": { "outDir": "../.tmp/project-pagination-integration" },
+  "include": ["project-pagination-integration-check.ts", "flexible-projects-integration-check.ts"]
+}

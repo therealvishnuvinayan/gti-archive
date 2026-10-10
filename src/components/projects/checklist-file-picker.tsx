@@ -1,10 +1,9 @@
 "use client";
 
-import { useRef } from "react";
-import { AlertCircle, LoaderCircle, RotateCcw, Upload, X } from "lucide-react";
+import { AlertCircle, LoaderCircle, RotateCcw, X } from "lucide-react";
 import { FileThumbnail } from "@/components/projects/file-thumbnail";
 
-import { Button } from "@/components/ui/button";
+import { FileUploadDropzone } from "@/components/ui/file-upload-dropzone";
 import { cn } from "@/lib/utils";
 
 export type ChecklistFileRecord = {
@@ -42,10 +41,8 @@ export function ChecklistFilePicker({
   accept?: string;
   onChange: (files: ChecklistFileRecord[]) => void;
 }) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  function selectFiles(event: React.ChangeEvent<HTMLInputElement>) {
-    const selected = Array.from(event.currentTarget.files ?? []).map((file) => ({
+  function selectFiles(selectedFiles: File[]) {
+    const selected = selectedFiles.map((file) => ({
       id: `${file.name}-${file.size}-${file.lastModified}-${crypto.randomUUID()}`,
       name: file.name,
       size: file.size,
@@ -57,20 +54,11 @@ export function ChecklistFilePicker({
     if (selected.length > 0) {
       onChange(multiple ? [...files, ...selected] : selected.slice(0, 1));
     }
-    event.currentTarget.value = "";
   }
 
   return (
     <div className="min-w-0 space-y-2">
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple={multiple}
-        accept={accept}
-        disabled={disabled}
-        hidden
-        onChange={selectFiles}
-      />
+      <FileUploadDropzone label={fieldLabel} multiple={multiple} compact={compact} accept={accept} disabled={disabled} onFilesSelected={selectFiles} />
       <div className="flex min-w-0 flex-wrap gap-2">
         {files.map((file) => (
           <span
@@ -139,20 +127,6 @@ export function ChecklistFilePicker({
             </button>
           </span>
         ))}
-        <Button
-          type="button"
-          variant="outline"
-          disabled={disabled}
-          aria-label={`Choose ${fieldLabel} ${multiple ? "files" : "file"}`}
-          className={cn(
-            "rounded-[11px] border-dashed border-[#9dbba7] bg-[#f8fcf9] font-[680] text-[#347153] shadow-none hover:border-[#6f9f80] hover:bg-[#f0f8f2]",
-            compact ? "min-h-10 px-3 text-[11px]" : "min-h-11 px-4 text-[12px]",
-          )}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <Upload className="h-3.5 w-3.5" />
-          {files.length > 0 && multiple ? "Add more" : multiple ? "Choose files" : "Choose file"}
-        </Button>
       </div>
       {files.length === 0 ? (
         <p className="text-[10px] text-[#8a948d]">New files are uploaded when you submit or save.</p>

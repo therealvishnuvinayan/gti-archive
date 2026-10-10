@@ -38,14 +38,21 @@ export function ArchiveOverview({
             </h1>
             <p className="mt-3 max-w-[760px] text-[15px] leading-6 text-[#5f695f]">
               Completed project files and manual archive uploads are grouped by
-              admin-created categories with secure view and download links.
+              shared categories with secure view and download links.
             </p>
           </div>
+          <div className="flex flex-wrap items-center gap-3">
+            {canManageArchiveCategories ? (
+              <Button asChild variant="secondary">
+                <Link href="/archives/settings/categories">Manage categories</Link>
+              </Button>
+            ) : null}
           <ArchiveUploadButton
             canUploadAssets={canUploadArchives}
             disabledReason="You do not have permission to upload to Archive."
             currentUserDisplayName={currentUserDisplayName}
           />
+          </div>
         </header>
       </MotionSection>
 
@@ -127,12 +134,12 @@ export function ArchiveOverview({
               </p>
               <p className="mx-auto mt-2 max-w-[520px] text-[14px] leading-6 text-[#687269]">
                 {canManageArchiveCategories
-                  ? "Create archive categories from Master Data to start organizing archive files."
+                  ? "Create archive categories to start organizing archive files."
                   : "No archive categories are available yet. Please contact an administrator."}
               </p>
               {canManageArchiveCategories ? (
                 <Button asChild className="mt-5">
-                  <Link href="/settings/project-master-data">Create Archive Category</Link>
+                  <Link href="/archives/settings/categories">Create Archive Category</Link>
                 </Button>
               ) : null}
             </div>

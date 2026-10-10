@@ -126,8 +126,8 @@ assert(
   workspace.includes("border-[#cfdad1] bg-[#fbfdfb]") &&
     workspace.includes('minHeightClassName="min-h-[112px]"') &&
     workspace.includes('ariaLabel="Concept brief"') &&
-    workspace.includes("border border-dashed border-[#b9c9bc]") &&
-    workspace.includes('className="sr-only"') &&
+    workspace.includes("<FileUploadDropzone") &&
+    workspace.includes("disabled={detailsLocked}") &&
     workspace.includes("Selected brief attachments"),
   "Concept fields and brief attachments must use clearly bordered, aligned containers.",
 );
@@ -262,19 +262,18 @@ assert(
 );
 assert(
   workspace.includes("No Stage 3 concepts have been created") &&
-    workspace.includes("Stage 4 will open without automatically creating any taskers") &&
-    workspace.includes('"Continue to Stage 4"') &&
-    workspace.includes("Go to Stage 4") &&
-    workspace.includes('href={`/projects/${project.id}/stages/4`}') &&
+    workspace.includes("Stage 4 will become available without automatically creating any taskers") &&
+    workspace.includes('"Continue"') &&
+    workspace.includes('href={`/projects/${project.id}`}') &&
+    !workspace.includes('href={`/projects/${project.id}/stages/4`}') &&
     workspace.includes("stageNumber === 3 && managementLocked") &&
-    workspace.includes('"Continue to Stage 5"') &&
-    workspace.includes("Go to Stage 5") &&
-    workspace.includes('href={`/projects/${project.id}/stages/5`}') &&
+    !workspace.includes('href={`/projects/${project.id}/stages/5`}') &&
+    workspace.match(/router\.push\(`\/projects\/\$\{project\.id\}`\)/g)?.length === 2 &&
     workspace.includes("stageNumber === 4 && managementLocked") &&
     workspace.includes('cancelLabel="Cancel"') &&
     !concepts.includes("const stageTransition = await completeStageThreeConcepts") &&
     !concepts.includes("const stageTransition = await completeStageFourConcepts"),
-  "Stages 3 and 4 must advance only through their explicit manual continue/skip actions, then retain direct navigation to the unlocked next stage.",
+  "Stages 3 and 4 must complete only through explicit continue/skip actions and then return to the project workspace.",
 );
 assert(
   concepts.includes("const isProjectExecutor = project.executors.some") &&

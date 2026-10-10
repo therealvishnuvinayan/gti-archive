@@ -17,6 +17,7 @@ type ProjectContactDialogProps = {
   title: string;
   description: string;
   submitLabel: string;
+  pendingLabel?: string;
   form: ProjectContactForm;
   fieldErrors?: Partial<Record<keyof ProjectContactForm, string>>;
   error?: string;
@@ -56,6 +57,7 @@ export function ProjectContactDialog({
   title,
   description,
   submitLabel,
+  pendingLabel = "Adding...",
   form,
   fieldErrors,
   error,
@@ -139,7 +141,7 @@ export function ProjectContactDialog({
           <fieldset className="mt-6" disabled={saving}>
             <legend className="mb-2 text-[13px] font-[650] text-[#2d372f]">Type</legend>
             <div className="grid grid-cols-2 gap-2">
-              {(["PERSON", "COMPANY"] as const).map((entityType) => (
+              {(kind === "CLIENT" ? ["COMPANY", "PERSON"] as const : ["PERSON", "COMPANY"] as const).map((entityType) => (
                 <label key={entityType} className="cursor-pointer">
                   <input
                     type="radio"
@@ -230,7 +232,7 @@ export function ProjectContactDialog({
               disabled={saving}
               className="rounded-[13px]"
             >
-              {saving ? "Adding..." : submitLabel}
+              {saving ? pendingLabel : submitLabel}
             </Button>
           </div>
         </CardContent>

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import {
   updateArchivedFileInformation,
+  deleteArchivedFileForUser,
   type UpdateArchivedFileInformationInput,
 } from "@/lib/archives";
 
@@ -31,5 +32,18 @@ export async function updateArchivedFileInformationAction(
           ? error.message
           : "Unable to update the archive file right now.",
     };
+  }
+}
+
+export async function deleteArchivedFileAction(archivedFileId: string) {
+  const user = await requireUser();
+  try {
+    const result = await deleteArchivedFileForUser(user, archivedFileId);
+    revalidatePath("/archives", "layout");
+    revalidatePath("/projects", "layout");
+    revalidatePath("/archives/settings/categories");
+    return result;
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Unable to delete the archive file." };
   }
 }

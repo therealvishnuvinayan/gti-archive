@@ -1,8 +1,10 @@
 "use client";
 
+import { FileUploadDropzone } from "@/components/ui/file-upload-dropzone";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useId, useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import {
   ArrowRight,
   CalendarClock,
@@ -10,7 +12,6 @@ import {
   ListTodo,
   Loader2,
   MoreVertical,
-  Paperclip,
   Pencil,
   Plus,
   Trash2,
@@ -162,7 +163,6 @@ function ConceptDetailsDialog({
       setBrief(draft.brief);
     },
   });
-  const attachmentInputId = useId();
   const cleanName = name.trim().replace(/\s+/g, " ");
   const cleanBrief = richTextToPlainText(brief);
   const parsedDeadline = deadline ? new Date(deadline) : null;
@@ -316,30 +316,11 @@ function ConceptDetailsDialog({
 
               <div className="w-full min-w-0 space-y-2">
                 <span className="block text-[12px] font-[700] text-[#2d372f]">Brief Attachments</span>
-                <Input
-                  id={attachmentInputId}
-                  type="file"
-                  multiple
-                  disabled={detailsLocked}
-                  className="sr-only"
-                  onChange={(event) => setFiles(Array.from(event.target.files ?? []))}
+                <FileUploadDropzone
+                  label="Concept brief attachments" multiple compact disabled={detailsLocked}
+                  description="Attach concept references or supporting documents."
+                  onFilesSelected={(selected) => setFiles((current) => [...current, ...selected])}
                 />
-                <label
-                  htmlFor={attachmentInputId}
-                  aria-disabled={detailsLocked}
-                  className={`flex min-h-[76px] min-w-0 items-center gap-3 rounded-[14px] border border-dashed border-[#b9c9bc] bg-[#f8fbf8] px-4 py-3 transition ${detailsLocked ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:border-[#65a47d] hover:bg-[#f3f9f5]"}`}
-                >
-                  <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-[#e7f2ea] text-[#2f8057]">
-                    <Paperclip className="h-4 w-4" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[12px] font-[700] text-[#2b3730]">
-                      {files.length ? `${files.length} ${files.length === 1 ? "file" : "files"} selected` : "Choose files"}
-                    </span>
-                    <span className="mt-0.5 block text-[11px] text-[#7a857d]">Attach concept references or supporting documents.</span>
-                  </span>
-                  <span className="shrink-0 rounded-full border border-[#cfdad1] bg-white px-3 py-1.5 text-[11px] font-[700] text-[#356d4e]">Browse</span>
-                </label>
 
                 {files.length ? (
                   <div className="flex flex-wrap gap-2" aria-label="Selected brief attachments">
@@ -624,7 +605,7 @@ export function ConceptStageWorkspace({
             ? "Stage 3 skipped. Stage 4 is now available."
             : "Stage 3 completed. Stage 4 is now available.",
         );
-        router.push(`/projects/${project.id}/stages/4`);
+        router.push(`/projects/${project.id}`);
       } else if (stageNumber === 4 && "finalApprovedCount" in result) {
         showSuccessToast(
           result.skipped
@@ -633,7 +614,7 @@ export function ConceptStageWorkspace({
               ? "Stage 4 completed. Stage 5 is now available."
               : `Stage 4 completed. ${result.finalApprovedCount} final approved file${result.finalApprovedCount === 1 ? "" : "s"} moved to Stage 5.`,
         );
-        router.push(`/projects/${project.id}/stages/5`);
+        router.push(`/projects/${project.id}`);
       }
       router.refresh();
     });
@@ -874,8 +855,8 @@ export function ConceptStageWorkspace({
                 type="button"
                 className="h-11 rounded-[12px] px-5 font-[720]"
               >
-                <Link href={`/projects/${project.id}/stages/4`}>
-                  Go to Stage 4
+                <Link href={`/projects/${project.id}`}>
+                  Continue
                   <ArrowRight className="h-4 w-4" />
                 </Link>
               </Button>
@@ -891,8 +872,8 @@ export function ConceptStageWorkspace({
                 type="button"
                 className="h-11 rounded-[12px] px-5 font-[720]"
               >
-                <Link href={`/projects/${project.id}/stages/5`}>
-                  Go to Stage 5
+                <Link href={`/projects/${project.id}`}>
+                  Continue
                   <ArrowRight className="h-4 w-4" />
                 </Link>
               </Button>
@@ -914,10 +895,10 @@ export function ConceptStageWorkspace({
                 {stageNumber === 3
                   ? isEmptyStageThree
                     ? "Skip Stage 3"
-                    : "Continue to Stage 4"
+                    : "Continue"
                   : isEmptyStageFour
                     ? "Skip Stage 4"
-                    : "Continue to Stage 5"}
+                    : "Continue"}
               </Button>
             ) : null}
             {canManageConcepts && !managementLocked && executors.length > 0 ? (
@@ -1202,34 +1183,34 @@ export function ConceptStageWorkspace({
           stageNumber === 3
             ? isEmptyStageThree
               ? "Skip Stage 3?"
-              : "Continue to Stage 4?"
+              : "Continue?"
             : isEmptyStageFour
               ? "Skip Stage 4?"
-              : "Continue to Stage 5?"
+              : "Continue?"
         }
         description={
           stageNumber === 3
             ? isEmptyStageThree
-              ? "No Stage 3 concepts have been created. Continue directly to Stage 4 only when an initial concept already exists outside this stage."
+              ? "No Stage 3 concepts have been created. Skip this stage only when an initial concept already exists outside it. Stage 4 will become available, and you will return to the project workspace."
               : pendingConcepts.length > 0
                 ? `Complete every Stage 3 task with an approved file or without a file before continuing. Pending: ${pendingConcepts.map((concept) => concept.name).join(", ")}.`
-                : `All ${completionConcepts.length} Stage 3 tasks are complete. Stage 4 will open without automatically creating any taskers.`
+                : `All ${completionConcepts.length} Stage 3 tasks are complete. Stage 4 will become available without automatically creating any taskers. You will return to the project workspace to select a stage.`
             : isEmptyStageFour
-              ? "No Stage 4 concepts have been created. Skip Final Concept and continue directly to Stage 5? A final file will need to be uploaded directly in Stage 5."
+              ? "No Stage 4 concepts have been created. Skip Final Concept and return to the project workspace? Stage 5 will become available, where a final file will need to be uploaded."
               : pendingConcepts.length > 0
                 ? `Every Stage 4 task must have a Final Approved File or be marked as complete before continuing. Pending: ${pendingConcepts.map((concept) => concept.name).join(", ")}.`
                 : approvedConceptCount === 0
-                  ? `All ${completionConcepts.length} Stage 4 tasks are complete. Stage 5 will open, where a final file can be uploaded if needed.`
-                  : `${approvedConceptCount} final approved file${approvedConceptCount === 1 ? "" : "s"} will continue to Stage 5, and Stage 4 concept management will be locked.`
+                  ? `All ${completionConcepts.length} Stage 4 tasks are complete. Stage 5 will become available, where a final file can be uploaded if needed. You will return to the project workspace.`
+                  : `${approvedConceptCount} final approved file${approvedConceptCount === 1 ? "" : "s"} will continue to Stage 5, and Stage 4 concept management will be locked. You will return to the project workspace.`
         }
         confirmLabel={
           stageNumber === 3
             ? isEmptyStageThree
               ? "Skip and Continue"
-              : "Continue to Stage 4"
+              : "Continue"
             : isEmptyStageFour
               ? "Skip and Continue"
-              : "Continue to Stage 5"
+              : "Continue"
         }
         cancelLabel="Cancel"
         pending={isCompleting}

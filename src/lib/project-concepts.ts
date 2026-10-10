@@ -696,6 +696,7 @@ export async function createProjectConceptFolder(
               workflowStageKey: input.stageKey,
               taskerStageId: taskerStage.id,
               assignedExecutorId,
+              assignedById: user.id,
               name: validatedName.name,
               normalizedName: validatedName.normalizedName,
               sortOrder,
@@ -1234,6 +1235,7 @@ export async function editProjectConceptFolder(
             ...(requestedExecutorId !== undefined
               ? { assignedExecutorId: requestedExecutorId }
               : {}),
+            ...(assignmentChanged ? { assignedById: user.id } : {}),
           },
         }),
         prisma.projectStage.update({

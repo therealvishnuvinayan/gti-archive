@@ -1,9 +1,10 @@
 "use client";
 
+import { FileUploadDropzone } from "@/components/ui/file-upload-dropzone";
+
 import {
   useEffect,
   useMemo,
-  useRef,
   useState,
   useTransition,
   type ReactNode,
@@ -12,7 +13,6 @@ import { useRouter } from "next/navigation";
 import {
   Archive,
   CheckCircle2,
-  ImagePlus,
   LockKeyhole,
   PencilLine,
   RotateCcw,
@@ -28,7 +28,6 @@ import {
   resetPermissionProfileToDefaultsAction,
   savePermissionProfileAction,
   saveUserAccessAction,
-  searchArchiveAssetsForAccessAction,
   syncPermissionDefinitionsAction,
 } from "@/app/(dashboard)/users/actions";
 import { Badge } from "@/components/ui/badge";
@@ -278,18 +277,13 @@ function ManagedUserAvatar({
 }
 
 function getDefaultForm(user: ManagedUserRecord): UserEditForm {
-  const archiveAccessLevel =
-    isBusinessAdministratorRole(user.role)
-      ? "FULL"
-      : user.archiveAccessLevel;
 
   return {
     userId: user.id,
     role: user.role,
     projectCreationAccessGranted: user.projectCreationAccessGranted,
-    archiveAccessLevel,
-    archiveAssetAccesses:
-      archiveAccessLevel === "PARTIAL" ? user.archiveAssetAccesses : [],
+    archiveAccessLevel: "FULL",
+    archiveAssetAccesses: [],
   };
 }
 
@@ -345,241 +339,6 @@ function StatusBadge({
   );
 }
 
-type ArchiveAccessAssetOption = ManagedArchiveAssetAccessRecord & {
-  recordTypeLabel?: string;
-};
-
-function ArchiveAssetAccessPicker({
-  selectedAssets,
-  disabled,
-  onChange,
-}: {
-  selectedAssets: ManagedArchiveAssetAccessRecord[];
-  disabled?: boolean;
-  onChange: (assets: ManagedArchiveAssetAccessRecord[]) => void;
-}) {
-  const [query, setQuery] = useState("");
-  const [categoryId, setCategoryId] = useState("all");
-  const [assets, setAssets] = useState<ArchiveAccessAssetOption[]>([]);
-  const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([]);
-  const [isLoading, setLoading] = useState(false);
-  const [error, setError] = useState<string>();
-
-  const selectedAssetIds = useMemo(
-    () => new Set(selectedAssets.map((asset) => asset.id)),
-    [selectedAssets],
-  );
-
-  useEffect(() => {
-    if (disabled) {
-      return;
-    }
-
-    let isCancelled = false;
-    const timeout = window.setTimeout(() => {
-      setLoading(true);
-      setError(undefined);
-
-      searchArchiveAssetsForAccessAction({
-        query,
-        categoryId: categoryId === "all" ? undefined : categoryId,
-      })
-        .then((result) => {
-          if (isCancelled) {
-            return;
-          }
-
-          if ("error" in result) {
-            setError(result.error);
-            setAssets([]);
-            return;
-          }
-
-          setAssets(result.assets);
-          setCategories(result.categories);
-        })
-        .catch((searchError) => {
-          if (isCancelled) {
-            return;
-          }
-
-          setError(
-            searchError instanceof Error
-              ? searchError.message
-              : "Unable to load archive assets.",
-          );
-          setAssets([]);
-        })
-        .finally(() => {
-          if (!isCancelled) {
-            setLoading(false);
-          }
-        });
-    }, 250);
-
-    return () => {
-      isCancelled = true;
-      window.clearTimeout(timeout);
-    };
-  }, [categoryId, disabled, query]);
-
-  function addAsset(asset: ArchiveAccessAssetOption) {
-    if (selectedAssetIds.has(asset.id)) {
-      return;
-    }
-
-    onChange([
-      ...selectedAssets,
-      {
-        id: asset.id,
-        recordType: asset.recordType,
-        fileName: asset.fileName,
-        categoryId: asset.categoryId,
-        categoryLabel: asset.categoryLabel,
-        sourceLabel: asset.sourceLabel,
-        archivedAtLabel: asset.archivedAtLabel,
-      },
-    ]);
-  }
-
-  function removeAsset(assetId: string) {
-    onChange(selectedAssets.filter((asset) => asset.id !== assetId));
-  }
-
-  return (
-    <div className="mt-4 rounded-[20px] border border-[#dfeadf] bg-white p-4">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-        <div className="relative min-w-0 flex-1">
-          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8b948c]" />
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            disabled={disabled}
-            placeholder="Search archive files by name, project, category, or artwork ID..."
-            className="h-[46px] rounded-[16px] border border-[#dce6dc] pl-11 shadow-none"
-          />
-        </div>
-        <Select value={categoryId} onValueChange={setCategoryId} disabled={disabled}>
-          <SelectTrigger className="h-[46px] rounded-[16px] border border-[#dce6dc] px-4 shadow-none lg:w-[230px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All categories</SelectItem>
-            {categories.map((category) => (
-              <SelectItem key={category.id} value={category.id}>
-                {category.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        <Badge
-          variant="outline"
-          className="rounded-full border-[#d5e7d6] bg-[#eef8ef] px-3 py-1.5 text-[#2f7f53]"
-        >
-          {selectedAssets.length} selected
-        </Badge>
-        <p className="text-[12px] leading-5 text-[#6f796f]">
-          Partial access users can only see selected archive assets.
-        </p>
-      </div>
-
-      {selectedAssets.length > 0 ? (
-        <div className="mt-3 space-y-2">
-          {selectedAssets.map((asset) => (
-            <div
-              key={asset.id}
-              className="flex flex-col gap-3 rounded-[16px] border border-[#e5eee4] bg-[#fbfdfb] px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
-            >
-              <div className="min-w-0">
-                <p className="truncate text-[14px] font-[700] text-[#18201a]">
-                  {asset.fileName}
-                </p>
-                <p className="mt-1 text-[12px] text-[#6f796f]">
-                  {asset.categoryLabel} - {asset.sourceLabel} - {asset.archivedAtLabel}
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={disabled}
-                onClick={() => removeAsset(asset.id)}
-                className="shrink-0 rounded-full"
-              >
-                Remove
-              </Button>
-            </div>
-          ))}
-        </div>
-      ) : null}
-
-      <div className="mt-4 max-h-[280px] space-y-2 overflow-y-auto pr-1">
-        {error ? (
-          <div className="rounded-[16px] border border-[#f0c9c7] bg-[#fff2f1] px-4 py-3 text-[13px] text-[#bb4d49]">
-            {error}
-          </div>
-        ) : null}
-
-        {isLoading ? (
-          <div className="rounded-[16px] border border-[#e5eee4] bg-[#fbfdfb] px-4 py-6 text-[13px] text-[#6f796f]">
-            Loading archive assets...
-          </div>
-        ) : null}
-
-        {!isLoading && !error && assets.length === 0 ? (
-          <div className="rounded-[16px] border border-dashed border-[#dbe7db] bg-[#fbfdfb] px-4 py-6 text-[13px] text-[#6f796f]">
-            No archive assets found.
-          </div>
-        ) : null}
-
-        {!isLoading && !error
-          ? assets.map((asset) => {
-              const isSelected = selectedAssetIds.has(asset.id);
-
-              return (
-                <button
-                  key={asset.id}
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => (isSelected ? removeAsset(asset.id) : addAsset(asset))}
-                  className={cn(
-                    "flex w-full items-start justify-between gap-4 rounded-[16px] border px-4 py-3 text-left transition-colors",
-                    isSelected
-                      ? "border-[#b8d9bf] bg-[#eef8ef]"
-                      : "border-[#e5eee4] bg-white hover:border-[#c8ddcb]",
-                  )}
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate text-[14px] font-[700] text-[#18201a]">
-                      {asset.fileName}
-                    </span>
-                    <span className="mt-1 block text-[12px] leading-5 text-[#6f796f]">
-                      {asset.recordTypeLabel ?? asset.recordType} - {asset.categoryLabel} -{" "}
-                      {asset.sourceLabel} - {asset.archivedAtLabel}
-                    </span>
-                  </span>
-                  <span
-                    className={cn(
-                      "shrink-0 rounded-full border px-3 py-1 text-[12px] font-[700]",
-                      isSelected
-                        ? "border-[#b8d9bf] bg-white text-[#2f7f53]"
-                        : "border-[#dce6dc] bg-[#fbfdfb] text-[#536055]",
-                    )}
-                  >
-                    {isSelected ? "Selected" : "Select"}
-                  </span>
-                </button>
-              );
-            })
-          : null}
-      </div>
-    </div>
-  );
-}
-
 function EditUserModal({
   user,
   form,
@@ -607,7 +366,6 @@ function EditUserModal({
   onSelectAvatar: (file: File | null) => void;
   onSave: () => void;
 }) {
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!isOpen) {
@@ -683,31 +441,9 @@ function EditUserModal({
               <div className="min-w-0 flex-1">
                 <p className="text-[20px] font-[700] text-[#1a221c]">{user.name}</p>
                 <p className="truncate text-[14px] text-[#6f776f]">{user.email}</p>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept={profilePhotoAccept}
-                  className="hidden"
-                  onChange={(event) => {
-                    onSelectAvatar(event.target.files?.[0] ?? null);
-                    event.currentTarget.value = "";
-                  }}
-                />
-                <div className="mt-3 flex flex-wrap items-center gap-3">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={saving}
-                    onClick={() => fileInputRef.current?.click()}
-                    className="h-10 gap-2 rounded-xl border-[#b8d8c0] px-4 text-[13px] font-[600] text-brand"
-                  >
-                    <ImagePlus className="h-4 w-4" />
-                    Change Profile Photo
-                  </Button>
-                  <span className="text-[12px] text-[#7a847b]">
-                    {selectedAvatarFileName || "JPG, PNG, GIF or WebP. Max 2MB."}
-                  </span>
-                </div>
+                <FileUploadDropzone label="User profile photo" compact className="mt-3" accept={profilePhotoAccept} disabled={saving}
+                  buttonLabel="Change Profile Photo" description={selectedAvatarFileName || "JPG, PNG, GIF or WebP. Max 2MB."}
+                  onFilesSelected={(files) => onSelectAvatar(files[0] ?? null)} />
                 {avatarError ? (
                   <p className="mt-2 text-[12px] font-[600] text-[#c34945]">{avatarError}</p>
                 ) : null}
@@ -790,84 +526,10 @@ function EditUserModal({
           </div>
 
           <div className="mt-5 rounded-[24px] border border-[#e8eee7] bg-[#fbfcfa] p-5">
-            <p className="text-[16px] font-[700] text-[#18201a]">Archive Access</p>
+            <p className="text-[16px] font-[700] text-[#18201a]">Archive Access: Full</p>
             <p className="mt-1 text-[13px] leading-5 text-[#748074]">
-              The View archives role permission controls module access. Choose the additional archive asset scope available inside the module.
+              All signed-in users can view, upload, edit, download, share, and delete archive files in every category.
             </p>
-            <div className="mt-4 grid gap-3 lg:grid-cols-3">
-              {[
-                {
-                  level: "NONE" as const,
-                  title: "Project Archives",
-                  description: "Show accessible project archives without manual archive files.",
-                },
-                {
-                  level: "FULL" as const,
-                  title: "Full Archive Scope",
-                  description: "View and upload manual archive assets permitted by category rules.",
-                },
-                {
-                  level: "PARTIAL" as const,
-                  title: "Selected Assets",
-                  description: "Allow only the archive assets selected below.",
-                },
-              ].map((option) => {
-                const isAdministratorLocked = isBusinessAdministratorRole(form.role);
-                const isChecked =
-                  (isAdministratorLocked && option.level === "FULL") ||
-                  form.archiveAccessLevel === option.level;
-
-                return (
-                  <button
-                    key={option.level}
-                    type="button"
-                    disabled={saving || isAdministratorLocked}
-                    onClick={() => onChange("archiveAccessLevel", option.level)}
-                    className={cn(
-                      "rounded-[18px] border px-4 py-4 text-left transition-colors",
-                      isChecked
-                        ? "border-[#aad2b3] bg-[#eef8ef] shadow-[0_10px_24px_rgba(31,91,58,0.08)]"
-                        : "border-[#edf2ed] bg-white hover:border-[#c8ddcb]",
-                    )}
-                  >
-                    <span className="flex items-start gap-3">
-                      <span
-                        className={cn(
-                          "mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full border",
-                          isChecked
-                            ? "border-[#2f8d5d] bg-[#2f8d5d]"
-                            : "border-[#cbd9cc] bg-white",
-                        )}
-                      >
-                        {isChecked ? <span className="h-2 w-2 rounded-full bg-white" /> : null}
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block text-[14px] font-[800] text-[#1a221c]">
-                          {option.title}
-                        </span>
-                        <span className="mt-1 block text-[12px] leading-5 text-[#6f796f]">
-                          {option.description}
-                        </span>
-                      </span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {isBusinessAdministratorRole(form.role) ? (
-              <p className="mt-3 rounded-[14px] bg-[#f8fbff] px-4 py-3 text-[12px] leading-5 text-[#5f6c75]">
-                Administrators always receive full Archive access.
-              </p>
-            ) : null}
-
-            {form.archiveAccessLevel === "PARTIAL" ? (
-              <ArchiveAssetAccessPicker
-                selectedAssets={form.archiveAssetAccesses}
-                disabled={saving}
-                onChange={(assets) => onChange("archiveAssetAccesses", assets)}
-              />
-            ) : null}
           </div>
         </div>
 
@@ -884,12 +546,7 @@ function EditUserModal({
           <Button
             type="button"
             onClick={onSave}
-            disabled={
-              saving ||
-              (form.archiveAccessLevel === "PARTIAL" &&
-                !isBusinessAdministratorRole(form.role) &&
-                form.archiveAssetAccesses.length === 0)
-            }
+            disabled={saving}
             className="min-w-[184px] rounded-[16px]"
           >
             {saving ? "Saving..." : "Save Changes"}
@@ -1292,9 +949,8 @@ function ManagePermissionsModal({
                         profileType === "role" &&
                         profileKey === "USER" &&
                         item.key === "project.create";
-                      const enabled = isPerUserProjectCreationPermission
-                        ? false
-                        : draftState[item.key];
+                      const isSharedArchivePermission = item.key.startsWith("archive.");
+                      const enabled = isSharedArchivePermission || (!isPerUserProjectCreationPermission && draftState[item.key]);
                       const isProtectedSuperAdminPermission =
                         profileType === "role" &&
                         profileKey === "SUPER_ADMIN" &&
@@ -1319,7 +975,8 @@ function ManagePermissionsModal({
                               isSavingProfile ||
                               isResettingProfile ||
                               isProtectedSuperAdminPermission ||
-                              isPerUserProjectCreationPermission
+                              isPerUserProjectCreationPermission ||
+                              isSharedArchivePermission
                             }
                             className="mt-1 h-4 w-4 rounded border-[#c6d6c8] accent-[#256a45]"
                           />
@@ -1336,12 +993,17 @@ function ManagePermissionsModal({
                                   {item.description}
                                 </p>
                                 <div className="mt-3 flex flex-wrap gap-2">
-                                  {item.hardRule ? (
+                                  {isSharedArchivePermission ? (
+                                    <StatusBadge className="border-[#d5e7d6] bg-[#eef8ef] text-[#2f7f53]">
+                                      Enabled for everyone
+                                    </StatusBadge>
+                                  ) : null}
+                                  {item.hardRule && !isSharedArchivePermission ? (
                                     <StatusBadge className="border-[#f3d1cf] bg-[#fff0ef] text-[#d6544d]">
                                       Hard rule
                                     </StatusBadge>
                                   ) : null}
-                                  {item.moduleGated ? (
+                                  {item.moduleGated && !isSharedArchivePermission ? (
                                     <StatusBadge className="border-[#f4dfbf] bg-[#fff4e4] text-[#cb821e]">
                                       Module scope
                                     </StatusBadge>
@@ -1406,7 +1068,7 @@ function ManagePermissionsModal({
               />
               <FilterBadge
                 icon={<Archive className="h-4 w-4 text-brand" />}
-                text="Archive asset scope is per user"
+                text="Full Archive access for everyone"
               />
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
@@ -1672,7 +1334,7 @@ export function UsersWorkspace({
                   User Directory
                 </h2>
                 <p className="mt-1 text-[14px] text-[#748074]">
-                  Manage profile photos, roles, and Archive access.
+                  Manage profile photos and roles. Archives is available to everyone.
                 </p>
               </div>
               <FilterBadge
@@ -1699,7 +1361,7 @@ export function UsersWorkspace({
                 />
                 <FilterBadge
                   icon={<Archive className="h-4 w-4 text-brand" />}
-                  text="Archive access levels"
+                  text="Full Archive access for everyone"
                 />
               </div>
             </div>

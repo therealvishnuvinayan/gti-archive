@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { ArrowRight, CalendarDays, Milestone, PanelsTopLeft, Plus } from "lucide-react";
+import { ArrowRight, CalendarDays, ChevronLeft, ChevronRight, Milestone, PanelsTopLeft, Plus } from "lucide-react";
 
 import { MotionItem, MotionSection, MotionStaggerGroup } from "@/components/motion/motion-primitives";
 import { FlexibleProjectDialog } from "@/components/projects/flexible-project-dialog";
 import { ProjectPageHeader } from "@/components/projects/project-page-header";
+import { ProjectLayoutToggle, useProjectsLayout } from "@/components/projects/project-layout-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -91,36 +93,93 @@ function FlexibleProjectCard({ project }: { project: FlexibleProjectListItem }) 
   );
 }
 
+function FlexibleProjectListRow({ project }: { project: FlexibleProjectListItem }) {
+  return (
+    <Card className="rounded-[16px] border border-[#dfe6df] bg-white shadow-[0_10px_28px_rgba(23,39,28,0.04)]">
+      <CardContent className="grid gap-4 p-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-center">
+        <div className="min-w-0">
+          <h2 className="text-[16px] font-[750] text-[#111712]">
+            <Link href={`/projects/flexible/${project.slug}`} className="block truncate hover:text-[#176b43] hover:underline" title={project.name}>{project.name}</Link>
+          </h2>
+          <p className="mt-1 text-[11px] text-[#6e776f]">
+            {project.status === "COMPLETED" ? "Completed" : "Active"} · {project.scope === "INTERNAL" ? "Internal" : "External"} · {formatProjectPriority(project.priority)} priority
+          </p>
+        </div>
+        <div className="min-w-0">
+          <p className="text-[10px] text-[#838b85]">Owner</p>
+          <p className="mt-1 truncate text-[12px] font-[600] text-[#333d36]" title={project.owner.name}>{project.owner.name}</p>
+        </div>
+        <div>
+          <p className="text-[10px] text-[#838b85]">Progress</p>
+          <p className="mt-1 text-[12px] font-[650] text-[#176d42]">{project.progress}% · {project.completedMilestones}/{project.totalMilestones} milestones</p>
+        </div>
+        <div>
+          <p className="text-[10px] text-[#838b85]">Deadline</p>
+          <p className="mt-1 text-[12px] text-[#333d36]">{formatDate(project.deadline)}</p>
+        </div>
+        <Button asChild variant="outline" className="h-9 justify-self-end rounded-[10px] border-[#c6d9cc] text-[12px] text-[#176b43] sm:col-span-2 xl:col-span-1">
+          <Link href={`/projects/flexible/${project.slug}`} aria-label={`View project ${project.name}`}>View Project <ArrowRight className="size-3.5" /></Link>
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function FlexibleProjectsBrowser({
   canCreateProject,
   projects,
+  projectCount,
+  currentPage,
+  pageSize,
   users,
   currentUserId,
 }: {
   canCreateProject: boolean;
   projects: FlexibleProjectListItem[];
+  projectCount: number;
+  currentPage: number;
+  pageSize: number;
   users: FlexibleProjectUserOption[];
   currentUserId: string;
 }) {
   const [createOpen, setCreateOpen] = useState(false);
+  const [layout, changeLayout] = useProjectsLayout();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const totalPages = Math.max(1, Math.ceil(projectCount / pageSize));
+
+  function changePage(page: number) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("view", "flexible");
+    if (page > 1) params.set("page", String(page));
+    else params.delete("page");
+    router.push(`${pathname}?${params}`);
+  }
+
   return (
     <div className="space-y-5">
       <MotionSection>
         <ProjectPageHeader
           title="Private Projects"
           description="Custom work organized with user-defined milestones rather than the fixed artwork stages."
-          actions={canCreateProject ? (
-            <Button type="button" onClick={() => setCreateOpen(true)} className="h-12 self-start rounded-full px-6 text-[14px] lg:self-auto">
-              <Plus className="size-4" /> New Private Project
-            </Button>
-          ) : null}
+          actions={
+            <div className="flex flex-wrap items-center gap-3">
+              <ProjectLayoutToggle layout={layout} onChange={changeLayout} />
+              {canCreateProject ? (
+                <Button type="button" onClick={() => setCreateOpen(true)} className="h-12 self-start rounded-full px-6 text-[14px] lg:self-auto">
+                  <Plus className="size-4" /> New Private Project
+                </Button>
+              ) : null}
+            </div>
+          }
         />
       </MotionSection>
 
       {projects.length ? (
-        <MotionStaggerGroup className="grid grid-cols-1 gap-5 md:grid-cols-2 2xl:grid-cols-3" stagger={0.05}>
+        <MotionStaggerGroup className={layout === "grid" ? "grid grid-cols-1 gap-5 md:grid-cols-2 2xl:grid-cols-3" : "space-y-3"} stagger={0.05}>
           {projects.map((project) => (
-            <MotionItem key={project.id} y={8} layout><FlexibleProjectCard project={project} /></MotionItem>
+            <MotionItem key={project.id} y={8} layout>{layout === "grid" ? <FlexibleProjectCard project={project} /> : <FlexibleProjectListRow project={project} />}</MotionItem>
           ))}
         </MotionStaggerGroup>
       ) : (
@@ -133,6 +192,23 @@ export function FlexibleProjectsBrowser({
           </div>
         </MotionSection>
       )}
+
+      {projects.length > 0 && totalPages > 1 ? (
+        <nav aria-label="Private projects pagination" className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-[12px] text-[#687169]">
+            Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, projectCount)} of {projectCount} projects
+          </p>
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="outline" size="icon" className="size-9 rounded-[11px]" disabled={currentPage <= 1} onClick={() => changePage(currentPage - 1)} aria-label="Previous private projects page">
+              <ChevronLeft className="size-4" />
+            </Button>
+            <span className="px-2 text-[12px] font-[600] text-[#687169]">Page {currentPage} of {totalPages}</span>
+            <Button type="button" variant="outline" size="icon" className="size-9 rounded-[11px]" disabled={currentPage >= totalPages} onClick={() => changePage(currentPage + 1)} aria-label="Next private projects page">
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
+        </nav>
+      ) : null}
 
       {createOpen ? <FlexibleProjectDialog mode="create" users={users} currentUserId={currentUserId} onClose={() => setCreateOpen(false)} /> : null}
     </div>

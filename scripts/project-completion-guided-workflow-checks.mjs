@@ -50,14 +50,14 @@ assert(
 );
 
 assert(
-  chatSource.includes("function navigateToStage(nextStageId: string)") &&
-    chatSource.includes("router.push(") &&
-    chatSource.includes("encodeURIComponent(nextStageId)") &&
+  chatSource.includes("function navigateToProjectWorkspace()") &&
+    chatSource.includes('router.push(`/projects/${encodeURIComponent(project.id)}`)') &&
+    chatSource.includes("onClick={navigateToProjectWorkspace}") &&
     chatSource.includes("completionPrompt?.nextStageId && !completionPrompt.allStagesCompleted") &&
     chatSource.includes("sticky top-[56px]") &&
-    chatSource.includes("Go to Next Stage") &&
-    !inlineCompletionBlock.includes("Go to Next Stage"),
-  "Go to Next Stage must render as a sticky action bar and navigate through the Stage Chat router handler.",
+    chatSource.includes("Return to the project workspace to select a stage.") &&
+    !chatSource.includes("Go to Next Stage"),
+  "Stage Chat Continue must render as a sticky action bar and return to the project workspace.",
 );
 
 assert(

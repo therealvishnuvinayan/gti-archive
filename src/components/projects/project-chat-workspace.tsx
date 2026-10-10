@@ -1,5 +1,7 @@
 "use client";
 
+import { FileUploadDropzone, FileDropOverlay, useFileDrop } from "@/components/ui/file-upload-dropzone";
+
 import { FileThumbnail, canShowImageThumbnail } from "@/components/projects/file-thumbnail";
 
 import Link from "next/link";
@@ -14,7 +16,6 @@ import {
   useTransition,
 } from "react";
 import { flushSync } from "react-dom";
-import { useDropzone, type Accept } from "react-dropzone";
 import {
   CheckCircle2,
   ArrowLeft,
@@ -378,14 +379,6 @@ const STAGE_SUBMISSION_FORMAT_LABEL = getAllowedFormatLabels(
   STAGE_SUBMISSION_ALLOWED_EXTENSIONS,
 ).join(", ");
 
-function getSubmissionDropzoneAccept(): Accept {
-  return {
-    "application/octet-stream": STAGE_SUBMISSION_ALLOWED_EXTENSIONS.map(
-      (extension) => `.${extension}`,
-    ),
-  };
-}
-
 const fileTypeStyles: Record<string, string> = {
   AI: "bg-[#2d1207] text-[#ff9d12]",
   PSD: "bg-[#042a4c] text-[#57b2ff]",
@@ -413,82 +406,14 @@ function UploadIntentDropzone({
   onFilesSelected,
   onError,
 }: UploadIntentDropzoneProps) {
-  const dropzoneAccept =
-    intent === "STAGE_SUBMISSION"
-      ? getSubmissionDropzoneAccept()
-      : undefined;
-
-  const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
-    multiple: true,
-    disabled,
-    noClick: true,
-    noKeyboard: true,
-    accept: dropzoneAccept,
-    onDrop: (acceptedFiles) => {
-      if (acceptedFiles.length > 0) {
-        onFilesSelected(acceptedFiles);
-      }
-    },
-    onDropRejected: (fileRejections) => {
-      if (intent === "STAGE_SUBMISSION") {
-        const rejectedFile = fileRejections[0]?.file;
-
-        onError(
-          formatUploadFileTypeError(
-            buildFileTypeNotAllowedPayload({
-              fileName: rejectedFile?.name ?? "Selected file",
-              mimeType: rejectedFile?.type || "application/octet-stream",
-              allowedExtensions: getStageSubmissionAllowedExtensions(projectCategory),
-              error: "Formal stage submissions must use a supported file format.",
-            }),
-          ),
-        );
-        return;
-      }
-
-      onError("Unable to add one or more selected files. Please try different files.");
-    },
-  });
-
   return (
-    <div
-      {...getRootProps()}
-      className={`min-h-[112px] rounded-[18px] border border-dashed px-4 py-6 text-left transition ${
-        isDragActive
-          ? "border-brand bg-[#eef7ef]"
-          : "border-[#bfcbbf] bg-[#fbfdfb] hover:border-brand hover:bg-[#f4fbf5]"
-      } ${disabled ? "pointer-events-none opacity-60" : ""}`}
-    >
-      <input {...getInputProps()} />
-
-      <Upload className="h-5 w-5 text-brand" />
-
-      <p className="mt-3 text-[14px] font-semibold text-brand">
-        {isDragActive ? "Drop files here" : "Drag files here"}
-      </p>
-
-      <p className="mt-1 text-[11px] text-[#7a837b]">
-        {intent === "STAGE_SUBMISSION"
-          ? `Supported: ${STAGE_SUBMISSION_FORMAT_LABEL}.`
-          : "Choose one or more files to attach to the chat discussion."}
-      </p>
-
-      <Button
-        type="button"
-        size="sm"
-        className="mt-4 rounded-full text-[12px]"
-        disabled={disabled}
-        onClick={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          open();
-        }}
-      >
-        Choose files
-      </Button>
-    </div>
+    <FileUploadDropzone label={intent === "STAGE_SUBMISSION" ? "Work submission files" : "Chat attachments"}
+      multiple disabled={disabled} onFilesSelected={onFilesSelected} onRejected={onError}
+      accept={intent === "STAGE_SUBMISSION" ? getStageSubmissionAllowedExtensions(projectCategory).map((extension) => `.${extension}`).join(",") : undefined}
+      description={intent === "STAGE_SUBMISSION" ? `Supported: ${STAGE_SUBMISSION_FORMAT_LABEL}.` : "Choose files to attach to the chat discussion."} />
   );
 }
+
 function getInitials(name: string) {
   return name
     .split(" ")
@@ -2760,6 +2685,7 @@ export function ProjectChatWorkspace({
   const [isImportingStageThreeReference, setIsImportingStageThreeReference] =
     useState(false);
   const [commentUploadDialogOpen, setCommentUploadDialogOpen] = useState(false);
+  const [stageInvoiceUploadOpen, setStageInvoiceUploadOpen] = useState(false);
   const [commentUploadIntent, setCommentUploadIntent] =
     useState<CommentUploadIntent>("COMMENT_ATTACHMENT");
   const [isSendingComment, setIsSendingComment] = useState(false);
@@ -2856,10 +2782,6 @@ export function ProjectChatWorkspace({
   const [archiveCompletionError, setArchiveCompletionError] = useState<string | null>(null);
   const [isCompletingProject, setIsCompletingProject] = useState(false);
   const [, startRefresh] = useTransition();
-  const revisionFileInputRef = useRef<HTMLInputElement | null>(null);
-  const revisionDialogFileInputRef = useRef<HTMLInputElement | null>(null);
-  const commentAttachmentInputRef = useRef<HTMLInputElement | null>(null);
-  const stageInvoiceInputRef = useRef<HTMLInputElement | null>(null);
   const draftInputRef = useRef<HTMLTextAreaElement | null>(null);
   const expandedDraftInputRef = useRef<HTMLTextAreaElement | null>(null);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
@@ -4956,14 +4878,9 @@ export function ProjectChatWorkspace({
     });
   }
 
-  function navigateToStage(nextStageId: string) {
+  function navigateToProjectWorkspace() {
     setCompletionPrompt(null);
-    router.push(
-      `/projects/${encodeURIComponent(project.id)}/chat?stage=${encodeURIComponent(nextStageId)}`,
-    );
-    window.requestAnimationFrame(() => {
-      chatScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-    });
+    router.push(`/projects/${encodeURIComponent(project.id)}`);
   }
 
   async function loadEarlierMessages() {
@@ -5873,7 +5790,7 @@ export function ProjectChatWorkspace({
     setRevisionDialogOpen(true);
   }
 
-  function handleRevisionFilesSelected(files: FileList | null) {
+  function handleRevisionFilesSelected(files: File[]) {
     const selectedFiles = Array.from(files ?? []);
 
     if (selectedFiles.length === 0) {
@@ -5912,23 +5829,6 @@ export function ProjectChatWorkspace({
         file,
       })),
     ]);
-
-    if (revisionFileInputRef.current) {
-      revisionFileInputRef.current.value = "";
-    }
-
-    if (revisionDialogFileInputRef.current) {
-      revisionDialogFileInputRef.current.value = "";
-    }
-  }
-
-  function openRevisionFilePicker() {
-    if (revisionDialogOpen && revisionDialogFileInputRef.current) {
-      revisionDialogFileInputRef.current.click();
-      return;
-    }
-
-    revisionFileInputRef.current?.click();
   }
 
   function removePendingRevisionFile(fileId: string) {
@@ -7193,14 +7093,6 @@ export function ProjectChatWorkspace({
       showErrorToast("Unable to submit work.", message);
     } finally {
       setIsUploadingRevision(false);
-
-      if (revisionFileInputRef.current) {
-        revisionFileInputRef.current.value = "";
-      }
-
-      if (revisionDialogFileInputRef.current) {
-        revisionDialogFileInputRef.current.value = "";
-      }
     }
   }
 
@@ -7220,7 +7112,6 @@ export function ProjectChatWorkspace({
 
   async function handleRequestStageInvoice() {
     const activeStageId = activeStage?.id;
-
     if (!activeStageId) {
       setInvoiceRequestError("This project does not have an active stage.");
       return;
@@ -7325,16 +7216,12 @@ export function ProjectChatWorkspace({
     }
 
     setCommentUploadDialogOpen(false);
-    stageInvoiceInputRef.current?.click();
+    setStageInvoiceUploadOpen(true);
   }
 
-  async function handleStageInvoiceSelected(files: FileList | null) {
+  async function handleStageInvoiceSelected(files: File[]) {
     const invoiceFile = Array.from(files ?? [])[0] ?? null;
     const activeStageId = activeStage?.id;
-
-    if (stageInvoiceInputRef.current) {
-      stageInvoiceInputRef.current.value = "";
-    }
 
     if (!invoiceFile) {
       return;
@@ -7712,6 +7599,10 @@ export function ProjectChatWorkspace({
     showSuccessToast("Approved Stage 3 concept imported into this chat.");
     router.refresh();
   }
+
+  const composerDrop = useFileDrop({ multiple: true, disabled: isChatReadOnly || isSendingComment,
+    onFilesSelected: handleCommentFilesSelected,
+  });
 
   return (
     <section
@@ -8193,7 +8084,7 @@ export function ProjectChatWorkspace({
                         Stage completed
                       </p>
                       <p className="mt-1 text-[14px] font-[800] leading-5 text-[#173120]">
-                        You can now move to the next stage.
+                        Return to the project workspace to select a stage.
                       </p>
                       {completionPrompt.nextStageLabel ? (
                         <p className="mt-1 text-[12px] leading-5 text-[#5f6b62]">
@@ -8205,9 +8096,9 @@ export function ProjectChatWorkspace({
                       <Button
                         type="button"
                         className="min-h-[44px] rounded-full px-5 text-[14px] font-[800] shadow-[0_12px_24px_rgba(34,102,70,0.2)]"
-                        onClick={() => navigateToStage(completionPrompt.nextStageId as string)}
+                        onClick={navigateToProjectWorkspace}
                       >
-                        Go to Next Stage
+                        Continue
                       </Button>
                       <Button
                         type="button"
@@ -9377,38 +9268,6 @@ export function ProjectChatWorkspace({
                   : "max-w-[980px] rounded-[22px] p-2 [@media_(min-width:1536px)_and_(min-height:900px)]:static [@media_(min-width:1536px)_and_(min-height:900px)]:mt-2 [@media_(min-width:1536px)_and_(min-height:900px)]:rounded-[26px] [@media_(min-width:1536px)_and_(min-height:900px)]:bg-white/95 [@media_(min-width:1536px)_and_(min-height:900px)]:p-3"
               }`}
             >
-              <input
-                ref={revisionFileInputRef}
-                type="file"
-                multiple
-                accept={STAGE_SUBMISSION_ACCEPT}
-                className="sr-only"
-                onChange={(event) => {
-                  handleRevisionFilesSelected(event.target.files);
-                }}
-              />
-              <input
-                ref={commentAttachmentInputRef}
-                type="file"
-                multiple
-                className="sr-only"
-                onChange={(event) => {
-                  handleCommentFilesSelected(event.target.files);
-
-                  if (commentAttachmentInputRef.current) {
-                    commentAttachmentInputRef.current.value = "";
-                  }
-                }}
-              />
-              <input
-                ref={stageInvoiceInputRef}
-                type="file"
-                className="sr-only"
-                onChange={(event) => {
-                  void handleStageInvoiceSelected(event.target.files);
-                }}
-              />
-
               {replyingToRevision ? (
                 <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[18px] border border-[#cfe3d2] bg-[#f7fbf6] px-3 py-2.5 text-[12px] text-[#304138]">
                   <span className="font-semibold text-brand">
@@ -9481,12 +9340,14 @@ export function ProjectChatWorkspace({
 
               <div
                 ref={mentionDropdownRef}
+                {...composerDrop.dragProps}
                 className={`relative flex min-w-0 border border-[#dde6dd] bg-[#fbfcfa] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] ${
                   isConceptMode
                     ? "flex-row items-end gap-1.5 rounded-[14px] px-2 py-1.5"
                     : "flex-col gap-1.5 rounded-[18px] px-2.5 py-2 sm:gap-2.5 sm:rounded-[22px] sm:px-4 sm:py-3"
                 }`}
               >
+                {composerDrop.isDragging ? <FileDropOverlay label="Drop files to attach to this message" /> : null}
                 <Textarea
                   ref={draftInputRef}
                   value={draft}
@@ -10771,6 +10632,18 @@ export function ProjectChatWorkspace({
           </Card>
         </div>
       ) : null}
+      {stageInvoiceUploadOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#112118]/45 px-4 py-8 backdrop-blur-[2px]">
+          <Card className="w-full max-w-[560px] rounded-[28px] border border-[#e1e7e1] p-6 shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
+            <div className="mb-5 flex items-center justify-between gap-3">
+              <h2 className="text-[22px] font-semibold text-[#111712]">Upload stage invoice</h2>
+              <Button type="button" variant="secondary" size="icon" aria-label="Close invoice upload" onClick={() => setStageInvoiceUploadOpen(false)}><X className="size-4" /></Button>
+            </div>
+            <FileUploadDropzone label="Stage invoice" disabled={!canUploadStageInvoice || isUploadingStageInvoice}
+              onFilesSelected={(files) => { setStageInvoiceUploadOpen(false); void handleStageInvoiceSelected(files); }} />
+          </Card>
+        </div>
+      ) : null}
       {commentUploadDialogOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#112118]/45 px-4 py-8 backdrop-blur-[2px]">
           <Card className="w-full max-w-[560px] rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
@@ -10995,17 +10868,6 @@ export function ProjectChatWorkspace({
               </Button>
             </CardHeader>
             <CardContent className="px-6 pb-6 pt-0 sm:px-7 sm:pb-7">
-              <input
-                ref={revisionDialogFileInputRef}
-                type="file"
-                multiple
-                accept={STAGE_SUBMISSION_ACCEPT}
-                className="sr-only"
-                onChange={(event) => {
-                  handleRevisionFilesSelected(event.target.files);
-                }}
-                disabled={isUploadingRevision}
-              />
               {revisionDialogError ? (
                 <div className="mb-5 rounded-[18px] border border-[#f0c9c7] bg-[#fff2f1] px-4 py-3 text-[13px] text-[#bb4d49]">
                   {revisionDialogError}
@@ -11026,17 +10888,10 @@ export function ProjectChatWorkspace({
                 <div className="space-y-3">
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-[13px] font-semibold text-[#2d372f]">Attachments</p>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      onClick={openRevisionFilePicker}
-                      disabled={isUploadingRevision}
-                    >
-                      <Paperclip className="h-4 w-4" />
-                      Add files
-                    </Button>
                   </div>
+                  <FileUploadDropzone label="Work submission attachments" multiple compact accept={STAGE_SUBMISSION_ACCEPT}
+                    disabled={isUploadingRevision} onFilesSelected={handleRevisionFilesSelected}
+                    onRejected={(message) => setRevisionDialogError(message)} />
                   {pendingRevisionFiles.length > 0 ? (
                     <div className="flex flex-wrap gap-2 rounded-[18px] border border-[#e2e7e2] bg-[#fbfcfa] px-3 py-2.5">
                       {pendingRevisionFiles.map((pendingFile) => (

@@ -37,7 +37,7 @@ import {
   type LibraryQuickMenuOption,
   type LibraryTypeFilter,
 } from "@/lib/library-shared";
-import type { AssetTagRecord } from "@/lib/asset-tags";
+import type { AssetTagRecord } from "@/lib/asset-tags-shared";
 import {
   getDevTimingDurationMs,
   getDevTimingNow,

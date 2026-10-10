@@ -1,12 +1,13 @@
 "use client";
 
+import { FileUploadDropzone } from "@/components/ui/file-upload-dropzone";
+
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import {
   Archive,
   Check,
   FolderKanban,
-  ImagePlus,
   Pencil,
   Plus,
   Tags,
@@ -40,7 +41,7 @@ import type {
   ProjectStatusGroupMasterDataRecord,
   ProjectStatusMasterDataRecord,
 } from "@/lib/project-master-data";
-import { PROJECT_MASTER_DATA_DESCRIPTION_MAX_LENGTH } from "@/lib/project-master-data";
+import { PROJECT_MASTER_DATA_DESCRIPTION_MAX_LENGTH } from "@/lib/project-master-data-shared";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
@@ -96,6 +97,7 @@ type MasterDataFieldErrors = {
 };
 
 type ProjectMasterDataWorkspaceProps = {
+  archiveOnly?: boolean;
   categories: ProjectMasterDataItemRecord[];
   projectStatusGroups: ProjectStatusGroupMasterDataRecord[];
   projectStatuses: ProjectStatusMasterDataRecord[];
@@ -590,7 +592,6 @@ function MasterDataDrawer({
   mode,
   form,
   archiveCategories,
-  archiveCategoryAccessUsers,
   projectStatusGroups,
   iconPreviewSrc,
   iconUploadError,
@@ -638,9 +639,6 @@ function MasterDataDrawer({
   const isProjectStatus = tab === "projectStatuses";
   const descriptionLength = richTextToPlainText(form.description).length;
   const parentOptions = archiveCategories.filter((category) => category.id !== form.id);
-  const selectedAccessUsers = archiveCategoryAccessUsers.filter((user) =>
-    form.allowedUserIds.includes(user.id),
-  );
   const currentProjectStatusGroup = projectStatusGroups.find((group) => group.id === form.groupId);
   const projectStatusGroupOptions = [
     ...projectStatusGroups.filter((group) => group.isActive),
@@ -832,105 +830,9 @@ function MasterDataDrawer({
                       </Select>
                     </label>
 
-                    <div className="space-y-3 rounded-[22px] border border-line bg-[#fbfdfb] p-4">
-                      <div>
-                        <p className="text-[13px] font-[800] text-[#2b352d]">
-                          Access Restriction
-                        </p>
-                        <p className="mt-1 text-[12px] leading-5 text-[#6d776e]">
-                          If no users are selected, this category is visible to everyone with Archive access. If users are selected, only selected users and administrators with master-data access can access it.
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          variant={form.allowedUserIds.length === 0 ? "default" : "secondary"}
-                          className="h-9 rounded-full text-[12px]"
-                          onClick={() => onChange("allowedUserIds", [])}
-                        >
-                          Available to everyone
-                        </Button>
-                        <Button
-                          type="button"
-                          variant={form.allowedUserIds.length > 0 ? "default" : "secondary"}
-                          className="h-9 rounded-full text-[12px]"
-                          onClick={() => {
-                            if (form.allowedUserIds.length === 0 && archiveCategoryAccessUsers[0]) {
-                              onChange("allowedUserIds", [archiveCategoryAccessUsers[0].id]);
-                            }
-                          }}
-                        >
-                          Restricted to selected people
-                        </Button>
-                      </div>
-                      {form.allowedUserIds.length > 0 ? (
-                        <div className="space-y-3">
-                          {selectedAccessUsers.length > 0 ? (
-                            <div className="flex flex-wrap gap-2">
-                              {selectedAccessUsers.map((user) => (
-                                <span
-                                  key={user.id}
-                                  className="inline-flex items-center gap-2 rounded-full border border-[#dce7dd] bg-white px-3 py-1.5 text-[12px] font-[700] text-[#263529]"
-                                >
-                                  {user.name}
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      onChange(
-                                        "allowedUserIds",
-                                        form.allowedUserIds.filter((id) => id !== user.id),
-                                      )
-                                    }
-                                    aria-label={`Remove ${user.name}`}
-                                    className="text-[#748078] hover:text-[#bb4d49]"
-                                  >
-                                    <X className="h-3.5 w-3.5" />
-                                  </button>
-                                </span>
-                              ))}
-                            </div>
-                          ) : null}
-                          <div className="max-h-48 space-y-2 overflow-y-auto rounded-[16px] border border-[#e2e9e2] bg-white p-2">
-                            {archiveCategoryAccessUsers.map((user) => {
-                              const checked = form.allowedUserIds.includes(user.id);
-
-                              return (
-                                <label
-                                  key={user.id}
-                                  className="flex cursor-pointer items-center gap-3 rounded-[12px] px-3 py-2 hover:bg-[#f5faf6]"
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    onChange={() =>
-                                      onChange(
-                                        "allowedUserIds",
-                                        checked
-                                          ? form.allowedUserIds.filter((id) => id !== user.id)
-                                          : [...form.allowedUserIds, user.id],
-                                      )
-                                    }
-                                  />
-                                  <span className="min-w-0">
-                                    <span className="block min-w-0 whitespace-normal break-words text-[13px] font-[700] text-[#223126]">
-                                      {user.name}
-                                    </span>
-                                    <span className="block truncate text-[12px] text-[#6d776e]">
-                                      {user.email}
-                                    </span>
-                                  </span>
-                                </label>
-                              );
-                            })}
-                            {archiveCategoryAccessUsers.length === 0 ? (
-                              <p className="px-3 py-2 text-[12px] text-[#6d776e]">
-                                No users are available to select.
-                              </p>
-                            ) : null}
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
+                    <p className="rounded-[22px] border border-line bg-[#fbfdfb] p-4 text-[13px] text-[#6d776e]">
+                      This category is available to all signed-in users.
+                    </p>
 
                     <label className="space-y-2">
                       <span className="block text-[13px] font-[700] text-[#2b352d]">
@@ -981,31 +883,8 @@ function MasterDataDrawer({
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap gap-2">
-                            <Button
-                              asChild
-                              type="button"
-                              variant="outline"
-                              className="h-10 rounded-full"
-                            >
-                              <label className="cursor-pointer">
-                                <ImagePlus className="h-4 w-4" />
-                                Upload icon
-                                <input
-                                  type="file"
-                                  accept={archiveCategoryIconAccept}
-                                  className="sr-only"
-                                  onChange={(event) => {
-                                    const file = event.target.files?.[0];
-
-                                    if (file) {
-                                      onIconFileChange(file);
-                                    }
-
-                                    event.target.value = "";
-                                  }}
-                                />
-                              </label>
-                            </Button>
+                            <FileUploadDropzone label="Archive category icon" compact accept={archiveCategoryIconAccept}
+                              buttonLabel="Upload icon" onFilesSelected={(files) => { if (files[0]) onIconFileChange(files[0]); }} />
                             {iconPreviewSrc ? (
                               <Button
                                 type="button"
@@ -1174,19 +1053,19 @@ function MasterDataDrawer({
 }
 
 export function ProjectMasterDataWorkspace({
+  archiveOnly = false,
   categories,
   projectStatusGroups,
   projectStatuses,
   tags,
   assetTags,
   archiveCategories,
-  archiveCategoryAccessUsers,
   summary,
   canManageItems,
   canDeleteItems,
 }: ProjectMasterDataWorkspaceProps) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<MasterDataTab>("categories");
+  const [activeTab, setActiveTab] = useState<MasterDataTab>(archiveOnly ? "archiveCategories" : "categories");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"add" | "edit">("add");
   const [form, setForm] = useState<MasterDataFormState>(defaultFormState);
@@ -1558,17 +1437,18 @@ export function ProjectMasterDataWorkspace({
       <section className="space-y-6">
         <header className="rounded-[30px] bg-white px-6 py-7 shadow-[0_18px_44px_rgba(23,39,28,0.05)] sm:px-8">
           <p className="text-[13px] font-[700] uppercase tracking-[0.18em] text-brand/75">
-            Settings
+            {archiveOnly ? "Archives" : "Settings"}
           </p>
           <h1 className="mt-2 text-[44px] font-[700] leading-none tracking-[-0.05em] text-[#111712]">
-            Project Master Data
+            {archiveOnly ? "Archive Categories" : "Project Master Data"}
           </h1>
           <p className="mt-3 max-w-[720px] text-[16px] leading-7 text-[#6f776f]">
-            Manage reusable project categories, project statuses, project tags, asset tags, and archive categories.
+            {archiveOnly ? "Add, edit, activate, and delete archive categories. Every category is shared with all users." : "Manage reusable project categories, project statuses, project tags, asset tags, and archive categories."}
           </p>
         </header>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <div className={archiveOnly ? "grid gap-4 md:grid-cols-2" : "grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5"}>
+          {!archiveOnly ? <>
           <SummaryCard
             title="Total Categories"
             value={summary.totalCategories}
@@ -1629,6 +1509,7 @@ export function ProjectMasterDataWorkspace({
             subtitle="Visible in asset uploads"
             icon={Tags}
           />
+          </> : null}
           <SummaryCard
             title="Total Archive Categories"
             value={summary.totalArchiveCategories}
@@ -1656,6 +1537,7 @@ export function ProjectMasterDataWorkspace({
         >
           <div className="rounded-[28px] border border-[#ebefe8] bg-white p-4 shadow-[0_16px_40px_rgba(23,39,28,0.05)]">
             <TabsList className="w-full justify-start sm:w-auto">
+              {!archiveOnly ? <>
               <TabsTrigger value="categories" className="min-w-[140px] py-3 text-[15px]">
                 Categories
               </TabsTrigger>
@@ -1671,6 +1553,7 @@ export function ProjectMasterDataWorkspace({
               <TabsTrigger value="assetTags" className="min-w-[140px] py-3 text-[15px]">
                 Asset Tags
               </TabsTrigger>
+              </> : null}
               <TabsTrigger value="archiveCategories" className="min-w-[160px] py-3 text-[15px]">
                 Archive Categories
               </TabsTrigger>
@@ -1764,7 +1647,7 @@ export function ProjectMasterDataWorkspace({
         mode={dialogMode}
         form={form}
         archiveCategories={archiveCategories}
-        archiveCategoryAccessUsers={archiveCategoryAccessUsers}
+        archiveCategoryAccessUsers={[]}
         projectStatusGroups={projectStatusGroups}
         iconPreviewSrc={iconPreviewSrc}
         iconUploadError={iconUploadError}
