@@ -27,7 +27,7 @@ const [
   readFile("src/lib/project-history.ts", "utf8"),
   readFile("src/app/(dashboard)/projects/actions.ts", "utf8"),
   readFile("src/lib/comparison.ts", "utf8"),
-  readFile("src/components/projects/project-compare-workspace.tsx", "utf8"),
+  Promise.all([readFile("src/components/projects/project-compare-workspace.tsx", "utf8"), readFile("src/components/projects/comparison-viewer-surface.tsx", "utf8")]).then((parts) => parts.join("\n")),
   readFile("src/components/projects/concept-compare-route.tsx", "utf8"),
   readFile(
     "src/app/(dashboard)/projects/[slug]/stages/3/concepts/[folderId]/compare/page.tsx",

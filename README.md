@@ -183,9 +183,12 @@ Project owners and project co-owners can select the final file from the versions
 they can access. The default requires an accepted Tasker submission or an approved
 native concept revision. All submitted versions remain available to download.
 Selection changes are recorded, and concurrent choices require refreshing rather
-than silently replacing a newer choice. Download the chosen file to use in the
-existing project workflow; the selection does not replace native concept approval,
-production files, or issued approval and handover snapshots.
+than silently replacing a newer choice. **Import selected final file** copies it
+into an accessible Brief/Tech folder, a flexible milestone, or a new Stage 5
+file/checklist while Stage 5 is active and the viewer has its native upload
+permission. Each import records the original task/revision, submission, chosen
+file, destination, actor, and time. Stage 5 imports follow the normal production
+workflow; no existing file, approval, or handover snapshot is replaced.
 
 After production approval or handover exists, creating a revision or changing
 the selected file requests the project owner's decision about another cycle.
@@ -197,6 +200,37 @@ Apply `20261008180000_tasker_sister_tasks` before starting the updated app. The
 additive migration preserves existing task data. `pnpm tasker:integration-check`
 now also covers family permissions, numbering and selection races, native concept
 originals, completed flexible projects, late revisions, and outbox access checks.
+
+## Phase 1–2 completion
+
+Create Task preselects the current stage or milestone and allows choosing another.
+Task and family submissions reuse the project's preview and image-comparison
+viewer, including zoom, pan, opacity and fullscreen. File requests use task-scoped
+preview/download endpoints; comparison does not grant stage or sibling access.
+
+Open tasks flag owners, recipients or co-owners who have left the project. Task
+managers can reassign recipients; the project owner can explicitly recover an
+abandoned task, with a reason and a version check. Recovery preserves submissions
+and review state and cannot replace an owner who is still a participant.
+
+Existing internal Stage 5 requests now store submissions separately until the
+requester approves them. Corrections and rejection retain previous submissions;
+file submissions and published copies use separate immutable storage keys.
+Acceptance checks current field values and form drafts, applies only the requested
+field, and preserves issued production snapshots. Task-only access requires current
+project membership and association with the request (or project ownership); existing
+native collaborator recipients retain that scoped access. External email requests
+keep their existing response workflow. Pre-migration pending requests require
+explicit conflict review because no original field snapshot was recorded.
+Notifications and the durable email outbox cover internal request submissions and
+reviews. Existing reminder settings are retained; reminders pause during review.
+
+Apply both `20261008215900_tasker_checklist_review_states` and
+`20261008220000_tasker_phase_one_two_completion` before running these changes.
+The enum additions are separated so PostgreSQL commits them before the active
+request index uses them. No existing business records are deleted or rewritten.
+The isolated Tasker suite also runs the Stage 5 internal/external regression tests.
+Dependency tasks and project reopening are still outside this phase.
 
 ## Learn More
 

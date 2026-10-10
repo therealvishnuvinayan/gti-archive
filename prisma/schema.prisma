@@ -172,6 +172,9 @@ enum ProjectFileChecklistRequestStatus {
 }
 
 enum ProjectFileChecklistRequestWorkflowStatus {
+  IN_REVIEW
+  CORRECTIONS_REQUESTED
+  REJECTED
   REQUESTED
   ACCEPTED
   COMPLETED
@@ -521,6 +524,8 @@ model User {
   importedStageThreeConceptReferences ProjectConceptFolder[]               @relation("ProjectConceptFolderStageThreeReferenceImporter")
   createdStageFileHandoffs            ProjectStageFileHandoff[]            @relation("ProjectStageFileHandoffCreator")
   updatedFileChecklistItems           ProjectFileChecklistItem[]           @relation("ProjectFileChecklistItemUpdater")
+  checklistSubmissions ProjectFileChecklistResponse[] @relation("ChecklistResponseSubmitter")
+  checklistReviews ProjectFileChecklistResponse[] @relation("ChecklistResponseReviewer")
   fileChecklistRequestsMade           ProjectFileChecklistRequest[]        @relation("ProjectFileChecklistRequestRequester")
   fileChecklistRequestsReceived       ProjectFileChecklistRequest[]        @relation("ProjectFileChecklistRequestRecipient")
   fileChecklistRequestsResponded      ProjectFileChecklistRequest[]        @relation("ProjectFileChecklistRequestResponder")
@@ -783,6 +788,8 @@ model FlexibleMilestoneNote {
 }
 
 model FlexibleProjectAttachment {
+  taskerImportId String? @unique
+  taskerImport TaskerFileImport? @relation(fields: [taskerImportId], references: [id], onDelete: SetNull)
   id               String             @id @default(cuid())
   projectId        String
   project          FlexibleProject    @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -1264,7 +1271,29 @@ model ProjectFileChecklistItemAttachment {
   @@index([attachmentId])
 }
 
+model ProjectFileChecklistResponse {
+  id String @id @default(cuid())
+  requestId String
+  request ProjectFileChecklistRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  submittedById String
+  submittedBy User @relation("ChecklistResponseSubmitter", fields: [submittedById], references: [id], onDelete: Restrict)
+  value Json
+  // Immutable copied objects, retained even when a later response replaces them.
+  files Json
+  status TaskerStatus @default(IN_REVIEW)
+  reviewedById String?
+  reviewedBy User? @relation("ChecklistResponseReviewer", fields: [reviewedById], references: [id], onDelete: Restrict)
+  reviewNote String? @db.Text
+  reviewedAt DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([requestId, createdAt])
+}
+
 model ProjectFileChecklistRequest {
+  targetToken String?
+  responses ProjectFileChecklistResponse[]
+  taskerDeliveries TaskerDelivery[]
   id                     String                                    @id @default(cuid())
   clientRequestId        String                                    @unique
   projectId              String
@@ -2038,6 +2067,8 @@ model FluxAiSearchHistory {
 }
 
 model ProjectAttachment {
+  taskerImportId String? @unique
+  taskerImport TaskerFileImport? @relation(fields: [taskerImportId], references: [id], onDelete: SetNull)
   id                         String                                @id @default(cuid())
   projectId                  String
   project                    Project                               @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -2540,6 +2571,7 @@ model TaskerTask {
 // The original keeps its native workflow. Every later revision is a flat child
 // of this family, even when it is created from another child.
 model TaskerFamily {
+  imports TaskerFileImport[]
   projectId         String?
   project           Project?         @relation(fields: [projectId], references: [id], onDelete: Cascade)
   flexibleProjectId String?
@@ -2556,6 +2588,28 @@ model TaskerFamily {
   cycleDecision     String?
   createdAt         DateTime              @default(now())
   events            TaskerFamilyEvent[]
+}
+
+model TaskerFileImport {
+  id String @id @default(cuid())
+  familyId String
+  family TaskerFamily @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  fileKey String
+  sourceType String
+  sourceId String
+  sourceName String
+  sourceLabel String
+  sourceSubmissionId String?
+  destinationId String
+  destinationLabel String
+  destinationAttachmentId String
+  importedById String
+  importedByLabel String
+  createdAt DateTime @default(now())
+  attachment ProjectAttachment?
+  flexibleAttachment FlexibleProjectAttachment?
+
+  @@index([familyId, createdAt])
 }
 
 model TaskerFamilyEvent {
@@ -2640,6 +2694,8 @@ model TaskerEvent {
 
 // A durable outbox: task/notification commits never depend on email delivery.
 model TaskerDelivery {
+  checklistRequestId String?
+  checklistRequest ProjectFileChecklistRequest? @relation(fields: [checklistRequestId], references: [id], onDelete: Cascade)
   id          String     @id @default(cuid())
   taskId      String?
   task        TaskerTask? @relation(fields: [taskId], references: [id], onDelete: Cascade)

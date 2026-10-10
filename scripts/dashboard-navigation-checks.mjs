@@ -157,7 +157,7 @@ const [appFrame, topbar, backButton, stageTwoFolder, stageTwoFolderPage, compare
     readFile("src/components/projects/project-back-button.tsx", "utf8"),
     readFile("src/components/projects/stage-two-folder-workspace.tsx", "utf8"),
     readFile("src/app/(dashboard)/projects/[slug]/stages/2/folders/[folderId]/page.tsx", "utf8"),
-    readFile("src/components/projects/project-compare-workspace.tsx", "utf8"),
+    Promise.all([readFile("src/components/projects/project-compare-workspace.tsx", "utf8"), readFile("src/components/projects/comparison-viewer-surface.tsx", "utf8")]).then((parts) => parts.join("\n")),
     readFile("src/components/settings/project-master-data-workspace.tsx", "utf8"),
     readFile("src/components/projects/project-route-state.tsx", "utf8"),
     readFile("src/components/projects/concept-chat-route.tsx", "utf8"),

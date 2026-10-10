@@ -1,3 +1,5 @@
+import { activeChecklistStatuses, captureChecklistTargetToken, checklistReviewData, loadChecklistReview, respondToChecklistAssignment, submitChecklistForReview } from "@/lib/tasker/checklist-review";
+import type { TaskValue } from "@/lib/tasker/types";
 import { randomUUID } from "node:crypto";
 import { checkTaskerFormRevision, consumeTaskerFormChanges, lockTaskerProject } from "@/lib/tasker/field-changes";
 import { TaskerError } from "@/lib/tasker/errors";
@@ -11,10 +13,8 @@ import {
   ProjectFileChecklistRequestChannel,
   ProjectFileChecklistRequestStatus,
   ProjectFileChecklistRequestWorkflowStatus,
-  ProjectFileChecklistResponseSource,
   ProjectWorkflowStageKey,
   ProjectWorkflowStageStatus,
-  UserRole,
 } from "@prisma/client";
 
 import {
@@ -36,7 +36,6 @@ import {
   type ProjectStageAccessRecord,
 } from "@/lib/project-stage-data";
 import {
-  ACCESSIBLE_WORKFLOW_STAGE_STATUSES,
   canOpenImplementedWorkflowStage,
 } from "@/lib/workflow-stage-access";
 import {
@@ -97,7 +96,7 @@ export type StageFiveChecklistItemRecord = {
 export type StageFiveFileRecord = {
   handoffId: string;
   checklistId: string;
-  sourceOrigin: "STAGE_THREE" | "STAGE_FOUR" | "DIRECT_STAGE_FIVE";
+  sourceOrigin: "STAGE_THREE" | "STAGE_FOUR" | "DIRECT_STAGE_FIVE" | "TASKER";
   sourceAttachment: StageFiveAttachmentRecord;
   handedOffAt: string;
   items: StageFiveChecklistItemRecord[];
@@ -141,18 +140,15 @@ export type StageFiveChecklistRequestData = {
     attachments: StageFiveAttachmentRecord[];
   };
   canRespond: boolean;
+  canReview: boolean;
+  canOpenStage: boolean;
+  hasConflict: boolean;
+  conflictToken: string | null;
+  currentValue: TaskValue;
+  submissions: { id: string; value: StageFiveChecklistValue; attachments: StageFiveAttachmentRecord[]; status: string; submittedAt: string; submittedBy: string; reviewedBy: string | null; reviewedAt: string | null; reviewNote: string | null }[];
 };
 
 type StageFiveProject = ProjectStageAccessRecord;
-
-const accessibleStageFiveProjectWhere = {
-  workflowStages: {
-    some: {
-      stageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
-      status: { in: [...ACCESSIBLE_WORKFLOW_STAGE_STATUSES] },
-    },
-  },
-} satisfies Prisma.ProjectWhereInput;
 
 function displayName(user: { name: string | null; email: string }) {
   return user.name?.trim() || user.email;
@@ -317,6 +313,8 @@ function loadStageFiveChecklist(handoffId: string) {
                   in: [
                     ProjectFileChecklistRequestWorkflowStatus.REQUESTED,
                     ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
+                    ProjectFileChecklistRequestWorkflowStatus.IN_REVIEW,
+                    ProjectFileChecklistRequestWorkflowStatus.CORRECTIONS_REQUESTED,
                   ],
                 },
               },
@@ -391,7 +389,7 @@ export async function getStageFiveWorkspaceData(
         id: true,
         handedOffAt: true,
         sourceWorkflowStageKey: true,
-        sourceAttachment: { select: attachmentSelect },
+        sourceAttachment: { select: { ...attachmentSelect, taskerImportId: true } },
         checklist: { select: { id: true } },
       },
     }),
@@ -432,7 +430,7 @@ export async function getStageFiveWorkspaceData(
       handoffId: handoff.id,
       checklistId: checklist?.id ?? handoff.checklist?.id ?? "",
       sourceOrigin:
-        handoff.sourceWorkflowStageKey === ProjectWorkflowStageKey.FINAL_LAYOUT
+        handoff.sourceAttachment.taskerImportId ? "TASKER" : handoff.sourceWorkflowStageKey === ProjectWorkflowStageKey.FINAL_LAYOUT
           ? "DIRECT_STAGE_FIVE"
           : handoff.sourceWorkflowStageKey ===
               ProjectWorkflowStageKey.CONCEPT_CREATION
@@ -953,8 +951,9 @@ function validateEmail(value: string) {
 
 type ChecklistEmailSender = typeof sendResendEmail;
 
-async function assertNoTaskerChecklistRequest(tx: Prisma.TransactionClient, projectId: string, checklistId: string, fieldKey: ProjectFileChecklistField) {
+async function assertNoTaskerChecklistRequest(tx: Prisma.TransactionClient, projectId: string, checklistId: string, fieldKey: ProjectFileChecklistField, channel: ProjectFileChecklistRequestChannel) {
   await lockTaskerProject(tx, projectId);
+  if (await tx.projectFileChecklistRequest.count({ where: { checklistId, fieldKey, ...(channel === "EMAIL" ? { channel: "IN_APP" } : {}), workflowStatus: { in: [...activeChecklistStatuses] } } })) throw new TaskerError("This field already has an active information request.", 409);
   if (await tx.taskerTask.count({ where: { activeTargetKey: `STRUCTURED:${projectId}:checklist:${checklistId}:${fieldKey}` } })) throw new TaskerError("This field already has an active Tasker request.", 409);
 }
 
@@ -1074,6 +1073,8 @@ export async function requestStageFiveChecklistInformation(
             in: [
               ProjectFileChecklistRequestWorkflowStatus.REQUESTED,
               ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
+              ProjectFileChecklistRequestWorkflowStatus.IN_REVIEW,
+              ProjectFileChecklistRequestWorkflowStatus.CORRECTIONS_REQUESTED,
             ],
           },
         },
@@ -1088,7 +1089,7 @@ export async function requestStageFiveChecklistInformation(
     try {
       const request = await withPrismaRetry(() =>
         prisma.$transaction(async (tx) => {
-        await assertNoTaskerChecklistRequest(tx, input.projectId, checklist.id, input.fieldKey);
+        await assertNoTaskerChecklistRequest(tx, input.projectId, checklist.id, input.fieldKey, input.channel);
         const item = await tx.projectFileChecklistItem.upsert({
           where: { checklistId_fieldKey: { checklistId: checklist.id, fieldKey: input.fieldKey } },
           update: {},
@@ -1136,6 +1137,10 @@ export async function requestStageFiveChecklistInformation(
             data: { status: ProjectFileChecklistItemStatus.REQUESTED },
           });
         }
+        await tx.projectFileChecklistRequest.update({ where: { id: created.id }, data: { targetToken: await captureChecklistTargetToken(tx, input.projectId, checklist.id, input.fieldKey) } });
+        const context = await (await import("@/lib/tasker/adapters")).getTaskProjectAdapter("STRUCTURED").load(tx, input.projectId);
+        // Assignment already has an in-app notification above; add its durable email delivery.
+        await tx.taskerDelivery.create({ data: { checklistRequestId: created.id, userId: recipientUserId, dedupeKey: `checklist-review:${created.id}:assigned:${recipientUserId}`, subject: "Information requested", message: `An information request in ${context.name} is ready for you.` } });
         return created;
         }),
       );
@@ -1157,6 +1162,8 @@ export async function requestStageFiveChecklistInformation(
                 in: [
                   ProjectFileChecklistRequestWorkflowStatus.REQUESTED,
                   ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
+                  ProjectFileChecklistRequestWorkflowStatus.IN_REVIEW,
+                  ProjectFileChecklistRequestWorkflowStatus.CORRECTIONS_REQUESTED,
                 ],
               },
             },
@@ -1190,6 +1197,8 @@ export async function requestStageFiveChecklistInformation(
           in: [
             ProjectFileChecklistRequestWorkflowStatus.REQUESTED,
             ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
+            ProjectFileChecklistRequestWorkflowStatus.IN_REVIEW,
+            ProjectFileChecklistRequestWorkflowStatus.CORRECTIONS_REQUESTED,
           ],
         },
       },
@@ -1205,7 +1214,7 @@ export async function requestStageFiveChecklistInformation(
   try {
     pending = await withPrismaRetry(() =>
       prisma.$transaction(async (tx) => {
-        await assertNoTaskerChecklistRequest(tx, input.projectId, checklist.id, input.fieldKey);
+        await assertNoTaskerChecklistRequest(tx, input.projectId, checklist.id, input.fieldKey, input.channel);
         const item = await tx.projectFileChecklistItem.upsert({
           where: { checklistId_fieldKey: { checklistId: checklist.id, fieldKey: input.fieldKey } },
           update: {},
@@ -1255,6 +1264,8 @@ export async function requestStageFiveChecklistInformation(
               in: [
                 ProjectFileChecklistRequestWorkflowStatus.REQUESTED,
                 ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
+                ProjectFileChecklistRequestWorkflowStatus.IN_REVIEW,
+                ProjectFileChecklistRequestWorkflowStatus.CORRECTIONS_REQUESTED,
               ],
             },
           },
@@ -1365,6 +1376,8 @@ export async function configureStageFiveChecklistRequestReminder(
           in: [
             ProjectFileChecklistRequestWorkflowStatus.REQUESTED,
             ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
+            ProjectFileChecklistRequestWorkflowStatus.IN_REVIEW,
+            ProjectFileChecklistRequestWorkflowStatus.CORRECTIONS_REQUESTED,
           ],
         },
         checklistItem: { status: { not: ProjectFileChecklistItemStatus.FILLED } },
@@ -1446,6 +1459,8 @@ export async function resendStageFiveExternalChecklistRequest(
           in: [
             ProjectFileChecklistRequestWorkflowStatus.REQUESTED,
             ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
+            ProjectFileChecklistRequestWorkflowStatus.IN_REVIEW,
+            ProjectFileChecklistRequestWorkflowStatus.CORRECTIONS_REQUESTED,
           ],
         },
       },
@@ -1556,13 +1571,16 @@ export async function cancelStageFiveChecklistRequest(
   }
   if (
     request.workflowStatus !== ProjectFileChecklistRequestWorkflowStatus.REQUESTED &&
-    request.workflowStatus !== ProjectFileChecklistRequestWorkflowStatus.ACCEPTED
+    request.workflowStatus !== ProjectFileChecklistRequestWorkflowStatus.ACCEPTED &&
+    request.workflowStatus !== ProjectFileChecklistRequestWorkflowStatus.IN_REVIEW &&
+    request.workflowStatus !== ProjectFileChecklistRequestWorkflowStatus.CORRECTIONS_REQUESTED
   ) {
     return { error: "This information request can no longer be cancelled." } as const;
   }
 
   const cancelled = await withPrismaRetry(() =>
     prisma.$transaction(async (tx) => {
+      await lockTaskerProject(tx, request.projectId);
       const updated = await tx.projectFileChecklistRequest.updateMany({
         where: {
           id: request.id,
@@ -1570,6 +1588,8 @@ export async function cancelStageFiveChecklistRequest(
             in: [
               ProjectFileChecklistRequestWorkflowStatus.REQUESTED,
               ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
+              ProjectFileChecklistRequestWorkflowStatus.IN_REVIEW,
+              ProjectFileChecklistRequestWorkflowStatus.CORRECTIONS_REQUESTED,
             ],
           },
         },
@@ -1598,6 +1618,8 @@ export async function cancelStageFiveChecklistRequest(
             in: [
               ProjectFileChecklistRequestWorkflowStatus.REQUESTED,
               ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
+              ProjectFileChecklistRequestWorkflowStatus.IN_REVIEW,
+              ProjectFileChecklistRequestWorkflowStatus.CORRECTIONS_REQUESTED,
             ],
           },
         },
@@ -1619,117 +1641,8 @@ export async function cancelStageFiveChecklistRequest(
     : ({ error: "This information request changed before it could be cancelled." } as const);
 }
 
-const checklistRequestResponseSelect = {
-  id: true,
-  projectId: true,
-  fieldKey: true,
-  message: true,
-  channel: true,
-  workflowStatus: true,
-  requestedAt: true,
-  acceptedAt: true,
-  completedAt: true,
-  declinedAt: true,
-  declineReason: true,
-  recipientUserId: true,
-  project: { select: { id: true, name: true } },
-  requestedBy: { select: { id: true, name: true, email: true } },
-  recipientUser: { select: { id: true, name: true, email: true } },
-  respondedByUser: { select: { id: true, name: true, email: true } },
-  checklist: {
-    select: {
-      handoffId: true,
-      sourceAttachment: { select: attachmentSelect },
-    },
-  },
-  checklistItem: {
-    select: {
-      id: true,
-      value: true,
-      status: true,
-      attachments: {
-        orderBy: { createdAt: "asc" as const },
-        select: { attachment: { select: attachmentSelect } },
-      },
-    },
-  },
-} satisfies Prisma.ProjectFileChecklistRequestSelect;
-
-function canRespondToChecklistRequest(
-  user: PermissionUser,
-  request: { recipientUserId: string | null },
-) {
-  return user.role === UserRole.SUPER_ADMIN || request.recipientUserId === user.id;
-}
-
-function stageFiveOwnerUrl(input: {
-  projectId: string;
-  handoffId: string;
-  fieldKey: ProjectFileChecklistField;
-  mode: "edit" | "view";
-}) {
-  return `/projects/${input.projectId}/stages/5?file=${encodeURIComponent(input.handoffId)}&field=${input.fieldKey}&mode=${input.mode}`;
-}
-
-export async function getStageFiveChecklistRequestData(
-  user: PermissionUser,
-  requestId: string,
-): Promise<StageFiveChecklistRequestData | null> {
-  const request = await withPrismaRetry(() =>
-    prisma.projectFileChecklistRequest.findFirst({
-      where: {
-        id: requestId,
-        channel: ProjectFileChecklistRequestChannel.IN_APP,
-        recipientUserId: { not: null },
-        project: accessibleStageFiveProjectWhere,
-      },
-      relationLoadStrategy: "join",
-      select: checklistRequestResponseSelect,
-    }),
-  );
-
-  if (!request || !request.recipientUser || !canRespondToChecklistRequest(user, request)) {
-    return null;
-  }
-
-  const field = getStageFiveFieldDefinition(request.fieldKey);
-  if (!field) return null;
-
-  return {
-    id: request.id,
-    project: request.project,
-    handoffId: request.checklist.handoffId,
-    file: mapAttachment(request.checklist.sourceAttachment),
-    field,
-    message: request.message,
-    status: request.workflowStatus,
-    requestedAt: request.requestedAt.toISOString(),
-    acceptedAt: request.acceptedAt?.toISOString() ?? null,
-    completedAt: request.completedAt?.toISOString() ?? null,
-    declinedAt: request.declinedAt?.toISOString() ?? null,
-    declineReason: request.declineReason,
-    requestedBy: {
-      id: request.requestedBy.id,
-      name: displayName(request.requestedBy),
-    },
-    recipient: {
-      id: request.recipientUser.id,
-      name: displayName(request.recipientUser),
-    },
-    respondedBy: request.respondedByUser
-      ? {
-          id: request.respondedByUser.id,
-          name: displayName(request.respondedByUser),
-        }
-      : null,
-    response: {
-      value: parseChecklistValue(request.checklistItem.value),
-      attachments: request.checklistItem.attachments.map(({ attachment }) =>
-        mapAttachment(attachment),
-      ),
-    },
-    canRespond: canRespondToChecklistRequest(user, request),
-  };
+export async function getStageFiveChecklistRequestData(user: PermissionUser, requestId: string): Promise<StageFiveChecklistRequestData | null> {
+  return checklistReviewData(user, requestId);
 }
 
 export async function getStageFiveChecklistRequestSourceFileUrl(
@@ -1737,36 +1650,9 @@ export async function getStageFiveChecklistRequestSourceFileUrl(
   requestId: string,
   mode: "preview" | "download",
 ) {
-  const request = await withPrismaRetry(() =>
-    prisma.projectFileChecklistRequest.findFirst({
-      where: {
-        id: requestId,
-        channel: ProjectFileChecklistRequestChannel.IN_APP,
-        project: accessibleStageFiveProjectWhere,
-        ...(user.role === UserRole.SUPER_ADMIN ? {} : { recipientUserId: user.id }),
-      },
-      select: {
-        checklist: {
-          select: {
-            sourceAttachment: {
-              select: {
-                bucket: true,
-                storageKey: true,
-                originalFileName: true,
-                mimeType: true,
-                status: true,
-              },
-            },
-          },
-        },
-      },
-    }),
-  );
-
-  const attachment = request?.checklist.sourceAttachment;
-  if (!attachment || attachment.status !== AttachmentStatus.READY) {
-    throw new Error("Requested file not found.");
-  }
+  const { request } = await loadChecklistReview(prisma, user, requestId);
+  const attachment = request.checklist.sourceAttachment;
+  if (attachment.status !== AttachmentStatus.READY) throw new Error("Requested file not found.");
 
   const input = {
     bucket: attachment.bucket,
@@ -1779,205 +1665,22 @@ export async function getStageFiveChecklistRequestSourceFileUrl(
     : createPresignedPreviewUrl(input);
 }
 
-export async function getStageFiveChecklistRequestUploadContext(
-  user: PermissionUser,
-  requestId: string,
-) {
-  const request = await withPrismaRetry(() =>
-    prisma.projectFileChecklistRequest.findFirst({
-      where: {
-        id: requestId,
-        channel: ProjectFileChecklistRequestChannel.IN_APP,
-        workflowStatus: ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
-        project: accessibleStageFiveProjectWhere,
-      },
-      select: { id: true, projectId: true, recipientUserId: true },
-    }),
-  );
-  if (!request || !canRespondToChecklistRequest(user, request)) return null;
-  return { requestId: request.id, projectId: request.projectId };
+export async function getStageFiveChecklistRequestUploadContext(user: PermissionUser, requestId: string) {
+  try {
+    const { request } = await loadChecklistReview(prisma, user, requestId);
+    if (request.recipientUserId !== user.id || !["ACCEPTED", "CORRECTIONS_REQUESTED"].includes(request.workflowStatus)) return null;
+    return { requestId: request.id, projectId: request.projectId };
+  } catch (error) { if (error instanceof TaskerError) return null; throw error; }
 }
 
-export async function acceptStageFiveChecklistRequest(
-  user: PermissionUser,
-  requestId: string,
-) {
-  const request = await withPrismaRetry(() =>
-    prisma.projectFileChecklistRequest.findFirst({
-      where: {
-        id: requestId,
-        channel: ProjectFileChecklistRequestChannel.IN_APP,
-        project: accessibleStageFiveProjectWhere,
-      },
-      select: { id: true, recipientUserId: true, workflowStatus: true },
-    }),
-  );
-  if (!request || !canRespondToChecklistRequest(user, request)) {
-    return { error: "This information request is unavailable." } as const;
-  }
-  if (request.workflowStatus === ProjectFileChecklistRequestWorkflowStatus.ACCEPTED) {
-    return { status: request.workflowStatus } as const;
-  }
-  if (request.workflowStatus !== ProjectFileChecklistRequestWorkflowStatus.REQUESTED) {
-    return { error: "This information request can no longer be accepted." } as const;
-  }
-
-  const accepted = await withPrismaRetry(() =>
-    prisma.projectFileChecklistRequest.updateMany({
-      where: {
-        id: request.id,
-        workflowStatus: ProjectFileChecklistRequestWorkflowStatus.REQUESTED,
-      },
-      data: {
-        workflowStatus: ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
-        acceptedAt: new Date(),
-      },
-    }),
-  );
-  if (accepted.count !== 1) {
-    return { error: "This information request changed before it could be accepted." } as const;
-  }
-  return { status: ProjectFileChecklistRequestWorkflowStatus.ACCEPTED } as const;
+export async function acceptStageFiveChecklistRequest(user: PermissionUser, requestId: string) {
+  return respondToChecklistAssignment(user, requestId, "ACCEPT");
 }
 
-export async function declineStageFiveChecklistRequest(
-  user: PermissionUser,
-  input: { requestId: string; reason: string },
-) {
+export async function declineStageFiveChecklistRequest(user: PermissionUser, input: { requestId: string; reason: string }) {
   const reason = sanitizeRichText(input.reason);
-  const reasonLength = richTextToPlainText(reason).length;
-  if (reasonLength < 3) return { error: "Enter a short reason for declining." } as const;
-  if (reasonLength > 1_000) return { error: "The decline reason is too long." } as const;
-
-  const request = await withPrismaRetry(() =>
-    prisma.projectFileChecklistRequest.findFirst({
-      where: {
-        id: input.requestId,
-        channel: ProjectFileChecklistRequestChannel.IN_APP,
-        project: accessibleStageFiveProjectWhere,
-      },
-      select: {
-        id: true,
-        projectId: true,
-        checklistItemId: true,
-        fieldKey: true,
-        requestedById: true,
-        recipientUserId: true,
-        workflowStatus: true,
-        checklist: {
-          select: {
-            handoffId: true,
-            sourceAttachment: { select: { originalFileName: true } },
-          },
-        },
-      },
-    }),
-  );
-  if (!request || !canRespondToChecklistRequest(user, request)) {
-    return { error: "This information request is unavailable." } as const;
-  }
-  if (
-    request.workflowStatus !== ProjectFileChecklistRequestWorkflowStatus.REQUESTED &&
-    request.workflowStatus !== ProjectFileChecklistRequestWorkflowStatus.ACCEPTED
-  ) {
-    return { error: "This information request can no longer be declined." } as const;
-  }
-
-  const actor = await withPrismaRetry(() =>
-    prisma.user.findUnique({ where: { id: user.id }, select: { name: true, email: true } }),
-  );
-  if (!actor) return { error: "The responding user was not found." } as const;
-
-  const declined = await withPrismaRetry(() =>
-    prisma.$transaction(async (tx) => {
-      const updated = await tx.projectFileChecklistRequest.updateMany({
-        where: {
-          id: request.id,
-          workflowStatus: {
-            in: [
-              ProjectFileChecklistRequestWorkflowStatus.REQUESTED,
-              ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
-            ],
-          },
-        },
-        data: {
-          workflowStatus: ProjectFileChecklistRequestWorkflowStatus.DECLINED,
-          declinedAt: new Date(),
-          declineReason: reason,
-          respondedByUserId: user.id,
-          responseSource: ProjectFileChecklistResponseSource.AUTHENTICATED_USER,
-        },
-      });
-      if (updated.count !== 1) return false;
-
-      await tx.requestReminder.updateMany({
-        where: { stageFiveRequestId: request.id, enabled: true },
-        data: {
-          enabled: false,
-          nextReminderAt: null,
-          stoppedAt: new Date(),
-          processingToken: null,
-          processingStartedAt: null,
-        },
-      });
-
-      const otherActiveRequests = await tx.projectFileChecklistRequest.count({
-        where: {
-          checklistItemId: request.checklistItemId,
-          workflowStatus: {
-            in: [
-              ProjectFileChecklistRequestWorkflowStatus.REQUESTED,
-              ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
-            ],
-          },
-        },
-      });
-      if (otherActiveRequests === 0) {
-        await tx.projectFileChecklistItem.updateMany({
-          where: {
-            id: request.checklistItemId,
-            status: ProjectFileChecklistItemStatus.REQUESTED,
-          },
-          data: { status: ProjectFileChecklistItemStatus.PENDING },
-        });
-      }
-
-      if (request.requestedById !== user.id) {
-        await tx.notification.create({
-          data: {
-            userId: request.requestedById,
-            type: "CHECKLIST_INFORMATION_DECLINED",
-            title: "Information request declined",
-            message: `${displayName(actor)} declined the request for "${STAGE_FIVE_FIELD_LABELS[request.fieldKey]}". ${reason}`.slice(0, 500),
-            entityType: "CHECKLIST_REQUEST",
-            entityId: request.id,
-            projectId: request.projectId,
-            url: stageFiveOwnerUrl({
-              projectId: request.projectId,
-              handoffId: request.checklist.handoffId,
-              fieldKey: request.fieldKey,
-              mode: "edit",
-            }),
-          },
-        });
-      }
-      return true;
-    }),
-  );
-  if (!declined) {
-    return { error: "This information request changed before it could be declined." } as const;
-  }
-  if (request.requestedById !== user.id) {
-    await publishNotificationChanges({
-      recipientUserIds: [request.requestedById],
-      reason: "created",
-    });
-  }
-  return {
-    status: ProjectFileChecklistRequestWorkflowStatus.DECLINED,
-    projectId: request.projectId,
-    handoffId: request.checklist.handoffId,
-  } as const;
+  if (!richTextToPlainText(reason) || richTextToPlainText(reason).length > 5000) return { error: "Explain the decline in up to 5000 characters." } as const;
+  return respondToChecklistAssignment(user, input.requestId, "DECLINE", reason);
 }
 
 export function validateStageFiveChecklistResponse(
@@ -2027,167 +1730,6 @@ export function validateStageFiveChecklistResponse(
   return { value: normalizedValue } as const;
 }
 
-export async function submitStageFiveChecklistResponse(
-  user: PermissionUser,
-  input: {
-    requestId: string;
-    value: StageFiveChecklistValue;
-    attachmentIds: string[];
-  },
-) {
-  const attachmentIds = Array.from(
-    new Set(input.attachmentIds.map((id) => id.trim()).filter(Boolean)),
-  );
-  if (attachmentIds.length > 20) return { error: "Select no more than 20 files." } as const;
-
-  const request = await withPrismaRetry(() =>
-    prisma.projectFileChecklistRequest.findFirst({
-      where: {
-        id: input.requestId,
-        channel: ProjectFileChecklistRequestChannel.IN_APP,
-        project: accessibleStageFiveProjectWhere,
-      },
-      select: {
-        id: true,
-        projectId: true,
-        checklistId: true,
-        checklistItemId: true,
-        fieldKey: true,
-        requestedById: true,
-        recipientUserId: true,
-        workflowStatus: true,
-        checklist: {
-          select: {
-            handoffId: true,
-            sourceAttachment: { select: { id: true, originalFileName: true } },
-          },
-        },
-      },
-    }),
-  );
-  if (!request || !canRespondToChecklistRequest(user, request)) {
-    return { error: "This information request is unavailable." } as const;
-  }
-  if (request.workflowStatus !== ProjectFileChecklistRequestWorkflowStatus.ACCEPTED) {
-    return { error: "Accept this request before submitting a response." } as const;
-  }
-
-  const validated = validateStageFiveChecklistResponse(
-    request.fieldKey,
-    input.value,
-    attachmentIds,
-  );
-  if ("error" in validated) return validated;
-
-  if (attachmentIds.length > 0) {
-    const attachments = await withPrismaRetry(() =>
-      prisma.projectAttachment.count({
-        where: {
-          id: { in: attachmentIds },
-          projectId: request.projectId,
-          uploadedById: user.id,
-          status: AttachmentStatus.READY,
-          assetType: "FILE_CHECKLIST_ATTACHMENT",
-          checklistResponseRequestId: request.id,
-          fileChecklistItems: { none: {} },
-        },
-      }),
-    );
-    if (attachments !== attachmentIds.length) {
-      return { error: "One or more response files are invalid or belong to another request." } as const;
-    }
-  }
-
-  const actor = await withPrismaRetry(() =>
-    prisma.user.findUnique({ where: { id: user.id }, select: { name: true, email: true } }),
-  );
-  if (!actor) return { error: "The responding user was not found." } as const;
-
-  const completed = await withPrismaRetry(() =>
-    prisma.$transaction(async (tx) => {
-      const updated = await tx.projectFileChecklistRequest.updateMany({
-        where: {
-          id: request.id,
-          workflowStatus: ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
-        },
-        data: {
-          workflowStatus: ProjectFileChecklistRequestWorkflowStatus.COMPLETED,
-          completedAt: new Date(),
-          respondedByUserId: user.id,
-          responseSource: ProjectFileChecklistResponseSource.AUTHENTICATED_USER,
-        },
-      });
-      if (updated.count !== 1) return false;
-
-      await tx.requestReminder.updateMany({
-        where: {
-          enabled: true,
-          stageFiveRequest: { checklistItemId: request.checklistItemId },
-        },
-        data: {
-          enabled: false,
-          nextReminderAt: null,
-          stoppedAt: new Date(),
-          processingToken: null,
-          processingStartedAt: null,
-        },
-      });
-
-      await tx.projectFileChecklistItem.update({
-        where: { id: request.checklistItemId },
-        data: {
-          value: validated.value as Prisma.InputJsonValue,
-          status: ProjectFileChecklistItemStatus.FILLED,
-          updatedById: user.id,
-        },
-      });
-      await tx.projectFileChecklistItemAttachment.deleteMany({
-        where: { checklistItemId: request.checklistItemId },
-      });
-      if (attachmentIds.length > 0) {
-        await tx.projectFileChecklistItemAttachment.createMany({
-          data: attachmentIds.map((attachmentId) => ({
-            checklistItemId: request.checklistItemId,
-            attachmentId,
-          })),
-        });
-      }
-
-      if (request.requestedById !== user.id) {
-        await tx.notification.create({
-          data: {
-            userId: request.requestedById,
-            type: "CHECKLIST_INFORMATION_COMPLETED",
-            title: "Requested information received",
-            message: `${displayName(actor)} provided "${STAGE_FIVE_FIELD_LABELS[request.fieldKey]}" for "${request.checklist.sourceAttachment.originalFileName}".`,
-            entityType: "CHECKLIST_REQUEST",
-            entityId: request.id,
-            projectId: request.projectId,
-            attachmentId: request.checklist.sourceAttachment.id,
-            url: stageFiveOwnerUrl({
-              projectId: request.projectId,
-              handoffId: request.checklist.handoffId,
-              fieldKey: request.fieldKey,
-              mode: "view",
-            }),
-          },
-        });
-      }
-      return true;
-    }),
-  );
-  if (!completed) {
-    return { error: "This information request changed before the response was submitted." } as const;
-  }
-  if (request.requestedById !== user.id) {
-    await publishNotificationChanges({
-      recipientUserIds: [request.requestedById],
-      reason: "created",
-    });
-  }
-  return {
-    status: ProjectFileChecklistRequestWorkflowStatus.COMPLETED,
-    projectId: request.projectId,
-    handoffId: request.checklist.handoffId,
-  } as const;
+export async function submitStageFiveChecklistResponse(user: PermissionUser, input: { requestId: string; value: StageFiveChecklistValue; attachmentIds: string[] }, store?: Parameters<typeof submitChecklistForReview>[2]) {
+  return submitChecklistForReview(user, input, store);
 }

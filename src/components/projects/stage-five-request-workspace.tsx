@@ -1,5 +1,8 @@
 "use client";
 
+import { TaskFileTools } from "@/components/tasks/tasker-file-tools";
+import { ValueDisplay } from "@/components/tasks/tasker-workspace";
+import { TaskTextarea } from "@/components/tasks/tasker-form-controls";
 import { FileThumbnail } from "@/components/projects/file-thumbnail";
 
 import { useRouter } from "next/navigation";
@@ -18,6 +21,7 @@ import {
 } from "lucide-react";
 
 import {
+  reviewStageFiveChecklistResponseAction,
   acceptStageFiveChecklistRequestAction,
   declineStageFiveChecklistRequestAction,
   submitStageFiveChecklistResponseAction,
@@ -54,7 +58,7 @@ function formatDate(value: string | null) {
 }
 
 function statusLabel(status: ProjectFileChecklistRequestWorkflowStatus) {
-  return status.charAt(0) + status.slice(1).toLocaleLowerCase();
+  return status === "IN_REVIEW" ? "Awaiting review" : status.charAt(0) + status.slice(1).toLocaleLowerCase().replaceAll("_", " ");
 }
 
 function MultiValueResponseInput({
@@ -137,7 +141,7 @@ function MultiValueResponseInput({
   );
 }
 
-function ResponseSummary({ data }: { data: StageFiveChecklistRequestData }) {
+function ResponseSummary({ data, submissionId }: { data: StageFiveChecklistRequestData; submissionId?: string }) {
   const { value, attachments } = data.response;
   const hasResponse = Boolean(
     value.text || value.values?.length || value.included || attachments.length,
@@ -167,10 +171,11 @@ function ResponseSummary({ data }: { data: StageFiveChecklistRequestData }) {
         <div className="space-y-2">
           {attachments.map((attachment) => (
             <div key={attachment.id} className="flex items-center gap-3 rounded-[13px] border border-[#e0e8e1] bg-white px-4 py-3">
-              <FileThumbnail fileName={attachment.name} mimeType={attachment.mimeType} previewPath={`/api/project-assets/${attachment.id}/preview`} />
+              {!submissionId && <FileThumbnail fileName={attachment.name} mimeType={attachment.mimeType} previewPath={`/api/project-assets/${attachment.id}/preview`} />}
               <span className="min-w-0 truncate text-[13px] font-[680] text-[#2b372f]">
                 {attachment.name}
               </span>
+              {submissionId && <TaskFileTools file={{ ...attachment, label: attachment.name, path: `/api/requests/checklist/${data.id}/responses/${submissionId}/files?fileId=${encodeURIComponent(attachment.id)}` }} />}
             </div>
           ))}
         </div>
@@ -178,6 +183,24 @@ function ResponseSummary({ data }: { data: StageFiveChecklistRequestData }) {
       {!hasResponse ? <p className="text-[13px] italic text-[#7c8780]">No response content.</p> : null}
     </div>
   );
+}
+
+function ChecklistReviewPanel({ data }: { data: StageFiveChecklistRequestData }) {
+  const router = useRouter();
+  const [note, setNote] = useState(""), [confirmed, setConfirmed] = useState(false), [pending, startTransition] = useTransition();
+  function review(action: "ACCEPT" | "CORRECTIONS" | "REJECT") {
+    startTransition(async () => {
+      const result = await reviewStageFiveChecklistResponseAction({ requestId: data.id, submissionId: data.submissions[0].id, action, note, ...(confirmed && data.conflictToken ? { conflictToken: data.conflictToken } : {}) });
+      if ("error" in result) showErrorToast("Unable to review submission.", result.error);
+      else showSuccessToast(action === "ACCEPT" ? "Response approved and checklist updated." : "Review sent to recipient.");
+      router.refresh();
+    });
+  }
+  return <section className="grid gap-4 rounded-[18px] border border-[#dce7de] p-5"><h2 className="text-lg font-semibold">Review submission</h2>
+    {data.hasConflict && <div className="grid gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm"><p>The field changed while this request was pending. Review its current value before replacing it.</p><ValueDisplay value={data.currentValue} field={null} /><label className="flex items-start gap-2"><input type="checkbox" className="accent-[#26734d]" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />I reviewed the current value and approve replacing it with this response.</label></div>}
+    <TaskTextarea aria-label="Checklist review note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Explain any corrections or rejection" maxLength={20000} rows={3} />
+    <div className="flex flex-wrap gap-3"><Button disabled={pending || data.hasConflict && !confirmed} onClick={() => review("ACCEPT")}>Approve response</Button><Button variant="secondary" disabled={pending || !note.trim()} onClick={() => review("CORRECTIONS")}>Request corrections</Button><Button variant="ghost" disabled={pending || !note.trim()} onClick={() => review("REJECT")}>Reject response</Button></div>
+  </section>;
 }
 
 export function StageFiveRequestWorkspace({ data }: { data: StageFiveChecklistRequestData }) {
@@ -190,8 +213,8 @@ export function StageFiveRequestWorkspace({ data }: { data: StageFiveChecklistRe
   const [files, setFiles] = useState<ChecklistFileRecord[]>([]);
   const [showDecline, setShowDecline] = useState(false);
   const [declineReason, setDeclineReason] = useState("");
-  const accepted = data.status === ProjectFileChecklistRequestWorkflowStatus.ACCEPTED;
-  const requested = data.status === ProjectFileChecklistRequestWorkflowStatus.REQUESTED;
+  const accepted = data.canRespond && (data.status === ProjectFileChecklistRequestWorkflowStatus.ACCEPTED || data.status === "CORRECTIONS_REQUESTED");
+  const requested = data.canRespond && data.status === ProjectFileChecklistRequestWorkflowStatus.REQUESTED;
   const completed = data.status === ProjectFileChecklistRequestWorkflowStatus.COMPLETED;
   const declined = data.status === ProjectFileChecklistRequestWorkflowStatus.DECLINED;
   const disabled = isPending || isUploading;
@@ -408,7 +431,7 @@ export function StageFiveRequestWorkspace({ data }: { data: StageFiveChecklistRe
           <li aria-hidden="true">
             <ChevronRight className="h-3.5 w-3.5" />
           </li>
-          <li>Stage 5 · File Checklist</li>
+          <li>{data.canOpenStage ? "Stage 5 · File Checklist" : "Information request"}</li>
           <li aria-hidden="true">
             <ChevronRight className="h-3.5 w-3.5" />
           </li>
@@ -425,12 +448,12 @@ export function StageFiveRequestWorkspace({ data }: { data: StageFiveChecklistRe
         <header className="border-b border-[#e4ebe5] bg-[linear-gradient(135deg,#f8fbf8,#eef6f0)] px-6 py-7 sm:px-9 sm:py-9">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <p className="text-[11px] font-[780] uppercase tracking-[0.13em] text-[#4b765b]">Stage 5</p>
+              <p className="text-[11px] font-[780] uppercase tracking-[0.13em] text-[#4b765b]">{data.canOpenStage ? "Stage 5" : "Tasker"}</p>
               <h1 className="mt-2 text-[30px] font-[780] tracking-[-0.04em] text-[#172019] sm:text-[38px]">
                 Information Request
               </h1>
               <p className="mt-2 max-w-[620px] text-[14px] leading-6 text-[#68746c]">
-                Review the requested checklist item and provide the information directly to the project.
+                Submit the requested information for review. The task owner approves it before the checklist is updated.
               </p>
             </div>
             <span className={cn(
@@ -452,7 +475,7 @@ export function StageFiveRequestWorkspace({ data }: { data: StageFiveChecklistRe
           <dl className="grid gap-4 sm:grid-cols-2">
             {[
               ["Project", data.project.name],
-              ["Workflow context", "Stage 5 · File Checklist"],
+              ...(data.canOpenStage ? [["Workflow context", "Stage 5 · File Checklist"]] : []),
               ["Requested information", data.field.title],
               ["Requested by", data.requestedBy.name],
               ["Requested on", formatDate(data.requestedAt)],
@@ -510,6 +533,9 @@ export function StageFiveRequestWorkspace({ data }: { data: StageFiveChecklistRe
             <RichTextContent value={data.message || `Please provide the ${data.field.title.toLocaleLowerCase()} for this project.`} className="mt-2 text-[14px] leading-6 text-[#344038]" />
           </div>
 
+          {data.status === "IN_REVIEW" && <p role="status" className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900">This response is awaiting the task owner’s review. The checklist has not been changed.</p>}
+          {data.submissions.length > 0 && <section className="grid gap-4"><h2 className="text-lg font-semibold">Submission and review history</h2>{data.submissions.map((submission) => <article key={submission.id} className="grid gap-3"><p className="text-xs text-slate-500">{submission.submittedBy} · {formatDate(submission.submittedAt)} · {submission.status.toLowerCase().replaceAll("_", " ")}</p><ResponseSummary data={{ ...data, response: { value: submission.value, attachments: submission.attachments } }} submissionId={submission.id} />{submission.reviewedBy && <p className="text-sm">Reviewed by {submission.reviewedBy} · {formatDate(submission.reviewedAt)}</p>}{submission.reviewNote && <p className="whitespace-pre-wrap text-sm">{submission.reviewNote}</p>}</article>)}</section>}
+          {data.canReview && <ChecklistReviewPanel key={`${data.submissions[0]?.id}:${data.conflictToken}`} data={data} />}
           {completed ? (
             <div className="space-y-4">
               <div className="flex items-center gap-3 rounded-[16px] bg-[#eaf5ec] px-5 py-4 text-[#2f744e]">
@@ -519,7 +545,7 @@ export function StageFiveRequestWorkspace({ data }: { data: StageFiveChecklistRe
                   <p className="mt-0.5 text-[11px]">Submitted {formatDate(data.completedAt)}</p>
                 </div>
               </div>
-              <ResponseSummary data={data} />
+              <ResponseSummary data={data} submissionId={data.submissions[0]?.id} />
             </div>
           ) : declined ? (
             <div className="rounded-[18px] border border-[#f0d6d2] bg-[#fff7f6] p-5">

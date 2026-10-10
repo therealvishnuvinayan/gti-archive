@@ -795,6 +795,8 @@ export async function getStageFiveCompletionState(
             in: [
               ProjectFileChecklistRequestWorkflowStatus.REQUESTED,
               ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
+              ProjectFileChecklistRequestWorkflowStatus.IN_REVIEW,
+              ProjectFileChecklistRequestWorkflowStatus.CORRECTIONS_REQUESTED,
             ],
           },
         },
@@ -876,6 +878,8 @@ export async function completeStageFive(
                     in: [
                       ProjectFileChecklistRequestWorkflowStatus.REQUESTED,
                       ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
+                      ProjectFileChecklistRequestWorkflowStatus.IN_REVIEW,
+                      ProjectFileChecklistRequestWorkflowStatus.CORRECTIONS_REQUESTED,
                     ],
                   },
                 },

@@ -13,7 +13,7 @@ const port = await new Promise((resolve, reject) => {
   const server = createServer(); server.on("error", reject);
   server.listen(0, "127.0.0.1", () => { const port = server.address().port; server.close(() => resolve(port)); });
 });
-const env = { ...process.env, DATABASE_URL: `postgresql://${encodeURIComponent(userInfo().username)}@127.0.0.1:${port}/postgres`, NEXT_PUBLIC_REALTIME_PROVIDER: "none", APP_URL: "https://tasker.example.test", RESEND_API_KEY: "", RESEND_FROM_EMAIL: "", COMPILED_ALIAS_ROOT: ".tmp/tasker-integration" };
+const env = { ...process.env, STAGE_FIVE_ISOLATED: "1", DATABASE_URL: `postgresql://${encodeURIComponent(userInfo().username)}@127.0.0.1:${port}/postgres`, NEXT_PUBLIC_REALTIME_PROVIDER: "none", APP_URL: "https://tasker.example.test", RESEND_API_KEY: "", RESEND_FROM_EMAIL: "", COMPILED_ALIAS_ROOT: ".tmp/tasker-integration" };
 function run(command, args) {
   const result = spawnSync(command, args, { env, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
   if (result.status !== 0) throw new Error(result.stderr || result.stdout || result.error?.message || `${command} failed`);
@@ -29,6 +29,8 @@ try {
   console.log("Universal Tasker: all migrations applied to a disposable local database.");
   console.log(run("node", ["-r", "./scripts/register-compiled-alias.cjs", "-r", "./scripts/project-tags-next-cache-stub.cjs", ".tmp/tasker-integration/scripts/tasker-integration-check.js"]).trim());
   console.log(run("node", ["-r", "./scripts/register-compiled-alias.cjs", "-r", "./scripts/project-tags-next-cache-stub.cjs", ".tmp/tasker-integration/scripts/tasker-sisters-integration-check.js"]).trim());
+  console.log(run("node", ["-r", "./scripts/register-compiled-alias.cjs", "-r", "./scripts/project-tags-next-cache-stub.cjs", ".tmp/tasker-integration/scripts/tasker-gaps-integration-check.js"]).trim());
+  console.log(run("node", ["-r", "./scripts/register-compiled-alias.cjs", "-r", "./scripts/project-tags-next-cache-stub.cjs", ".tmp/tasker-integration/scripts/stage-five-integration-check.js"]).trim());
 } finally {
   if (started) run("pg_ctl", ["-D", data, "-m", "fast", "-w", "stop"]);
   rmSync(root, { recursive: true, force: true });

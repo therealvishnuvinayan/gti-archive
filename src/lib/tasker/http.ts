@@ -10,7 +10,9 @@ export async function taskerRoute(run: (user: NonNullable<Awaited<ReturnType<typ
   try {
     const user = await getCurrentUser();
     if (!user) return NextResponse.json({ error: "Sign in to use Tasker." }, { status: 401 });
-    return NextResponse.json(await run(user), { headers: { "Cache-Control": "no-store" } });
+    const result = await run(user);
+    if (result instanceof Response) return result;
+    return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     if (error instanceof TaskerError) return NextResponse.json({ error: error.message }, { status: error.status });
     if (error instanceof SyntaxError) return NextResponse.json({ error: "Invalid request." }, { status: 400 });

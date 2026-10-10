@@ -1,4 +1,5 @@
-import { discardTaskUpload, finalizeTaskUpload, requestTaskUpload, taskFileDownload } from "@/lib/tasker/files";
+import { NextResponse } from "next/server";
+import { discardTaskUpload, finalizeTaskUpload, requestTaskUpload, taskFileDownload, taskFileAccess } from "@/lib/tasker/files";
 import { taskerRoute } from "@/lib/tasker/http";
 import { taskAssert } from "@/lib/tasker/errors";
 type Context = { params: Promise<{ taskId: string }> };
@@ -14,5 +15,12 @@ export async function POST(request: Request, context: Context) {
   });
 }
 export async function GET(request: Request, context: Context) {
-  return taskerRoute(async (user) => ({ url: await taskFileDownload(user, (await context.params).taskId, new URL(request.url).searchParams.get("fileId") ?? "") }));
+  return taskerRoute(async (user) => {
+    const params = new URL(request.url).searchParams, taskId = (await context.params).taskId, fileId = params.get("fileId") ?? "";
+    const mode = params.get("mode");
+    if (!mode) return { url: await taskFileDownload(user, taskId, fileId) };
+    taskAssert(mode === "preview" || mode === "text" || mode === "download", "Unknown file mode.");
+    const result = await taskFileAccess(user, taskId, fileId, mode);
+    return "url" in result ? NextResponse.redirect(result.url!, { status: 302, headers: { "Cache-Control": "no-store" } }) : result;
+  });
 }

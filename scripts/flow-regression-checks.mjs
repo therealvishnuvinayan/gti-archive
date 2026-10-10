@@ -219,7 +219,7 @@ assertIncludesAll(
 const comparisonUtils = read("src/lib/comparison-utils.ts");
 const comparison = read("src/lib/comparison.ts");
 const chatWorkspace = read("src/components/projects/project-chat-workspace.tsx");
-const compareWorkspace = read("src/components/projects/project-compare-workspace.tsx");
+const compareWorkspace = read("src/components/projects/project-compare-workspace.tsx") + read("src/components/projects/comparison-viewer-surface.tsx");
 const captionDialog = read("src/components/projects/submission-caption-dialog.tsx");
 const helpCenter = read("src/lib/help-center.ts");
 assertIncludesAll(

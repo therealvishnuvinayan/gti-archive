@@ -602,7 +602,7 @@ function ChecklistItemRow({
           <p className="mt-1 text-[11px] leading-4 text-[#7b857e]">{item.helper}</p>
           {latestRequest &&
           (latestRequest.workflowStatus === ProjectFileChecklistRequestWorkflowStatus.REQUESTED ||
-            latestRequest.workflowStatus === ProjectFileChecklistRequestWorkflowStatus.ACCEPTED) ? (
+            latestRequest.workflowStatus === ProjectFileChecklistRequestWorkflowStatus.ACCEPTED || latestRequest.workflowStatus === "IN_REVIEW" || latestRequest.workflowStatus === "CORRECTIONS_REQUESTED") ? (
             <div className="mt-2 text-[10px] leading-4 text-[#47745a]">
               <p>
                 Requested from <span className="font-[720]">{latestRequest.recipient}</span>
@@ -613,6 +613,7 @@ function ChecklistItemRow({
                   year: "numeric",
                 }).format(new Date(latestRequest.requestedAt))}
               </p>
+              {latestRequest.channel === "IN_APP" && <a href={`/requests/checklist/${latestRequest.id}`} className="text-sm font-semibold text-[#26734d] underline">{latestRequest.workflowStatus === "IN_REVIEW" ? "Review response" : "Open information request"}</a>}
               {latestRequest.channel === ProjectFileChecklistRequestChannel.EMAIL && onResend ? (
                 <button
                   type="button"
@@ -2015,7 +2016,7 @@ export function StageFiveWorkspace({
                       <p className="mt-1 text-[12px] font-[700] text-[#2f6548]">
                         {CHECKLIST_ITEMS.filter((item) => getItemStatus(item) === ProjectFileChecklistItemStatus.FILLED).length} / {CHECKLIST_ITEMS.length} filled
                       </p>
-                      {activeFile.sourceOrigin === "DIRECT_STAGE_FIVE" ? (
+                      {activeFile.sourceOrigin === "TASKER" ? <span className="text-xs text-[#26734d]">Imported Tasker final file · source revision preserved</span> : activeFile.sourceOrigin === "DIRECT_STAGE_FIVE" ? (
                         <p className="mt-1 text-[10px] font-[650] text-[#4d765d]">
                           Uploaded directly in Stage 5
                         </p>

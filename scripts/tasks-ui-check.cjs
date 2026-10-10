@@ -13,6 +13,7 @@ function load(file, mocks = {}) {
   const evaluated = { exports: {} };
   new Function("require", "module", "exports", compiled)((name) => {
     if (Object.hasOwn(mocks, name)) return mocks[name];
+    if (name === "./tasker-file-tools") return { TaskFileTools: () => null, TaskFileComparison: () => null };
     if (name === "./tasker-form-controls") return load("src/components/tasks/tasker-form-controls.tsx", mocks);
     if (name === "@/lib/utils") return { cn: (...values) => require("tailwind-merge").twMerge(require("clsx").clsx(values)) };
     if (["react", "react/jsx-runtime", "lucide-react"].includes(name)) return require(name);
@@ -23,7 +24,7 @@ function load(file, mocks = {}) {
 }
 const container = ({ children }) => React.createElement("div", null, children);
 const mocks = {
-  "next/navigation": { useRouter: () => ({ refresh() {} }), redirect: (path) => { throw new Error(`redirect:${path}`); } },
+  "next/navigation": { useParams: () => ({}), usePathname: () => "/tasks", useRouter: () => ({ refresh() {} }), redirect: (path) => { throw new Error(`redirect:${path}`); } },
   "next/link": { default: ({ children, href }) => React.createElement("a", { href }, children) },
   "@/components/ui/card": { Card: container, CardContent: container },
   "@/components/ui/button": { Button: ({ children }) => React.createElement("button", null, children) },
@@ -100,7 +101,7 @@ async function main() {
   const familyWorkspace = load("src/components/tasks/tasker-family-workspace.tsx", {
     ...mocks, "./tasker-workspace": { CreateTask: () => null, useTaskUpdates() {} }, "@/lib/tasker/types": load("src/lib/tasker/types.ts"),
   }).TaskerFamilyWorkspace;
-  const family = { source: { type: "TASK", id: "universal" }, project: universalTask.project, version: 0, original: universalTask, children: [], files: [], finalFile: null, canSelectFinal: false, canDecideCycle: false, cycleDecision: null, history: [] };
+  const family = { source: { type: "TASK", id: "universal" }, project: universalTask.project, version: 0, original: universalTask, children: [], files: [], finalFile: null, canSelectFinal: false, canDecideCycle: false, cycleDecision: null, history: [], importDestinations: [], imports: [] };
   const familyRecipient = renderToStaticMarkup(React.createElement(familyWorkspace, { initialFamily: family }));
   assert(familyRecipient.includes("Create Sister Task") && !familyRecipient.includes("Select final file") && !familyRecipient.includes("Record decision"));
   const familyOwner = renderToStaticMarkup(React.createElement(familyWorkspace, { initialFamily: { ...family, canSelectFinal: true, canDecideCycle: true, cycleDecision: "PENDING" } }));

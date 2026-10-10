@@ -6,6 +6,7 @@ import { copyStoredObject, createPresignedDownloadUrl, createPresignedUploadTarg
 import { assertTaskDestination, type PublishedTaskFile } from "./adapters";
 import { taskAssert } from "./errors";
 import { loadTaskForUser, taskTransaction, terminalTaskStatuses } from "./service";
+import { readTaskFile, taskFileReaders, type TaskFileAccessMode } from "./file-access";
 
 export type TaskerStorage = {
   bucket: typeof getS3BucketName;
@@ -66,11 +67,20 @@ export async function discardTaskUpload(user: PermissionUser, taskId: string, fi
 }
 
 export async function taskFileDownload(user: PermissionUser, taskId: string, fileId: string, store: TaskerStorage = storage) {
+  const file = await loadTaskFile(user, taskId, fileId);
+  return store.download({ bucket: file.bucket, storageKey: file.storageKey, fileName: file.originalFileName, expiresInSeconds: 60 });
+}
+
+async function loadTaskFile(user: PermissionUser, taskId: string, fileId: string) {
   const { task } = await loadTaskForUser(prisma, user, taskId);
   const file = await prisma.taskerFile.findFirst({ where: { id: fileId, taskId, status: "READY" } });
   taskAssert(file && (file.submissionId || file.uploadedById === user.id), "File not found.", 404);
   taskAssert(!task.deletedAt, "Task no longer available.", 404);
-  return store.download({ bucket: file.bucket, storageKey: file.storageKey, fileName: file.originalFileName, expiresInSeconds: 60 });
+  return file;
+}
+
+export async function taskFileAccess(user: PermissionUser, taskId: string, fileId: string, mode: TaskFileAccessMode, readers = taskFileReaders) {
+  return readTaskFile(await loadTaskFile(user, taskId, fileId), mode, readers);
 }
 
 export async function prepareAcceptedTaskFiles(user: PermissionUser, taskId: string, version: number, store: TaskerStorage = storage): Promise<PublishedTaskFile[]> {

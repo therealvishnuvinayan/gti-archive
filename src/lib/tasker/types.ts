@@ -54,8 +54,9 @@ export type TaskListItem = {
   updatedAt: string;
   href: string;
   viewOnly: boolean;
+  unavailableParticipants?: string[];
 };
-export type TaskFileRecord = { id: string; name: string; size: number; status: string; submissionId: string | null };
+export type TaskFileRecord = { id: string; name: string; mimeType: string; size: number; status: string; submissionId: string | null };
 export type TaskDetail = TaskListItem & {
   projectBrief?: string;
   deliverables?: string[];
@@ -72,6 +73,7 @@ export type TaskDetail = TaskListItem & {
   canSubmit: boolean;
   canDelete: boolean;
   canCancel: boolean;
+  canRecover: boolean;
   people: TaskOption[];
   participantIds: string[];
   submissions: { id: string; note: string; value: TaskValue; createdAt: string; submittedBy: TaskOption; files: TaskFileRecord[] }[];
@@ -79,12 +81,13 @@ export type TaskDetail = TaskListItem & {
   history: { id: string; action: string; note: string; createdAt: string; actor: TaskOption }[];
 };
 export type TaskMutation = {
-  action: "START" | "DECLINE" | "SUBMIT" | "ACCEPT" | "REJECT" | "CORRECTIONS" | "CANCEL" | "REASSIGN" | "MANAGE" | "COMMENT" | "DELETE";
+  action: "START" | "DECLINE" | "SUBMIT" | "ACCEPT" | "REJECT" | "CORRECTIONS" | "CANCEL" | "REASSIGN" | "MANAGE" | "COMMENT" | "DELETE" | "RECOVER";
   version: number;
   note?: string;
   value?: TaskValue;
   fileIds?: string[];
   assigneeId?: string;
+  ownerId?: string;
   coOwnerId?: string | null;
   participantIds?: string[];
   dueAt?: string | null;
@@ -99,6 +102,7 @@ export const TASK_KIND_LABELS = { FIELD_INPUT: "Field input", FILE_REQUEST: "Fil
 export type TaskFamilyFile = {
   key: string;
   name: string;
+  mimeType: string;
   size: number;
   source: TaskSource;
   taskTitle: string;
@@ -117,12 +121,15 @@ export type TaskFamilyDetail = {
   canSelectFinal: boolean;
   canDecideCycle: boolean;
   cycleDecision: "PENDING" | "REQUIRED" | "NOT_REQUIRED" | null;
+  importDestinations: TaskOption[];
+  imports: { id: string; fileName: string; sourceLabel: string; destinationLabel: string; importedBy: string; createdAt: string; href: string | null }[];
   history: { id: string; action: string; note: string; actor: TaskOption; createdAt: string; fileName: string | null }[];
 };
 export type TaskFamilyMutation = {
-  action: "SELECT_FINAL" | "DECIDE_CYCLE";
+  action: "SELECT_FINAL" | "DECIDE_CYCLE" | "IMPORT_FINAL";
   version: number;
   fileKey?: string;
+  destinationId?: string;
   decision?: "REQUIRED" | "NOT_REQUIRED";
   note?: string;
 };

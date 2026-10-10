@@ -1,5 +1,9 @@
 "use server";
 
+import { afterTaskMutation } from "@/lib/tasker/http";
+import { reviewChecklistResponse, type ChecklistReviewInput } from "@/lib/tasker/checklist-review";
+
+
 import { revalidatePath } from "next/cache";
 
 import { requireUser } from "@/lib/auth";
@@ -14,6 +18,7 @@ import {
 export async function acceptStageFiveChecklistRequestAction(requestId: string) {
   const user = await requireUser(`/requests/checklist/${requestId}`);
   const result = await acceptStageFiveChecklistRequest(user, requestId);
+  afterTaskMutation();
   revalidatePath(`/requests/checklist/${requestId}`);
   return result;
 }
@@ -24,6 +29,7 @@ export async function declineStageFiveChecklistRequestAction(input: {
 }) {
   const user = await requireUser(`/requests/checklist/${input.requestId}`);
   const result = await declineStageFiveChecklistRequest(user, input);
+  afterTaskMutation();
   revalidatePath(`/requests/checklist/${input.requestId}`);
   if (!("error" in result)) {
     revalidatePath(`/projects/${result.projectId}`);
@@ -46,6 +52,7 @@ export async function submitStageFiveChecklistResponseAction(input: {
 }) {
   const user = await requireUser(`/requests/checklist/${input.requestId}`);
   const result = await submitStageFiveChecklistResponse(user, input);
+  afterTaskMutation();
   revalidatePath(`/requests/checklist/${input.requestId}`);
   if (!("error" in result)) {
     revalidatePath(`/projects/${result.projectId}`);
@@ -57,6 +64,16 @@ export async function submitStageFiveChecklistResponseAction(input: {
       changedEntityId: input.requestId,
       actorId: user.id,
     });
+  }
+  return result;
+}
+
+export async function reviewStageFiveChecklistResponseAction(input: ChecklistReviewInput) {
+  const user = await requireUser(`/requests/checklist/${input.requestId}`);
+  const result = await reviewChecklistResponse(user, input);
+  if (!("error" in result)) {
+    afterTaskMutation();
+    revalidatePath(`/requests/checklist/${input.requestId}`);
   }
   return result;
 }

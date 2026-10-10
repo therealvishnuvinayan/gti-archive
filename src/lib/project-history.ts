@@ -6,8 +6,6 @@ import {
   AttachmentStatus,
   Prisma,
   ProjectExecutionType,
-  ProjectFileChecklistRequestChannel,
-  ProjectFileChecklistRequestWorkflowStatus,
   ProjectInquiryAttachmentField,
   ProjectRevisionStatus,
   ProjectWorkflowStageKey,
@@ -5214,24 +5212,11 @@ function getUploadAction(assetType: AttachmentAssetType) {
     : ActivityLogAction.ASSET_UPLOADED;
 }
 
-async function hasChecklistResponseUploadAccess(
-  user: AccessUser,
-  input: { requestId?: string; projectId: string },
-) {
+async function hasChecklistResponseUploadAccess(user: AccessUser, input: { requestId?: string; projectId: string }) {
   if (!input.requestId) return false;
-  const request = await withPrismaRetry(() =>
-    prisma.projectFileChecklistRequest.findFirst({
-      where: {
-        id: input.requestId,
-        projectId: input.projectId,
-        channel: ProjectFileChecklistRequestChannel.IN_APP,
-        workflowStatus: ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
-        ...(user.role === UserRole.SUPER_ADMIN ? {} : { recipientUserId: user.id }),
-      },
-      select: { id: true },
-    }),
-  );
-  return Boolean(request);
+  const { getStageFiveChecklistRequestUploadContext } = await import("@/lib/stage-five");
+  const context = await getStageFiveChecklistRequestUploadContext(user, input.requestId);
+  return context?.projectId === input.projectId;
 }
 
 async function hasStageSevenEvidenceUploadAccess(

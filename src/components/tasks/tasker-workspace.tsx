@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useParams, usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { Plus, ListTodo, Search, LoaderCircle, Paperclip, ArrowLeft, RefreshCw } from "lucide-react";
+import { Plus, ListTodo, Search, LoaderCircle, ArrowLeft, RefreshCw } from "lucide-react";
+import { TaskFileTools, TaskFileComparison } from "./tasker-file-tools";
 import { Button } from "@/components/ui/button";
 import { FlexibleDialog } from "@/components/projects/flexible-dialog";
 import { FileUploadDropzone } from "@/components/ui/file-upload-dropzone";
@@ -48,13 +49,13 @@ export function useTaskUpdates(reload: () => Promise<void>, enabled = true) {
     };
   }, [enabled, reload]);
 }
-export function CreateTask({ initialProject, sisterOf, sourceTitle, onClose, onCreated }: { initialProject?: TaskProjectRef; sisterOf?: TaskSource; sourceTitle?: string; onClose: () => void; onCreated: (id: string) => void }) {
+export function CreateTask({ initialProject, initialStageRef, sisterOf, sourceTitle, onClose, onCreated }: { initialProject?: TaskProjectRef; initialStageRef?: string; sisterOf?: TaskSource; sourceTitle?: string; onClose: () => void; onCreated: (id: string) => void }) {
   const formId = useId();
   const [projects, setProjects] = useState<Array<TaskProjectRef & { name: string }>>([]);
   const [project, setProject] = useState<TaskProjectRef | undefined>(initialProject);
   const [options, setOptions] = useState<TaskCreateOptions | null>(null);
   const [kind, setKind] = useState<TaskKind>("GENERAL"), [title, setTitle] = useState(sourceTitle ? `Revision: ${sourceTitle}`.slice(0, 160) : ""), [brief, setBrief] = useState("");
-  const [assigneeId, setAssigneeId] = useState(""), [coOwnerId, setCoOwnerId] = useState(""), [stageRef, setStageRef] = useState(""), [targetId, setTargetId] = useState(""), [destinationId, setDestinationId] = useState(""), [dueAt, setDueAt] = useState("");
+  const [assigneeId, setAssigneeId] = useState(""), [coOwnerId, setCoOwnerId] = useState(""), [stageRef, setStageRef] = useState(initialStageRef ?? ""), [targetId, setTargetId] = useState(""), [destinationId, setDestinationId] = useState(""), [dueAt, setDueAt] = useState("");
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   useEffect(() => {
     if (initialProject) return;
@@ -102,12 +103,15 @@ export function CreateTask({ initialProject, sisterOf, sourceTitle, onClose, onC
 function revisionHref(task: TaskListItem) { return task.kind === "CONCEPT" ? `/tasks/concepts/${task.id}/revisions` : `/tasks/${task.id}/revisions`; }
 function TaskRow({ task, now }: { task: TaskListItem; now: number }) {
   return <article className="flex flex-wrap items-center justify-between gap-4 py-4">
-    <Link href={task.href} className="min-w-0 flex-1 rounded-lg hover:bg-[#fafcf9] focus-visible:outline-2 focus-visible:outline-green-700"><p className="text-xs text-[#6a8272]">{task.project.name} · {TASK_KIND_LABELS[task.kind]}{task.stageLabel ? ` · ${task.stageLabel}` : ""}{task.family ? task.family.sisterNumber ? ` · Sister Task ${task.family.sisterNumber}` : " · Parent task" : ""}</p><p className="mt-1 break-words font-semibold text-[#26392b]">{task.title}</p><p className="mt-1 text-xs text-[#7a837c]">{task.owner.label} → {task.assignee.label}</p></Link>
+    <Link href={task.href} className="min-w-0 flex-1 rounded-lg hover:bg-[#fafcf9] focus-visible:outline-2 focus-visible:outline-green-700"><p className="text-xs text-[#6a8272]">{task.project.name} · {TASK_KIND_LABELS[task.kind]}{task.stageLabel ? ` · ${task.stageLabel}` : ""}{task.family ? task.family.sisterNumber ? ` · Sister Task ${task.family.sisterNumber}` : " · Parent task" : ""}</p><p className="mt-1 break-words font-semibold text-[#26392b]">{task.title}</p><p className="mt-1 text-xs text-[#7a837c]">{task.owner.label} → {task.assignee.label}</p>{Boolean(task.unavailableParticipants?.length) && <p className="mt-2 text-xs font-medium text-amber-800">Needs attention: {task.unavailableParticipants!.join(", ")} no longer in this project.</p>}</Link>
     <div className="flex flex-wrap items-center gap-3 text-xs"><span className={`rounded-full px-3 py-1.5 ${task.status === "COMPLETED" ? "bg-green-50 text-green-800" : task.status === "IN_REVIEW" ? "bg-amber-50 text-amber-800" : "bg-slate-100 text-slate-600"}`}>{TASK_STATUS_LABELS[task.status]}</span>{task.dueAt && <span className={!ended(task.status) && Date.parse(task.dueAt) < now ? "text-red-700" : "text-slate-500"}>{new Date(task.dueAt).toLocaleDateString()}</span>}<Link href={revisionHref(task)} className="font-semibold text-[#26734d] underline">Sister Tasks &amp; files</Link></div>
   </article>;
 }
 
 export function TaskerWorkspace({ project, currentUserId, initialTasks, compact = false }: { project?: TaskProjectRef; currentUserId: string; initialTasks?: TaskListItem[]; compact?: boolean }) {
+  const routeParams = useParams<{ milestoneId?: string }>();
+  const pathname = usePathname();
+  const contextStage = project?.projectType === "FLEXIBLE" ? routeParams.milestoneId ?? "project" : pathname.match(/\/stages\/([1-7])(?:\/|$)/)?.[1];
   const [tasks, setTasks] = useState(initialTasks ?? []), [loading, setLoading] = useState(!initialTasks), [error, setError] = useState("");
   const [unavailable, setUnavailable] = useState(false), [creating, setCreating] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -142,7 +146,7 @@ export function TaskerWorkspace({ project, currentUserId, initialTasks, compact 
       })}</div>}
     </div>
     <Button className="fixed bottom-6 right-5 z-40 rounded-full shadow-lg sm:right-8" onClick={() => setCreating(true)} aria-label="Create Tasker task"><Plus className="h-5 w-5" /><span className="hidden sm:inline">Create task</span></Button>
-    {creating && <CreateTask initialProject={project} onClose={() => setCreating(false)} onCreated={() => { setCreating(false); void reload(); }} />}
+    {creating && <CreateTask initialProject={project} initialStageRef={contextStage} onClose={() => setCreating(false)} onCreated={() => { setCreating(false); void reload(); }} />}
   </section>;
 }
 
@@ -165,7 +169,7 @@ function FieldInput({ field, value, onChange }: { field: TaskField; value: TaskV
   return <Input aria-label={field.label} type={field.control === "number" ? "number" : "text"} value={String(value ?? "")} onChange={(e) => onChange(e.target.value)} />;
 }
 
-function ValueDisplay({ value, field }: { value: TaskValue; field: TaskField | null }) {
+export function ValueDisplay({ value, field }: { value: TaskValue; field: TaskField | null }) {
   if (value == null || value === "") return <span className="text-slate-400">No value</span>;
   if (field?.control === "textarea" && typeof value === "string") return <RichTextContent value={value} />;
   if (typeof value === "object" && !Array.isArray(value) && "saved" in value) return <div className="grid gap-2"><div><p className="text-xs font-semibold">Saved field</p><ValueDisplay value={value.saved} field={field} /></div><div><p className="text-xs font-semibold">Open form drafts</p>{Array.isArray(value.unsaved) && value.unsaved.map((v, i) => <div key={i}><ValueDisplay value={v} field={field} /></div>)}</div></div>;
@@ -178,6 +182,7 @@ export function TaskerDetailWorkspace({ initialTask }: { initialTask: TaskDetail
   const [task, setTask] = useState(initialTask), [error, setError] = useState(""), [busy, setBusy] = useState(false), [notice, setNotice] = useState("");
   const [note, setNote] = useState(""), [value, setValue] = useState<TaskValue>(null), [comment, setComment] = useState(""), [conflictReviewed, setConflictReviewed] = useState(false);
   const [assigneeId, setAssigneeId] = useState(initialTask.assignee.id), [coOwnerId, setCoOwnerId] = useState(initialTask.coOwner?.id ?? ""), [dueAt, setDueAt] = useState(initialTask.dueAt?.slice(0, 10) ?? ""), [observers, setObservers] = useState(initialTask.participantIds);
+  const [recoveryOwnerId, setRecoveryOwnerId] = useState(initialTask.owner.id);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const reload = useCallback(async () => {
     const result = await api<{ task: TaskDetail }>(`/api/tasker/${initialTask.id}`);
@@ -208,15 +213,13 @@ export function TaskerDetailWorkspace({ initialTask }: { initialTask: TaskDetail
     } catch (e) { setError((e as Error).message); }
     finally { await reload().catch(() => undefined); setBusy(false); }
   }
-  async function download(fileId: string) {
-    try { const result = await api<{ url: string }>(`/api/tasker/${task.id}/files?fileId=${encodeURIComponent(fileId)}`); window.location.assign(result.url); }
-    catch (e) { setError((e as Error).message); }
-  }
+  const viewFile = (file: TaskDetail["pendingFiles"][number], label = file.name) => ({ ...file, label, path: `/api/tasker/${task.id}/files?fileId=${encodeURIComponent(file.id)}` });
   return <section className="mx-auto grid w-full max-w-[1100px] gap-5 pb-10">
     <Link href="/tasks" className="flex items-center gap-2 text-sm text-[#458565]"><ArrowLeft className="h-4 w-4" />Tasks</Link>
     <header className={panelClass}><div className="flex flex-wrap justify-between gap-3"><div><p className="text-xs text-[#63816e]">{task.project.name} · {TASK_KIND_LABELS[task.kind]}{task.stageLabel ? ` · ${task.stageLabel}` : ""}</p><h1 className="mt-2 text-2xl font-semibold">{task.title}</h1></div><span className="h-fit rounded-full bg-[#eef5ef] px-3 py-2 text-sm text-[#376045]">{TASK_STATUS_LABELS[task.status]}</span></div><p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-slate-700">{task.brief}</p><p className="mt-4 text-xs text-slate-500">Owner: {task.owner.label} · Assigned to: {task.assignee.label}{task.coOwner ? ` · Co-owner: ${task.coOwner.label}` : ""}{task.dueAt ? ` · Due ${new Date(task.dueAt).toLocaleDateString()}` : ""}</p>{task.field && <p className="mt-3 text-sm font-medium">Requested input: {task.field.label}</p>}{task.destination && <p className="mt-3 text-sm">Destination: {task.destination}</p>}<Link href={revisionHref(task)} className="mt-4 inline-block text-sm font-semibold text-[#26734d] underline">Create a Sister Task or choose the final file</Link></header>
     {(task.projectBrief || task.deliverables?.length || task.referenceFolders?.length) ? <details className={panelClass}><summary className="cursor-pointer font-semibold">Project brief, deliverables and files</summary><div className="mt-4 grid gap-4 text-sm">{task.projectBrief && <RichTextContent value={task.projectBrief} />}{Boolean(task.deliverables?.length) && <ul className="list-inside list-disc">{task.deliverables?.map((d) => <li key={d}>{d}</li>)}</ul>}<div className="flex flex-wrap gap-2">{task.referenceFolders?.map((f) => <Link key={f.id} href={f.href} className="rounded-lg bg-green-50 px-3 py-2 text-green-800">{f.label}</Link>)}</div></div></details> : null}
     {error && <ErrorNote>{error}</ErrorNote>}{notice && <p role="status" className="rounded-xl bg-green-50 p-3 text-sm text-green-800">{notice}</p>}
+    {Boolean(task.unavailableParticipants?.length) && <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><p>{task.unavailableParticipants!.join(", ")} no longer in this project. A task manager can reassign an unavailable recipient; the project owner can recover an abandoned task or cancel it.</p>{task.canRecover && <div className="mt-4 grid gap-3"><TaskSelect label="Recovery task owner" value={recoveryOwnerId} onChange={setRecoveryOwnerId} options={task.people} /><TaskSelect label="Recovery recipient" value={assigneeId} onChange={setAssigneeId} options={task.people} /><Textarea aria-label="Task recovery reason" placeholder="Explain the reassignment" value={note} onChange={(e) => setNote(e.target.value)} /><Button className="w-fit" disabled={busy || !note.trim() || !task.people.some((p) => p.id === recoveryOwnerId) || !task.people.some((p) => p.id === assigneeId)} onClick={() => void mutate("RECOVER", { ownerId: recoveryOwnerId, assigneeId })}>Recover task</Button></div>}</div>}
     {task.canSubmit && <div className={panelClass}><h2 className="mb-4 text-lg font-semibold">Your response</h2><div className="grid gap-4">
       {task.field && <><p className="text-sm text-slate-500">{task.field.help}</p><FieldInput field={task.field} value={value} onChange={setValue} /></>}
       <Label title="Response / message"><Textarea aria-label="Response / message" rows={4} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Add context for the task owner." /></Label>
@@ -224,7 +227,8 @@ export function TaskerDetailWorkspace({ initialTask }: { initialTask: TaskDetail
       {task.pendingFiles.filter((f) => f.status !== "DELETED").map((f) => <div key={f.id} className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 p-3 text-sm"><span>{f.name} · {f.status === "READY" ? "Ready" : "Upload incomplete"}</span><Button variant="ghost" disabled={busy} onClick={async () => { try { await api(`/api/tasker/${task.id}/files`, { action: "DISCARD", fileId: f.id }); await reload(); } catch (e) { setError((e as Error).message); } }}>Remove</Button></div>)}
       <div className="flex flex-wrap gap-3">{task.status === "ASSIGNED" && <Button variant="secondary" disabled={busy} onClick={() => void mutate("START")}>Accept task</Button>}<Button disabled={busy} onClick={() => void mutate("SUBMIT", { value: value ?? (task.field?.control === "boolean" ? false : task.field?.control === "checklist" ? {} : ""), fileIds: task.pendingFiles.filter((f) => f.status === "READY").map((f) => f.id) })}>{busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}Submit for review</Button><Button variant="ghost" disabled={busy || !note.trim()} onClick={() => void mutate("DECLINE")}>Decline with reason</Button></div>
     </div></div>}
-    {task.submissions.length > 0 && <div className={panelClass}><div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-semibold">Submissions</h2><Link className="text-sm font-semibold text-[#26734d] underline" href={`/tasks/${task.id}/revisions`}>Sister Tasks and final file</Link></div><div className="grid gap-4">{task.submissions.map((s, index) => <article key={s.id} className="rounded-xl border p-4"><p className="mb-3 text-xs text-slate-500">{index === 0 ? "Latest · " : ""}{s.submittedBy.label} · {new Date(s.createdAt).toLocaleString()}</p>{task.field && <div className="mb-2 text-sm"><ValueDisplay value={s.value} field={task.field} /></div>}<p className="whitespace-pre-wrap text-sm">{s.note}</p><div className="mt-3 flex flex-wrap gap-2">{s.files.map((f) => <button key={f.id} onClick={() => void download(f.id)} className="flex items-center gap-2 rounded-lg bg-[#eff6f0] p-2 text-xs text-green-800"><Paperclip className="h-3 w-3" />{f.name}</button>)}</div></article>)}</div></div>}
+    {task.submissions.length > 0 && <div className={panelClass}><div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-semibold">Submissions</h2><Link className="text-sm font-semibold text-[#26734d] underline" href={`/tasks/${task.id}/revisions`}>Sister Tasks and final file</Link></div><div className="grid gap-4">{task.submissions.map((s, index) => <article key={s.id} className="rounded-xl border p-4"><p className="mb-3 text-xs text-slate-500">{index === 0 ? "Latest · " : ""}{s.submittedBy.label} · {new Date(s.createdAt).toLocaleString()}</p>{task.field && <div className="mb-2 text-sm"><ValueDisplay value={s.value} field={task.field} /></div>}<p className="whitespace-pre-wrap text-sm">{s.note}</p><div className="mt-3 flex flex-wrap gap-2">{s.files.map((f) => <div key={f.id} className="flex max-w-full flex-wrap items-center gap-2 rounded-lg bg-[#eff6f0] p-2 text-xs text-green-800"><span className="break-all">{f.name}</span><TaskFileTools file={viewFile(f)} /></div>)}</div></article>)}</div></div>}
+    <TaskFileComparison files={task.submissions.flatMap((s) => s.files.map((f) => viewFile(f, `${new Date(s.createdAt).toLocaleString()} · ${f.name}`)))} />
     {task.canReview && <div className={panelClass}><h2 className="mb-4 text-lg font-semibold">Review submission</h2>
       {task.hasConflict && <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm"><p className="mb-2 font-medium">The field changed while this task was pending.</p><p className="mb-2 text-xs">Current value:</p><ValueDisplay value={task.currentValue} field={task.field} /><label className="mt-4 flex items-start gap-2"><input type="checkbox" className="accent-[#26734d]" checked={conflictReviewed} onChange={(e) => setConflictReviewed(e.target.checked)} />I reviewed the current value and want to replace it with this submission.</label></div>}
       <Label title="Review note (required for corrections or rejection)"><Textarea aria-label="Review note (required for corrections or rejection)" value={note} onChange={(e) => setNote(e.target.value)} rows={3} /></Label><div className="mt-4 flex flex-wrap gap-3"><Button disabled={busy || task.hasConflict && !conflictReviewed} onClick={() => void mutate("ACCEPT", { ...(task.hasConflict && conflictReviewed ? { conflictToken: task.conflictToken! } : {}) })}>Accept submission</Button><Button variant="secondary" disabled={busy || !note.trim()} onClick={() => void mutate("CORRECTIONS")}>Request corrections</Button><Button variant="ghost" disabled={busy || !note.trim()} onClick={() => void mutate("REJECT")}>Reject submission</Button></div>

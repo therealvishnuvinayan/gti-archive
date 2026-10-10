@@ -11,7 +11,7 @@ import type { TaskCreateInput, TaskCreateOptions, TaskDetail, TaskField, TaskLis
 
 export const terminalTaskStatuses: TaskStatus[] = ["COMPLETED", "REJECTED", "CANCELLED"];
 const personSelect = { id: true, name: true, email: true } as const;
-export const taskInclude = { originalFamily: { select: { id: true } }, owner: { select: personSelect }, assignee: { select: personSelect }, coOwner: { select: personSelect }, participants: { select: { userId: true } }, project: { select: { name: true, ownerId: true, coOwners: { select: { userId: true } } } }, flexibleProject: { select: { name: true, ownerId: true } } } satisfies Prisma.TaskerTaskInclude;
+export const taskInclude = { originalFamily: { select: { id: true } }, owner: { select: personSelect }, assignee: { select: personSelect }, coOwner: { select: personSelect }, participants: { select: { userId: true } }, project: { select: { name: true, ownerId: true, coOwners: { select: { userId: true } }, executors: { select: { userId: true } } } }, flexibleProject: { select: { name: true, ownerId: true, collaborators: { select: { userId: true } } } } } satisfies Prisma.TaskerTaskInclude;
 type TaskRecord = Prisma.TaskerTaskGetPayload<{ include: typeof taskInclude }>;
 const option = (u: { id: string; name: string | null; email: string }) => ({ id: u.id, label: u.name || u.email });
 export const taskProjectRef = (task: Pick<TaskerTask, "projectId" | "flexibleProjectId">): TaskProjectRef => task.projectId ? { projectType: "STRUCTURED", projectId: task.projectId } : { projectType: "FLEXIBLE", projectId: task.flexibleProjectId! };
@@ -132,10 +132,16 @@ export async function loadTaskForUser(db: TaskDb, user: PermissionUser, taskId: 
   return { task, context };
 }
 
+function unavailableParticipants(task: TaskRecord) {
+  if (terminalTaskStatuses.includes(task.status)) return [];
+  const ids = new Set(task.project ? [task.project.ownerId, ...task.project.coOwners.map((p) => p.userId), ...task.project.executors.map((p) => p.userId)] : [task.flexibleProject?.ownerId, ...(task.flexibleProject?.collaborators.map((p) => p.userId) ?? [])]);
+  return [{ id: task.ownerId, label: "Task owner" }, { id: task.assigneeId, label: "Recipient" }, ...(task.coOwnerId ? [{ id: task.coOwnerId, label: "Task co-owner" }] : [])].filter((p) => !ids.has(p.id)).map((p) => p.label);
+}
+
 export function listItem(task: TaskRecord, userId: string): TaskListItem {
   const ref = taskProjectRef(task);
   const showStage = task.project?.ownerId === userId || task.project?.coOwners.some((c) => c.userId === userId) || task.flexibleProject?.ownerId === userId;
-  return { ...(task.parentFamilyId ? { family: { id: task.parentFamilyId, sisterNumber: task.sisterNumber! } } : task.originalFamily ? { family: { id: task.originalFamily.id, sisterNumber: 0 } } : {}), id: task.id, title: task.title, kind: task.kind, status: task.status, project: { ...ref, name: task.project?.name ?? task.flexibleProject?.name ?? "Project" }, ...(showStage && task.stageRef ? { stageLabel: ref.projectType === "STRUCTURED" ? `Stage ${task.stageRef}` : "Milestone task" } : {}), owner: option(task.owner), assignee: option(task.assignee), coOwner: task.coOwner ? option(task.coOwner) : null, dueAt: task.dueAt?.toISOString() ?? null, updatedAt: task.updatedAt.toISOString(), href: `/tasks/${task.id}`, viewOnly: !isManager(task, userId) && task.assigneeId !== userId };
+  return { ...(task.parentFamilyId ? { family: { id: task.parentFamilyId, sisterNumber: task.sisterNumber! } } : task.originalFamily ? { family: { id: task.originalFamily.id, sisterNumber: 0 } } : {}), id: task.id, title: task.title, kind: task.kind, status: task.status, unavailableParticipants: unavailableParticipants(task), project: { ...ref, name: task.project?.name ?? task.flexibleProject?.name ?? "Project" }, ...(showStage && task.stageRef ? { stageLabel: ref.projectType === "STRUCTURED" ? `Stage ${task.stageRef}` : "Milestone task" } : {}), owner: option(task.owner), assignee: option(task.assignee), coOwner: task.coOwner ? option(task.coOwner) : null, dueAt: task.dueAt?.toISOString() ?? null, updatedAt: task.updatedAt.toISOString(), href: `/tasks/${task.id}`, viewOnly: !isManager(task, userId) && task.assigneeId !== userId };
 }
 
 export async function listTasks(user: PermissionUser, ref?: TaskProjectRef): Promise<TaskListItem[]> {
@@ -204,7 +210,7 @@ export async function createTask(user: PermissionUser, input: TaskCreateInput) {
     const stageRef = target?.stageRef ?? input.stageRef ?? null;
     if (stageRef) taskAssert(context.stages.some((s) => s.id === stageRef), "Choose a valid stage or milestone.");
     if (target?.scope === "checklist") {
-      const pendingChecklistRequests = await db.projectFileChecklistRequest.count({ where: { checklistId: target.recordId, fieldKey: target.key as ProjectFileChecklistField, workflowStatus: { in: ["REQUESTED", "ACCEPTED"] } } });
+      const pendingChecklistRequests = await db.projectFileChecklistRequest.count({ where: { checklistId: target.recordId, fieldKey: target.key as ProjectFileChecklistField, workflowStatus: { in: ["REQUESTED", "ACCEPTED", "IN_REVIEW", "CORRECTIONS_REQUESTED"] } } });
       taskAssert(!pendingChecklistRequests, "This field already has a pending checklist information request.", 409);
     }
     const task = await db.taskerTask.create({ data: {
@@ -232,17 +238,18 @@ export async function getTaskDetail(user: PermissionUser, taskId: string): Promi
   const token = target ? fieldToken(target) : null;
   const hasConflict = Boolean(target && stableJson(fieldSnapshot(target)) !== stableJson(task.targetSnapshot));
   const active = !terminalTaskStatuses.includes(task.status);
-  const fileRecord = (f: { id: string; originalFileName: string; fileSize: number; status: string; submissionId: string | null }) => ({ id: f.id, name: f.originalFileName, size: f.fileSize, status: f.status, submissionId: f.submissionId });
+  const fileRecord = (f: { id: string; originalFileName: string; mimeType: string; fileSize: number; status: string; submissionId: string | null }) => ({ id: f.id, name: f.originalFileName, mimeType: f.mimeType, size: f.fileSize, status: f.status, submissionId: f.submissionId });
   const showStage = context.ownerId === user.id || context.coOwnerIds.includes(user.id);
+  const canRecover = active && context.ownerId === user.id && unavailableParticipants(task).length > 0;
   const canReview = isManager(task, user.id) && task.status === "IN_REVIEW";
   return { ...listItem(task, user.id), version: task.version, brief: task.brief,
     projectBrief: context.projectBrief, deliverables: context.deliverables, referenceFolders: context.referenceFolders,
     field: target ? publicTaskField(target, showStage) : task.targetDefinition ? publicTaskField(task.targetDefinition as unknown as TaskField, showStage) : null,
     currentValue: canReview && target ? target.draftValues?.length ? { saved: target.value, unsaved: target.draftValues } : target.value : null, conflictToken: canReview ? token : null, hasConflict: canReview && hasConflict,
     destination: context.destinations.find((d) => d.id === task.destinationId)?.label ?? null,
-    canManage: isManager(task, user.id) && active, canReview, canSubmit: task.assigneeId === user.id && active && task.status !== "IN_REVIEW",
+    canManage: isManager(task, user.id) && active, canRecover, canReview, canSubmit: task.assigneeId === user.id && active && task.status !== "IN_REVIEW",
     canCancel: active && (isManager(task, user.id) || context.ownerId === user.id), canDelete: context.ownerId === user.id,
-    people: isManager(task, user.id) ? context.people : [], participantIds: isManager(task, user.id) ? task.participants.map((p) => p.userId) : [],
+    people: isManager(task, user.id) || canRecover ? context.people : [], participantIds: isManager(task, user.id) ? task.participants.filter((p) => context.people.some((person) => person.id === p.userId)).map((p) => p.userId) : [],
     submissions: submissions.map((s) => ({ id: s.id, note: s.note, value: s.value as TaskValue, createdAt: s.createdAt.toISOString(), submittedBy: option(s.submittedBy), files: s.files.map(fileRecord) })),
     pendingFiles: pendingFiles.map(fileRecord), history: history.map((e) => ({ id: e.id, action: e.action, note: e.note, createdAt: e.createdAt.toISOString(), actor: option(e.actor) })),
   };
@@ -322,6 +329,18 @@ export async function mutateTask(user: PermissionUser, taskId: string, input: Ta
         taskAssert(manager || context.ownerId === user.id, "You cannot cancel this task.", 403);
         taskAssert(note, "Give a reason for cancellation.");
         data = { ...data, status: "CANCELLED", activeTargetKey: null };
+      } else if (input.action === "RECOVER") {
+        taskAssert(context.ownerId === user.id && unavailableParticipants(task).length, "Only the project owner can recover a task with unavailable participants.", 403);
+        taskAssert(note, "Explain why this task is being recovered.");
+        assertTaskParticipant(context, input.ownerId ?? "");
+        assertTaskParticipant(context, input.assigneeId ?? "");
+        // Recovery cannot replace an owner who still participates in the project.
+        taskAssert(input.ownerId === task.ownerId || !context.people.some((p) => p.id === task.ownerId), "The current task owner is still available.", 409);
+        if (task.destinationId) assertTaskDestination(context, task.destinationId, input.ownerId!, input.assigneeId!);
+        const coOwnerRemoved = task.coOwnerId && !context.people.some((p) => p.id === task.coOwnerId);
+        data = { ...data, owner: { connect: { id: input.ownerId! } }, assignee: { connect: { id: input.assigneeId! } }, ...(coOwnerRemoved ? { coOwner: { disconnect: true } } : {}), ...(task.status !== "IN_REVIEW" && input.assigneeId !== task.assigneeId ? { status: "ASSIGNED" } : {}) };
+        detail = { previousOwnerId: task.ownerId, ownerId: input.ownerId, previousAssigneeId: task.assigneeId, assigneeId: input.assigneeId, removedCoOwnerId: coOwnerRemoved ? task.coOwnerId : null };
+        extraRecipients = [input.ownerId!, input.assigneeId!];
       } else if (input.action === "REASSIGN") {
         taskAssert(manager, "Only the task owner or co-owner can reassign it.", 403);
         taskAssert(task.status !== "IN_REVIEW", "Review the current submission before reassigning the task.", 409);

@@ -1,5 +1,7 @@
 "use server";
 
+import { afterTaskMutation } from "@/lib/tasker/http";
+
 import { revalidatePath } from "next/cache";
 import {
   type ProjectFileChecklistField,
@@ -105,6 +107,7 @@ export async function requestStageFiveChecklistInformationAction(input: {
   const user = await requireUser();
   const result = await requestStageFiveChecklistInformation(user, input);
   revalidatePath(`/projects/${input.projectId}/stages/5`);
+  if (!("error" in result)) afterTaskMutation();
   return result;
 }
 
