@@ -39,6 +39,7 @@ export type TaskCreateInput = TaskProjectRef & {
   targetId?: string | null;
   destinationId?: string | null;
   dueAt?: string | null;
+  reminderIntervalHours?: number | null;
 };
 export type TaskListItem = {
   dependencyState?: { paused: boolean; pendingPauses: number };
@@ -60,6 +61,7 @@ export type TaskListItem = {
 };
 export type TaskFileRecord = { id: string; name: string; mimeType: string; size: number; status: string; submissionId: string | null };
 export type TaskDetail = TaskListItem & {
+  reminder: { intervalHours: number | null; nextAt: string | null; lastAt: string | null };
   projectBrief?: string;
   deliverables?: string[];
   referenceFolders?: Array<TaskOption & { href: string }>;
@@ -93,6 +95,7 @@ export type TaskMutation = {
   coOwnerId?: string | null;
   participantIds?: string[];
   dueAt?: string | null;
+  reminderIntervalHours?: number | null;
   conflictToken?: string;
 };
 export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {

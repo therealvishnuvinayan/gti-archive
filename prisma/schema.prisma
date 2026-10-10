@@ -2565,6 +2565,10 @@ model TaskerTask {
   activeTargetKey   String?             @unique
   destinationId     String?
   dueAt             DateTime?
+  reminderIntervalHours Int?
+  reminderNextAt    DateTime?
+  reminderLastAt    DateTime?
+  reminderGeneration Int                @default(0)
   version           Int                 @default(1)
   deletedAt         DateTime?
   completedAt       DateTime?
@@ -2579,6 +2583,7 @@ model TaskerTask {
   @@index([flexibleProjectId, updatedAt])
   @@index([ownerId, status, updatedAt])
   @@index([assigneeId, status, dueAt])
+  @@index([reminderNextAt, id])
   @@index([coOwnerId, updatedAt])
   @@unique([parentFamilyId, sisterNumber])
 }
@@ -2771,6 +2776,9 @@ model TaskerDelivery {
   userId      String
   user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   dedupeKey   String     @unique
+  // Present only for deadline reminders; stale outbox entries are skipped.
+  reminderGeneration Int?
+  reminderExpiresAt DateTime?
   subject     String
   message     String     @db.Text
   attempts    Int        @default(0)

@@ -8,6 +8,7 @@ import { canUseTasks } from "@/lib/permissions/resolver";
 import { conceptTaskAccessWhere, taskAccessWhere } from "./service";
 import { taskFamilyHref } from "./families";
 import { dependencyHref, dependencySourceRecord } from "./dependency-runtime";
+import { taskReminderDeliveryCurrent } from "./reminders";
 
 const escape = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 
@@ -39,6 +40,10 @@ export async function deliverTaskerEmails(options: { taskId?: string; limit?: nu
       if (!/^https?:\/\//.test(origin)) throw new Error("Set APP_URL or NEXT_PUBLIC_APP_URL for task email links.");
       const path = delivery.checklistRequestId ? `/requests/checklist/${delivery.checklistRequestId}` : delivery.dedupeKey.startsWith("tasker-dependency:") ? dependencyHref(source) : delivery.dedupeKey.startsWith("tasker-family:") ? taskFamilyHref(source) : `/tasks/${delivery.taskId}`;
       const href = new URL(path, origin).toString();
+      if (!await taskReminderDeliveryCurrent(delivery)) {
+        await prisma.taskerDelivery.updateMany({ where: { id: delivery.id, leaseToken }, data: { sentAt: new Date(), leaseToken: null, lastError: "Skipped: deadline reminder is no longer current." } });
+        continue;
+      }
       const result = await (options.send ?? sendResendEmail)({ to: user.email, subject: delivery.subject, text: `${delivery.message}\n\n${href}`, html: `<p>${escape(delivery.message)}</p><p><a href="${escape(href)}">Open task</a></p>`, idempotencyKey: delivery.dedupeKey });
       if (!result.ok) throw new Error(result.error || "Email delivery failed.");
       await prisma.taskerDelivery.updateMany({ where: { id: delivery.id, leaseToken }, data: { sentAt: new Date(), leaseToken: null, lastError: null } });

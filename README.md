@@ -154,7 +154,7 @@ delivery runs after the response; the authenticated
 `GET /api/cron/tasker-deliveries` retries failures every five minutes through
 `vercel.json`. Other hosts must schedule that endpoint with
 `Authorization: Bearer <CRON_SECRET>`. These retries are delivery recovery;
-recurring deadline reminders are deferred.
+the separate deadline reminder worker is described below.
 
 `pnpm tasker:integration-check` runs migrations and tests in a disposable local
 PostgreSQL cluster with mocked storage and email. It requires `initdb`, `pg_ctl`,
@@ -304,7 +304,52 @@ cycle support. The isolated Tasker suite covers owner-only access, all seven res
 points, flexible milestones, stale/concurrent requests, repeated closure, fresh
 approvals, sample review and snapshot/file preservation. The flexible-project test
 runner also uses a disposable local PostgreSQL cluster, with no application database
-connection. Recurring Tasker deadline reminders remain deferred.
+connection.
+
+## Tasker deadline reminders
+
+Field Input, File Request, General, Sister and Dependency Tasks can opt into
+**Deadline reminders** in Create Task or Manage task. The task owner/co-owner
+can select Off (the default), Every 24 hours, Every 48 hours or Every 72 hours.
+A deadline is required; removing it also turns reminders off. Existing tasks
+remain opted out. Native Stage 3/4 concept workflows and Stage 5/7 request
+reminder settings remain unchanged.
+
+The first reminder is queued after the deadline (the existing date-only Tasker
+deadline ends at 23:59:59.999 UTC). Subsequent reminders use the selected interval.
+The assignee receives both an in-app notification and an email while work is
+pending. While a submission awaits review, only the current task owner/co-owner
+are reminded. A change of responsible person or review state starts a new
+interval; changing the deadline or cadence recalculates the schedule. Removed
+participants and accounts without Tasker access are excluded.
+
+Approved dependency holds pause reminders; unapproved pause requests do not.
+Reminders resume when all approved blockers resolve, and stop when the task is
+completed, rejected, declined, cancelled or deleted. Independently active tasks
+continue after stage/project completion. Completing a task does not affect the
+separate schedules of its Sister Tasks or dependencies.
+
+Apply `20261010180000_tasker_deadline_reminders` before using this version.
+`GET /api/cron/tasker-reminders` requires `Authorization: Bearer <CRON_SECRET>`
+and is scheduled every 15 minutes in `vercel.json`. Other hosts must schedule it
+alongside the existing five-minute `/api/cron/tasker-deliveries` worker. The
+reminder endpoint queues notifications; the delivery worker sends/retries email.
+No real reminders run until a scheduler is configured and tasks opt in.
+
+Each invocation processes up to 50 due tasks and returns `processed`, `queued`
+(recipient count) and `failed`. Monitor non-2xx results; a consistently full batch
+needs more frequent invocations or additional runs to drain the backlog. Queuing
+is atomic and serialized with task changes, so overlapping runs do not duplicate
+notifications. Missed intervals produce one current reminder, never a catch-up
+burst. Failed emails retain their provider idempotency key and expire at the next
+interval. Delivery rechecks current task state, membership, permissions, recipient,
+deadline, cadence and approved holds to suppress stale queued reminders. Reminder
+activity does not change task versions or invalidate open forms. No task fields,
+submission contents or restricted stage details appear in reminder previews.
+
+The isolated Tasker suite covers cadence boundaries, concurrent cron/outbox runs,
+review/correction/reassignment routing, approved holds, cancellation/deletion,
+deadline changes, late tasks, flexible projects, Sister Tasks and delivery retries.
 
 ## Learn More
 

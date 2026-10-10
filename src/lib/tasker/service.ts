@@ -9,6 +9,7 @@ import { lockTaskerProject } from "./field-changes";
 import { prepareSisterTask, recordSisterTask } from "./families";
 import { linkTaskDependency } from "./dependencies";
 import { assertTaskNotPaused, dependencyState, resolveTaskDependencies } from "./dependency-runtime";
+import { firstReminderAt, reminderInterval, reminderScheduleChange } from "./reminder-schedule";
 import type { TaskCreateInput, TaskCreateOptions, TaskDetail, TaskField, TaskListItem, TaskMutation, TaskProjectRef, TaskStatus, TaskValue } from "./types";
 
 export const terminalTaskStatuses: TaskStatus[] = ["COMPLETED", "REJECTED", "CANCELLED"];
@@ -202,6 +203,8 @@ export async function createTask(user: PermissionUser, input: TaskCreateInput) {
   taskAssert(typeof input.projectId === "string" && input.projectId.length > 0 && input.projectId.length <= 200, "Choose a valid project.");
   const title = text(input.title, "Task title", 160, true), brief = text(input.brief, "Task brief", 20000, true);
   taskAssert(["FIELD_INPUT", "FILE_REQUEST", "GENERAL"].includes(input.kind), "Select a task type.");
+  const dueAt = dueDate(input.dueAt);
+  const reminderIntervalHours = reminderInterval(input.reminderIntervalHours, dueAt);
   return taskTransaction(async (db) => {
     await lockTaskerProject(db, input.projectId);
     const adapter = getTaskProjectAdapter(input.projectType);
@@ -226,9 +229,11 @@ export async function createTask(user: PermissionUser, input: TaskCreateInput) {
       title, brief, kind: input.kind, ownerId: user.id, assigneeId: input.assigneeId, coOwnerId: input.coOwnerId || null,
       stageRef, targetId: target?.id, targetDefinition: target ? json(publicTaskField(target)) : Prisma.DbNull,
       targetSnapshot: target ? json(fieldSnapshot(target)) : Prisma.DbNull, activeTargetKey: target ? `${input.projectType}:${input.projectId}:${target.id}` : null,
-      destinationId: input.kind === "FILE_REQUEST" ? input.destinationId : null, dueAt: dueDate(input.dueAt), participants: { create: observers.map((userId) => ({ userId })) },
+      destinationId: input.kind === "FILE_REQUEST" ? input.destinationId : null, dueAt,
+      reminderIntervalHours, reminderNextAt: reminderIntervalHours ? firstReminderAt(dueAt!, new Date()) : null,
+      participants: { create: observers.map((userId) => ({ userId })) },
     } });
-    await event(db, task, context, user.id, "ASSIGNED");
+    await event(db, task, context, user.id, "ASSIGNED", "", { dueAt: input.dueAt, reminderIntervalHours });
     if (sister) await recordSisterTask(db, user, task, sister.family, context);
     if (input.dependencyOf) await linkTaskDependency(db, user, input.dependencyOf.source, { type: "TASK", id: task.id }, input.dependencyOf.requestPause, input.dependencyOf.reason);
     return task.id;
@@ -252,6 +257,7 @@ export async function getTaskDetail(user: PermissionUser, taskId: string): Promi
   const canReview = isManager(task, user.id) && task.status === "IN_REVIEW";
   const hold = await dependencyState(prisma, { type: "TASK", id: taskId });
   return { ...listItem(task, user.id), dependencyState: hold, version: task.version, brief: task.brief,
+    reminder: { intervalHours: task.reminderIntervalHours, nextAt: task.reminderNextAt?.toISOString() ?? null, lastAt: task.reminderLastAt?.toISOString() ?? null },
     projectBrief: context.projectBrief, deliverables: context.deliverables, referenceFolders: context.referenceFolders,
     field: target ? publicTaskField(target, showStage) : task.targetDefinition ? publicTaskField(task.targetDefinition as unknown as TaskField, showStage) : null,
     currentValue: canReview && target ? target.draftValues?.length ? { saved: target.value, unsaved: target.draftValues } : target.value : null, conflictToken: canReview ? token : null, hasConflict: canReview && hasConflict,
@@ -370,11 +376,18 @@ export async function mutateTask(user: PermissionUser, taskId: string, input: Ta
         await db.taskerParticipant.createMany({ data: ids.map((userId) => ({ taskId, userId })) });
         if (input.coOwnerId !== undefined) data.coOwner = input.coOwnerId ? { connect: { id: input.coOwnerId } } : { disconnect: true };
         if (input.dueAt !== undefined) data.dueAt = dueDate(input.dueAt);
-        detail = { participantIds: ids, coOwnerId: input.coOwnerId === undefined ? task.coOwnerId : input.coOwnerId, dueAt: input.dueAt };
+        const deadline = input.dueAt === undefined ? task.dueAt : dueDate(input.dueAt);
+        data.reminderIntervalHours = reminderInterval(input.reminderIntervalHours === undefined ? deadline ? task.reminderIntervalHours : null : input.reminderIntervalHours, deadline);
+        detail = { participantIds: ids, coOwnerId: input.coOwnerId === undefined ? task.coOwnerId : input.coOwnerId, dueAt: input.dueAt, reminderIntervalHours: data.reminderIntervalHours };
       } else taskAssert(false, "Unknown task action.");
     }
     const updated = await db.taskerTask.update({ where: { id: task.id }, data });
+    const reminderChange = reminderScheduleChange(task, updated, new Date());
+    if (reminderChange) await db.taskerTask.update({ where: { id: task.id }, data: reminderChange });
     await event(db, updated, context, user.id, input.action, note, detail, extraRecipients);
+    if (input.action === "MANAGE" && task.reminderIntervalHours !== updated.reminderIntervalHours) {
+      await db.taskerEvent.create({ data: { taskId, actorId: user.id, action: "REMINDER_SETTINGS_CHANGED", note: updated.reminderIntervalHours ? `Deadline reminders enabled every ${updated.reminderIntervalHours} hours after the deadline.` : "Deadline reminders turned off." } });
+    }
     if (input.action === "DELETE" || terminalTaskStatuses.includes(updated.status)) {
       await resolveTaskDependencies(db, { type: "TASK", id: taskId }, user.id, input.action === "DELETE" ? "DELETED" : updated.status as "COMPLETED" | "REJECTED" | "CANCELLED");
     }

@@ -117,6 +117,30 @@ async function main() {
   assert(dependencyOwner.includes("Approve pause") && dependencyOwner.includes("Reject pause"));
   const pausedTask = renderToStaticMarkup(React.createElement(tasker.TaskerDetailWorkspace, { initialTask: { ...detail, canSubmit: false, dependencyState: { paused: true, pendingPauses: 0 } } }));
   assert(pausedTask.includes("Task paused for a dependency") && !pausedTask.includes("Submit for review") && pausedTask.includes("Send message"), "Holds block submissions while retaining discussion");
+  const reminderTask = renderToStaticMarkup(React.createElement(tasker.TaskerDetailWorkspace, { initialTask: { ...detail, canSubmit: false, dependencyState: { paused: true, pendingPauses: 0 }, reminder: { intervalHours: 24, nextAt: null, lastAt: null } } }));
+  assert(reminderTask.includes("Deadline reminders: paused for a dependency"));
+  const endedReminder = renderToStaticMarkup(React.createElement(tasker.TaskerDetailWorkspace, { initialTask: { ...detail, canSubmit: false, status: "COMPLETED", reminder: { intervalHours: 24, nextAt: null, lastAt: null } } }));
+  assert(endedReminder.includes("stopped because this task has ended"));
+  let cronCalls = 0, cronFailures = 0;
+  const cron = load("src/app/api/cron/tasker-reminders/route.ts", {
+    "node:crypto": require("node:crypto"),
+    "next/server": { NextResponse: { json: (body, init) => Response.json(body, init) } },
+    "@/lib/tasker/reminders": { processTaskDeadlineReminders: async () => { cronCalls++; return { processed: 1, queued: 1, failed: cronFailures }; } },
+  });
+  const previousSecret = process.env.CRON_SECRET;
+  try {
+    delete process.env.CRON_SECRET;
+    assert.equal((await cron.GET(new Request("https://example.test/api/cron/tasker-reminders"))).status, 401);
+    process.env.CRON_SECRET = "test-secret";
+    for (const authorization of ["", "Bearer wrong-value", "Bearer ééééééééééé", "test-secret"]) {
+      assert.equal((await cron.GET(new Request("https://example.test/api/cron/tasker-reminders", { headers: { authorization } }))).status, 401);
+    }
+    assert.equal(cronCalls, 0, "Unauthenticated requests never run the scheduler");
+    const request = () => new Request("https://example.test/api/cron/tasker-reminders", { headers: { authorization: "Bearer test-secret" } });
+    assert.equal((await cron.GET(request())).status, 200);
+    cronFailures = 1;
+    assert.equal((await cron.GET(request())).status, 500, "Queue failures remain visible to scheduler monitoring");
+  } finally { if (previousSecret === undefined) delete process.env.CRON_SECRET; else process.env.CRON_SECRET = previousSecret; }
   console.log("Tasker UI passed: all-role access, received/sent/co-owner/observer filters, search, concept links, recipient controls and conflict review.");
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });
