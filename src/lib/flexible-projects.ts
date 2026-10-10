@@ -553,7 +553,7 @@ export async function getFlexibleProjectDetail(slug: string, user: PermissionUse
     }),
   );
   const canManageProjectAccess = canManageFlexibleProject(user, accessContext);
-  const canManageMilestoneAccess = canManageFlexibleMilestones(user, accessContext);
+  const canManageMilestoneAccess = project.status !== "COMPLETED" && canManageFlexibleMilestones(user, accessContext);
 
   return {
     ...summary,
@@ -769,6 +769,9 @@ export async function createFlexibleMilestone(
 
   return orderingTransaction(async (tx) => {
     await lockFlexibleProject(tx, projectId);
+    const current = await tx.flexibleProject.findUniqueOrThrow({ where: { id: projectId }, include: { collaborators: { select: { userId: true } } } });
+    if (!canManageFlexibleMilestones(actor, current)) return { error: "You are no longer allowed to manage these milestones." };
+    if (current.status === "COMPLETED") return { error: "The project owner must use Reopen project before changing completed milestones." };
     if (!(await validateResponsibleUser(tx, projectId, parsed.data!.responsibleUserId))) {
       return { error: "The responsible user must be the owner or a project collaborator.", fieldErrors: { responsibleUserId: "Select a user associated with this project." } };
     }
@@ -889,6 +892,9 @@ export async function setFlexibleMilestoneCompleted(
   if (!canManageFlexibleMilestones(actor, project)) return { error: "You are not allowed to manage this project's milestones." };
   return orderingTransaction(async (tx) => {
     await lockFlexibleProject(tx, projectId);
+    const current = await tx.flexibleProject.findUniqueOrThrow({ where: { id: projectId }, include: { collaborators: { select: { userId: true } } } });
+    if (!canManageFlexibleMilestones(actor, current)) return { error: "You are no longer allowed to manage these milestones." };
+    if (current.status === "COMPLETED") return { error: "The project owner must use Reopen project before changing completed milestones." };
     const updated = await tx.flexibleMilestone.updateMany({
       where: { id: milestoneId, projectId },
       data: {
@@ -939,6 +945,9 @@ export async function duplicateFlexibleMilestone(
   if (!canManageFlexibleMilestones(actor, project)) return { error: "You are not allowed to manage this project's milestones." };
   return orderingTransaction(async (tx) => {
     await lockFlexibleProject(tx, projectId);
+    const current = await tx.flexibleProject.findUniqueOrThrow({ where: { id: projectId }, include: { collaborators: { select: { userId: true } } } });
+    if (!canManageFlexibleMilestones(actor, current)) return { error: "You are no longer allowed to manage these milestones." };
+    if (current.status === "COMPLETED") return { error: "The project owner must use Reopen project before changing completed milestones." };
     const original = await tx.flexibleMilestone.findFirst({ where: { id: milestoneId, projectId } });
     if (!original) return { error: "Milestone not found." };
     const maxOrder = await tx.flexibleMilestone.aggregate({ where: { projectId }, _max: { sortOrder: true } });
@@ -975,6 +984,9 @@ export async function deleteFlexibleMilestone(
   if (!canManageFlexibleMilestones(actor, project)) return { error: "You are not allowed to manage this project's milestones." };
   return orderingTransaction(async (tx) => {
     await lockFlexibleProject(tx, projectId);
+    const current = await tx.flexibleProject.findUniqueOrThrow({ where: { id: projectId }, include: { collaborators: { select: { userId: true } } } });
+    if (!canManageFlexibleMilestones(actor, current)) return { error: "You are no longer allowed to manage these milestones." };
+    if (current.status === "COMPLETED") return { error: "The project owner must use Reopen project before changing completed milestones." };
     const milestone = await tx.flexibleMilestone.findFirst({ where: { id: milestoneId, projectId }, select: { id: true, sortOrder: true } });
     if (!milestone) return { error: "Milestone not found." };
     await tx.flexibleMilestone.delete({ where: { id: milestone.id } });

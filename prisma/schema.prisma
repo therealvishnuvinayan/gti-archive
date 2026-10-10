@@ -439,6 +439,7 @@ enum FluxAiMessageRole {
 }
 
 model User {
+  projectReopenings ProjectReopening[]
   taskerOwnedTasks                    TaskerTask[]                         @relation("TaskerOwner")
   taskerAssignedTasks                 TaskerTask[]                         @relation("TaskerAssignee")
   taskerCoOwnedTasks                  TaskerTask[]                         @relation("TaskerCoOwner")
@@ -640,6 +641,8 @@ model RolePermission {
 }
 
 model Project {
+  reopenings             ProjectReopening[]
+  workflowCycle          Int @default(1)
   taskerFamilies         TaskerFamily[]
   taskerDependencies     TaskerDependency[]
   taskerTasks            TaskerTask[]
@@ -682,7 +685,7 @@ model Project {
   productionSupervisions ProjectProductionSupervision[]
   productionSampleRounds ProductionSampleRound[]
   requestReminders       RequestReminder[]
-  closure                ProjectClosure?
+  closures               ProjectClosure[]
   archive                ProjectArchive?
   archivedFiles          ArchivedProjectFile[]
   archiveArtworkMetadata ArchiveArtworkMetadata[]
@@ -708,6 +711,7 @@ model Project {
 }
 
 model FlexibleProject {
+  reopenings    ProjectReopening[]
   taskerFamilies TaskerFamily[]
   taskerDependencies TaskerDependency[]
   taskerTasks   TaskerTask[]
@@ -1215,7 +1219,7 @@ model ProjectStageFileHandoff {
   handedOffBy            User                    @relation("ProjectStageFileHandoffCreator", fields: [handedOffById], references: [id], onDelete: Restrict)
   handedOffAt            DateTime                @default(now())
   checklist              ProjectFileChecklist?
-  productionUnit         ProjectProductionUnit?
+  productionUnits        ProjectProductionUnit[]
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
 
@@ -1235,7 +1239,7 @@ model ProjectFileChecklist {
   sourceAttachment   ProjectAttachment             @relation("ProjectFileChecklistSourceAttachment", fields: [sourceAttachmentId], references: [id], onDelete: Cascade)
   items              ProjectFileChecklistItem[]
   requests           ProjectFileChecklistRequest[]
-  productionUnit     ProjectProductionUnit?
+  productionUnits    ProjectProductionUnit[]
   createdAt          DateTime                      @default(now())
   updatedAt          DateTime                      @updatedAt
 
@@ -1352,12 +1356,14 @@ model ProjectFileChecklistRequest {
 }
 
 model ProjectProductionUnit {
+  cycle              Int @default(1)
+  retiredAt          DateTime?
   id                 String                        @id @default(cuid())
   projectId          String
   project            Project                       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  sourceHandoffId    String                        @unique
+  sourceHandoffId    String
   sourceHandoff      ProjectStageFileHandoff       @relation(fields: [sourceHandoffId], references: [id], onDelete: Cascade)
-  sourceChecklistId  String                        @unique
+  sourceChecklistId  String
   sourceChecklist    ProjectFileChecklist          @relation(fields: [sourceChecklistId], references: [id], onDelete: Cascade)
   sourceAttachmentId String
   sourceAttachment   ProjectAttachment             @relation("ProjectProductionUnitSourceAttachment", fields: [sourceAttachmentId], references: [id], onDelete: Cascade)
@@ -1373,13 +1379,16 @@ model ProjectProductionUnit {
   createdAt          DateTime                      @default(now())
   updatedAt          DateTime                      @updatedAt
 
-  @@unique([projectId, sourceAttachmentId])
+  @@unique([projectId, sourceAttachmentId, cycle])
+  @@unique([sourceHandoffId, cycle])
+  @@unique([sourceChecklistId, cycle])
   @@index([projectId, status, createdAt])
   @@index([sourceChecklistId])
   @@index([createdById])
 }
 
 model ProjectProductionSupervision {
+  resumeAfterSequence Int @default(0)
   id               String                      @id @default(cuid())
   projectId        String
   project          Project                     @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -1588,8 +1597,9 @@ model ProductionSampleFeedback {
 }
 
 model ProjectClosure {
+  reopenedAt DateTime?
   id         String   @id @default(cuid())
-  projectId  String   @unique
+  projectId  String
   project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   closedById String
   closedBy   User     @relation("ProjectClosureCloser", fields: [closedById], references: [id], onDelete: Restrict)
@@ -1597,6 +1607,7 @@ model ProjectClosure {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
+  @@index([projectId, reopenedAt])
   @@index([closedById])
   @@index([closedAt])
 }
@@ -2070,6 +2081,7 @@ model FluxAiSearchHistory {
 }
 
 model ProjectAttachment {
+  reopeningFiles ProjectReopeningFile[]
   taskerImportId String? @unique
   taskerImport TaskerFileImport? @relation(fields: [taskerImportId], references: [id], onDelete: SetNull)
   id                         String                                @id @default(cuid())
@@ -2844,4 +2856,33 @@ model CalendarEvent {
   @@index([startAt])
   @@index([endAt])
   @@index([createdById])
+}
+
+// Append-only owner decisions and the completed workflow before each reopening.
+model ProjectReopening {
+  id          String            @id @default(cuid())
+  projectId    String?
+  project           Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  flexibleProjectId String?
+  flexibleProject   FlexibleProject? @relation(fields: [flexibleProjectId], references: [id], onDelete: Cascade)
+  actorId   String
+  actor     User       @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  targetRef         String
+  targetLabel       String
+  reason            String @db.Text
+  snapshot          Json
+  files             ProjectReopeningFile[]
+  createdAt   DateTime          @default(now())
+
+  @@index([projectId, createdAt])
+  @@index([flexibleProjectId, createdAt])
+}
+
+model ProjectReopeningFile {
+  reopeningId  String
+  reopening    ProjectReopening  @relation(fields: [reopeningId], references: [id], onDelete: Cascade)
+  attachmentId String
+  attachment   ProjectAttachment @relation(fields: [attachmentId], references: [id], onDelete: Restrict)
+
+  @@id([reopeningId, attachmentId])
 }

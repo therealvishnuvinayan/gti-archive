@@ -194,7 +194,7 @@ After production approval or handover exists, creating a revision or changing
 the selected file requests the project owner's decision about another cycle.
 The owner records a reason and whether a cycle is required. This decision does
 not start or reopen a workflow automatically. Dependency tasks and owner-approved
-pausing are delivered in Phase 3 below. Explicit project reopening remains later work.
+pausing are delivered in Phase 3 below. Explicit project reopening is described below.
 
 Apply `20261008180000_tasker_sister_tasks` before starting the updated app. The
 additive migration preserves existing task data. `pnpm tasker:integration-check`
@@ -230,7 +230,7 @@ Apply both `20261008215900_tasker_checklist_review_states` and
 The enum additions are separated so PostgreSQL commits them before the active
 request index uses them. No existing business records are deleted or rewritten.
 The isolated Tasker suite also runs the Stage 5 internal/external regression tests.
-Dependency tasks are delivered in Phase 3 below. Explicit project reopening remains later work.
+Dependency tasks are delivered in Phase 3 below. Explicit project reopening is described below.
 
 ## Universal Tasker — Phase 3
 
@@ -269,6 +269,42 @@ dependency and history tables and preserves existing data. The isolated
 nested dependencies, concurrent graph/decision/completion races, native workflow
 guards, flexible projects and notification checks. `pnpm tasks:ui-check` also
 covers dependency controls and paused-task discussion access.
+
+## Owner-controlled project reopening
+
+The project overview includes **Reopen project** for the current project owner
+when the project is completed. The owner chooses a stage or milestone and records
+a reason. Co-owners can read reopening decisions and stage summaries; full snapshots
+remain owner-only so unrelated task content stays private. Co-owners cannot reopen the project.
+Administrator status alone does not grant reopening authority.
+
+For structured projects, stages before the chosen stage stay completed, the chosen
+stage becomes available, and later stages lock until reached again. Resuming at
+Stage 6 or earlier starts a new production cycle: previous units, approvals and
+handovers remain retained, while new units require fresh approval through the
+existing workflow. Resuming at Stage 7 preserves production approvals and requires
+a new physical sample review. Previous sample requests remain read-only. Completing
+the project again adds a new closure record rather than replacing the old closure.
+
+For flexible projects, only the selected milestone becomes pending. The other
+milestones retain their completion state. Existing milestone actions cannot bypass
+owner-controlled reopening of a completed project.
+
+Each reopening preserves a completed-workflow snapshot, including stage states,
+inquiry/checklist values, concept history, issued approval/handover snapshots and
+archive metadata. History is available on the project overview, with an export of
+the complete record. Referenced files remain protected from deletion. Existing
+Tasker tasks, Sister Tasks and dependencies continue without being reset.
+Choosing a new final file or recording that another cycle is needed still does
+not reopen the project automatically.
+
+Apply `20261010150000_project_reopening` before running the updated application.
+The migration preserves existing data and adds reopening history and production
+cycle support. The isolated Tasker suite covers owner-only access, all seven resume
+points, flexible milestones, stale/concurrent requests, repeated closure, fresh
+approvals, sample review and snapshot/file preservation. The flexible-project test
+runner also uses a disposable local PostgreSQL cluster, with no application database
+connection. Recurring Tasker deadline reminders remain deferred.
 
 ## Learn More
 

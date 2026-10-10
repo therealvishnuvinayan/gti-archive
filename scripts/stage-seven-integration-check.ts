@@ -734,8 +734,8 @@ async function main() {
     const closure = await closeStageSevenProject(owner, { projectId: ids.project });
     check(!closure.duplicate, "all accepted units must permit manual project completion");
     check((await closeStageSevenProject(owner, { projectId: ids.project })).duplicate, "manual project completion must be idempotent");
-    const closedProject = await prisma.project.findUniqueOrThrow({ where: { id: ids.project }, include: { closure: true, workflowStages: true } });
-    check(Boolean(closedProject.closure && closedProject.completedAt), "completion audit and project completion time must persist");
+    const closedProject = await prisma.project.findUniqueOrThrow({ where: { id: ids.project }, include: { closures: { where: { reopenedAt: null } }, workflowStages: true } });
+    check(Boolean(closedProject.closures.length === 1 && closedProject.completedAt), "completion audit and project completion time must persist");
     check(closedProject.archivedAt === null && (await prisma.projectArchive.count({ where: { projectId: ids.project } })) === archiveCount, "closing Stage 7 must not archive the project");
     check(closedProject.workflowStages.find((stage) => stage.stageKey === ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION)?.status === ProjectWorkflowStageStatus.COMPLETED, "Stage 7 must become COMPLETED only after manual closure");
 

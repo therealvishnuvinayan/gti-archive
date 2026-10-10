@@ -1200,7 +1200,7 @@ async function getStageSixArchivableAttachments(
   tx?: Prisma.TransactionClient,
 ) {
   const query = {
-    where: { projectId },
+    where: { projectId, retiredAt: null },
     orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }],
     select: {
       id: true,

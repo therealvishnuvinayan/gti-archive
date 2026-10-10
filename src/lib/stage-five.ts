@@ -554,7 +554,7 @@ export async function deleteStageFiveSourceFile(
                 requests: { select: { id: true } },
               },
             },
-            productionUnit: { select: { id: true } },
+            productionUnits: { select: { id: true } },
           },
         });
 
@@ -562,7 +562,7 @@ export async function deleteStageFiveSourceFile(
           return { error: "The selected Stage 5 file was not found." } as const;
         }
 
-        if (handoff.productionUnit) {
+        if (handoff.productionUnits.length) {
           return {
             error: "This file cannot be deleted because Stage 6 production has started.",
           } as const;

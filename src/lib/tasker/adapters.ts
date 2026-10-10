@@ -74,7 +74,7 @@ const structuredAdapter: TaskProjectAdapter = {
       coOwners: { select: { userId: true } }, executors: { select: { userId: true } },
       inquiry: { include: { parties: true, deliverables: true, targetMarkets: true, attachments: { include: { attachment: true } } } },
       fileChecklists: { include: { sourceAttachment: { select: { originalFileName: true } }, items: { include: { attachments: { include: { attachment: true } } } } } },
-      productionUnits: { select: { id: true, sourceAttachment: { select: { id: true, originalFileName: true } }, files: { select: { attachment: { select: { id: true, originalFileName: true, status: true } } } } } },
+      productionUnits: { where: { retiredAt: null }, select: { id: true, sourceAttachment: { select: { id: true, originalFileName: true } }, files: { select: { attachment: { select: { id: true, originalFileName: true, status: true } } } } } },
     } });
     taskAssert(project?.ownerId, "Project not found.", 404);
     const participantOptions = await people(db, [project.ownerId, ...project.coOwners.map((u) => u.userId), ...project.executors.map((u) => u.userId)]);

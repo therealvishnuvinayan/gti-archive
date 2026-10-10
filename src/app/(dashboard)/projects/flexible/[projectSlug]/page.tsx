@@ -1,3 +1,4 @@
+import { ProjectReopeningSection } from "@/components/projects/project-reopening-section";
 import { notFound, redirect } from "next/navigation";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
@@ -34,6 +35,7 @@ export default async function FlexibleProjectPage({
         userOptions={userOptions}
         currentUserId={user.id}
       />
+      <ProjectReopeningSection user={user} project={{ projectType: "FLEXIBLE", projectId: project.id }} />
       <TaskerWorkspace project={{ projectType: "FLEXIBLE", projectId: project.id }} currentUserId={user.id} compact />
     </DashboardLayout>
   );
