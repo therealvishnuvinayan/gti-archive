@@ -7,6 +7,8 @@ import { getTaskProjectAdapter, assertTaskParticipant, assertTaskDestination, pu
 import { TaskerError, taskAssert } from "./errors";
 import { lockTaskerProject } from "./field-changes";
 import { prepareSisterTask, recordSisterTask } from "./families";
+import { linkTaskDependency } from "./dependencies";
+import { assertTaskNotPaused, dependencyState, resolveTaskDependencies } from "./dependency-runtime";
 import type { TaskCreateInput, TaskCreateOptions, TaskDetail, TaskField, TaskListItem, TaskMutation, TaskProjectRef, TaskStatus, TaskValue } from "./types";
 
 export const terminalTaskStatuses: TaskStatus[] = ["COMPLETED", "REJECTED", "CANCELLED"];
@@ -155,7 +157,12 @@ export async function listTasks(user: PermissionUser, ref?: TaskProjectRef): Pro
     prisma.taskerTask.findMany({ where, include: taskInclude }),
     ref?.projectType === "FLEXIBLE" ? Promise.resolve([]) : listConceptTasks(user, ref?.projectId),
   ]);
-  return [...tasks.map((task) => listItem(task, user.id)), ...concepts]
+  const items = [...tasks.map((task) => listItem(task, user.id)), ...concepts];
+  const dependencies = await prisma.taskerDependency.findMany({ where: { resolvedAt: null, pauseStatus: { in: ["REQUESTED", "APPROVED"] }, OR: items.map((t) => ({ mainType: t.kind === "CONCEPT" ? "CONCEPT" : "TASK", mainId: t.id })) }, select: { mainType: true, mainId: true, pauseStatus: true } });
+  return items.map((task) => {
+    const links = dependencies.filter((d) => d.mainId === task.id && d.mainType === (task.kind === "CONCEPT" ? "CONCEPT" : "TASK"));
+    return { ...task, dependencyState: { paused: links.some((d) => d.pauseStatus === "APPROVED"), pendingPauses: links.filter((d) => d.pauseStatus === "REQUESTED").length } };
+  })
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id));
 }
 
@@ -223,6 +230,7 @@ export async function createTask(user: PermissionUser, input: TaskCreateInput) {
     } });
     await event(db, task, context, user.id, "ASSIGNED");
     if (sister) await recordSisterTask(db, user, task, sister.family, context);
+    if (input.dependencyOf) await linkTaskDependency(db, user, input.dependencyOf.source, { type: "TASK", id: task.id }, input.dependencyOf.requestPause, input.dependencyOf.reason);
     return task.id;
   });
 }
@@ -242,12 +250,13 @@ export async function getTaskDetail(user: PermissionUser, taskId: string): Promi
   const showStage = context.ownerId === user.id || context.coOwnerIds.includes(user.id);
   const canRecover = active && context.ownerId === user.id && unavailableParticipants(task).length > 0;
   const canReview = isManager(task, user.id) && task.status === "IN_REVIEW";
-  return { ...listItem(task, user.id), version: task.version, brief: task.brief,
+  const hold = await dependencyState(prisma, { type: "TASK", id: taskId });
+  return { ...listItem(task, user.id), dependencyState: hold, version: task.version, brief: task.brief,
     projectBrief: context.projectBrief, deliverables: context.deliverables, referenceFolders: context.referenceFolders,
     field: target ? publicTaskField(target, showStage) : task.targetDefinition ? publicTaskField(task.targetDefinition as unknown as TaskField, showStage) : null,
     currentValue: canReview && target ? target.draftValues?.length ? { saved: target.value, unsaved: target.draftValues } : target.value : null, conflictToken: canReview ? token : null, hasConflict: canReview && hasConflict,
     destination: context.destinations.find((d) => d.id === task.destinationId)?.label ?? null,
-    canManage: isManager(task, user.id) && active, canRecover, canReview, canSubmit: task.assigneeId === user.id && active && task.status !== "IN_REVIEW",
+    canManage: isManager(task, user.id) && active, canRecover, canReview, canSubmit: !hold.paused && task.assigneeId === user.id && active && task.status !== "IN_REVIEW",
     canCancel: active && (isManager(task, user.id) || context.ownerId === user.id), canDelete: context.ownerId === user.id,
     people: isManager(task, user.id) || canRecover ? context.people : [], participantIds: isManager(task, user.id) ? task.participants.filter((p) => context.people.some((person) => person.id === p.userId)).map((p) => p.userId) : [],
     submissions: submissions.map((s) => ({ id: s.id, note: s.note, value: s.value as TaskValue, createdAt: s.createdAt.toISOString(), submittedBy: option(s.submittedBy), files: s.files.map(fileRecord) })),
@@ -266,6 +275,7 @@ export async function mutateTask(user: PermissionUser, taskId: string, input: Ta
     await lockTaskerProject(db, taskProjectRef(existing).projectId);
     const { task, context } = await loadTaskForUser(db, user, taskId);
     taskAssert(task.version === input.version, "This task changed. Refresh it and review the latest information.", 409);
+    if (["SUBMIT", "ACCEPT"].includes(input.action)) await assertTaskNotPaused(db, { type: "TASK", id: taskId });
     const manager = isManager(task, user.id), active = !terminalTaskStatuses.includes(task.status);
     let data: Prisma.TaskerTaskUpdateInput = { version: { increment: 1 } };
     let detail: unknown;
@@ -365,6 +375,9 @@ export async function mutateTask(user: PermissionUser, taskId: string, input: Ta
     }
     const updated = await db.taskerTask.update({ where: { id: task.id }, data });
     await event(db, updated, context, user.id, input.action, note, detail, extraRecipients);
+    if (input.action === "DELETE" || terminalTaskStatuses.includes(updated.status)) {
+      await resolveTaskDependencies(db, { type: "TASK", id: taskId }, user.id, input.action === "DELETE" ? "DELETED" : updated.status as "COMPLETED" | "REJECTED" | "CANCELLED");
+    }
     return { id: taskId, version: updated.version, deleted: input.action === "DELETE" };
   });
 }

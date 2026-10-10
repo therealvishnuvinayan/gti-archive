@@ -980,6 +980,7 @@ export function ConceptStageWorkspace({
                             ? "Changes Requested"
                             : stageNumber === 3 ? "Not Approved" : "In Progress"}
                   </span>
+                  {folder.dependencyPaused && <span className="mt-2 block text-xs font-semibold text-amber-800">Paused for dependency</span>}
                   {folder.canCompleteWithoutFile && !managementLocked ? <span className="mt-2 block"><CompleteConceptTaskButton projectId={project.id} folderId={folder.id} stageKey={stageKey} name={folder.name} completionRequest={folder.completionRequest} /></span> : null}
                   {folder.canRequestCompletion && !managementLocked ? <span className="mt-2 block"><RequestConceptCompletionButton projectId={project.id} folderId={folder.id} stageKey={stageKey} name={folder.name} /></span> : null}
                   {stageNumber === 3 && folder.approvedAttachment ? (

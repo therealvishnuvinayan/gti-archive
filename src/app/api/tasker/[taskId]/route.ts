@@ -13,7 +13,7 @@ export async function POST(request: Request, context: Context) {
     taskAssert(input && typeof input === "object", "Invalid task action.");
     const files = input.action === "ACCEPT" ? await prepareAcceptedTaskFiles(user, taskId, input.version) : [];
     const result = await mutateTask(user, taskId, input, files);
-    afterTaskMutation(taskId);
+    afterTaskMutation();
     return result;
   });
 }

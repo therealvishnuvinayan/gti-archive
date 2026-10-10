@@ -27,6 +27,7 @@ export type TaskCreateOptions = TaskProjectRef & {
   showStages: boolean;
 };
 export type TaskCreateInput = TaskProjectRef & {
+  dependencyOf?: { source: TaskSource; requestPause: boolean; reason: string };
   sisterOf?: TaskSource;
   kind: TaskKind;
   title: string;
@@ -40,6 +41,7 @@ export type TaskCreateInput = TaskProjectRef & {
   dueAt?: string | null;
 };
 export type TaskListItem = {
+  dependencyState?: { paused: boolean; pendingPauses: number };
   family?: { id: string; sisterNumber: number };
   id: string;
   title: string;
@@ -133,3 +135,31 @@ export type TaskFamilyMutation = {
   decision?: "REQUIRED" | "NOT_REQUIRED";
   note?: string;
 };
+
+export type TaskDependencyLink = {
+  id: string;
+  version: number;
+  direction: "REQUIRES" | "REQUIRED_BY";
+  relatedTask: { title: string; href: string } | null;
+  pauseStatus: "NONE" | "REQUESTED" | "APPROVED" | "REJECTED";
+  reason: string;
+  reviewNote: string | null;
+  outcome: string | null;
+  canRequestPause: boolean;
+  canReviewPause: boolean;
+  history: { id: string; action: string; note: string; actor: string; createdAt: string }[];
+};
+export type TaskDependencyDetail = {
+  source: TaskSource;
+  project: TaskProjectRef;
+  title: string;
+  href: string;
+  paused: boolean;
+  pendingPauses: number;
+  canCreate: boolean;
+  links: TaskDependencyLink[];
+  availableTasks: { source: TaskSource; title: string }[];
+};
+export type TaskDependencyMutation =
+  | { action: "LINK"; required: TaskSource; requestPause: boolean; reason: string }
+  | { action: "REQUEST_PAUSE" | "APPROVE_PAUSE" | "REJECT_PAUSE"; dependencyId: string; version: number; note: string };

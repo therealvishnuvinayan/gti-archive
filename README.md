@@ -193,8 +193,8 @@ workflow; no existing file, approval, or handover snapshot is replaced.
 After production approval or handover exists, creating a revision or changing
 the selected file requests the project owner's decision about another cycle.
 The owner records a reason and whether a cycle is required. This decision does
-not start or reopen a workflow automatically. Dependency tasks, owner-approved
-pausing, and explicit project reopening remain for the next phase.
+not start or reopen a workflow automatically. Dependency tasks and owner-approved
+pausing are delivered in Phase 3 below. Explicit project reopening remains later work.
 
 Apply `20261008180000_tasker_sister_tasks` before starting the updated app. The
 additive migration preserves existing task data. `pnpm tasker:integration-check`
@@ -230,7 +230,45 @@ Apply both `20261008215900_tasker_checklist_review_states` and
 The enum additions are separated so PostgreSQL commits them before the active
 request index uses them. No existing business records are deleted or rewritten.
 The isolated Tasker suite also runs the Stage 5 internal/external regression tests.
-Dependency tasks and project reopening are still outside this phase.
+Dependency tasks are delivered in Phase 3 below. Explicit project reopening remains later work.
+
+## Universal Tasker — Phase 3
+
+Open **Dependencies** from any Tasker row, task details, or the Stage 3/4 task
+header. Create a Field Input, File Request, or General dependency request, or link
+an existing task you can access in the same project. Sister relationships remain
+separate. Structured, flexible, and native Stage 3/4 tasks use the same dependency
+controls; linking tasks never grants access to another task or its files.
+
+**Create request** keeps the main task running. **Create request and ask to pause**
+creates the request and its pending pause decision atomically. The project owner
+alone approves or rejects pauses, including requests made by a task owner or
+co-owner. Rejection requires a reason. A rejected or nonblocking request can later
+request a pause, and all decisions remain in history.
+
+An approved pause is an overlay: the task retains its assignment, deadline,
+submissions and review state. Discussion, references and management remain
+available; submission and completion are blocked in the server transaction.
+Every approved blocker must resolve before the task automatically resumes.
+Submission or requested corrections do not resolve a dependency. Completion,
+rejection/decline, cancellation or deletion releases its blocker; unsuccessful
+outcomes remain visible. Ending the main task closes its pending pause decisions
+without cancelling the independent requests. Reopening a native task does not
+reactivate already-resolved dependencies.
+
+Project locks and version checks protect concurrent decisions, submissions,
+completion and graph changes. Self-links, duplicate links, cross-project links,
+and dependency cycles are rejected. History and in-app/email outbox notifications
+are written with each action. Native concept dependencies resolve through their
+existing approval/completion or deletion actions. These overlays do not add
+stage-completion blockers, change approval authority, or reopen projects.
+
+Apply `20261010120000_tasker_dependencies` before running the updated app. It adds
+dependency and history tables and preserves existing data. The isolated
+`pnpm tasker:integration-check` suite includes Phase 3 permissions, multiple and
+nested dependencies, concurrent graph/decision/completion races, native workflow
+guards, flexible projects and notification checks. `pnpm tasks:ui-check` also
+covers dependency controls and paused-task discussion access.
 
 ## Learn More
 

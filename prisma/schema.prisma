@@ -448,6 +448,7 @@ model User {
   taskerFiles                         TaskerFile[]
   taskerDeliveries                    TaskerDelivery[]
   taskerFamilyEvents                  TaskerFamilyEvent[]
+  taskerDependencyEvents              TaskerDependencyEvent[]
   id                                  String                               @id @default(cuid())
   email                               String                               @unique
   name                                String?
@@ -640,6 +641,7 @@ model RolePermission {
 
 model Project {
   taskerFamilies         TaskerFamily[]
+  taskerDependencies     TaskerDependency[]
   taskerTasks            TaskerTask[]
   taskerFieldChanges     TaskerFieldChange[]
   id                     String                         @id @default(cuid())
@@ -707,6 +709,7 @@ model Project {
 
 model FlexibleProject {
   taskerFamilies TaskerFamily[]
+  taskerDependencies TaskerDependency[]
   taskerTasks   TaskerTask[]
   id            String                        @id @default(cuid())
   slug          String                        @unique
@@ -2628,6 +2631,58 @@ model TaskerFamilyEvent {
   createdAt       DateTime     @default(now())
 
   @@unique([familyId, version])
+}
+
+enum TaskerPauseStatus {
+  NONE
+  REQUESTED
+  APPROVED
+  REJECTED
+}
+
+// Source identities survive native concept deletion so the other task retains
+// its dependency history. All links are validated under the project lock.
+model TaskerDependency {
+  id                String @id @default(cuid())
+  projectId         String?
+  project           Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  flexibleProjectId String?
+  flexibleProject   FlexibleProject? @relation(fields: [flexibleProjectId], references: [id], onDelete: Cascade)
+  mainType          String
+  mainId            String
+  requiredType      String
+  requiredId        String
+  pauseStatus       TaskerPauseStatus @default(NONE)
+  requestedById     String
+  reason            String @db.Text
+  reviewedById      String?
+  reviewNote        String? @db.Text
+  reviewedAt        DateTime?
+  resolvedAt        DateTime?
+  outcome           String?
+  version           Int @default(1)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  events            TaskerDependencyEvent[]
+
+  @@unique([mainType, mainId, requiredType, requiredId])
+  @@index([projectId, resolvedAt])
+  @@index([flexibleProjectId, resolvedAt])
+  @@index([mainType, mainId, resolvedAt, pauseStatus])
+  @@index([requiredType, requiredId, resolvedAt])
+}
+
+model TaskerDependencyEvent {
+  id           String @id @default(cuid())
+  dependencyId String
+  dependency   TaskerDependency @relation(fields: [dependencyId], references: [id], onDelete: Cascade)
+  actorId      String
+  actor        User @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  action       String
+  note         String @db.Text
+  createdAt    DateTime @default(now())
+
+  @@index([dependencyId, createdAt])
 }
 
 model TaskerParticipant {

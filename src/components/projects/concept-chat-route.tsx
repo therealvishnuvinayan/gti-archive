@@ -49,6 +49,7 @@ export async function ConceptChatRoute({
       : context.chatMode;
 
   if (canUseTasks(user) && await prisma.projectConceptFolder.count({ where: { id: folderId, ...conceptTaskAccessWhere(user, projectId) } })) {
+    conceptMode.dependenciesHref = `/tasks/concepts/${encodeURIComponent(folderId)}/dependencies`;
     conceptMode.sisterTasksHref = `/tasks/concepts/${encodeURIComponent(folderId)}/revisions`;
   }
 

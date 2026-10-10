@@ -1,3 +1,4 @@
+import { assertConceptNotPaused } from "@/lib/tasker/dependency-runtime";
 import { randomUUID } from "node:crypto";
 import { unstable_cache } from "next/cache";
 import {
@@ -3025,6 +3026,7 @@ export async function createStageRevision(
       const revisionNumber = reviewState.latestRevisionNumber + 1;
 
       return prisma.$transaction(async (tx) => {
+        await assertConceptNotPaused(tx, input.projectId, { stageId: input.stageId });
         const stagedAttachmentCount = await tx.projectAttachment.count({
           where: {
             id: { in: stagedAttachmentIds },

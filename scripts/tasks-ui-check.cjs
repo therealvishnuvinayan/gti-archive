@@ -106,6 +106,17 @@ async function main() {
   assert(familyRecipient.includes("Create Sister Task") && !familyRecipient.includes("Select final file") && !familyRecipient.includes("Record decision"));
   const familyOwner = renderToStaticMarkup(React.createElement(familyWorkspace, { initialFamily: { ...family, canSelectFinal: true, canDecideCycle: true, cycleDecision: "PENDING" } }));
   assert(familyOwner.includes("Select final file") && familyOwner.includes("Record decision") && familyOwner.includes("Previous records remain intact"));
+  const dependencyWorkspace = load("src/components/tasks/tasker-dependency-workspace.tsx", {
+    ...mocks, "./tasker-workspace": { CreateTask: () => null, useTaskUpdates() {} },
+  }).TaskerDependencyWorkspace;
+  const dependency = { source: { type: "TASK", id: "universal" }, project: universalTask.project, title: "Artwork", href: "/tasks/universal", paused: false, pendingPauses: 1, canCreate: true, availableTasks: [], links: [{ id: "link", version: 1, direction: "REQUIRES", relatedTask: null, pauseStatus: "REQUESTED", reason: "Need layout", reviewNote: null, outcome: null, canRequestPause: false, canReviewPause: false, history: [] }] };
+  const dependencyRecipient = renderToStaticMarkup(React.createElement(dependencyWorkspace, { initialData: dependency }));
+  assert(dependencyRecipient.includes("Create request and ask to pause") && dependencyRecipient.includes("This task continues normally."));
+  assert(!dependencyRecipient.includes("Approve pause") && !dependencyRecipient.includes("Reject pause") && dependencyRecipient.includes("Restricted or unavailable task"));
+  const dependencyOwner = renderToStaticMarkup(React.createElement(dependencyWorkspace, { initialData: { ...dependency, links: [{ ...dependency.links[0], canReviewPause: true }] } }));
+  assert(dependencyOwner.includes("Approve pause") && dependencyOwner.includes("Reject pause"));
+  const pausedTask = renderToStaticMarkup(React.createElement(tasker.TaskerDetailWorkspace, { initialTask: { ...detail, canSubmit: false, dependencyState: { paused: true, pendingPauses: 0 } } }));
+  assert(pausedTask.includes("Task paused for a dependency") && !pausedTask.includes("Submit for review") && pausedTask.includes("Send message"), "Holds block submissions while retaining discussion");
   console.log("Tasker UI passed: all-role access, received/sent/co-owner/observer filters, search, concept links, recipient controls and conflict review.");
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });

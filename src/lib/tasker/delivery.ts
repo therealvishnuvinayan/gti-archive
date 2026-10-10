@@ -7,6 +7,7 @@ import { getPermissionProfileSnapshotForUser } from "@/lib/permissions/profiles"
 import { canUseTasks } from "@/lib/permissions/resolver";
 import { conceptTaskAccessWhere, taskAccessWhere } from "./service";
 import { taskFamilyHref } from "./families";
+import { dependencyHref, dependencySourceRecord } from "./dependency-runtime";
 
 const escape = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 
@@ -28,14 +29,15 @@ export async function deliverTaskerEmails(options: { taskId?: string; limit?: nu
         : delivery.taskId
         ? await prisma.taskerTask.count({ where: { id: delivery.taskId, ...taskAccessWhere(recipient) } })
         : delivery.conceptId && await prisma.projectConceptFolder.count({ where: { id: delivery.conceptId, ...conceptTaskAccessWhere(recipient) } }));
-      if (!accessible) {
+      const source = delivery.taskId ? { type: "TASK" as const, id: delivery.taskId } : { type: "CONCEPT" as const, id: delivery.conceptId! };
+      const dependencyAccessible = !delivery.dedupeKey.startsWith("tasker-dependency:") || (await dependencySourceRecord(prisma, source))?.viewers.includes(user.id);
+      if (!accessible || !dependencyAccessible) {
         await prisma.taskerDelivery.updateMany({ where: { id: delivery.id, leaseToken }, data: { sentAt: new Date(), leaseToken: null, lastError: "Skipped: recipient no longer has task access." } });
         continue;
       }
       const origin = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "");
       if (!/^https?:\/\//.test(origin)) throw new Error("Set APP_URL or NEXT_PUBLIC_APP_URL for task email links.");
-      const source = delivery.taskId ? { type: "TASK" as const, id: delivery.taskId } : { type: "CONCEPT" as const, id: delivery.conceptId! };
-      const path = delivery.checklistRequestId ? `/requests/checklist/${delivery.checklistRequestId}` : delivery.dedupeKey.startsWith("tasker-family:") ? taskFamilyHref(source) : `/tasks/${delivery.taskId}`;
+      const path = delivery.checklistRequestId ? `/requests/checklist/${delivery.checklistRequestId}` : delivery.dedupeKey.startsWith("tasker-dependency:") ? dependencyHref(source) : delivery.dedupeKey.startsWith("tasker-family:") ? taskFamilyHref(source) : `/tasks/${delivery.taskId}`;
       const href = new URL(path, origin).toString();
       const result = await (options.send ?? sendResendEmail)({ to: user.email, subject: delivery.subject, text: `${delivery.message}\n\n${href}`, html: `<p>${escape(delivery.message)}</p><p><a href="${escape(href)}">Open task</a></p>`, idempotencyKey: delivery.dedupeKey });
       if (!result.ok) throw new Error(result.error || "Email delivery failed.");

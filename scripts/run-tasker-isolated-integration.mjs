@@ -31,6 +31,7 @@ try {
   console.log(run("node", ["-r", "./scripts/register-compiled-alias.cjs", "-r", "./scripts/project-tags-next-cache-stub.cjs", ".tmp/tasker-integration/scripts/tasker-sisters-integration-check.js"]).trim());
   console.log(run("node", ["-r", "./scripts/register-compiled-alias.cjs", "-r", "./scripts/project-tags-next-cache-stub.cjs", ".tmp/tasker-integration/scripts/tasker-gaps-integration-check.js"]).trim());
   console.log(run("node", ["-r", "./scripts/register-compiled-alias.cjs", "-r", "./scripts/project-tags-next-cache-stub.cjs", ".tmp/tasker-integration/scripts/stage-five-integration-check.js"]).trim());
+  console.log(run("node", ["-r", "./scripts/register-compiled-alias.cjs", "-r", "./scripts/project-tags-next-cache-stub.cjs", ".tmp/tasker-integration/scripts/tasker-dependencies-integration-check.js"]).trim());
 } finally {
   if (started) run("pg_ctl", ["-D", data, "-m", "fast", "-w", "stop"]);
   rmSync(root, { recursive: true, force: true });
