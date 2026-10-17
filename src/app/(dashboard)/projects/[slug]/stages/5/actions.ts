@@ -1,7 +1,5 @@
 "use server";
 
-import { afterTaskMutation } from "@/lib/tasker/http";
-
 import { revalidatePath } from "next/cache";
 import {
   type ProjectFileChecklistField,
@@ -9,7 +7,6 @@ import {
 } from "@prisma/client";
 
 import { requireUser } from "@/lib/auth";
-import { TaskerError } from "@/lib/tasker/errors";
 import { publishProjectActivityUpdatedAfterResponse } from "@/lib/realtime/server";
 import {
   cancelStageFiveChecklistRequest,
@@ -72,7 +69,6 @@ export async function completeStageFiveAction(input: { projectId: string }) {
 }
 
 export async function saveStageFiveChecklistAction(input: {
-  taskerRevision?: number;
   projectId: string;
   handoffId: string;
   items: Array<{
@@ -82,14 +78,9 @@ export async function saveStageFiveChecklistAction(input: {
   }>;
 }) {
   const user = await requireUser();
-  try {
-    const result = await saveStageFiveChecklist(user, input);
-    if (!("error" in result)) revalidatePath(`/projects/${input.projectId}/stages/5`);
-    return result;
-  } catch (error) {
-    if (error instanceof TaskerError) return { error: error.message } as const;
-    throw error;
-  }
+  const result = await saveStageFiveChecklist(user, input);
+  if (!("error" in result)) revalidatePath(`/projects/${input.projectId}/stages/5`);
+  return result;
 }
 
 export async function requestStageFiveChecklistInformationAction(input: {
@@ -107,7 +98,6 @@ export async function requestStageFiveChecklistInformationAction(input: {
   const user = await requireUser();
   const result = await requestStageFiveChecklistInformation(user, input);
   revalidatePath(`/projects/${input.projectId}/stages/5`);
-  if (!("error" in result)) afterTaskMutation();
   return result;
 }
 

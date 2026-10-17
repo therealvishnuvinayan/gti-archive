@@ -246,7 +246,6 @@ export function FlexibleProjectDetailWorkspace({
           users={userOptions}
           currentUserId={currentUserId}
           initialProject={{
-            updatedAt: project.updatedAt,
             id: project.id,
             name: project.name,
             description: project.description,

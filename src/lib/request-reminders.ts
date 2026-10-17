@@ -544,9 +544,7 @@ async function processStageFiveReminder(
       (request.workflowStatus ===
         ProjectFileChecklistRequestWorkflowStatus.REQUESTED ||
         request.workflowStatus ===
-          ProjectFileChecklistRequestWorkflowStatus.ACCEPTED ||
-        request.workflowStatus ===
-          ProjectFileChecklistRequestWorkflowStatus.CORRECTIONS_REQUESTED) &&
+          ProjectFileChecklistRequestWorkflowStatus.ACCEPTED) &&
       request.checklistItem.status !== ProjectFileChecklistItemStatus.FILLED &&
       isProjectStillValid(request.project) &&
       request.project.workflowStages[0]?.status ===
@@ -578,7 +576,6 @@ async function processStageFiveReminder(
               in: [
                 ProjectFileChecklistRequestWorkflowStatus.REQUESTED,
                 ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
-                ProjectFileChecklistRequestWorkflowStatus.CORRECTIONS_REQUESTED,
               ],
             },
             checklistItem: {
@@ -652,7 +649,6 @@ async function processStageFiveReminder(
           in: [
             ProjectFileChecklistRequestWorkflowStatus.REQUESTED,
             ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
-            ProjectFileChecklistRequestWorkflowStatus.CORRECTIONS_REQUESTED,
           ],
         },
         checklistItem: { status: { not: ProjectFileChecklistItemStatus.FILLED } },

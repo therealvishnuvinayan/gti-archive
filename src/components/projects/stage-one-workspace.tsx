@@ -1007,7 +1007,6 @@ export function StageOneWorkspace({
     }
 
     const input: CompleteProjectInquiryInput = {
-      taskerRevision: autosave.taskerRevision,
       projectId: project.id,
       client: client ? { source: client.source, id: client.id } : null,
       finalBeneficiaries: finalBeneficiaries.map((beneficiary) => ({

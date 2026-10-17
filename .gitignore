@@ -23,7 +23,6 @@
 # misc
 .DS_Store
 .tmp/
-/backups/
 *.pem
 
 # debug

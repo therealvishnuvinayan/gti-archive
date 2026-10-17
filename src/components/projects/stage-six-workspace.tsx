@@ -925,7 +925,6 @@ function HandoverDialog({
     if (!recipientReady || !fileIds.length || pending) return;
     startPending(async () => {
       const result = await handoverProductionUnitAction({
-        taskerRevision: autosave.taskerRevision,
         clientRequestId: requestId.current,
         projectId,
         productionUnitId: unit.id,

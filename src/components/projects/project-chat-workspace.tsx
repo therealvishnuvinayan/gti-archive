@@ -3323,7 +3323,7 @@ export function ProjectChatWorkspace({
     [currentUserId, project.collaborators],
   );
   const canReviewSubmissions = conceptMode
-    ? !conceptMode.dependencyPaused && conceptMode.canReview && !conceptMode.isAssignedExecutor
+    ? conceptMode.canReview && !conceptMode.isAssignedExecutor
     : project.ownerId === currentUserId;
   const canRevokeConceptApproval = Boolean(
     conceptMode?.approvalRevocationEligibility.canRevoke &&
@@ -3517,7 +3517,6 @@ export function ProjectChatWorkspace({
   const latestRevisionAllowsNewSubmission =
     !latestRevisionMessage || latestRevisionStatus === "REJECTED";
   const canSubmitNewRevision =
-    !conceptMode?.dependencyPaused &&
     canSubmitWorkAsProjectExecutor &&
     hasAcceptedBrief &&
     latestRevisionAllowsNewSubmission &&
@@ -3525,7 +3524,7 @@ export function ProjectChatWorkspace({
     !isStageCompleted &&
     !isProjectCompleted &&
     !hasPendingRevisionReview;
-  const submitWorkDisabledReason = conceptMode?.dependencyPaused ? "This task is paused for a dependency." : !canSubmitWorkAsProjectExecutor
+  const submitWorkDisabledReason = !canSubmitWorkAsProjectExecutor
     ? null
     : !activeStage
       ? "No active stage selected."
@@ -4500,7 +4499,7 @@ export function ProjectChatWorkspace({
   const canSelectStageFourFinalApprovedFile = Boolean(
     reviewRevisionMessage &&
       isStageFourConceptMode &&
-      !conceptMode?.dependencyPaused && conceptMode?.canReview &&
+      conceptMode?.canReview &&
       !conceptMode.isWorkflowCompleted &&
       getEffectiveRevisionStatus(reviewRevisionMessage) !== "REJECTED",
   );
@@ -7756,9 +7755,6 @@ export function ProjectChatWorkspace({
                 </div>
               ))}
             </dl>
-            {conceptMode.dependenciesHref && <Button asChild variant="secondary" size="sm" className="h-9 w-fit shrink-0 rounded-full px-3 text-[11px]"><Link href={conceptMode.dependenciesHref}>Dependencies</Link></Button>}
-            {conceptMode.dependencyPaused ? <span role="status" className="rounded-full bg-amber-100 px-3 py-2 text-xs text-amber-900">Paused for dependency · discussion remains open</span> : conceptMode.dependencyPauseRequested ? <span role="status" className="text-xs text-amber-800">Pause awaiting project owner</span> : null}
-            {conceptMode.sisterTasksHref && <Button asChild variant="secondary" size="sm" className="h-9 w-fit shrink-0 rounded-full px-3 text-[11px]"><Link href={conceptMode.sisterTasksHref}>Sister Tasks &amp; files</Link></Button>}
             {conceptMode.completedWithoutFile ? <span className="rounded-full bg-[#e7f5eb] px-3 py-1.5 text-[11px] font-semibold text-[#247247]">Completed · No file</span> : null}
             <RevokeTaskCompletionButton projectId={project.id} folderId={conceptMode.folderId} stageKey={conceptMode.workflowStageKey}
               name={conceptMode.conceptName} eligibility={conceptMode.completionRevocationEligibility}
@@ -11149,7 +11145,7 @@ export function ProjectChatWorkspace({
                         ? canSelectStageFourFinalApprovedFile
                         : Boolean(
                             conceptMode?.stageNumber === 3 &&
-                              !conceptMode.dependencyPaused && conceptMode.canReview &&
+                              conceptMode.canReview &&
                               !conceptMode.isWorkflowCompleted &&
                               getEffectiveRevisionStatus(reviewRevisionMessage) !==
                                 "REJECTED",

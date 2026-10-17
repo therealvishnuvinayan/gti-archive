@@ -1,4 +1,3 @@
-import { reviewChecklistResponse } from "@/lib/tasker/checklist-review";
 import { randomUUID } from "node:crypto";
 
 import {
@@ -811,8 +810,9 @@ async function main() {
       "an unrelated collaborator must not view another recipient's request",
     );
     check(
-      (await getStageFiveChecklistRequestData(superAdmin, inApp.request.id)) === null,
-      "Global administrators outside the project must not receive task-only access",
+      (await getStageFiveChecklistRequestData(superAdmin, inApp.request.id))?.status ===
+        ProjectFileChecklistRequestWorkflowStatus.REQUESTED,
+      "SUPER_ADMIN must have support visibility into the request",
     );
     check(
       isError(await acceptStageFiveChecklistRequest(outsider, inApp.request.id)),
@@ -840,12 +840,6 @@ async function main() {
       attachmentIds: [],
     });
     check(!isError(completedTextResponse), "the accepted recipient text response must complete");
-    const pendingTextData = await getStageFiveChecklistRequestData(owner, inApp.request.id);
-    check(pendingTextData?.status === "IN_REVIEW", "submitting must leave the request awaiting review");
-    check((await prisma.notification.count({ where: { entityId: inApp.request.id, userId: owner.id, type: "TASKER_UPDATED", title: "Information request awaiting review" } })) === 1, "an internal submission must notify the requester to review it");
-    const unreviewedTextItem = await prisma.projectFileChecklistItem.findUniqueOrThrow({ where: { checklistId_fieldKey: { checklistId: fileA.checklistId, fieldKey: ProjectFileChecklistField.COMPULSORY_TEXT } } });
-    check((unreviewedTextItem.value as { values?: string[] })?.values?.[0] !== "Approved compulsory copy", "submission must not apply the proposed answer");
-    check(!isError(await reviewChecklistResponse(owner, { requestId: inApp.request.id, submissionId: pendingTextData!.submissions[0].id, action: "ACCEPT", conflictToken: pendingTextData!.conflictToken! })), "requester approval must apply the answer");
     const completedRequestData = await getStageFiveChecklistRequestData(recipient, inApp.request.id);
     check(
       completedRequestData?.status === ProjectFileChecklistRequestWorkflowStatus.COMPLETED &&
@@ -914,14 +908,12 @@ async function main() {
       requestId: graphicsRequest.request.id,
       value: {},
       attachmentIds: [responseAttachmentId],
-    }, { copy: async () => {}, metadata: async () => ({ ContentLength: 4096, ContentType: "image/png", $metadata: {} }) });
-    check(!isError(graphicsResponse), "a READY same-project response attachment must enter review");
-    const pendingGraphics = (await getStageFiveChecklistRequestData(owner, graphicsRequest.request.id))!;
-    check(!isError(await reviewChecklistResponse(owner, { requestId: graphicsRequest.request.id, submissionId: pendingGraphics.submissions[0].id, action: "ACCEPT", conflictToken: pendingGraphics.conflictToken! }, { copy: async () => {}, metadata: async () => ({ ContentLength: 4096, ContentType: "image/png", $metadata: {} }) })), "reviewed graphics must be published");
+    });
+    check(!isError(graphicsResponse), "a READY same-project response attachment must complete");
     check(
       (await prisma.projectFileChecklistItemAttachment.count({
         where: {
-          attachmentId: pendingGraphics.response.attachments[0].id,
+          attachmentId: responseAttachmentId,
           checklistItem: {
             checklistId: fileA.checklistId,
             fieldKey: ProjectFileChecklistField.RELATED_GRAPHICS,
@@ -1363,7 +1355,7 @@ async function main() {
       (await prisma.notification.count({
         where: { projectId, type: "CHECKLIST_INFORMATION_COMPLETED" },
       })) === 5,
-      "internal review completion must notify its recipient; external completion still notifies its requester",
+      "each authenticated or external completed response must notify the original requester",
     );
     check(
       (await prisma.notification.count({

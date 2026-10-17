@@ -61,7 +61,6 @@ async function stageSevenAction<T>(
 }
 
 export async function createProductionSampleRoundAction(input: {
-  taskerRevision?: number;
   projectId: string;
   productionUnitId: string;
   clientRequestId: string;

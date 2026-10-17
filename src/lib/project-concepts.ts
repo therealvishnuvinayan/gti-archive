@@ -1,5 +1,3 @@
-import { assertConceptNotPaused, resolveTaskDependencies, dependencyState } from "@/lib/tasker/dependency-runtime";
-import { lockTaskerProject } from "@/lib/tasker/field-changes";
 import {
   ActivityLogAction,
   AttachmentAssetType,
@@ -83,7 +81,6 @@ export type ConceptApprovalRevocationEligibility =
   | { canRevoke: false; reason: ConceptApprovalRevocationReason };
 
 export type ProjectConceptFolderRecord = {
-  dependencyPaused?: boolean;
   id: string;
   name: string;
   deadline: Date | null;
@@ -124,10 +121,6 @@ export type ProjectConceptFolderRecord = {
 export type ConceptCompletionRequest = { requestedAt: string; note: string | null };
 
 export type ProjectConceptChatMode = {
-  sisterTasksHref?: string;
-  dependenciesHref?: string;
-  dependencyPaused?: boolean;
-  dependencyPauseRequested?: boolean;
   type: "concept";
   stageNeutral?: boolean;
   folderId: string;
@@ -506,13 +499,10 @@ export async function getProjectConceptFolders(
     return null;
   }
 
-  const blocking = await prisma.taskerDependency.findMany({ where: { projectId, mainType: "CONCEPT", mainId: { in: visibleFolders.map((folder) => folder.id) }, pauseStatus: "APPROVED", resolvedAt: null }, select: { mainId: true } });
-  const pausedIds = new Set(blocking.map((link) => link.mainId));
-
   return {
-    folders: displayedFolders.map((folder) => ({ ...mapConceptFolder(folder, user.id,
-      !pausedIds.has(folder.id) && canCompleteConceptWithoutFile(user, project, folder, stageKey),
-      !pausedIds.has(folder.id) && canRequestConceptCompletion(user, project, folder, stageKey)), dependencyPaused: pausedIds.has(folder.id) })),
+    folders: displayedFolders.map((folder) => mapConceptFolder(folder, user.id,
+      canCompleteConceptWithoutFile(user, project, folder, stageKey),
+      canRequestConceptCompletion(user, project, folder, stageKey))),
     canManage,
     canCompleteStage,
     skipRevocation: await getStageSkipRevocationEligibility(user, { projectId, stageKey }),
@@ -523,7 +513,7 @@ export async function getProjectConceptFolders(
           name: folder.name,
           isApproved: Boolean(folder.approvedAttachment),
           completedWithoutFile: isConceptCompletedWithoutFile(folder),
-          canCompleteWithoutFile: !pausedIds.has(folder.id) && canCompleteConceptWithoutFile(user, project, folder, stageKey),
+          canCompleteWithoutFile: canCompleteConceptWithoutFile(user, project, folder, stageKey),
         }))
       : [],
     selectedExecutorId: requestedExecutorId,
@@ -790,7 +780,6 @@ export async function deleteProjectConceptFolder(
     const result = await withPrismaRetry(() =>
       prisma.$transaction(
         async (tx) => {
-          await lockTaskerProject(tx, input.projectId);
           const workflowStage = await tx.projectWorkflowStage.findUnique({
             where: {
               projectId_stageKey: {
@@ -871,7 +860,6 @@ export async function deleteProjectConceptFolder(
               formKey: `concept-details:${input.stageKey}:${folder.id}`,
             },
           });
-          await resolveTaskDependencies(tx, { type: "CONCEPT", id: folder.id }, user.id, "DELETED");
           await tx.projectConceptFolder.delete({ where: { id: folder.id } });
           await tx.projectStage.delete({ where: { id: folder.taskerStageId } });
 
@@ -1331,7 +1319,6 @@ async function approveConceptRevision(
     approvedAt: Date;
   },
 ) {
-  await assertConceptNotPaused(tx, input.projectId, { stageId: input.taskerStageId });
   await tx.projectRevision.updateMany({
     where: {
       projectId: input.projectId,
@@ -1387,8 +1374,6 @@ async function approveConceptRevision(
       completedAt: input.approvedAt,
     },
   });
-  const concept = await tx.projectConceptFolder.findUnique({ where: { taskerStageId: input.taskerStageId }, select: { id: true } });
-  if (concept) await resolveTaskDependencies(tx, { type: "CONCEPT", id: concept.id }, input.reviewedById, "COMPLETED");
 }
 
 function getFormalConceptAttachmentError(input: {
@@ -1442,7 +1427,6 @@ export async function markProjectConceptApprovedAttachment(
     const designation = await withPrismaRetry(() =>
       prisma.$transaction(
         async (tx) => {
-          await lockTaskerProject(tx, input.projectId);
           const folder = await tx.projectConceptFolder.findFirst({
             where: {
               id: input.folderId,
@@ -1512,7 +1496,6 @@ export async function markProjectConceptApprovedAttachment(
             return { error: "Stage 3 is not currently available." } as const;
           }
 
-          await assertConceptNotPaused(tx, input.projectId, { folderId: input.folderId });
           const attachment = await tx.projectAttachment.findUnique({
             where: { id: input.attachmentId },
             select: formalConceptAttachmentSelect,
@@ -1629,7 +1612,6 @@ export async function markStageFourFinalApprovedAttachment(
     const designation = await withPrismaRetry(() =>
       prisma.$transaction(
         async (tx) => {
-          await lockTaskerProject(tx, input.projectId);
           const folder = await tx.projectConceptFolder.findFirst({
             where: {
               id: input.folderId,
@@ -1698,7 +1680,6 @@ export async function markStageFourFinalApprovedAttachment(
             return { error: "Stage 4 is not currently available." } as const;
           }
 
-          await assertConceptNotPaused(tx, input.projectId, { folderId: input.folderId });
           const attachment = await tx.projectAttachment.findUnique({
             where: { id: input.attachmentId },
             select: formalConceptAttachmentSelect,
@@ -2471,7 +2452,6 @@ export async function requestProjectConceptTaskCompletion(
   if (note && note.length > 2_000) return { error: "The completion note must be 2,000 characters or fewer." };
   try {
     return await withPrismaRetry(() => prisma.$transaction(async (tx) => {
-      await lockTaskerProject(tx, input.projectId);
       const folder = await tx.projectConceptFolder.findFirst({
         where: {
           id: input.folderId, projectId: input.projectId,
@@ -2483,7 +2463,6 @@ export async function requestProjectConceptTaskCompletion(
       if (!folder || folder.assignedExecutorId !== user.id) {
         return { error: "Only the assigned executor can request completion of this task." };
       }
-      await assertConceptNotPaused(tx, input.projectId, { folderId: input.folderId });
       if (!isOpenConceptWithoutSubmission(folder.project, folder, input.stageKey)) {
         return { error: folder.taskerStage._count.attachments > 0 || folder.approvedAttachment
           ? "This task already has a file submission or upload in progress. Use the file review process."
@@ -2519,7 +2498,6 @@ export async function completeProjectConceptTaskWithoutFile(
   if (!isSupportedConceptStageKey(input.stageKey)) return { error: "Task completion is available only in Stages 3 and 4." };
   try {
     return await withPrismaRetry(() => prisma.$transaction(async (tx) => {
-      await lockTaskerProject(tx, input.projectId);
       const folder = await tx.projectConceptFolder.findFirst({
         where: {
           id: input.folderId, projectId: input.projectId,
@@ -2533,7 +2511,6 @@ export async function completeProjectConceptTaskWithoutFile(
       if (!canCompleteProjectConceptStage(user, context)) {
         return { error: "Only the project owner or an administrator can complete a task without a file." };
       }
-      await assertConceptNotPaused(tx, input.projectId, { folderId: input.folderId });
       if (isConceptCompletedWithoutFile(folder)) return { changed: false, taskerStageId: folder.taskerStageId };
       if (!canCompleteConceptWithoutFile(user, folder.project, folder, input.stageKey)) {
         return { error: folder.taskerStage._count.attachments > 0 || folder.approvedAttachment
@@ -2554,7 +2531,6 @@ export async function completeProjectConceptTaskWithoutFile(
         projectId: input.projectId, stageId: folder.taskerStageId, authorId: user.id,
         body: "Task completed without a file submission.",
       } });
-      await resolveTaskDependencies(tx, { type: "CONCEPT", id: folder.id }, user.id, "COMPLETED");
       return { changed: true, taskerStageId: folder.taskerStageId };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5_000, timeout: 15_000 }));
   } catch (error) {
@@ -2585,7 +2561,6 @@ export async function completeStageThreeConcepts(
     return await withPrismaRetry(() =>
       prisma.$transaction(
         async (tx): Promise<StageThreeCompletionResult | { error: string }> => {
-          await lockTaskerProject(tx, input.projectId);
           const project = await tx.project.findUnique({
             where: { id: input.projectId },
             select: {
@@ -2711,7 +2686,6 @@ export async function completeStageThreeConcepts(
 
           if (transitioned) {
             if (manuallyCompleteTasks && pendingConcepts.length > 0) {
-              for (const folder of pendingConcepts) await assertConceptNotPaused(tx, project.id, { folderId: folder.id });
               await tx.projectStage.updateMany({
                 where: { id: { in: pendingConcepts.map((folder) => folder.taskerStageId) }, projectId: project.id },
                 data: { status: StageStatus.COMPLETED, completedAt },
@@ -2725,7 +2699,6 @@ export async function completeStageThreeConcepts(
                 body: "Task completed without a file submission during manual Stage 3 completion.",
               })) });
             }
-            if (manuallyCompleteTasks) for (const folder of pendingConcepts) await resolveTaskDependencies(tx, { type: "CONCEPT", id: folder.id }, user.id, "COMPLETED");
             const completed = await tx.projectWorkflowStage.updateMany({
               where: {
                 id: stageThreeWorkflow.id,
@@ -3479,8 +3452,6 @@ export async function getProjectConceptChatContext(
       workflowStageKey: input.stageKey,
     });
 
-  const hold = await dependencyState(prisma, { type: "CONCEPT", id: record.id });
-
   return {
     projectId: input.projectId,
     workflowStageKey: input.stageKey,
@@ -3491,8 +3462,6 @@ export async function getProjectConceptChatContext(
     },
     chatMode: {
       type: "concept",
-      dependencyPaused: hold.paused,
-      dependencyPauseRequested: hold.pendingPauses > 0,
       folderId: record.id,
       workflowStageKey: input.stageKey,
       stageNumber,
@@ -3510,9 +3479,9 @@ export async function getProjectConceptChatContext(
       completedWithoutFile: isConceptCompletedWithoutFile(record),
       completionRevocationEligibility: isConceptCompletedWithoutFile(record)
         ? await getTaskCompletionRevocationEligibility(user, input) : null,
-      canCompleteWithoutFile: !hold.paused && canCompleteConceptWithoutFile(user, record.project, record, input.stageKey),
+      canCompleteWithoutFile: canCompleteConceptWithoutFile(user, record.project, record, input.stageKey),
       completionRequest: mapCompletionRequest(record),
-      canRequestCompletion: !hold.paused && canRequestConceptCompletion(user, record.project, record, input.stageKey),
+      canRequestCompletion: canRequestConceptCompletion(user, record.project, record, input.stageKey),
       approvalRevocationEligibility,
       isWorkflowCompleted:
         workflowStatus === ProjectWorkflowStageStatus.COMPLETED,

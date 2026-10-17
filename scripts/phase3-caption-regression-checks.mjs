@@ -133,7 +133,7 @@ for (const snippet of [
   assertIncludes(chatWorkspace, snippet, `chat caption UI ${snippet}`);
 }
 
-const compareWorkspace = read("src/components/projects/project-compare-workspace.tsx") + read("src/components/projects/comparison-viewer-surface.tsx");
+const compareWorkspace = read("src/components/projects/project-compare-workspace.tsx");
 for (const snippet of [
   "SubmissionCaptionDialog",
   "canAddCaptions={canAddCaptions}",
