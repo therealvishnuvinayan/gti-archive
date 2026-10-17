@@ -41,9 +41,9 @@ export default async function StageFiveChecklistRequestPage({
       }}
       sidebarVisibility={getSidebarVisibility(user)}
       backNavigation={{
-        href: data.canOpenStage ? checklistContextHref : "/tasks",
-        label: data.canOpenStage ? "Stage 5 Checklist" : "Tasks",
-        ariaLabel: data.canOpenStage ? `Back to ${data.project.name} Stage 5 File Checklist` : "Back to tasks",
+        href: checklistContextHref,
+        label: "Stage 5 Checklist",
+        ariaLabel: `Back to ${data.project.name} Stage 5 File Checklist`,
       }}
     >
       <StageFiveRequestWorkspace data={data} />

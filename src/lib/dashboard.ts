@@ -155,7 +155,7 @@ const projectSelect = {
   archivedAt: true,
   updatedAt: true,
   owner: { select: { id: true, name: true, email: true } },
-  closures: { select: { id: true } },
+  closure: { select: { id: true } },
   inquiry: { select: { deadline: true } },
   coOwners: { select: { userId: true } },
   executors: { select: { userId: true } },

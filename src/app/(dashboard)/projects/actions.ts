@@ -247,7 +247,7 @@ export async function deleteProjectAction(projectId: string) {
     where: { id: projectId },
     select: {
       completedAt: true,
-      closures: { select: { id: true } },
+      closure: { select: { id: true } },
       workflowStages: {
         where: {
           stageKey: ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION,
@@ -288,7 +288,7 @@ export async function deleteProjectAction(projectId: string) {
 
   if (
     project.completedAt ||
-    project.closures.length > 0 ||
+    project.closure ||
     project.workflowStages.length > 0 ||
     isProjectStatusCompleted(project.status)
   ) {

@@ -43,7 +43,7 @@ export type ProjectListWorkflowState = {
 type ProjectListWorkflowInput = {
   id?: string;
   completedAt?: Date | null;
-  closures?: Array<{ id: string }>;
+  closure?: { id: string } | null;
   workflowStages: Array<{
     stageKey: ProjectWorkflowStageKey;
     status: ProjectWorkflowStageStatus;

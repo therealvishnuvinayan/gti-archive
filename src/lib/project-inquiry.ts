@@ -1,4 +1,3 @@
-import { checkTaskerFormRevision, consumeTaskerFormChanges } from "@/lib/tasker/field-changes";
 import {
   AttachmentAssetType,
   AttachmentStatus,
@@ -144,7 +143,6 @@ export type ProjectInquiryPageData = {
 };
 
 export type CompleteProjectInquiryInput = {
-  taskerRevision?: number;
   projectId: string;
   client: Pick<ProjectInquiryPartySelection, "source" | "id"> | null;
   finalBeneficiaries: Array<
@@ -1078,7 +1076,6 @@ export async function completeProjectInquiry(
         } as const;
       }
 
-      if (!(await checkTaskerFormRevision(tx, projectId, "stage-one-project-inquiry", input.taskerRevision ?? 0))) return { error: "Tasker updated this form. Review the accepted input before saving." } as const;
       const inquiry = await tx.projectInquiry.upsert({
         where: { projectId },
         create: {
@@ -1188,7 +1185,6 @@ export async function completeProjectInquiry(
         }
       }
 
-      await consumeTaskerFormChanges(tx, projectId, "stage-one-project-inquiry");
       return { success: true, alreadyCompleted: !isFirstCompletion } as const;
     }, {
       maxWait: 10_000,

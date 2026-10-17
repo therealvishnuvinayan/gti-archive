@@ -8,7 +8,6 @@ import type {
 } from "@prisma/client";
 
 import { requireUser } from "@/lib/auth";
-import { TaskerError } from "@/lib/tasker/errors";
 import {
   getStageSixArchivePreparation,
   saveStageSixArchiveSnapshot,
@@ -201,7 +200,6 @@ export async function removeProductionUnitFileAction(input: {
 }
 
 export async function handoverProductionUnitAction(input: {
-  taskerRevision?: number;
   clientRequestId: string;
   projectId: string;
   productionUnitId: string;
@@ -217,14 +215,9 @@ export async function handoverProductionUnitAction(input: {
   note?: string;
 }) {
   const user = await requireUser();
-  try {
-    const result = await handoverProductionUnit(user, input);
-    revalidateStageSix(input.projectId);
-    return result;
-  } catch (error) {
-    if (error instanceof TaskerError) return { error: error.message } as const;
-    throw error;
-  }
+  const result = await handoverProductionUnit(user, input);
+  revalidateStageSix(input.projectId);
+  return result;
 }
 
 export async function completeStageSixAction(input: { projectId: string }) {

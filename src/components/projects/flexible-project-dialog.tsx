@@ -28,7 +28,6 @@ import type {
 import { showSuccessToast } from "@/lib/toast";
 
 type EditableFlexibleProject = {
-  updatedAt?: string;
   id: string;
   name: string;
   description: string;
@@ -71,7 +70,6 @@ export function FlexibleProjectDialog({
 }: FlexibleProjectDialogProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [expectedUpdatedAt] = useState(initialProject?.updatedAt);
   const [name, setName] = useState(initialProject?.name ?? "");
   const [description, setDescription] = useState(initialProject?.description ?? "");
   const [ownerIds, setOwnerIds] = useState<string[]>([
@@ -108,7 +106,6 @@ export function FlexibleProjectDialog({
 
     startTransition(async () => {
       const input = {
-        expectedUpdatedAt,
         name,
         description,
         ownerId,

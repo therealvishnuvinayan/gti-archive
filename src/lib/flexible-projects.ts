@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { lockTaskerProject } from "@/lib/tasker/field-changes";
 
 import {
   FlexibleMilestoneStatus,
@@ -55,7 +54,6 @@ export type FlexibleProjectListItem = {
 };
 
 export type FlexibleMilestoneRecord = {
-  updatedAt?: string;
   id: string;
   order: number;
   name: string;
@@ -87,7 +85,6 @@ export type FlexibleMilestoneNoteRecord = {
 };
 
 export type FlexibleProjectDetailRecord = FlexibleProjectListItem & {
-  updatedAt?: string;
   collaboratorIds: string[];
   collaborators: Array<{ id: string; name: string; email: string }>;
   milestones: FlexibleMilestoneRecord[];
@@ -99,7 +96,6 @@ export type FlexibleProjectDetailRecord = FlexibleProjectListItem & {
 };
 
 export type FlexibleProjectInput = {
-  expectedUpdatedAt?: string;
   name: string;
   description?: string;
   ownerId: string;
@@ -121,7 +117,6 @@ export type FlexibleProjectMutationResult =
   | { error: string; fieldErrors?: FlexibleProjectFieldErrors };
 
 export type FlexibleMilestoneInput = {
-  expectedUpdatedAt?: string;
   name: string;
   description?: string;
   category?: string;
@@ -479,7 +474,6 @@ export async function getFlexibleProjectDetail(slug: string, user: PermissionUse
     prisma.flexibleProject.findFirst({
       where: { slug, AND: getFlexibleProjectAccessWhere(user) },
       select: {
-        updatedAt: true,
         id: true,
         slug: true,
         name: true,
@@ -497,7 +491,6 @@ export async function getFlexibleProjectDetail(slug: string, user: PermissionUse
         milestones: {
           orderBy: { sortOrder: "asc" },
           select: {
-            updatedAt: true,
             id: true,
             sortOrder: true,
             name: true,
@@ -553,11 +546,10 @@ export async function getFlexibleProjectDetail(slug: string, user: PermissionUse
     }),
   );
   const canManageProjectAccess = canManageFlexibleProject(user, accessContext);
-  const canManageMilestoneAccess = project.status !== "COMPLETED" && canManageFlexibleMilestones(user, accessContext);
+  const canManageMilestoneAccess = canManageFlexibleMilestones(user, accessContext);
 
   return {
     ...summary,
-    updatedAt: project.updatedAt.toISOString(),
     collaboratorIds: project.collaborators.map(({ userId }) => userId),
     collaborators: project.collaborators.map(({ user: collaborator }) => ({
       id: collaborator.id,
@@ -565,7 +557,6 @@ export async function getFlexibleProjectDetail(slug: string, user: PermissionUse
       email: collaborator.email,
     })),
     milestones: project.milestones.map((milestone) => ({
-      updatedAt: milestone.updatedAt.toISOString(),
       id: milestone.id,
       order: milestone.sortOrder,
       name: milestone.name,
@@ -680,12 +671,8 @@ export async function updateFlexibleProject(
   const fieldErrors = await validateProjectUsers(parsed.data.ownerId, parsed.data.collaboratorIds);
   if (Object.keys(fieldErrors).length) return { error: "One or more selected users are no longer available.", fieldErrors };
 
-  const result = await withPrismaRetry(() =>
+  await withPrismaRetry(() =>
     prisma.$transaction(async (tx) => {
-      await lockTaskerProject(tx, projectId);
-      const current = await tx.flexibleProject.findUniqueOrThrow({ where: { id: projectId }, select: { updatedAt: true } });
-      const hasTaskUpdates = await tx.taskerTask.count({ where: { flexibleProjectId: projectId, status: "COMPLETED", targetId: { startsWith: `project:${projectId}:` } } });
-      if ((input.expectedUpdatedAt && current.updatedAt.toISOString() !== input.expectedUpdatedAt) || (!input.expectedUpdatedAt && hasTaskUpdates)) return { error: "This project changed. Close the form, refresh, and review the current values before saving." };
       await tx.flexibleProject.update({
         where: { id: project.id },
         data: {
@@ -705,7 +692,7 @@ export async function updateFlexibleProject(
       }
     }),
   );
-  return result ?? { projectId: project.id, slug: project.slug };
+  return { projectId: project.id, slug: project.slug };
 }
 
 async function lockFlexibleProject(tx: Prisma.TransactionClient, projectId: string) {
@@ -769,9 +756,6 @@ export async function createFlexibleMilestone(
 
   return orderingTransaction(async (tx) => {
     await lockFlexibleProject(tx, projectId);
-    const current = await tx.flexibleProject.findUniqueOrThrow({ where: { id: projectId }, include: { collaborators: { select: { userId: true } } } });
-    if (!canManageFlexibleMilestones(actor, current)) return { error: "You are no longer allowed to manage these milestones." };
-    if (current.status === "COMPLETED") return { error: "The project owner must use Reopen project before changing completed milestones." };
     if (!(await validateResponsibleUser(tx, projectId, parsed.data!.responsibleUserId))) {
       return { error: "The responsible user must be the owner or a project collaborator.", fieldErrors: { responsibleUserId: "Select a user associated with this project." } };
     }
@@ -798,12 +782,9 @@ export async function updateFlexibleMilestone(
   if (!parsed.data) return { error: "Review the highlighted fields.", fieldErrors: parsed.fieldErrors };
 
   return orderingTransaction(async (tx) => {
-    await lockTaskerProject(tx, projectId);
     await lockFlexibleProject(tx, projectId);
-    const milestone = await tx.flexibleMilestone.findFirst({ where: { id: milestoneId, projectId }, select: { id: true, updatedAt: true } });
+    const milestone = await tx.flexibleMilestone.findFirst({ where: { id: milestoneId, projectId }, select: { id: true } });
     if (!milestone) return { error: "Milestone not found." };
-    const hasTaskUpdates = await tx.taskerTask.count({ where: { flexibleProjectId: projectId, status: "COMPLETED", targetId: { startsWith: `milestone:${milestoneId}:` } } });
-    if ((input.expectedUpdatedAt && milestone.updatedAt.toISOString() !== input.expectedUpdatedAt) || (!input.expectedUpdatedAt && hasTaskUpdates)) return { error: "This milestone changed. Close the form, refresh, and review the current values before saving." };
     if (!(await validateResponsibleUser(tx, projectId, parsed.data!.responsibleUserId))) {
       return { error: "The responsible user must be the owner or a project collaborator.", fieldErrors: { responsibleUserId: "Select a user associated with this project." } };
     }
@@ -892,9 +873,6 @@ export async function setFlexibleMilestoneCompleted(
   if (!canManageFlexibleMilestones(actor, project)) return { error: "You are not allowed to manage this project's milestones." };
   return orderingTransaction(async (tx) => {
     await lockFlexibleProject(tx, projectId);
-    const current = await tx.flexibleProject.findUniqueOrThrow({ where: { id: projectId }, include: { collaborators: { select: { userId: true } } } });
-    if (!canManageFlexibleMilestones(actor, current)) return { error: "You are no longer allowed to manage these milestones." };
-    if (current.status === "COMPLETED") return { error: "The project owner must use Reopen project before changing completed milestones." };
     const updated = await tx.flexibleMilestone.updateMany({
       where: { id: milestoneId, projectId },
       data: {
@@ -945,9 +923,6 @@ export async function duplicateFlexibleMilestone(
   if (!canManageFlexibleMilestones(actor, project)) return { error: "You are not allowed to manage this project's milestones." };
   return orderingTransaction(async (tx) => {
     await lockFlexibleProject(tx, projectId);
-    const current = await tx.flexibleProject.findUniqueOrThrow({ where: { id: projectId }, include: { collaborators: { select: { userId: true } } } });
-    if (!canManageFlexibleMilestones(actor, current)) return { error: "You are no longer allowed to manage these milestones." };
-    if (current.status === "COMPLETED") return { error: "The project owner must use Reopen project before changing completed milestones." };
     const original = await tx.flexibleMilestone.findFirst({ where: { id: milestoneId, projectId } });
     if (!original) return { error: "Milestone not found." };
     const maxOrder = await tx.flexibleMilestone.aggregate({ where: { projectId }, _max: { sortOrder: true } });
@@ -984,9 +959,6 @@ export async function deleteFlexibleMilestone(
   if (!canManageFlexibleMilestones(actor, project)) return { error: "You are not allowed to manage this project's milestones." };
   return orderingTransaction(async (tx) => {
     await lockFlexibleProject(tx, projectId);
-    const current = await tx.flexibleProject.findUniqueOrThrow({ where: { id: projectId }, include: { collaborators: { select: { userId: true } } } });
-    if (!canManageFlexibleMilestones(actor, current)) return { error: "You are no longer allowed to manage these milestones." };
-    if (current.status === "COMPLETED") return { error: "The project owner must use Reopen project before changing completed milestones." };
     const milestone = await tx.flexibleMilestone.findFirst({ where: { id: milestoneId, projectId }, select: { id: true, sortOrder: true } });
     if (!milestone) return { error: "Milestone not found." };
     await tx.flexibleMilestone.delete({ where: { id: milestone.id } });
