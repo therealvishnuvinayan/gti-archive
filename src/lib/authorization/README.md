@@ -13,8 +13,9 @@ TECHNICAL_ADMIN and is independent: an account may eventually have a business ro
 technical privileges, both, or neither. Nothing maps legacy SUPER_ADMIN, ADMIN or
 USER to either domain. Their existing behavior remains in `src/lib/permissions/`.
 
-Only one active Director is intended; this module does not enforce assignment or
-uniqueness. Storage, account mapping and lifecycle enforcement belong to later work.
+Only one active Director is intended. Phase 1.2 adds inactive persistence and
+transition foundations in [PERSISTENCE.md](./PERSISTENCE.md). Its migration has not
+been applied; account mapping and runtime integration remain separate future work.
 
 Technical capabilities cover application maintenance, diagnostics, configuration,
 system/account recovery, troubleshooting and security administration. They grant no
@@ -117,10 +118,9 @@ eligible as archive management; recipient/export scope still needs a resource ru
 Self-review, exact lifecycle/field constraints, template/stage lifecycle rules and
 exceptional support procedures also require approved policies before integration.
 
-Phase 1.2 should first approve the additive persistence/account-mapping design,
-single-active-Director safeguards and role-change session/cache invalidation. The
-actual deployed migration state must be reconciled before preparing migrations.
-No database reconciliation or Phase 1.2 work occurs in this change.
+The Phase 1.2 migration is an additive, offline-authored candidate. Its application
+still requires reconciliation of the deployed migration history. Role assignment,
+session/cache invalidation and integration into the legacy application are not active.
 
 ## Local checks
 

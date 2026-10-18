@@ -14,6 +14,24 @@ enum UserRole {
   USER
 }
 
+// V2 assignments are independent of legacy User.role and remain inactive.
+enum BusinessRole {
+  DIRECTOR
+  SENIOR_PROJECT_MANAGER
+  JUNIOR_PROJECT_MANAGER
+  DESIGNER
+  DIGITAL_LEAD
+}
+
+enum TechnicalPrivilege {
+  TECHNICAL_ADMIN
+}
+
+enum AuthorizationAccountStatus {
+  ACTIVE
+  SUSPENDED
+}
+
 enum ProjectItemColor {
   RED
   ORANGE
@@ -445,6 +463,9 @@ model User {
   passwordHash                        String
   passwordChangedAt                   DateTime?
   role                                UserRole                             @default(USER)
+  authorization                       UserAuthorization?
+  authorizationHistory                UserAuthorizationChange[]            @relation("AuthorizationChangeSubject")
+  performedAuthorizationChanges       UserAuthorizationChange[]            @relation("AuthorizationChangeActor")
   projectCreationAccessGranted        Boolean                              @default(false)
   inviteToken                         String?                              @unique
   inviteExpiresAt                     DateTime?
@@ -547,6 +568,37 @@ model User {
   projectTrackerActivities            ProjectTrackerActivity[]             @relation("ProjectTrackerActivityActor")
   createdAt                           DateTime                             @default(now())
   updatedAt                           DateTime                             @updatedAt
+}
+
+// Optional record: absence means not mapped to V2, never infer legacy privileges.
+// SQL adds active-Director uniqueness, last-Director protection and audit triggers.
+model UserAuthorization {
+  userId               String                     @id
+  user                 User                       @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  businessRole         BusinessRole?
+  technicalPrivileges  TechnicalPrivilege[]       @default([])
+  accountStatus        AuthorizationAccountStatus  @default(ACTIVE)
+  authorizationVersion Int                        @default(1)
+  createdAt            DateTime                   @default(now())
+  updatedAt            DateTime                   @updatedAt
+}
+
+// Inserted by SQL triggers, never edited/deleted. Snapshots contain V2 fields only.
+model UserAuthorizationChange {
+  userId               String
+  user                 User     @relation("AuthorizationChangeSubject", fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  authorizationVersion Int
+  actorUserId          String
+  actor                User     @relation("AuthorizationChangeActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  changeId             String
+  reason               String
+  before               Json?
+  after                Json
+  createdAt            DateTime @default(now())
+
+  @@id([userId, authorizationVersion])
+  @@index([actorUserId, createdAt])
+  @@index([changeId])
 }
 
 model UserArchiveAccess {
