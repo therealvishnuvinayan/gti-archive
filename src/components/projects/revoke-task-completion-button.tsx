@@ -25,12 +25,14 @@ export function RevokeTaskCompletionButton({ projectId, folderId, stageKey, name
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string>();
+  const [reason, setReason] = useState("");
   const [executorId, setExecutorId] = useState("");
   if (!eligibility?.visible) return null;
   const stageNumber = stageKey === "CONCEPT_CREATION" ? 3 : 4;
   const canChooseExecutor = eligibility.requiresExecutor && eligibility.executorOptions.length > 0;
 
   function revoke() {
+    if (!reason.trim()) { setError("Enter a reason for this Director intervention."); return; }
     if (eligibility?.requiresExecutor && !executorId) {
       setError("Choose an executor to reopen this task.");
       return;
@@ -70,8 +72,9 @@ export function RevokeTaskCompletionButton({ projectId, folderId, stageKey, name
         title="Revoke task completion?"
         description={`“${name}” will reopen for further work.${eligibility.reopensStage ? ` Stage ${stageNumber} will reopen and later stages will be locked until it is completed again.` : ""}${eligibility.emptyChecklistCount ? " Untouched Stage 5 checklists will be rebuilt when the stage is completed again. Original files and approvals will be kept." : ""}`}
         confirmLabel="Revoke Completion" pending={pending} error={error}
-        confirmDisabled={eligibility.requiresExecutor && !executorId}
+        confirmDisabled={!reason.trim() || (eligibility.requiresExecutor && !executorId)}
         onConfirm={revoke} onClose={() => { if (!pending) setOpen(false); }}>
+        <label className="mb-5 block text-sm font-semibold">Intervention reason<textarea value={reason} onChange={event => setReason(event.target.value)} maxLength={2000} disabled={pending} className="mt-2 w-full rounded-xl border border-line p-3" required /></label>
         {canChooseExecutor ? (
           <div className="mb-5">
             <label htmlFor={executorFieldId} className="mb-2 block text-sm font-semibold">Assigned Executor</label>

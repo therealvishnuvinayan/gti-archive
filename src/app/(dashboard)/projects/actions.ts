@@ -1,5 +1,7 @@
 "use server";
 
+import { toggleProjectPin, deleteProject } from "@/lib/project-management";
+
 import { randomUUID } from "node:crypto";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { after } from "next/server";
@@ -55,7 +57,7 @@ import {
   setProjectCollaboratorChatVisibility,
   updateProjectCollaborators,
 } from "@/lib/projects";
-import { hasProjectPermission } from "@/lib/permissions/resolver";
+
 import { prisma } from "@/lib/prisma";
 import {
   publishProjectAccessRevoked,
@@ -68,13 +70,9 @@ import {
 } from "@/lib/realtime/server";
 import type { StageChatRealtimeTimelineUpdatedPayload } from "@/lib/realtime/events";
 import { logStageChatTiming } from "@/lib/stage-chat-timing";
-import {
-  ProjectWorkflowStageKey,
-  ProjectWorkflowStageStatus,
-  SubmissionReviewStatus,
-} from "@prisma/client";
+import { SubmissionReviewStatus } from "@prisma/client";
 import type { ProjectCollaboratorPermissions } from "@/lib/project-collaborator-permissions";
-import { isProjectStatusCompleted } from "@/lib/project-statuses";
+
 
 type StageRevisionInput = {
   projectId: string;
@@ -196,125 +194,9 @@ function revalidateProjectFlowAfterResponse() {
   after(revalidateProjectFlow);
 }
 
-export async function toggleProjectPinAction(projectId: string) {
-  const user = await requireUser();
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
-    select: {
-      ownerId: true,
-      coOwners: { select: { userId: true } },
-      executors: {
-        select: {
-          userId: true,
-        },
-      },
-      isPinned: true,
-      collaborators: {
-        select: {
-          userId: true,
-        },
-      },
-    },
-  });
+export async function toggleProjectPinAction(projectId: string) { const user = await requireUser(); const result = await toggleProjectPin(user, projectId); revalidatePath("/projects"); revalidateProjectFlow(); return result; }
 
-  if (!project) {
-    throw new Error("Project not found.");
-  }
-
-  if (!hasProjectPermission(user, project, "project.update")) {
-    throw new Error("You are not allowed to pin projects.");
-  }
-
-  const updatedProject = await prisma.project.update({
-    where: { id: projectId },
-    data: {
-      isPinned: !project.isPinned,
-    },
-    select: {
-      isPinned: true,
-    },
-  });
-
-  revalidatePath("/projects");
-  revalidateProjectFlow();
-
-  return updatedProject;
-}
-
-export async function deleteProjectAction(projectId: string) {
-  const user = await requireUser();
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
-    select: {
-      completedAt: true,
-      closure: { select: { id: true } },
-      workflowStages: {
-        where: {
-          stageKey: ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION,
-          status: ProjectWorkflowStageStatus.COMPLETED,
-        },
-        select: { id: true },
-      },
-      status: {
-        select: {
-          id: true,
-          name: true,
-          slug: true,
-          color: true,
-          group: {
-            select: {
-              id: true,
-              name: true,
-              slug: true,
-              color: true,
-              isActive: true,
-            },
-          },
-        },
-      },
-      ownerId: true,
-      coOwners: { select: { userId: true } },
-      executors: { select: { userId: true } },
-      collaborators: { select: { userId: true } },
-      stages: { select: { id: true } },
-    },
-  });
-
-  if (!project) throw new Error("Project not found.");
-
-  if (!hasProjectPermission(user, project, "project.delete")) {
-    throw new Error("You are not allowed to delete projects.");
-  }
-
-  if (
-    project.completedAt ||
-    project.closure ||
-    project.workflowStages.length > 0 ||
-    isProjectStatusCompleted(project.status)
-  ) {
-    throw new Error("Completed projects cannot be deleted.");
-  }
-
-  const stageIds = project.stages.map((stage) => stage.id);
-
-  await prisma.$transaction([
-    prisma.notification.deleteMany({
-      where: {
-        OR: [
-          { projectId },
-          ...(stageIds.length > 0 ? [{ stageId: { in: stageIds } }] : []),
-        ],
-      },
-    }),
-    prisma.project.delete({ where: { id: projectId } }),
-  ]);
-
-  revalidatePath("/");
-  revalidatePath("/notifications");
-  revalidatePath("/projects");
-  revalidatePath(`/projects/${projectId}`);
-  revalidateTag(PROJECTS_CACHE_TAG, "max");
-}
+export async function deleteProjectAction(projectId: string) { return deleteProject(await requireUser(), projectId); }
 
 function revalidateArchiveFlow(
   projectId: string,

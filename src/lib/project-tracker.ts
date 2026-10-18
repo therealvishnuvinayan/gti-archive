@@ -1,3 +1,4 @@
+import { denyUnscopedProjectRead } from "@/lib/authorization/project-read";
 import "server-only";
 
 import {
@@ -742,6 +743,8 @@ function spreadsheetStateFromSettings(settings: Prisma.JsonValue | null): unknow
 export async function getProjectTrackerWorkspace(
   user: PermissionUser,
 ): Promise<ProjectTrackerWorkspaceRecord> {
+await denyUnscopedProjectRead("tracker snapshot");
+
   if (!canUseProjects(user)) throw new Error("You do not have permission to view Project Tracker.");
 
   const trackerRecord = await ensureTracker(user);
@@ -841,6 +844,8 @@ export async function getProjectTrackerWorkspace(
 export async function getProjectTrackerTrash(
   user: PermissionUser,
 ): Promise<ProjectTrackerTrashItemRecord[]> {
+await denyUnscopedProjectRead("tracker trash");
+
   const tracker = await requireEditableTracker(user);
   const [columns, rows] = await Promise.all([
     withPrismaRetry(() =>
@@ -909,16 +914,9 @@ export async function getProjectTrackerTrash(
   ].sort((left, right) => right.deletedAt.localeCompare(left.deletedAt));
 }
 
-export function canEditProjectTracker(user: PermissionUser) {
-  return canUseProjects(user) && hasPermission(user, "project.update");
-}
+export function canEditProjectTracker(user: PermissionUser) { void user; return false; }
 
-export async function requireEditableTracker(user: PermissionUser) {
-  if (!canEditProjectTracker(user)) {
-    throw new Error("You do not have permission to edit Project Tracker.");
-  }
-  return ensureTracker(user);
-}
+export async function requireEditableTracker(user: PermissionUser): Promise<Awaited<ReturnType<typeof ensureTracker>>> { void user; throw new Error("Project Tracker writes are disabled pending scoped provenance and mutation policies."); }
 
 export async function recordTrackerActivity(input: {
   trackerId: string;

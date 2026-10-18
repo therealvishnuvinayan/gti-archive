@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.authorization-services.json",
+  "compilerOptions": { "outDir": "../.tmp/authorization-runtime" },
+  "include": ["authorization-runtime-integration-check.ts", "../src/lib/auth.ts", "../src/lib/permissions/v2.ts"]
+}

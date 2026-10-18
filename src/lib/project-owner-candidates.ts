@@ -25,7 +25,7 @@ export async function getEligibleProjectOwnerCandidates(): Promise<
   const users = await withPrismaRetry(() =>
     prisma.user.findMany({
       where: {
-        role: UserRole.ADMIN,
+        authorization: { is: { accountStatus: "ACTIVE", businessRole: { in: ["SENIOR_PROJECT_MANAGER", "JUNIOR_PROJECT_MANAGER"] } } },
       },
       orderBy: [{ name: "asc" }, { email: "asc" }],
       select: {
@@ -43,4 +43,9 @@ export async function getEligibleProjectOwnerCandidates(): Promise<
     email: user.email,
     role: user.role,
   }));
+}
+
+export async function getProjectExecutorCandidates() {
+  const users = await prisma.user.findMany({ where: { authorization: { is: { accountStatus: "ACTIVE", businessRole: { not: null } } } }, select: { id: true, name: true, email: true }, orderBy: { name: "asc" } });
+  return users.map(user => ({ ...user, name: user.name?.trim() || getFallbackName(user.email) }));
 }

@@ -1,3 +1,5 @@
+import { runProjectMutation } from "@/lib/authorization/project-write";
+import { refreshProjectReader, requireProjectResourceRead } from "@/lib/authorization/project-read";
 import { Prisma } from "@prisma/client";
 
 import { prisma, withPrismaRetry } from "@/lib/prisma";
@@ -56,6 +58,9 @@ export async function getProjectFormDraft(
   projectId: string,
   formKey: string,
 ) {
+  user = await refreshProjectReader(user);
+  await requireProjectResourceRead('structured', projectId, 'project.view', user);
+
   validateFormKey(formKey);
   await assertProjectAccess(user, projectId);
 
@@ -85,7 +90,7 @@ export async function getProjectFormDraft(
     : null;
 }
 
-export async function saveProjectFormDraft(
+async function saveProjectFormDraftImplementation(
   user: ProjectDraftUser,
   input: SaveProjectFormDraftInput,
 ) {
@@ -159,7 +164,7 @@ export async function saveProjectFormDraft(
   });
 }
 
-export async function deleteProjectFormDraft(
+async function deleteProjectFormDraftImplementation(
   user: ProjectDraftUser,
   projectId: string,
   formKey: string,
@@ -176,4 +181,30 @@ export async function deleteProjectFormDraft(
       },
     }),
   );
+}
+
+export async function saveProjectFormDraft(
+  user: ProjectDraftUser,
+  input: SaveProjectFormDraftInput,
+) {
+  const stageKey = input.formKey === "stage-one-project-inquiry" ? "PROJECT_INQUIRY"
+    : input.formKey.startsWith("stage-two-text-file:") ? "PROJECT_RESEARCH_AND_PLANNING"
+    : input.formKey.startsWith("concept-details:CONCEPT_CREATION:") ? "CONCEPT_CREATION"
+    : input.formKey.startsWith("concept-details:PROJECT_DEVELOPMENT:") ? "PROJECT_DEVELOPMENT"
+    : /^(stage-five-information-request|stage-five-checklist):/.test(input.formKey) ? "FINAL_LAYOUT"
+    : /^(stage-six-approver|stage-six-handover):/.test(input.formKey) ? "PRODUCTION_AND_HANDOVER"
+    : /^(stage-seven-sample-request|stage-seven-sample-review):/.test(input.formKey) ? "IMPLEMENTATION_AND_SUPERVISION"
+    : null;
+  if (!stageKey) throw new Error("This form draft is not supported by project authorization.");
+  return runProjectMutation(user, "saveProjectFormDraft", { kind: "workflow", id: `${input.projectId}~${stageKey}` }, async (trustedUser) =>
+    saveProjectFormDraftImplementation(trustedUser, input), input);
+}
+
+export async function deleteProjectFormDraft(
+  user: ProjectDraftUser,
+  projectId: string,
+  formKey: string,
+) {
+  return runProjectMutation(user, "deleteProjectFormDraft", { kind: "structured", id: projectId }, async (trustedUser) =>
+    deleteProjectFormDraftImplementation(trustedUser, projectId, formKey), { projectId });
 }

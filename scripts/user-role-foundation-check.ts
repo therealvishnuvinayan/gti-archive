@@ -159,9 +159,11 @@ const userWithProjectModuleAccess = userWithProjectPermissions([
   "project.list",
   "project.view",
 ]);
-assert.equal(canUseProjects(userWithProjectModuleAccess), true);
-assert.equal(getSidebarVisibility(userWithProjectModuleAccess).projects, true);
-assert.equal(getAuthenticatedDefaultRoute(userWithProjectModuleAccess), "/projects");
+// Phase 1.5B: a caller-built legacy profile is not a session-bound V2 identity.
+// Actual role/relationship grants are exercised in authorization:project-read-check.
+assert.equal(canUseProjects(userWithProjectModuleAccess), false);
+assert.equal(getSidebarVisibility(userWithProjectModuleAccess).projects, false);
+assert.equal(getAuthenticatedDefaultRoute(userWithProjectModuleAccess), "/archives");
 
 const userWithForgedCreatePermission = {
   id: "user",

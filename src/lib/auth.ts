@@ -1,28 +1,28 @@
-import { randomBytes, randomUUID } from "node:crypto";
-import { cache } from "react";
+import "server-only";
+
 import type { User } from "@prisma/client";
 import { cookies } from "next/headers";
-import { revalidateTag, unstable_cache } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { getPermissionProfileSnapshotForUser } from "@/lib/permissions/profiles";
-import { prisma, withPrismaRetry } from "@/lib/prisma";
 import {
   normalizeAuthEmail,
   verifyAuthPassword,
 } from "@/lib/auth-password";
+import { bindProjectReadIdentity } from "@/lib/authorization/project-read-rules";
+import { createVersionedSessionToken, resolveAuthenticatedSession } from "@/lib/authorization/session";
+import { getPermissionProfileSnapshotForUser } from "@/lib/permissions/profiles";
+import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 export {
-  hashAuthPassword,
-  normalizeAuthEmail,
-  verifyAuthPassword,
+hashAuthPassword,
+normalizeAuthEmail,
+verifyAuthPassword
 } from "@/lib/auth-password";
 
 export const SESSION_COOKIE_NAME = "gti_session";
 
 const DEFAULT_SESSION_DAYS = 1;
 const REMEMBER_ME_SESSION_DAYS = 30;
-const SESSION_CACHE_TTL_SECONDS = 10;
 
 function logAuthTiming(label: string, startedAt: number) {
   if (process.env.NODE_ENV === "production") {
@@ -82,15 +82,19 @@ async function createSession(userId: string, rememberMe: boolean) {
       (rememberMe ? REMEMBER_ME_SESSION_DAYS : DEFAULT_SESSION_DAYS),
   );
 
-  const session = await withPrismaRetry(() =>
-    prisma.session.create({
-      data: {
-        token: `${randomUUID()}-${randomBytes(16).toString("hex")}`,
-        userId,
-        expiresAt,
-      },
-    }),
-  );
+  const session = await prisma.$transaction(async (tx) => {
+    // Serialize issuance with V2 assignment writes, including first assignment.
+    await tx.$executeRaw`SET LOCAL lock_timeout = '5s'`;
+    await tx.$executeRaw`LOCK TABLE "UserAuthorization" IN SHARE MODE`;
+    const authorization = await tx.userAuthorization.findUnique({ where: { userId } });
+    if (authorization && authorization.accountStatus !== "ACTIVE") {
+      throw new AuthError("This account is unavailable. Contact an administrator.");
+    }
+    return tx.session.create({ data: {
+      token: createVersionedSessionToken(authorization?.authorizationVersion ?? null),
+      userId, expiresAt,
+    } });
+  });
 
   const cookieStore = await cookies();
   cookieStore.set(
@@ -100,31 +104,18 @@ async function createSession(userId: string, rememberMe: boolean) {
   );
 }
 
-function getSessionCacheTag(token: string) {
-  return `session:${token}`;
+export async function readCurrentSessionToken() {
+  return (await cookies()).get(SESSION_COOKIE_NAME)?.value ?? null;
 }
 
-async function getCachedSessionUser(sessionToken: string) {
-  const getCachedSession = unstable_cache(
-    async () =>
-      withPrismaRetry(() =>
-        prisma.session.findUnique({
-          where: {
-            token: sessionToken,
-          },
-          include: {
-            user: true,
-          },
-        }),
-      ),
-    ["session-user", sessionToken],
-    {
-      revalidate: SESSION_CACHE_TTL_SECONDS,
-      tags: [getSessionCacheTag(sessionToken)],
-    },
-  );
+async function getCurrentSession() {
+  const token = await readCurrentSessionToken();
+  return withPrismaRetry(() => resolveAuthenticatedSession(prisma, token));
+}
 
-  return getCachedSession();
+/** Server-only V2 identity. Do not serialize the principal into client props. */
+export async function getCurrentActor() {
+  return (await getCurrentSession())?.principal ?? null;
 }
 
 export async function signInUser(options: {
@@ -159,21 +150,13 @@ export async function signInUser(options: {
   return user;
 }
 
-export const getCurrentUser = cache(async () => {
+export async function getCurrentUser() {
   const startedAt = performance.now();
-  const cookieStore = await cookies();
-  const sessionToken = cookieStore.get(SESSION_COOKIE_NAME)?.value;
-
-  if (!sessionToken) {
-    logAuthTiming("auth/session lookup", startedAt);
-    return null;
-  }
-
   const sessionStartedAt = performance.now();
-  const session = await getCachedSessionUser(sessionToken);
+  const session = await getCurrentSession();
   logAuthTiming("auth/session lookup", sessionStartedAt);
 
-  if (!session || session.expiresAt <= new Date()) {
+  if (!session) {
     return null;
   }
 
@@ -184,11 +167,11 @@ export const getCurrentUser = cache(async () => {
   logAuthTiming("permission snapshot", permissionSnapshotStartedAt);
   logAuthTiming("auth total", startedAt);
 
-  return {
+  return bindProjectReadIdentity({
     ...session.user,
     permissionProfileSnapshot,
-  };
-});
+  }, session.principal);
+}
 
 export async function requireUser(returnTo?: string) {
   const user = await getCurrentUser();
@@ -212,7 +195,6 @@ export async function signOutCurrentSession() {
         },
       }),
     );
-    revalidateTag(getSessionCacheTag(sessionToken), "max");
   }
 
   cookieStore.set(SESSION_COOKIE_NAME, "", {

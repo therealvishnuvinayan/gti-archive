@@ -1,5 +1,12 @@
 # Phase 1.4A — inactive assignment services
 
+Phase 1.5A update: ordinary assignment calls now also use the shared runtime
+session resolver and reject version-mismatched/unversioned sessions with
+`STALE_SESSION`. Existing transaction locks, authority separation, planner and
+audit behavior remain intact. See [RUNTIME.md](./RUNTIME.md). The rest of this
+document describes the original Phase 1.4A milestone; it does not supersede the
+current runtime rollout boundary.
+
 These are server-only factories, with no instantiated application client, route,
 server action, UI caller or environment loading. No V2 assignment, login change,
 permission activation or database migration occurs by importing them. The existing

@@ -1,5 +1,7 @@
-import { Suspense } from "react";
+import { canReadProjectResource } from "@/lib/authorization/project-read";
+import { isDirectorReader } from "@/lib/authorization/project-read-rules";
 import { ProjectWorkflowStageKey } from "@prisma/client";
+import { Suspense } from "react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { ProjectBackButton } from "@/components/projects/project-back-button";
@@ -49,6 +51,7 @@ async function StageSevenContent({
 }) {
   const user = await userPromise;
 
+  if (!await canReadProjectResource("structured", slug, "project.view", user)) return <ProjectAccessUnavailableState />;
   const project = await getProjectStageShellById(slug, user);
 
   if (!project) {
@@ -61,7 +64,7 @@ async function StageSevenContent({
   );
 
   if (
-    !canOpenImplementedWorkflowStage({
+    !isDirectorReader(user) && !canOpenImplementedWorkflowStage({
       stageKey: ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION,
       status: workflowStage?.status,
     })

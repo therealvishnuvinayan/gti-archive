@@ -1,18 +1,14 @@
-import {
-  ProjectResearchFolderSystemKey,
-  ProjectWorkflowStageKey,
-  ProjectWorkflowStageStatus,
-  UserRole,
-  type Prisma,
-} from "@prisma/client";
+import { canReadFullProject, isDirectorReader, hasProjectBusinessIdentity } from "@/lib/authorization/project-read-rules";
+import { refreshProjectReader, requireProjectResourceRead } from "@/lib/authorization/project-read";
+import { inAuthorizedProjectMutation } from "@/lib/authorization/project-transaction";
+import { ProjectResearchFolderSystemKey, ProjectWorkflowStageKey, ProjectWorkflowStageStatus, type Prisma } from "@prisma/client";
 
 import {
-  isGlobalProjectAdministrator,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
-import { isProjectStatusCompleted } from "@/lib/project-statuses";
 import { getFolderAncestors } from "@/lib/project-folder-tree";
+import { isProjectStatusCompleted } from "@/lib/project-statuses";
 
 export const researchAccessProjectSelect = {
   ownerId: true,
@@ -74,7 +70,7 @@ export function getProjectResearchAccess(
     project: ProjectResearchAccessProject;
   },
 ): ProjectResearchAccess {
-  const isGlobalAdministrator = isGlobalProjectAdministrator(user);
+  const isGlobalAdministrator = isDirectorReader(user);
   const isProjectOwner = context.project.ownerId === user.id;
   const isProjectCoOwner = context.project.coOwners.some(
     (coOwner) => coOwner.userId === user.id,
@@ -102,12 +98,12 @@ export function getProjectResearchAccess(
       isProjectStatusCompleted(context.project.status),
   );
   const isCanonicalSharedFolder =
-    user.role === UserRole.USER &&
+    hasProjectBusinessIdentity(user) &&
     isCanonicalWorkspace &&
     (context.folderSystemKey === ProjectResearchFolderSystemKey.BRIEF ||
       context.folderSystemKey === ProjectResearchFolderSystemKey.TECH) &&
     isProjectParticipant;
-  const canManageWorkspace = isGlobalAdministrator || isProjectOwner || isProjectCoOwner;
+  const canManageWorkspace = canReadFullProject(user, context.project);
 
   return {
     projectId: context.projectId,
@@ -118,13 +114,13 @@ export function getProjectResearchAccess(
       isCanonicalSharedFolder ||
       (isCanonicalWorkspace && stageAvailable && canManageWorkspace),
     canUpload:
-      isCanonicalWorkspace &&
-      stageAvailable &&
-      (canManageWorkspace || isCanonicalSharedFolder) &&
+      (isCanonicalWorkspace || isGlobalAdministrator) &&
+      workflowStatus === ProjectWorkflowStageStatus.AVAILABLE &&
+      canManageWorkspace &&
       !isProjectCompleted,
     canWrite:
-      isCanonicalWorkspace &&
-      stageAvailable &&
+      (isCanonicalWorkspace || isGlobalAdministrator) &&
+      workflowStatus === ProjectWorkflowStageStatus.AVAILABLE &&
       canManageWorkspace &&
       !isProjectCompleted,
     isProjectCompleted,
@@ -137,7 +133,10 @@ export function getProjectResearchAccess(
 export async function getResearchFolderAccess(
   user: Pick<PermissionUser, "id" | "role">,
   input: { projectId: string; folderId: string },
+  readOnly = false,
 ) {
+  const directorWorkspace = isDirectorReader(user) &&
+    (readOnly || inAuthorizedProjectMutation(user, input.projectId));
   const project = await withPrismaRetry(() =>
     prisma.project.findUnique({
       where: { id: input.projectId },
@@ -145,10 +144,10 @@ export async function getResearchFolderAccess(
     }),
   );
 
-  if (!project?.ownerId) {
+  if (!project || (!project.ownerId && !directorWorkspace)) {
     throw new Error("Research folder not found.");
   }
-  const ownerUserId = project.ownerId;
+  const ownerUserId = project.ownerId ?? "__no_canonical_owner__";
 
   const folder = await withPrismaRetry(() =>
     prisma.projectResearchFolder.findFirst({
@@ -156,7 +155,7 @@ export async function getResearchFolderAccess(
         id: input.folderId,
         workspace: {
           projectId: input.projectId,
-          ownerUserId,
+          ...(directorWorkspace ? {} : {ownerUserId}),
         },
       },
       select: {
@@ -197,13 +196,14 @@ export async function assertResearchFolderReadAccess(
   user: Pick<PermissionUser, "id" | "role">,
   input: { projectId: string; folderId: string },
 ) {
-  const result = await getResearchFolderAccess(user, input);
+  user = await refreshProjectReader(user);
+  await requireProjectResourceRead('research-folder', input.folderId, 'project.viewFolder', user);
 
-  if (!result.access.canRead) {
-    throw new Error("You do not have permission to view this research folder.");
-  }
+  const result = await getResearchFolderAccess(user, input, true);
 
-  return result;
+
+
+  return {...result, access: {...result.access, canRead: true}};
 }
 
 export async function assertResearchFolderUploadAccess(

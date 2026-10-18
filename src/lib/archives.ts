@@ -1,3 +1,5 @@
+import { refreshProjectReader, requireProjectResourceRead } from "@/lib/authorization/project-read";
+import { isDirectorReader, projectReadActor, structuredProjectReadWhere } from "@/lib/authorization/project-read-rules";
 import {
   ActivityLogAction,
   ArchiveRecordStatus,
@@ -16,13 +18,32 @@ import {
 } from "@prisma/client";
 
 import {
+  formatArchiveMetadataDate,
+  getArchiveArtworkMetadataMissingGroups,
+  type ArchiveArtworkMetadataDraft,
+  type ArchiveArtworkMetadataMissingGroup,
+} from "@/lib/archive-artwork-metadata";
+import {
   getActiveArchiveCategoryOptions,
   type ArchiveCategoryOption,
   type ArchiveCategoryRecord,
   type ArchiveCategorySlug,
 } from "@/lib/archive-categories";
+import {
+  buildArchiveSearchPlan,
+  parseArchiveSearchQuery,
+  rankArchiveSearchCandidate,
+  type ArchiveSearchDateFilter,
+  type ArchiveSearchEntry,
+  type ArchiveSearchMatchKind,
+} from "@/lib/archive-search-query";
+import {
+  mapAssetTagAssignments,
+  validateActiveAssetTagIds,
+  type AssetTagAssignmentRecord,
+  type AssetTagRecord,
+} from "@/lib/asset-tags";
 import { getUserDisplayName } from "@/lib/auth";
-import { getFinalCompletionArchiveBlockers } from "@/lib/project-completion";
 import {
   assertCanUseArchives,
   canUseArchives,
@@ -33,23 +54,23 @@ import {
   isProjectOwner,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
+import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { projectCollaboratorPermissionSelect } from "@/lib/project-collaborator-permissions";
 import {
   canBypassCollaboratorVisibility,
   isTimestampHiddenByPauseWindows,
 } from "@/lib/project-collaborator-visibility";
+import { getFinalCompletionArchiveBlockers } from "@/lib/project-completion";
 import {
   assertProjectAccess,
 } from "@/lib/project-history";
-import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { defaultProjectStatusGroupSlugs } from "@/lib/project-statuses";
 import { sanitizeRichText } from "@/lib/rich-text";
 import {
   createSecureExternalToken,
   getApplicationUrl,
   hashSecureExternalToken,
 } from "@/lib/secure-external-token";
-import { defaultProjectStatusGroupSlugs } from "@/lib/project-statuses";
-import { isSuperAdminRole } from "@/lib/user-role-compatibility";
 import {
   createPresignedDownloadUrl,
   deleteObjectIfNeeded,
@@ -65,30 +86,11 @@ import {
   buildFileTypeNotAllowedPayload,
   isAllowedAssetFile,
 } from "@/lib/upload-validation";
-import {
-  mapAssetTagAssignments,
-  validateActiveAssetTagIds,
-  type AssetTagAssignmentRecord,
-  type AssetTagRecord,
-} from "@/lib/asset-tags";
-import {
-  formatArchiveMetadataDate,
-  getArchiveArtworkMetadataMissingGroups,
-  type ArchiveArtworkMetadataDraft,
-  type ArchiveArtworkMetadataMissingGroup,
-} from "@/lib/archive-artwork-metadata";
-import {
-  buildArchiveSearchPlan,
-  parseArchiveSearchQuery,
-  rankArchiveSearchCandidate,
-  type ArchiveSearchDateFilter,
-  type ArchiveSearchEntry,
-  type ArchiveSearchMatchKind,
-} from "@/lib/archive-search-query";
+import { isSuperAdminRole } from "@/lib/user-role-compatibility";
 
 export type {
-  ArchiveArtworkMetadataDraft,
-  ArchiveArtworkMetadataMissingGroup,
+ArchiveArtworkMetadataDraft,
+ArchiveArtworkMetadataMissingGroup
 } from "@/lib/archive-artwork-metadata";
 
 export type ArchiveAccessUser = Pick<
@@ -413,6 +415,7 @@ function getArchivedProjectFileAccessWhere(
 ): Prisma.ArchivedProjectFileWhereInput {
   if (hasPartialArchiveAccess(user)) {
     return {
+      project: { is: buildArchivedProjectFileProjectWhere(user) },
       userArchiveAccesses: {
         some: {
           userId: user.id,
@@ -543,9 +546,7 @@ export function canAccessArchiveCategoryRecord(
 
 function buildArchivedProjectFileProjectWhere(
   user: ArchiveAccessUser,
-): Prisma.ProjectWhereInput {
-  return canUseArchives(user) ? {} : { id: "__no_access__" };
-}
+): Prisma.ProjectWhereInput { return structuredProjectReadWhere(projectReadActor(user), true); }
 
 function getArchivedProjectCategoryWhere(
   user: ArchiveAccessUser,
@@ -2144,6 +2145,8 @@ function isArchiveTimestampVisibleToUser(
   },
   timestamp: Date,
 ) {
+if (isDirectorReader(user)) return true;
+
   if (canUseArchives(user)) return true;
 
   if (
@@ -2167,6 +2170,8 @@ function isArchiveTimestampVisibleToUser(
 }
 
 export async function listArchiveCategorySummaries(user: ArchiveAccessUser) {
+  user = await refreshProjectReader(user);
+
   if (!(await canAccessArchivesArea(user))) {
     throw new Error("You do not have permission to view archives.");
   }
@@ -2328,6 +2333,7 @@ function buildProjectArchiveSearchBaseWhere(
   return {
     AND: [
       archiveAccessWhere,
+      { project: { is: buildArchivedProjectFileProjectWhere(user) } },
       {
         archiveCategory: {
           is: getAccessibleArchiveCategoryWhere(user),
@@ -3345,6 +3351,8 @@ export async function searchArchivesForUser(input: {
   query: string;
   limit?: number | null;
 }): Promise<ArchiveSearchResponse> {
+input = { ...input, user: await refreshProjectReader(input.user) };
+
   const parsedQuery = parseArchiveSearchQuery(input.query);
   const resultLimit = resolveArchiveSearchLimit(input.limit);
 
@@ -3764,6 +3772,8 @@ export async function listArchivedFilesByCategory(
   user: ArchiveAccessUser,
   category: ArchiveCategoryRecord,
 ) {
+  user = await refreshProjectReader(user);
+
   if (!(await canAccessArchivesArea(user))) {
     throw new Error("You do not have permission to view archives.");
   }
@@ -3997,6 +4007,9 @@ export async function getProjectArchivePreparation(
     stageId: string;
   },
 ) {
+  user = await refreshProjectReader(user);
+  await requireProjectResourceRead('structured', input.projectId, 'project.view', user);
+
   const project = await getProjectArchiveBase(input.projectId);
 
   if (!project) {
@@ -4046,6 +4059,9 @@ export async function getStageSixArchivePreparation(
   user: ArchiveAccessUser,
   input: { projectId: string },
 ) {
+  user = await refreshProjectReader(user);
+  await requireProjectResourceRead('structured', input.projectId, 'project.view', user);
+
   const project = await getProjectArchiveBase(input.projectId);
 
   if (!project) {
@@ -4360,6 +4376,9 @@ export async function getProjectCompletionSummary(
   projectId: string,
   selectedStageId?: string | null,
 ) {
+  user = await refreshProjectReader(user);
+  await requireProjectResourceRead('structured', projectId, 'project.view', user);
+
   await assertProjectAccess(user, projectId);
 
   const project = await getProjectArchiveBase(projectId);
@@ -5192,6 +5211,8 @@ async function getArchiveDownloadFileForUser(
   user: ArchiveAccessUser,
   archivedFileId: string,
 ): Promise<ArchiveDownloadFile> {
+  user = await refreshProjectReader(user);
+
   const archivedFile = await withPrismaRetry(() =>
     prisma.archivedProjectFile.findUnique({
       where: {
@@ -5220,6 +5241,7 @@ async function getArchiveDownloadFileForUser(
     }),
   );
 
+  if (archivedFile) await requireProjectResourceRead("structured", archivedFile.projectId, "project.view", user);
   if (!archivedFile) {
     const manualArchiveFile = await withPrismaRetry(() =>
       prisma.manualArchiveFile.findUnique({
@@ -5662,6 +5684,10 @@ export async function getArchivedFilePreviewUrlForUser(
   user: ArchiveAccessUser,
   archivedFileId: string,
 ) {
+  user = await refreshProjectReader(user);
+ const linked = await prisma.archivedProjectFile.findUnique({where:{id:archivedFileId},select:{projectId:true}});
+ if (linked) await requireProjectResourceRead("structured", linked.projectId, "project.view", user);
+
   const archivedFile = await withPrismaRetry(() =>
     prisma.archivedProjectFile.findUnique({
       where: {

@@ -1,3 +1,4 @@
+import { activeProjectMutation } from "@/lib/authorization/project-transaction";
 import { randomUUID } from "node:crypto";
 
 import {
@@ -112,6 +113,8 @@ export async function setRequestReminder(input: {
   intervalHours: RequestReminderIntervalHours;
   now?: Date;
 }) {
+  const context = activeProjectMutation();
+  if (!context || context.projectId !== input.projectId || context.actorId !== input.configuredById) throw new Error("An authorized project mutation is required.");
   const now = input.now ?? new Date();
   const nextReminderAt = getNextReminderAt(now, input.intervalHours);
   const where = reminderTargetWhere(input.target);
@@ -162,6 +165,7 @@ export async function setRequestReminder(input: {
 }
 
 export async function stopRequestReminder(target: ReminderTarget, now = new Date()) {
+  if (!activeProjectMutation()) throw new Error("An authorized project mutation is required.");
   const result = await withPrismaRetry(() =>
     prisma.requestReminder.updateMany({
       where: { ...reminderTargetWhere(target), enabled: true },

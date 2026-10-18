@@ -1,3 +1,6 @@
+import { runProjectMutation } from "@/lib/authorization/project-write";
+import { refreshProjectReader, requireProjectResourceRead } from "@/lib/authorization/project-read";
+import { isDirectorReader } from "@/lib/authorization/project-read-rules";
 import { randomUUID } from "node:crypto";
 
 import {
@@ -15,25 +18,24 @@ import {
 
 import { getUserDisplayName } from "@/lib/auth";
 import {
-  assertProjectTimestampVisibleForUser,
-  canBypassCollaboratorVisibility,
-  getProjectCollaboratorVisibilityState,
-  isTimestampHiddenByPauseWindows,
-} from "@/lib/project-collaborator-visibility";
-import {
   notifyApprovalProofUploaded,
   notifyCopyrightDocumentUploaded,
   notifyInvoiceUploaded,
   runNotificationTask,
 } from "@/lib/notification-center";
+import type { PermissionKey } from "@/lib/permissions/definitions";
 import {
   hasProjectPermission,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
-import type { PermissionKey } from "@/lib/permissions/definitions";
+import { prisma, withPrismaRetry } from "@/lib/prisma";
+import {
+  canBypassCollaboratorVisibility,
+  getProjectCollaboratorVisibilityState,
+  isTimestampHiddenByPauseWindows
+} from "@/lib/project-collaborator-visibility";
 import { assertProjectAccess } from "@/lib/project-history";
 import { isProjectStatusCompleted } from "@/lib/project-statuses";
-import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { sanitizeRichText } from "@/lib/rich-text";
 import {
   buildProjectCompletionDocumentKey,
@@ -321,13 +323,6 @@ function canUploadInvoiceForProject(
   user: ProjectCompletionWorkflowUser,
 ) {
   return workflow?.invoiceContactUserId === user.id;
-}
-
-function canAccessCompletionDocuments(
-  project: ProjectCompletionPermissionProject,
-  user: ProjectCompletionWorkflowUser,
-) {
-  return canViewCompletionWorkflow(project, user);
 }
 
 function requireCompletionProjectPermission(
@@ -969,6 +964,10 @@ async function ensureProjectCompletionDocumentAccess(
   user: ProjectCompletionWorkflowUser,
   documentId: string,
 ) {
+  user = await refreshProjectReader(user);
+ const linked = await prisma.projectCompletionDocument.findUniqueOrThrow({where:{id:documentId},select:{projectId:true}});
+  await requireProjectResourceRead("structured", linked.projectId, "project.view", user);
+
   const document = await withPrismaRetry(() =>
     prisma.projectCompletionDocument.findUnique({
       where: {
@@ -1012,37 +1011,7 @@ async function ensureProjectCompletionDocumentAccess(
 
   await assertProjectAccess(user, document.projectId);
 
-  if (!canAccessCompletionDocuments(document.project, user)) {
-    throw new Error("You do not have access to this completion document.");
-  }
-
-  if (!hasProjectPermission(user, document.project, "completion.viewChecklist")) {
-    await assertProjectTimestampVisibleForUser(user, {
-      projectId: document.projectId,
-      projectOwnerId: document.project.ownerId ?? "",
-      timestamp: document.uploadedAt,
-      message: "You do not have access to this completion document.",
-    });
-  }
-
   return document;
-}
-
-async function ensureWorkflowExists(projectId: string) {
-  return withPrismaRetry(() =>
-    prisma.projectCompletionWorkflow.upsert({
-      where: {
-        projectId,
-      },
-      update: {},
-      create: {
-        projectId,
-      },
-      select: {
-        id: true,
-      },
-    }),
-  );
 }
 
 async function ensureWorkflowExistsTx(tx: Prisma.TransactionClient, projectId: string) {
@@ -1219,6 +1188,8 @@ async function filterCompletionProjectForVisibility(
   project: ProjectCompletionProjectRecord,
   user: ProjectCompletionWorkflowUser,
 ): Promise<ProjectCompletionProjectRecord> {
+if (isDirectorReader(user)) return project;
+
   if (
     canBypassCollaboratorVisibility(user, project.ownerId ?? "") ||
     hasProjectPermission(user, project, "completion.viewChecklist")
@@ -1319,30 +1290,21 @@ export async function getProjectCompletionWorkflowForUser(
   user: ProjectCompletionWorkflowUser,
   projectId: string,
 ) {
-  const project = await ensureProjectCompletionViewAccess(user, projectId);
+  user = await refreshProjectReader(user);
+  await requireProjectResourceRead('structured', projectId, 'project.view', user);
+
+  const project = await getProjectCompletionProject(projectId);
 
   if (!project) {
     return null;
   }
 
-  if (!project.completionWorkflow) {
-    await ensureWorkflowExists(projectId);
-    const refreshedProject = await getProjectCompletionProject(projectId);
-
-    if (!refreshedProject?.completionWorkflow) {
-      throw new Error("Unable to load the project completion workflow.");
-    }
-
-    return await mapWorkflowRecord(
-      await filterCompletionProjectForVisibility(refreshedProject, user),
-      user,
-    );
-  }
+  if (!project.completionWorkflow) return null;
 
   return await mapWorkflowRecord(await filterCompletionProjectForVisibility(project, user), user);
 }
 
-export async function configureProjectCompletionWorkflow(
+async function configureProjectCompletionWorkflowImplementation(
   user: ProjectCompletionWorkflowUser,
   input: {
     projectId: string;
@@ -1473,7 +1435,7 @@ export async function configureProjectCompletionWorkflow(
   return workflow;
 }
 
-export async function prepareAuthorityApprovalRequest(
+async function prepareAuthorityApprovalRequestImplementation(
   user: ProjectCompletionWorkflowUser,
   input: {
     projectId: string;
@@ -1555,7 +1517,7 @@ export async function prepareAuthorityApprovalRequest(
   return workflow;
 }
 
-export async function prepareCopyrightTransferRequest(
+async function prepareCopyrightTransferRequestImplementation(
   user: ProjectCompletionWorkflowUser,
   input: {
     projectId: string;
@@ -1630,7 +1592,7 @@ export async function prepareCopyrightTransferRequest(
   return workflow;
 }
 
-export async function requestProjectFinalInvoice(
+async function requestProjectFinalInvoiceImplementation(
   user: ProjectCompletionWorkflowUser,
   input: {
     projectId: string;
@@ -1703,7 +1665,7 @@ export async function requestProjectFinalInvoice(
   return workflow;
 }
 
-export async function markProjectInvoiceNotRequired(
+async function markProjectInvoiceNotRequiredImplementation(
   user: ProjectCompletionWorkflowUser,
   input: {
     projectId: string;
@@ -1804,7 +1766,7 @@ export async function markProjectInvoiceNotRequired(
   return workflow;
 }
 
-export async function requestProjectCompletionDocumentUpload(
+async function requestProjectCompletionDocumentUploadImplementation(
   user: ProjectCompletionWorkflowUser,
   input: RequestProjectCompletionDocumentUploadInput,
 ): Promise<RequestProjectCompletionDocumentUploadResult> {
@@ -1912,7 +1874,7 @@ export async function requestProjectCompletionDocumentUpload(
   };
 }
 
-export async function finalizeProjectCompletionDocumentUpload(
+async function finalizeProjectCompletionDocumentUploadImplementation(
   user: ProjectCompletionWorkflowUser,
   input: {
     projectId: string;
@@ -2280,4 +2242,88 @@ export async function getProjectCompletionDocumentPreviewUrlForUser(
     fileName: document.archiveFileName,
     mimeType: document.mimeType,
   });
+}
+
+export async function configureProjectCompletionWorkflow(
+  user: ProjectCompletionWorkflowUser,
+  input: {
+    projectId: string;
+    approvalRequired: boolean;
+    copyrightRequired: boolean;
+    invoiceRequired: boolean;
+  },
+) {
+  return runProjectMutation(user, "configureProjectCompletionWorkflow", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    configureProjectCompletionWorkflowImplementation(trustedUser, input), input);
+}
+
+export async function prepareAuthorityApprovalRequest(
+  user: ProjectCompletionWorkflowUser,
+  input: {
+    projectId: string;
+    contactUserId: string;
+    selectedProjectFileIds: string[];
+    note?: string;
+  },
+) {
+  return runProjectMutation(user, "prepareAuthorityApprovalRequest", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    prepareAuthorityApprovalRequestImplementation(trustedUser, input), input);
+}
+
+export async function prepareCopyrightTransferRequest(
+  user: ProjectCompletionWorkflowUser,
+  input: {
+    projectId: string;
+    contactUserId: string;
+    note?: string;
+  },
+) {
+  return runProjectMutation(user, "prepareCopyrightTransferRequest", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    prepareCopyrightTransferRequestImplementation(trustedUser, input), input);
+}
+
+export async function requestProjectFinalInvoice(
+  user: ProjectCompletionWorkflowUser,
+  input: {
+    projectId: string;
+    contactUserId: string;
+    note?: string;
+  },
+) {
+  return runProjectMutation(user, "requestProjectFinalInvoice", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    requestProjectFinalInvoiceImplementation(trustedUser, input), input);
+}
+
+export async function markProjectInvoiceNotRequired(
+  user: ProjectCompletionWorkflowUser,
+  input: {
+    projectId: string;
+  },
+) {
+  return runProjectMutation(user, "markProjectInvoiceNotRequired", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    markProjectInvoiceNotRequiredImplementation(trustedUser, input), input);
+}
+
+export async function requestProjectCompletionDocumentUpload(
+  user: ProjectCompletionWorkflowUser,
+  input: RequestProjectCompletionDocumentUploadInput,
+): Promise<RequestProjectCompletionDocumentUploadResult> {
+  return runProjectMutation(user, "requestProjectCompletionDocumentUpload", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    requestProjectCompletionDocumentUploadImplementation(trustedUser, input), input);
+}
+
+export async function finalizeProjectCompletionDocumentUpload(
+  user: ProjectCompletionWorkflowUser,
+  input: {
+    projectId: string;
+    documentType: ProjectCompletionDocumentType;
+    originalFileName: string;
+    mimeType: string;
+    fileSize: number;
+    storageKey: string;
+    failed?: boolean;
+  },
+) {
+  return runProjectMutation(user, "finalizeProjectCompletionDocumentUpload", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    finalizeProjectCompletionDocumentUploadImplementation(trustedUser, input), input);
 }

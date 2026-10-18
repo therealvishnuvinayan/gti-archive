@@ -71,7 +71,7 @@ try {
   sign(initial, "BOOTSTRAP_DIRECTOR", director.id);
   await core.applySignedSetup(db, "bootstrap-director", operator.email, trust.publicKeyPem, JSON.parse(protectedFile(initial.approval, repository)));
   // These existing sessions are isolated test fixtures, never production sessions.
-  const directorToken = randomBytes(32).toString("hex"), developerToken = randomBytes(32).toString("hex");
+  const directorToken = `v2.1.${randomBytes(32).toString("hex")}`, developerToken = `v2.1.${randomBytes(32).toString("hex")}`;
   for (const [token, userId] of [[directorToken, director.id], [developerToken, operator.id]]) {
     await db.session.create({ data: { token, userId, expiresAt: new Date(Date.now() + 600000) } });
   }

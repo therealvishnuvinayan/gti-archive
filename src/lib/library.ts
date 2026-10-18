@@ -1,3 +1,6 @@
+import { refreshProjectReader } from "@/lib/authorization/project-read";
+import { readableStructuredFileProject } from "@/lib/authorization/project-read-policies";
+import { projectReadActor, structuredProjectReadWhere } from "@/lib/authorization/project-read-rules";
 import {
   AttachmentAssetType,
   AttachmentStatus,
@@ -7,17 +10,28 @@ import {
 } from "@prisma/client";
 
 import {
-  canBypassCollaboratorVisibility,
-  isTimestampHiddenByPauseWindows,
-} from "@/lib/project-collaborator-visibility";
-import { getFavoriteAttachmentIdSetForUser } from "@/lib/file-favorite-queries";
-import { getFavoriteManualLibraryAssetIdSetForUser } from "@/lib/manual-library-asset-favorites";
+  mapAssetTagAssignments,
+  validateActiveAssetTagIds,
+  type AssetTagAssignmentRecord,
+} from "@/lib/asset-tags";
 import {
   getDevTimingDurationMs,
   getDevTimingNow,
   logDevTiming,
   timeDevAsync,
 } from "@/lib/dev-timing";
+import { getFavoriteAttachmentIdSetForUser } from "@/lib/file-favorite-queries";
+import { canUploadLibraryAssets, canViewLibrary } from "@/lib/library-access";
+import {
+  type LibraryDateFilter,
+  type LibraryItemRecord,
+  type LibraryPageData,
+  type LibraryUploadCategory,
+  type LibraryQueryInput,
+  type LibraryQuickMenuCounts,
+  libraryUploadCategoryOptions,
+} from "@/lib/library-shared";
+import { getFavoriteManualLibraryAssetIdSetForUser } from "@/lib/manual-library-asset-favorites";
 import {
   hasPermission,
   hasProjectPermission,
@@ -39,27 +53,11 @@ import {
   getS3Region,
   type S3UploadEndpointMode,
 } from "@/lib/storage/s3";
-import { canUploadLibraryAssets, canViewLibrary } from "@/lib/library-access";
-import { canViewProjectConcept } from "@/lib/project-concept-access";
-import {
-  type LibraryDateFilter,
-  type LibraryItemRecord,
-  type LibraryPageData,
-  type LibraryUploadCategory,
-  type LibraryQueryInput,
-  type LibraryQuickMenuCounts,
-  libraryUploadCategoryOptions,
-} from "@/lib/library-shared";
 import {
   PROJECT_ASSET_ALLOWED_EXTENSIONS,
   buildFileTypeNotAllowedPayload,
   isAllowedAssetFile,
 } from "@/lib/upload-validation";
-import {
-  mapAssetTagAssignments,
-  validateActiveAssetTagIds,
-  type AssetTagAssignmentRecord,
-} from "@/lib/asset-tags";
 
 const libraryAssetTypes = [
   AttachmentAssetType.GENERAL_PROJECT_ASSET,
@@ -399,54 +397,6 @@ function canDeleteManualLibraryAsset(user: LibraryUser, uploadedById: string) {
   );
 }
 
-function isAttachmentVisibleToUser(
-  user: LibraryUser,
-  attachment: RawLibraryAttachment,
-) {
-  const concept = attachment.stage?.conceptFolder;
-  if (
-    concept &&
-    !canViewProjectConcept(user, {
-      folderId: concept.id,
-      projectId: concept.projectId,
-      taskerStageId: concept.taskerStageId,
-      workflowStageKey: concept.workflowStageKey,
-      assignedExecutorId: concept.assignedExecutorId,
-      ownerId: attachment.project.ownerId,
-      coOwnerIds: attachment.project.coOwners.map((coOwner) => coOwner.userId),
-    })
-  ) {
-    return false;
-  }
-
-  if (
-    canBypassCollaboratorVisibility(user, attachment.project.ownerId ?? "") ||
-    attachment.project.coOwners.some((coOwner) => coOwner.userId === user.id)
-  ) {
-    return true;
-  }
-
-  const isExecutor = attachment.project.executors.some(
-    (executor) => executor.userId === user.id,
-  );
-  const collaborator = attachment.project.collaborators.find(
-    (item) => item.userId === user.id,
-  );
-
-  if (!collaborator) {
-    return isExecutor;
-  }
-
-  if (collaborator.chatVisibilityPaused && collaborator.visibilityPauses.length === 0) {
-    return false;
-  }
-
-  return !isTimestampHiddenByPauseWindows(
-    attachment.createdAt,
-    collaborator.visibilityPauses,
-  );
-}
-
 function mapAttachmentToLibraryItem(
   user: LibraryUser,
   attachment: RawLibraryAttachment,
@@ -626,8 +576,8 @@ function applyLibraryFilters(
 }
 
 async function getAccessibleLibraryAttachments(user: LibraryUser) {
-  const isAdminUser =
-    user.role === UserRole.SUPER_ADMIN || user.role === UserRole.ADMIN;
+  user = await refreshProjectReader(user);
+
 
   const attachments = await withPrismaRetry(() =>
     prisma.projectAttachment.findMany({
@@ -639,35 +589,7 @@ async function getAccessibleLibraryAttachments(user: LibraryUser) {
         archivedFiles: {
           none: {},
         },
-        ...(isAdminUser
-          ? {}
-          : {
-              OR: [
-                {
-                  project: {
-                    createdById: user.id,
-                  },
-                },
-                {
-                  project: {
-                    executors: {
-                      some: {
-                        userId: user.id,
-                      },
-                    },
-                  },
-                },
-                {
-                  project: {
-                    collaborators: {
-                      some: {
-                        userId: user.id,
-                      },
-                    },
-                  },
-                },
-              ],
-            }),
+        project: { is: structuredProjectReadWhere(projectReadActor(user), true) },
       },
       orderBy: {
         createdAt: "desc",
@@ -757,7 +679,9 @@ async function getAccessibleLibraryAttachments(user: LibraryUser) {
     }),
   );
 
-  return attachments.filter((attachment) => isAttachmentVisibleToUser(user, attachment));
+  const actor = projectReadActor(user);
+  if (!actor) return [];
+  return (await Promise.all(attachments.map(async attachment => await readableStructuredFileProject(prisma, actor, attachment.id) ? attachment : null))).filter(attachment => attachment !== null);
 }
 
 async function getAccessibleManualLibraryAssets() {
@@ -778,6 +702,8 @@ export async function getLibraryPageDataForUser(
   user: LibraryUser,
   input: LibraryQueryInput = {},
 ): Promise<LibraryPageData> {
+  user = await refreshProjectReader(user);
+
   const totalStartedAt = getDevTimingNow();
 
   if (!hasPermission(user, "library.view")) {

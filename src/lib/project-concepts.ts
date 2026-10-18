@@ -1,3 +1,5 @@
+import { runProjectMutation } from "@/lib/authorization/project-write";
+import { refreshProjectReader, requireProjectResourceRead } from "@/lib/authorization/project-read";
 import {
   ActivityLogAction,
   AttachmentAssetType,
@@ -16,6 +18,7 @@ import {
 import {
   type PermissionUser,
 } from "@/lib/permissions/resolver";
+import { prisma, withPrismaRetry } from "@/lib/prisma";
 import {
   canCompleteProjectConceptStage,
   canManageProjectConcept,
@@ -24,20 +27,19 @@ import {
   getProjectConceptParticipantUserIds,
   type ConceptAccessContext,
 } from "@/lib/project-concept-access";
-import { prisma, withPrismaRetry } from "@/lib/prisma";
-import { sanitizeRichText } from "@/lib/rich-text";
-import { getWorkflowStageCompletionMode } from "@/lib/project-workflow";
 import {
   getProjectStageAccessRecordById,
   projectStageAccessSelect,
   type ProjectStageAccessRecord,
 } from "@/lib/project-stage-data";
-import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
-import { isAllowedStageSubmissionFile } from "@/lib/upload-validation";
+import { getStageSkipRevocationEligibility, getTaskCompletionRevocationEligibility, type TaskCompletionRevocationEligibility } from "@/lib/project-stage-skip-revocation";
+import { isProjectStatusCompleted } from "@/lib/project-statuses";
+import { getWorkflowStageCompletionMode } from "@/lib/project-workflow";
+import { sanitizeRichText } from "@/lib/rich-text";
 import { hasStageFiveDownstreamActivityForAttachment } from "@/lib/stage-five";
 import { deleteObjectIfNeeded } from "@/lib/storage/s3";
-import { isProjectStatusCompleted } from "@/lib/project-statuses";
-import { getStageSkipRevocationEligibility, getTaskCompletionRevocationEligibility, type TaskCompletionRevocationEligibility } from "@/lib/project-stage-skip-revocation";
+import { isAllowedStageSubmissionFile } from "@/lib/upload-validation";
+import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
 
 export type ProjectConceptAttachmentReference = {
   id: string;
@@ -447,7 +449,10 @@ export async function getProjectConceptFolders(
   stageKey: ConceptWorkflowStageKey,
   options: { executorId?: string | null } = {},
 ) {
-  const project = await getAuthorizedConceptProject(user, projectId, stageKey);
+  user = await refreshProjectReader(user);
+  await requireProjectResourceRead('structured', projectId, 'project.view', user);
+
+  const project = await getProjectStageAccessRecordById(projectId);
   if (!project) {
     return null;
   }
@@ -464,11 +469,9 @@ export async function getProjectConceptFolders(
   const canManage = canManageProjectConcept(user, managerContext);
   const canCompleteStage = canCompleteProjectConceptStage(user, managerContext) &&
     !project.completedAt && !project.archivedAt && !isProjectStatusCompleted(project.status);
-  const isProjectExecutor = project.executors.some(
-    (executor) => executor.userId === user.id,
-  );
+
   const requestedExecutor = options.executorId?.trim() || null;
-  const requestedExecutorId = canManage
+  const requestedExecutorId = true
     ? requestedExecutor &&
       project.executors.some((executor) => executor.userId === requestedExecutor)
       ? requestedExecutor
@@ -479,23 +482,21 @@ export async function getProjectConceptFolders(
       where: {
         projectId,
         workflowStageKey: stageKey,
-        ...(canManage ? {} : { assignedExecutorId: user.id }),
+
       },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
       select: conceptFolderSelect,
     }),
   );
 
-  const visibleFolders = folders.filter((folder) =>
-    canViewProjectConcept(user, getConceptAccessContext(project, folder, stageKey)),
-  );
+  const visibleFolders = folders;
   const displayedFolders = requestedExecutorId
     ? visibleFolders.filter(
         (folder) => folder.assignedExecutorId === requestedExecutorId,
       )
     : visibleFolders;
 
-  if (!canManage && !isProjectExecutor && visibleFolders.length === 0) {
+  if (!project) {
     return null;
   }
 
@@ -517,7 +518,7 @@ export async function getProjectConceptFolders(
         }))
       : [],
     selectedExecutorId: requestedExecutorId,
-    executors: canManage
+    executors: true
       ? project.executors.map((executor) => ({
           id: executor.user.id,
           name: executor.user.name,
@@ -528,7 +529,7 @@ export async function getProjectConceptFolders(
   };
 }
 
-export async function createProjectConceptFolder(
+async function createProjectConceptFolderImplementation(
   user: PermissionUser,
   input: {
     projectId: string;
@@ -758,7 +759,7 @@ export async function createProjectConceptFolder(
   }
 }
 
-export async function deleteProjectConceptFolder(
+async function deleteProjectConceptFolderImplementation(
   user: PermissionUser,
   input: {
     projectId: string;
@@ -908,7 +909,7 @@ export async function deleteProjectConceptFolder(
   }
 }
 
-export async function importStageThreeConceptReference(
+async function importStageThreeConceptReferenceImplementation(
   user: PermissionUser,
   input: {
     projectId: string;
@@ -1113,7 +1114,7 @@ export async function renameProjectConceptFolder(
   return editProjectConceptFolder(user, input);
 }
 
-export async function editProjectConceptFolder(
+async function editProjectConceptFolderImplementation(
   user: PermissionUser,
   input: {
     projectId: string;
@@ -1415,7 +1416,7 @@ function getFormalConceptAttachmentError(input: {
   return null;
 }
 
-export async function markProjectConceptApprovedAttachment(
+async function markProjectConceptApprovedAttachmentImplementation(
   user: PermissionUser,
   input: {
     projectId: string;
@@ -1600,7 +1601,7 @@ export async function markProjectConceptApprovedAttachment(
   }
 }
 
-export async function markStageFourFinalApprovedAttachment(
+async function markStageFourFinalApprovedAttachmentImplementation(
   user: PermissionUser,
   input: {
     projectId: string;
@@ -2405,7 +2406,7 @@ async function revokeConceptApprovedAttachment(
   }
 }
 
-export async function revokeProjectConceptApprovedAttachment(
+async function revokeProjectConceptApprovedAttachmentImplementation(
   user: PermissionUser,
   input: { projectId: string; folderId: string },
 ) {
@@ -2416,7 +2417,7 @@ export async function revokeProjectConceptApprovedAttachment(
   );
 }
 
-export async function revokeStageFourFinalApprovedAttachment(
+async function revokeStageFourFinalApprovedAttachmentImplementation(
   user: PermissionUser,
   input: { projectId: string; folderId: string },
 ) {
@@ -2441,7 +2442,7 @@ export async function completeStageThreeTaskWithoutFile(
   return completeProjectConceptTaskWithoutFile(user, { ...input, stageKey: ProjectWorkflowStageKey.CONCEPT_CREATION });
 }
 
-export async function requestProjectConceptTaskCompletion(
+async function requestProjectConceptTaskCompletionImplementation(
   user: PermissionUser,
   input: { projectId: string; folderId: string; stageKey: ConceptWorkflowStageKey; note?: string },
   conflictRetryCount = 0,
@@ -2483,14 +2484,14 @@ export async function requestProjectConceptTaskCompletion(
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5_000, timeout: 15_000 }));
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
-      if (conflictRetryCount < 2) return requestProjectConceptTaskCompletion(user, input, conflictRetryCount + 1);
+      if (conflictRetryCount < 2) return requestProjectConceptTaskCompletionImplementation(user, input, conflictRetryCount + 1);
       return { error: "The task changed at the same time. Please try again." };
     }
     throw error;
   }
 }
 
-export async function completeProjectConceptTaskWithoutFile(
+async function completeProjectConceptTaskWithoutFileImplementation(
   user: PermissionUser,
   input: { projectId: string; folderId: string; stageKey: ConceptWorkflowStageKey },
   conflictRetryCount = 0,
@@ -2535,7 +2536,7 @@ export async function completeProjectConceptTaskWithoutFile(
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5_000, timeout: 15_000 }));
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
-      if (conflictRetryCount < 2) return completeProjectConceptTaskWithoutFile(user, input, conflictRetryCount + 1);
+      if (conflictRetryCount < 2) return completeProjectConceptTaskWithoutFileImplementation(user, input, conflictRetryCount + 1);
       return { error: "The task changed at the same time. Please try again." };
     }
     throw error;
@@ -2552,7 +2553,7 @@ type StageThreeCompletionResult = {
   completedTaskIds: string[];
 };
 
-export async function completeStageThreeConcepts(
+async function completeStageThreeConceptsImplementation(
   user: PermissionUser,
   input: { projectId: string; completeOpenTasks?: boolean },
   conflictRetryCount = 0,
@@ -2747,7 +2748,7 @@ export async function completeStageThreeConcepts(
         (error.code === "P2002" || error.code === "P2034") &&
         conflictRetryCount < 1
       ) {
-        return completeStageThreeConcepts(
+        return completeStageThreeConceptsImplementation(
           user,
           input,
           conflictRetryCount + 1,
@@ -2777,7 +2778,7 @@ type StageFourCompletionResult = {
   }>;
 };
 
-export async function completeStageFourConcepts(
+async function completeStageFourConceptsImplementation(
   user: PermissionUser,
   input: { projectId: string },
   conflictRetryCount = 0,
@@ -3274,7 +3275,7 @@ export async function completeStageFourConcepts(
         (error.code === "P2002" || error.code === "P2034") &&
         conflictRetryCount < 1
       ) {
-        return completeStageFourConcepts(
+        return completeStageFourConceptsImplementation(
           user,
           input,
           conflictRetryCount + 1,
@@ -3301,6 +3302,9 @@ export async function getProjectConceptChatContext(
     folderId: string;
   },
 ) {
+  user = await refreshProjectReader(user);
+  await requireProjectResourceRead('structured', input.projectId, 'project.view', user);
+
   const record = await withPrismaRetry(() =>
     prisma.projectConceptFolder.findFirst({
       where: {
@@ -3365,19 +3369,7 @@ export async function getProjectConceptChatContext(
     }),
   );
 
-  if (
-    !record ||
-    !canViewProjectConcept(
-      user,
-      getConceptAccessContext(record.project, record, input.stageKey),
-    ) ||
-    !canOpenImplementedWorkflowStage({
-      stageKey: input.stageKey,
-      status: getWorkflowStageStatus(record.project, input.stageKey),
-    })
-  ) {
-    return null;
-  }
+  if (!record) return null;
 
   const accessContext = getConceptAccessContext(
     record.project,
@@ -3491,4 +3483,136 @@ export async function getProjectConceptChatContext(
       compareHref: `${conceptPath}/compare`,
     } satisfies ProjectConceptChatMode,
   };
+}
+
+export async function createProjectConceptFolder(
+  user: PermissionUser,
+  input: {
+    projectId: string;
+    stageKey: ConceptWorkflowStageKey;
+    name: string;
+    assignedExecutorId: string;
+    deadline: string;
+    brief?: string | null;
+    briefAttachmentIds?: string[];
+  },
+) {
+  return runProjectMutation(user, "createProjectConceptFolder", { kind: "workflow", id: input.projectId + "~" + input.stageKey }, async (trustedUser) =>
+    createProjectConceptFolderImplementation(trustedUser, input), input);
+}
+
+export async function editProjectConceptFolder(
+  user: PermissionUser,
+  input: {
+    projectId: string;
+    stageKey: ConceptWorkflowStageKey;
+    folderId: string;
+    name: string;
+    assignedExecutorId?: string;
+    deadline?: string;
+    brief?: string | null;
+  },
+) {
+  return runProjectMutation(user, "editProjectConceptFolder", { kind: "workflow", id: input.projectId + "~" + input.stageKey }, async (trustedUser) =>
+    editProjectConceptFolderImplementation(trustedUser, input), input);
+}
+
+export async function deleteProjectConceptFolder(
+  user: PermissionUser,
+  input: {
+    projectId: string;
+    stageKey: ConceptWorkflowStageKey;
+    folderId: string;
+  },
+) {
+  return runProjectMutation(user, "deleteProjectConceptFolder", { kind: "workflow", id: input.projectId + "~" + input.stageKey }, async (trustedUser) =>
+    deleteProjectConceptFolderImplementation(trustedUser, input), input);
+}
+
+export async function importStageThreeConceptReference(
+  user: PermissionUser,
+  input: {
+    projectId: string;
+    folderId: string;
+    sourceConceptId: string;
+  },
+) {
+  return runProjectMutation(user, "importStageThreeConceptReference", { kind: "concept", id: input.folderId }, async (trustedUser) =>
+    importStageThreeConceptReferenceImplementation(trustedUser, input), input);
+}
+
+export async function markProjectConceptApprovedAttachment(
+  user: PermissionUser,
+  input: {
+    projectId: string;
+    folderId: string;
+    attachmentId: string;
+  },
+) {
+  return runProjectMutation(user, "markProjectConceptApprovedAttachment", { kind: "concept", id: input.folderId }, async (trustedUser) =>
+    markProjectConceptApprovedAttachmentImplementation(trustedUser, input), input);
+}
+
+export async function markStageFourFinalApprovedAttachment(
+  user: PermissionUser,
+  input: {
+    projectId: string;
+    folderId: string;
+    attachmentId: string;
+  },
+) {
+  return runProjectMutation(user, "markStageFourFinalApprovedAttachment", { kind: "concept", id: input.folderId }, async (trustedUser) =>
+    markStageFourFinalApprovedAttachmentImplementation(trustedUser, input), input);
+}
+
+export async function completeProjectConceptTaskWithoutFile(
+  user: PermissionUser,
+  input: { projectId: string; folderId: string; stageKey: ConceptWorkflowStageKey },
+  conflictRetryCount = 0,
+): Promise<{ changed: boolean; taskerStageId: string } | { error: string }> {
+  return runProjectMutation(user, "completeProjectConceptTaskWithoutFile", { kind: "concept", id: input.folderId }, async (trustedUser) =>
+    completeProjectConceptTaskWithoutFileImplementation(trustedUser, input, conflictRetryCount), input);
+}
+
+export async function revokeProjectConceptApprovedAttachment(
+  user: PermissionUser,
+  input: { projectId: string; folderId: string },
+) {
+  return runProjectMutation(user, "revokeProjectConceptApprovedAttachment", { kind: "concept", id: input.folderId }, async (trustedUser) =>
+    revokeProjectConceptApprovedAttachmentImplementation(trustedUser, input), input);
+}
+
+export async function revokeStageFourFinalApprovedAttachment(
+  user: PermissionUser,
+  input: { projectId: string; folderId: string },
+) {
+  return runProjectMutation(user, "revokeStageFourFinalApprovedAttachment", { kind: "concept", id: input.folderId }, async (trustedUser) =>
+    revokeStageFourFinalApprovedAttachmentImplementation(trustedUser, input), input);
+}
+
+export async function requestProjectConceptTaskCompletion(
+  user: PermissionUser,
+  input: { projectId: string; folderId: string; stageKey: ConceptWorkflowStageKey; note?: string },
+  conflictRetryCount = 0,
+): Promise<{ changed: boolean; taskerStageId: string } | { error: string }> {
+  return runProjectMutation(user, "requestProjectConceptTaskCompletion", { kind: "concept", id: input.folderId }, async (trustedUser) =>
+    requestProjectConceptTaskCompletionImplementation(trustedUser, input, conflictRetryCount), input);
+}
+
+export async function completeStageThreeConcepts(
+  user: PermissionUser,
+  input: { projectId: string; completeOpenTasks?: boolean },
+  conflictRetryCount = 0,
+) {
+  return runProjectMutation(user, "completeStageThreeConcepts", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    completeStageThreeConceptsImplementation(trustedUser, input, conflictRetryCount), input);
+}
+
+export async function completeStageFourConcepts(
+  user: PermissionUser,
+  input: { projectId: string },
+  conflictRetryCount = 0,
+) {
+  return runProjectMutation(user, "completeStageFourConcepts", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    completeStageFourConceptsImplementation(trustedUser, input, conflictRetryCount), input);
 }

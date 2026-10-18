@@ -1,26 +1,23 @@
+import { refreshProjectReader } from "@/lib/authorization/project-read";
 import {
   Prisma,
   ProjectRevisionStatus,
-  StageStatus,
-  UserRole,
+  StageStatus
 } from "@prisma/client";
 
 import { canUseProjects } from "@/lib/permissions/resolver";
+import { prisma, withPrismaRetry } from "@/lib/prisma";
 import {
-  buildProjectListStatusWhere,
-  deriveProjectListWorkflowState,
-  type ProjectBusinessStatus,
+  type ProjectBusinessStatus
 } from "@/lib/project-list-workflow";
 import {
   compareProjectsByPriority,
-  normalizeProjectPriority,
-  type ProjectPriorityValue,
+  type ProjectPriorityValue
 } from "@/lib/project-priority";
 import {
   buildAccessibleProjectsWhere,
   type ProjectAccessUser,
 } from "@/lib/projects";
-import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 export const USER_PROJECT_FILTERS = [
   "ALL",
@@ -221,10 +218,6 @@ function latestDate(values: Array<Date | null | undefined>) {
   }, null);
 }
 
-function displayName(user: { name: string | null; email: string }) {
-  return user.name?.trim() || user.email;
-}
-
 export async function getUserProjectsList(
   input: {
     filter: UserProjectFilter;
@@ -234,8 +227,9 @@ export async function getUserProjectsList(
   },
   currentUser: ProjectAccessUser,
 ) {
+  currentUser = await refreshProjectReader(currentUser);
+
   if (
-    currentUser.role !== UserRole.USER ||
     !canUseProjects(currentUser)
   ) {
     return { projects: [], total: 0, hasAnyProjects: false, pageSize: USER_PROJECT_PAGE_SIZE };
@@ -249,7 +243,6 @@ export async function getUserProjectsList(
           accessibleWhere,
           {
             OR: [
-              { tags: { some: { tag: { name: { contains: query, mode: "insensitive" as const } } } } },
               { name: { contains: query, mode: "insensitive" as const } },
               { description: { contains: query, mode: "insensitive" as const } },
               {
@@ -257,7 +250,6 @@ export async function getUserProjectsList(
                   is: {
                     OR: [
                       { name: { contains: query, mode: "insensitive" as const } },
-                      { email: { contains: query, mode: "insensitive" as const } },
                     ],
                   },
                 },
@@ -267,17 +259,7 @@ export async function getUserProjectsList(
         ],
       }
     : accessibleWhere;
-  const lifecycleWhere: Prisma.ProjectWhereInput =
-    input.filter === "ACTIVE"
-      ? {
-          AND: [
-            buildProjectListStatusWhere("ACTIVE"),
-            { archivedAt: null },
-          ],
-        }
-      : input.filter === "COMPLETED"
-        ? buildProjectListStatusWhere("COMPLETED")
-        : {};
+  const lifecycleWhere: Prisma.ProjectWhereInput = {};
   const listWhere: Prisma.ProjectWhereInput = {
     AND: [searchedWhere, lifecycleWhere],
   };
@@ -289,24 +271,13 @@ export async function getUserProjectsList(
         select: {
           id: true,
           name: true,
-          tags: {
-            orderBy: [{ createdAt: "asc" }, { tagId: "asc" }],
-            select: { tag: { select: { name: true } } },
-          },
+
           description: true,
-          priority: true,
-          updatedAt: true,
+
           owner: {
             select: { id: true, name: true, email: true },
           },
-          workflowStages: {
-            select: {
-              stageKey: true,
-              status: true,
-              unlockedAt: true,
-              completedAt: true,
-            },
-          },
+
           conceptFolders: {
             where: { assignedExecutorId: currentUser.id },
             orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
@@ -342,7 +313,7 @@ export async function getUserProjectsList(
 
   const mapped = records.map<UserProjectListItem>((project) => {
     const taskStates = project.conceptFolders.map(deriveUserTaskDisplayState);
-    const workflow = deriveProjectListWorkflowState(project);
+    const workflow = { businessStatus: null };
     const status = deriveUserProjectDisplayStatus(
       taskStates,
       workflow.businessStatus,
@@ -353,35 +324,34 @@ export async function getUserProjectsList(
       .filter((date): date is Date => Boolean(date))
       .sort((left, right) => left.getTime() - right.getTime());
     const userRelevantUpdatedAt = latestDate([
-      project.updatedAt,
       ...project.conceptFolders.flatMap((task) => [
         task.updatedAt,
         task.taskerStage.updatedAt,
         task.taskerStage.revisions[0]?.updatedAt,
       ]),
-    ]) ?? project.updatedAt;
+    ]);
 
     return {
       id: project.id,
       title: project.name,
-      tags: project.tags.map(({ tag }) => tag.name),
+      tags: [],
       description: project.description?.trim() || null,
       owner: project.owner
         ? {
             id: project.owner.id,
-            name: displayName(project.owner),
+            name: project.owner.name ?? "Project owner",
           }
         : null,
       status,
       statusLabel: getUserProjectStatusLabel(status),
-      priority: normalizeProjectPriority(project.priority),
+      priority: "MEDIUM",
       tasks: project.conceptFolders.map((task, index) => ({
         key: `${project.id}-task-${index + 1}`,
         name: task.name,
         display: taskStates[index],
       })),
       dueAt: activeDueDates[0]?.toISOString() ?? null,
-      updatedAt: userRelevantUpdatedAt.toISOString(),
+      updatedAt: userRelevantUpdatedAt?.toISOString() ?? "",
     };
   });
 

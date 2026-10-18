@@ -7,15 +7,16 @@ import {
   type User,
 } from "@prisma/client";
 
+import { canReadFullProject, hasProjectBusinessIdentity, projectReadActor, structuredProjectReadWhere } from "@/lib/authorization/project-read-rules";
 import {
   defaultRolePermissions,
   type PermissionKey,
 } from "@/lib/permissions/definitions";
+import type { PermissionProfileSnapshot } from "@/lib/permissions/profiles";
 import type {
   ProjectCollaboratorPermissionKey,
   ProjectCollaboratorPermissions,
 } from "@/lib/project-collaborator-permissions";
-import type { PermissionProfileSnapshot } from "@/lib/permissions/profiles";
 import { isBusinessAdministratorRole } from "@/lib/user-role-compatibility";
 
 export type PermissionUser = Pick<User, "id" | "role"> &
@@ -52,10 +53,6 @@ export type SidebarVisibility = {
   archives: boolean;
   settings: boolean;
   help: boolean;
-};
-
-const deniedProjectScope: Prisma.ProjectWhereInput = {
-  id: "__permission_denied__",
 };
 
 function getBasePermissionSet(user: PermissionUser) {
@@ -149,17 +146,20 @@ export function isProjectExecutor(
 }
 
 export function hasPermission(user: PermissionUser, permissionKey: PermissionKey) {
+  if (["project.list", "project.view", "stage.view", "project.viewBudget", "project.viewParticipants"].includes(permissionKey)) {
+    return hasProjectBusinessIdentity(user);
+  }
+  if (permissionKey === "project.create") return false;
+  if (/^(project|stage)\./.test(permissionKey)) {
+    const role = projectReadActor(user)?.businessRole;
+    return role === "DIRECTOR" || role === "SENIOR_PROJECT_MANAGER" || role === "JUNIOR_PROJECT_MANAGER";
+  }
   // Archives are shared by every authenticated account, independent of role profiles.
   if (permissionKey.startsWith("archive.")) return Boolean(user.id);
   return getBasePermissionSet(user).has(permissionKey);
 }
 
-export function canCreateProjects(user: PermissionUser) {
-  if (isBusinessAdministratorRole(user.role)) {
-    return hasPermission(user, "project.create");
-  }
-
-  return user.projectCreationAccessGranted === true;
+export function canCreateProjects(user: PermissionUser) { void user; return false; // No approved template / creation approval record exists yet.
 }
 
 export function getArchiveAccessLevel(user: PermissionUser): "NONE" | "FULL" | "PARTIAL" {
@@ -283,43 +283,7 @@ export function getSidebarVisibility(user: PermissionUser): SidebarVisibility {
 }
 
 export function getAccessibleProjectsWhere(user: PermissionUser): Prisma.ProjectWhereInput {
-  const canListProjects =
-    hasPermission(user, "project.list") || hasPermission(user, "project.view");
-
-  if (!canListProjects) {
-    return deniedProjectScope;
-  }
-
-  if (isProjectAdmin(user)) {
-    return {};
-  }
-
-  return {
-    OR: [
-      { ownerId: user.id },
-      {
-        coOwners: {
-          some: {
-            userId: user.id,
-          },
-        },
-      },
-      {
-        executors: {
-          some: {
-            userId: user.id,
-          },
-        },
-      },
-      {
-        collaborators: {
-          some: {
-            userId: user.id,
-          },
-        },
-      },
-    ],
-  };
+  return structuredProjectReadWhere(projectReadActor(user));
 }
 
 export function hasProjectPermission(
@@ -327,6 +291,21 @@ export function hasProjectPermission(
   project: ProjectPermissionContext,
   permissionKey: PermissionKey,
 ) {
+  // Compatibility flags never constitute a mutation grant. Domain services
+  // resolve current identity/resource authority inside their V2 transaction.
+  if (["project.view", "stage.view", "project.viewBudget", "project.viewParticipants", "chat.view", "compare.view", "file.view", "file.download"].includes(permissionKey)) {
+    return canReadFullProject(user, project);
+  }
+  if (/^(project|stage|chat|file|compare|collaborator|completion)\./.test(permissionKey)) {
+    const actor = projectReadActor(user);
+    if (!actor?.businessRole) return false;
+    if (["project.create", "project.delete", "project.completeArchive"].includes(permissionKey) || permissionKey.startsWith("completion.") || permissionKey.startsWith("collaborator.")) return false;
+    const manager = canReadFullProject(user, project);
+    if (["stage.acceptBrief", "stage.submitWork", "file.uploadSubmission", "file.uploadAttachment", "chat.createComment", "chat.uploadAttachment", "chat.mentionUser", "compare.createComment"].includes(permissionKey)) {
+      return manager || isProjectExecutor(user, project);
+    }
+    return manager;
+  }
   if (!hasProjectPermissionGrant(user, permissionKey)) {
     return false;
   }

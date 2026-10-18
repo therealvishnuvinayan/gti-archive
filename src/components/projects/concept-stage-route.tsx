@@ -1,20 +1,21 @@
-import { Suspense } from "react";
+import { isDirectorReader } from "@/lib/authorization/project-read-rules";
 import { ListTodo } from "lucide-react";
+import { Suspense } from "react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import {
   ConceptStageWorkspace,
 } from "@/components/projects/concept-stage-workspace";
 import {
-  StageRouteInitialShell,
-  StageRouteShell,
-  StageSectionLoadingShell,
-} from "@/components/projects/stage-route-shell";
-import {
   ProjectAccessUnavailableState,
   ProjectNotFoundState,
   StageLockedState,
 } from "@/components/projects/project-route-state";
+import {
+  StageRouteInitialShell,
+  StageRouteShell,
+  StageSectionLoadingShell,
+} from "@/components/projects/stage-route-shell";
 import { requireUser } from "@/lib/auth";
 import {
   getProjectConceptFolders,
@@ -68,7 +69,7 @@ async function ConceptStageContent({
   const workflowStage = project.workflowStages.find(
     (stage) => stage.stageKey === stageKey,
   );
-  const stageAvailable = canOpenImplementedWorkflowStage({
+  const stageAvailable = isDirectorReader(user) || canOpenImplementedWorkflowStage({
     stageKey,
     status: workflowStage?.status,
   });

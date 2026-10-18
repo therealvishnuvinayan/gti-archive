@@ -183,32 +183,40 @@ try {
     process.exitCode = 1;
   }
   if (process.argv.includes("--services") || process.argv.includes("--provisioning")) checkAssignmentServices();
+  if (process.argv.includes("--runtime")) checkAssignmentServices(true);
+  if (process.argv.includes("--project-read")) checkAssignmentServices("project-read");
+  if (process.argv.includes("--project-write")) checkAssignmentServices("project-write");
   if (process.argv.includes("--provisioning")) checkProvisioning();
-  console.log("Existing application databases, credentials, S3 and runtime authorization were not used.");
+  console.log("Existing application databases, credentials and S3 were not used.");
 } finally {
   cleanup();
   console.log("Disposable PostgreSQL cluster stopped and removed.");
 }
 
-function checkAssignmentServices() {
+function checkAssignmentServices(runtime = false) {
   // A second NEW database keeps service bootstrap fixtures independent of the
   // original governance suite. Same private cluster; no inherited app URL.
-  const serviceDatabase = "flux_v2_authorization_service_test";
+  const projectWrite = runtime === "project-write";
+  const projectRead = runtime === "project-read";
+  const serviceDatabase = projectWrite ? "flux_v2_authorization_project_write_test" : projectRead ? "flux_v2_authorization_project_read_test" : runtime ? "flux_v2_authorization_runtime_test" : "flux_v2_authorization_service_test";
   sql(`CREATE DATABASE "${serviceDatabase}"`, "postgres");
   const serviceUrl = databaseUrl.replace(`/${database}?`, `/${serviceDatabase}?`);
   const serviceEnv = { ...prismaEnv, DATABASE_URL: serviceUrl, PRISMA_GENERATE_SKIP_AUTOINSTALL: "1" };
   run(process.execPath, [prismaCli, "migrate", "deploy", "--schema", schemaPath], { env: serviceEnv });
   const clientPath = join(root, "client"), generatedSchema = join(root, "client.prisma");
   mkdirSync(join(root, "node_modules/@prisma"), { recursive: true });
-  symlinkSync(dirname(require.resolve("@prisma/client/package.json")), join(root, "node_modules/@prisma/client"), "dir");
+  if (!existsSync(join(root, "node_modules/@prisma/client"))) {
+    symlinkSync(dirname(require.resolve("@prisma/client/package.json")), join(root, "node_modules/@prisma/client"), "dir");
+  }
   writeFileSync(generatedSchema, readFileSync(schemaPath, "utf8").replace(
     'provider        = "prisma-client-js"', `provider        = "prisma-client-js"\n  output = ${JSON.stringify(clientPath)}`,
   ));
   run(process.execPath, [prismaCli, "generate", "--schema", generatedSchema], { env: serviceEnv });
-  const configPath = join(root, "tsconfig.services.json"), output = join(root, "compiled");
+  const configPath = join(root, projectWrite ? "tsconfig.project-write.json" : projectRead ? "tsconfig.project-read.json" : runtime ? "tsconfig.runtime.json" : "tsconfig.services.json");
+  const output = join(root, projectWrite ? "project-write-compiled" : projectRead ? "project-read-compiled" : runtime ? "runtime-compiled" : "compiled");
   const paths = { "@/*": [join(repository, "src/*")], "@prisma/client": [clientPath] };
   writeFileSync(configPath, JSON.stringify({
-    extends: join(repository, "scripts/tsconfig.authorization-services.json"),
+    extends: join(repository, projectWrite ? "scripts/tsconfig.authorization-project-write.json" : projectRead ? "scripts/tsconfig.authorization-project-read.json" : runtime ? "scripts/tsconfig.authorization-runtime.json" : "scripts/tsconfig.authorization-services.json"),
     compilerOptions: { outDir: output, paths, typeRoots: [join(repository, "node_modules/@types")] },
   }));
   run(process.execPath, [require.resolve("typescript/bin/tsc"), "--project", configPath], { timeout: 60000 });
@@ -218,14 +226,15 @@ function checkAssignmentServices() {
   const marker = join(output, "node_modules/server-only");
   mkdirSync(marker, { recursive: true });
   writeFileSync(join(marker, "index.js"), "// Isolated Node server test only.\n");
-  console.log(run(process.execPath, [join(output, "scripts/authorization-services-integration-check.js")], {
-    env: { ...serviceEnv, FLUX_AUTH_TEST_ROOT: root, FLUX_AUTH_TEST_URL: serviceUrl, FLUX_AUTH_TEST_CLIENT: clientPath },
+  console.log(run(process.execPath, [join(output, projectWrite ? "scripts/authorization-project-write-integration-check.js" : projectRead ? "scripts/authorization-project-read-integration-check.js" : runtime ? "scripts/authorization-runtime-integration-check.js" : "scripts/authorization-services-integration-check.js")], {
+    env: { ...serviceEnv, NODE_ENV: "production", FLUX_AUTH_TEST_ROOT: root, FLUX_AUTH_TEST_URL: serviceUrl, FLUX_AUTH_TEST_CLIENT: clientPath,
+      NODE_PATH: join(repository, "node_modules") },
     timeout: 60000,
   }));
   const drift = run(process.execPath, [prismaCli, "migrate", "diff", "--from-url", serviceUrl,
     "--to-schema-datamodel", schemaPath, "--script"], { env: serviceEnv });
   assert.match(drift, /This is an empty migration/);
-  console.log("PASS: Phase 1.4A Prisma service integration, targeted TypeScript and empty schema drift.");
+  console.log(`PASS: ${projectWrite ? "Phase 1.5C project write" : projectRead ? "Phase 1.5B project read" : runtime ? "Phase 1.5A runtime" : "Phase 1.4A Prisma service"} integration, targeted TypeScript and empty schema drift.`);
 }
 
 function checkProvisioning() {

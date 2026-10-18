@@ -1,4 +1,5 @@
 import { Prisma, PrismaClient } from "@prisma/client";
+import { activeProjectMutation, projectTransactionClient } from "./authorization/project-transaction";
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
@@ -81,7 +82,10 @@ function getPrismaClient() {
   return nextClient;
 }
 
-export const prisma = getPrismaClient();
+const rootPrisma = getPrismaClient();
+// Native project services share one authorization transaction, including helpers
+// called indirectly. Outside that request-local context the client is unchanged.
+export const prisma = projectTransactionClient(rootPrisma);
 
 export function resetPrismaPerformanceMetrics() {
   if (!prismaPerformanceProfilingEnabled) {
@@ -111,7 +115,7 @@ export function getPrismaPerformanceMetrics() {
 }
 
 if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
+  globalForPrisma.prisma = rootPrisma;
 }
 
 function sleep(milliseconds: number) {
@@ -168,6 +172,7 @@ export async function withPrismaRetry<T>(
   try {
     return await operation();
   } catch (error) {
+    if (activeProjectMutation()) throw error; // Never replay a partially executed mutation.
     if (!isPrismaConnectionError(error) || attempts <= 1) {
       throw error;
     }

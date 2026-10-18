@@ -1,5 +1,6 @@
-import { createHash } from "node:crypto";
+import { requireProjectResourceRead } from "@/lib/authorization/project-read";
 import { unstable_cache } from "next/cache";
+import { createHash } from "node:crypto";
 
 import {
   MAX_STAGE_SUMMARY_CONTEXT_CHARACTERS,
@@ -152,6 +153,9 @@ export async function generateOrFetchStageActivitySummary(input: {
   stage: Pick<ProjectStageRecord, "id" | "name" | "status" | "statusLabel">;
   entries: ProjectChatEntry[];
 }) {
+await requireProjectResourceRead("structured", input.projectId, "project.view", {id:input.userId});
+  await requireProjectResourceRead("stage", input.stage.id, "project.viewStage", {id:input.userId});
+
   const fallback = getStageActivityFallback(input.stage);
 
   if (input.entries.length === 0) {

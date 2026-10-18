@@ -1,3 +1,8 @@
+import { activeProjectMutation } from "@/lib/authorization/project-transaction";
+import { runProjectMutation } from "@/lib/authorization/project-write";
+import { refreshProjectReader, requireProjectResourceRead } from "@/lib/authorization/project-read";
+import { isDirectorReader } from "@/lib/authorization/project-read-rules";
+import { assertResearchFolderReadAccess } from "@/lib/project-research-access";
 import {
   ActivityLogAction,
   AttachmentAssetType,
@@ -10,16 +15,14 @@ import {
 
 import {
   hasProjectPermission,
-  isGlobalProjectAdministrator,
-  type PermissionUser,
+  type PermissionUser
 } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
-import { getWorkflowStageCompletionMode } from "@/lib/project-workflow";
-import { getProjectStageAccessRecordById } from "@/lib/project-stage-data";
 import {
-  getProjectResearchAccess,
-  getResearchFolderAccess,
+  getProjectResearchAccess
 } from "@/lib/project-research-access";
+import { getProjectStageAccessRecordById } from "@/lib/project-stage-data";
+import { getWorkflowStageCompletionMode } from "@/lib/project-workflow";
 
 export const PROJECT_RESEARCH_SYSTEM_FOLDERS = [
   { key: ProjectResearchFolderSystemKey.BRIEF, name: "Brief", sortOrder: 1 },
@@ -93,6 +96,7 @@ export async function ensureCanonicalProjectResearchWorkspaceTx(
 }
 
 export async function ensureCanonicalProjectResearchWorkspace(projectId: string) {
+  if (activeProjectMutation()?.projectId !== projectId) throw new Error("An authorized project mutation is required.");
   return withPrismaRetry(() =>
     prisma.$transaction((tx) =>
       ensureCanonicalProjectResearchWorkspaceTx(tx, projectId),
@@ -125,15 +129,6 @@ function displayName(user: { name: string | null; email: string }) {
   return user.name?.trim() || user.email;
 }
 
-function assertStageTwoAvailable(status: ProjectWorkflowStageStatus | undefined) {
-  if (
-    status !== ProjectWorkflowStageStatus.AVAILABLE &&
-    status !== ProjectWorkflowStageStatus.COMPLETED
-  ) {
-    throw new Error("Project Research and Planning is not available yet.");
-  }
-}
-
 export type ProjectResearchPageData = Awaited<
   ReturnType<typeof getProjectResearchPageData>
 >;
@@ -142,18 +137,16 @@ export async function getProjectResearchPageData(
   user: ResearchUser,
   projectId: string,
 ) {
+  user = await refreshProjectReader(user);
+  await requireProjectResourceRead('structured', projectId, 'project.view', user);
+
   const project = await getProjectStageAccessRecordById(projectId);
 
   if (!project) {
     return null;
   }
 
-  assertStageTwoAvailable(
-    project.workflowStages.find(
-      (stage) =>
-        stage.stageKey === ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING,
-    )?.status,
-  );
+
 
   const participantIds = new Set([
     ...(project.ownerId ? [project.ownerId] : []),
@@ -162,7 +155,7 @@ export async function getProjectResearchPageData(
     ...project.collaborators.map((record) => record.userId),
   ]);
 
-  if (!project.ownerId || (!isGlobalProjectAdministrator(user) && project.ownerId !== user.id && !project.coOwners.some((record) => record.userId === user.id))) {
+  if (!project.ownerId) {
     return null;
   }
   const ownerUserId = project.ownerId;
@@ -190,9 +183,7 @@ export async function getProjectResearchPageData(
     project,
   });
 
-  if (!access.canRead) {
-    return null;
-  }
+
 
   const [folders, ownPrivateFolder] = await Promise.all([
     withPrismaRetry(() =>
@@ -251,7 +242,9 @@ export async function getProjectResearchPageData(
       ? 5
       : 3;
 
+  const directorPrivateFolders = isDirectorReader(user) ? await prisma.projectPrivateFolder.findMany({where:{projectId,parentFolderId:null},select:{id:true,name:true,owner:{select:{name:true}}},orderBy:{id:"asc"}}) : [];
   return {
+    directorPrivateFolders: directorPrivateFolders.map(folder => ({id:folder.id,name:folder.name,ownerName:folder.owner.name ?? "Project participant",href:`/projects/${projectId}/workspace/private/${folder.id}`})),
     project: {
       id: project.id,
       name: project.name,
@@ -308,7 +301,7 @@ export async function getProjectResearchPageData(
   };
 }
 
-export async function createProjectResearchFolder(
+async function createProjectResearchFolderImplementation(
   user: ResearchUser,
   input: { projectId: string; name: string; parentFolderId?: string },
 ) {
@@ -398,7 +391,9 @@ export async function getProjectResearchFolderPageData(
   user: ResearchUser,
   input: { projectId: string; folderId: string },
 ) {
-  const { access, path } = await getResearchFolderAccess(user, input).catch(() => ({
+  user = await refreshProjectReader(user);
+
+  const { access, path } = await assertResearchFolderReadAccess(user, input).catch(() => ({
     access: null,
     path: [],
   }));
@@ -496,7 +491,7 @@ export async function getProjectResearchFolderPageData(
   };
 }
 
-export async function completeProjectResearchStage(
+async function completeProjectResearchStageImplementation(
   user: ResearchUser,
   projectId: string,
 ) {
@@ -693,4 +688,20 @@ export async function completeProjectResearchStage(
 
 export function isProjectResearchAttachmentType(assetType: AttachmentAssetType) {
   return assetType === AttachmentAssetType.PROJECT_RESEARCH_FILE;
+}
+
+export async function createProjectResearchFolder(
+  user: ResearchUser,
+  input: { projectId: string; name: string; parentFolderId?: string },
+) {
+  return runProjectMutation(user, "createProjectResearchFolder", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    createProjectResearchFolderImplementation(trustedUser, input), input);
+}
+
+export async function completeProjectResearchStage(
+  user: ResearchUser,
+  projectId: string,
+) {
+  return runProjectMutation(user, "completeProjectResearchStage", { kind: "structured", id: projectId }, async (trustedUser) =>
+    completeProjectResearchStageImplementation(trustedUser, projectId), { projectId });
 }

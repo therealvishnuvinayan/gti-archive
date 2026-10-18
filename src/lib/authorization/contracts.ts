@@ -38,7 +38,7 @@ export type TechnicalAuthorizationRequirement =
 
 /**
  * Deliberately has no ALLOW result. Role/privilege eligibility is insufficient
- * to authorize an operation, even for Director. A future resource policy must
+ * to authorize an operation, even for Director. The runtime resource policy must
  * evaluate trusted context and enforce requirements at the relevant transition.
  */
 type EligibilityDecision<Capability, Scope, Requirement> =

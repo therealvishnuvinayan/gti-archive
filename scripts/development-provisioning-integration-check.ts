@@ -11,6 +11,7 @@ import { applySignedSetup, assignRemaining, databasePreflight, digest, inspectSt
 import { hashAuthPassword, normalizeAuthEmail, verifyAuthPassword } from "../src/lib/auth-password";
 import { getPasswordValidationErrors, MIN_PASSWORD_LENGTH } from "../src/lib/password-rules";
 import { createRoleAssignmentService } from "../src/lib/authorization/role-assignment-service";
+import { createVersionedSessionToken } from "../src/lib/authorization/session";
 import { terminalInput } from "./development-provisioning/terminal";
 import { protectedFile, writeProtectedRequest } from "./development-provisioning/protected-files";
 
@@ -315,7 +316,7 @@ async function run() {
   const users = await db.user.findMany();
   const directorUser = users.find((user) => user.email === accounts[0].email)!;
   const developer = users.find((user) => user.email === accounts[7].email)!;
-  const directorToken = randomBytes(32).toString("hex"), developerToken = randomBytes(32).toString("hex"), expired = randomBytes(32).toString("hex");
+  const directorToken = createVersionedSessionToken(1), developerToken = createVersionedSessionToken(1), expired = createVersionedSessionToken(1);
   for (const [token, userId, expiresAt] of [[directorToken, directorUser.id, new Date(Date.now() + 60000)],
     [developerToken, developer.id, new Date(Date.now() + 60000)], [expired, directorUser.id, new Date(Date.now() - 60000)]] as const) {
     await db.session.create({ data: { token, userId, expiresAt } });

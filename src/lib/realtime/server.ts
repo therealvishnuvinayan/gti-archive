@@ -1,3 +1,4 @@
+import { activeProjectMutation } from "@/lib/authorization/project-transaction";
 import { randomUUID } from "node:crypto";
 import { after } from "next/server";
 
@@ -203,6 +204,8 @@ export async function publishNotificationChanges(input: {
   recipientUserIds: string[];
   reason: NotificationRealtimeChangedPayload["reason"];
 }) {
+  const mutation = activeProjectMutation();
+  if (mutation) { mutation.afterCommit.push(() => publishNotificationChanges(input)); return false; }
   if (getRealtimeProvider() !== "ably" || !isAblyServerConfigured()) {
     return false;
   }

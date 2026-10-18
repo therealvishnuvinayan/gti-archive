@@ -1,3 +1,6 @@
+import { runProjectMutation } from "@/lib/authorization/project-write";
+import { refreshProjectReader, requireProjectResourceRead } from "@/lib/authorization/project-read";
+import { projectReadActor, structuredProjectReadWhere } from "@/lib/authorization/project-read-rules";
 import {
   AttachmentAssetType,
   AttachmentStatus,
@@ -15,6 +18,11 @@ import {
 import { getUserDisplayName } from "@/lib/auth";
 import { getContactDirectoryRole, type ContactDirectoryKind } from "@/lib/contact-directory";
 import {
+  hasProjectPermission,
+  type ProjectPermissionContext,
+} from "@/lib/permissions/resolver";
+import { prisma, withPrismaRetry } from "@/lib/prisma";
+import {
   type ProjectContactInput,
   type ProjectContactEntityType,
   hasProjectClientCompany,
@@ -26,19 +34,14 @@ import {
   PROJECT_INQUIRY_GLOBAL_MARKET_LABEL,
 } from "@/lib/project-inquiry-countries";
 import {
-  hasProjectPermission,
-  type ProjectPermissionContext,
-} from "@/lib/permissions/resolver";
-import { prisma, withPrismaRetry } from "@/lib/prisma";
-import { richTextToPlainText, sanitizeRichText } from "@/lib/rich-text";
-import {
   getProjectStageAccessRecordById,
 } from "@/lib/project-stage-data";
-import type { ProjectAccessUser } from "@/lib/projects";
 import {
   getWorkflowStageCompletionMode,
   PROJECT_WORKFLOW_STAGE_DEFINITIONS,
 } from "@/lib/project-workflow";
+import type { ProjectAccessUser } from "@/lib/projects";
+import { richTextToPlainText, sanitizeRichText } from "@/lib/rich-text";
 import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
 
 const MAX_TEXT_LENGTH = 10_000;
@@ -359,7 +362,7 @@ function canOpenProjectInquiry(project: {
   });
 }
 
-export async function createContactDirectoryEntry(
+async function createContactDirectoryEntryImplementation(
   user: ProjectAccessUser,
   projectId: string,
   input: CreateContactDirectoryEntryInput,
@@ -427,16 +430,12 @@ export async function getProjectInquiryPageData(
   user: ProjectAccessUser,
   projectId: string,
 ): Promise<ProjectInquiryPageData> {
+  user = await refreshProjectReader(user);
+  await requireProjectResourceRead('structured', projectId, 'project.view', user);
+
   const project = await getProjectAccessRecord(projectId);
 
-  if (
-    !project ||
-    !canOpenProjectInquiry(project) ||
-    !hasProjectPermission(user, toPermissionContext(project), "stage.view") ||
-    !hasProjectPermission(user, toPermissionContext(project), "project.update")
-  ) {
-    throw new Error("Project Inquiry is unavailable.");
-  }
+  if (!project) throw new Error("Project Inquiry is unavailable.");
 
   const inquiry = await withPrismaRetry(() =>
     prisma.projectInquiry.findUnique({
@@ -630,6 +629,9 @@ export async function searchProjectInquiryHistorySuggestions(
   kind: "target-market" | "deliverable",
   query: string,
 ) {
+  user = await refreshProjectReader(user);
+  await requireProjectResourceRead('structured', projectId, 'project.view', user);
+
   await assertProjectInquiryOptionsAccess(user, projectId);
   const normalizedQuery = normalizeProjectInquiryLabel(query).slice(
     0,
@@ -639,9 +641,7 @@ export async function searchProjectInquiryHistorySuggestions(
   if (kind === "target-market") {
     const markets = await withPrismaRetry(() =>
       prisma.projectInquiryTargetMarket.findMany({
-        where: normalizedQuery
-          ? { normalizedLabel: { contains: normalizedQuery } }
-          : undefined,
+        where: { inquiry: { project: { is: structuredProjectReadWhere(projectReadActor(user), true) } }, ...(normalizedQuery ? {normalizedLabel: {contains: normalizedQuery}} : {}) },
         distinct: ["normalizedLabel"],
         orderBy: [{ normalizedLabel: "asc" }, { createdAt: "desc" }],
         take: 30,
@@ -653,9 +653,7 @@ export async function searchProjectInquiryHistorySuggestions(
 
   const deliverables = await withPrismaRetry(() =>
     prisma.projectInquiryDeliverable.findMany({
-      where: normalizedQuery
-        ? { normalizedLabel: { contains: normalizedQuery } }
-        : undefined,
+      where: { inquiry: { project: { is: structuredProjectReadWhere(projectReadActor(user), true) } }, ...(normalizedQuery ? {normalizedLabel: {contains: normalizedQuery}} : {}) },
       distinct: ["normalizedLabel"],
       orderBy: [{ normalizedLabel: "asc" }, { createdAt: "desc" }],
       take: 30,
@@ -910,7 +908,7 @@ async function resolvePartySnapshot(
   };
 }
 
-export async function completeProjectInquiry(
+async function completeProjectInquiryImplementation(
   user: ProjectAccessUser,
   input: CompleteProjectInquiryInput,
 ): Promise<CompleteProjectInquiryResult> {
@@ -1195,4 +1193,21 @@ export async function completeProjectInquiry(
 
 export function getProjectWorkflowStageKeys() {
   return PROJECT_WORKFLOW_STAGE_DEFINITIONS.map((stage) => stage.key);
+}
+
+export async function completeProjectInquiry(
+  user: ProjectAccessUser,
+  input: CompleteProjectInquiryInput,
+): Promise<CompleteProjectInquiryResult> {
+  return runProjectMutation(user, "completeProjectInquiry", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    completeProjectInquiryImplementation(trustedUser, input), input);
+}
+
+
+export async function createContactDirectoryEntry(
+  user: ProjectAccessUser,
+  projectId: string,
+  input: CreateContactDirectoryEntryInput,
+): Promise<CreateContactDirectoryEntryResult> {
+  return runProjectMutation(user, "createContactDirectoryEntry", { kind: "structured", id: projectId }, async trustedUser => createContactDirectoryEntryImplementation(trustedUser, projectId, input), { projectId });
 }

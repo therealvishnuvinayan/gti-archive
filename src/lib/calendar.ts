@@ -1,4 +1,5 @@
-import { unstable_cache } from "next/cache";
+import { refreshProjectReader } from "@/lib/authorization/project-read";
+import { isDirectorReader } from "@/lib/authorization/project-read-rules";
 import type {
   CalendarEvent,
   CalendarEventTone,
@@ -6,6 +7,7 @@ import type {
   User,
 } from "@prisma/client";
 import { UserRole } from "@prisma/client";
+import { unstable_cache } from "next/cache";
 
 import { CALENDAR_COLLABORATORS_CACHE_TAG } from "@/lib/collaboration";
 import {
@@ -270,20 +272,16 @@ export async function getCalendarAccessState(
 }
 
 export async function getCalendarEvents(user: CalendarAccessUser) {
-  const access = await getCalendarAccessState(user);
-  const cacheKey = access.canViewSharedSchedule
-    ? `calendar-events:shared:${user.role}:${user.id}`
-    : `calendar-events:private:${user.id}`;
+  user = await refreshProjectReader(user);
 
-  const events = await unstable_cache(
-    async () =>
+  const access = await getCalendarAccessState(user);
+
+  const events = await (async () =>
       withPrismaRetry(() =>
         prisma.calendarEvent.findMany({
-          where: access.canViewSharedSchedule
-            ? undefined
-            : {
-                createdById: user.id,
-              },
+          where: isDirectorReader(user)
+            ? (access.canViewSharedSchedule ? {} : { OR: [{createdById: user.id}, {type: {in: ["PROJECTS", "PAYMENTS"]}}] })
+            : { createdById: user.id, type: { in: ["EVENTS", "REMINDERS"] } },
           include: {
             createdBy: {
               select: {
@@ -296,10 +294,7 @@ export async function getCalendarEvents(user: CalendarAccessUser) {
             startAt: "asc",
           },
         }),
-      ),
-    [cacheKey],
-    { revalidate: 20, tags: [CALENDAR_CACHE_TAG, CALENDAR_COLLABORATORS_CACHE_TAG] },
-  )();
+      ) )();
 
   return events.map((event) => mapCalendarEvent(event, user, access));
 }

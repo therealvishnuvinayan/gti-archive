@@ -1,3 +1,4 @@
+import { activeProjectMutation } from "@/lib/authorization/project-transaction";
 import { randomUUID } from "node:crypto";
 
 import {
@@ -478,10 +479,8 @@ export async function deleteObjectIfNeeded(
   storageKey: string,
   bucket = getS3BucketName(),
 ) {
-  await getS3Client().send(
-    new DeleteObjectCommand({
-      Bucket: bucket,
-      Key: storageKey,
-    }),
-  );
+  const remove = async () => { await getS3Client().send(new DeleteObjectCommand({ Bucket: bucket, Key: storageKey })); };
+  const mutation = activeProjectMutation();
+  if (mutation) { mutation.afterCommit.push(async () => { try { await remove(); } catch (error) { console.error("[project-storage-cleanup]", error); } }); return; }
+  await remove();
 }

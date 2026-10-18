@@ -2,13 +2,6 @@
 
 import { FileDropOverlay, useFileDrop } from "@/components/ui/file-upload-dropzone";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import {
-  useMemo,
-  useState,
-  useTransition,
-} from "react";
 import {
   ArrowRight,
   Check,
@@ -28,6 +21,13 @@ import {
   SlidersHorizontal,
   Trash2,
 } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import {
+  useMemo,
+  useState,
+  useTransition,
+} from "react";
 
 import {
   completeProjectResearchStageAction,
@@ -36,16 +36,14 @@ import {
   setProjectFolderItemPinAction,
   setProjectFolderItemColorAction,
 } from "@/app/(dashboard)/projects/[slug]/stages/2/actions";
-import { NewFolderDialog } from "@/components/projects/new-folder-dialog";
 import { FolderColorBadge, FolderColorFilterControl, FolderColorMenu } from "@/components/projects/folder-color-label";
-import { compareFolderColors, getFolderColor, matchesFolderColor, type FolderColor, type FolderColorFilter } from "@/lib/project-folder-colors-shared";
 import { FolderPinButton } from "@/components/projects/folder-pin-button";
-import { comparePinnedItems } from "@/lib/project-folder-pins-shared";
-import { StageTwoImportDialog } from "@/components/projects/stage-two-import-dialog";
+import { NewFolderDialog } from "@/components/projects/new-folder-dialog";
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
-import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
+import { StageTwoImportDialog } from "@/components/projects/stage-two-import-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -54,6 +52,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { compareFolderColors, getFolderColor, matchesFolderColor, type FolderColor, type FolderColorFilter } from "@/lib/project-folder-colors-shared";
+import { comparePinnedItems } from "@/lib/project-folder-pins-shared";
 import type { ProjectResearchPageData } from "@/lib/project-research";
 import { uploadProjectResearchFile } from "@/lib/project-research-upload-client";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
@@ -513,6 +513,7 @@ export function StageTwoWorkspace({
                   <ChevronRight className="h-4 w-4 shrink-0 text-[#71809e] transition group-hover:translate-x-0.5" />
                 </Link>
               ) : null}
+              {data.directorPrivateFolders.map(folder => <Link key={folder.id} href={folder.href} className="rounded-xl border p-5 text-emerald-800">{folder.ownerName}: {folder.name}</Link>)}
               {data.classifiedFolders.map((folder) => (
                 <div
                   key={folder.key}

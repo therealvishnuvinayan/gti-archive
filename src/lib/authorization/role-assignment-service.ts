@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { isBusinessRole, isTechnicalPrivilege } from "./definitions";
 import type { AuthorizationAssignment, AuthorizationSnapshot } from "./assignment-plans";
+import { resolveAuthenticatedSession } from "./session";
 import {
   changeReason, expectedVersion, identifier, inputRecord, requireCondition,
   runAssignmentTransaction, type AssignmentDatabase,
@@ -39,6 +40,7 @@ async function sessionActor(
   requireCondition(sessions.length === 1, "UNAUTHENTICATED");
   const actor = state.find((row) => row.userId === sessions[0].userId);
   requireCondition(actor && actor.accountStatus === "ACTIVE", "ACTOR_NOT_ACTIVE");
+  requireCondition(await resolveAuthenticatedSession(tx, token), "STALE_SESSION");
   return actor;
 }
 

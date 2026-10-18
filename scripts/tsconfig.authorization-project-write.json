@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.authorization-services.json",
+  "compilerOptions": {
+    "outDir": "../.tmp/authorization-project-write"
+  },
+  "include": [
+    "authorization-project-write-integration-check.ts"
+  ]
+}

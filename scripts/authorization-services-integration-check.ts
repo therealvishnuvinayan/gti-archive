@@ -7,6 +7,7 @@ import { join } from "node:path";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { createDirectorBootstrapInvoker, createInitialTechnicalAdministratorInvoker } from "../src/lib/authorization/director-bootstrap";
 import { createRoleAssignmentService } from "../src/lib/authorization/role-assignment-service";
+import { createVersionedSessionToken } from "../src/lib/authorization/session";
 import { AuthorizationMutationError, type AssignmentDatabase } from "../src/lib/authorization/assignment-transaction";
 
 // No application URL fallback. Fail before loading/connecting the generated client
@@ -42,6 +43,13 @@ const technical = (userId: string, technicalPrivileges: string[], expectedVersio
 const status = (userId: string, accountStatus: string, expectedVersion: number | null) =>
   ({ userId, accountStatus, expectedVersion, reason });
 const row = (userId: string) => db.userAuthorization.findUniqueOrThrow({ where: { userId } });
+// Explicit fixture reauthentication after an assignment changes. The runtime
+// suite separately proves old sessions cannot refresh themselves or authorize.
+async function reauthenticate(userId: string) {
+  const token = createVersionedSessionToken((await row(userId)).authorizationVersion);
+  await db.session.update({ where: { token: tokens.get(userId)! }, data: { token } });
+  tokens.set(userId, token);
+}
 const state = async () => ({
   assignments: await db.userAuthorization.findMany({ orderBy: { userId: "asc" } }),
   history: await db.userAuthorizationChange.findMany({ orderBy: [{ userId: "asc" }, { authorizationVersion: "asc" }] }),
@@ -64,8 +72,9 @@ async function businessSnapshot() {
   for (const { tablename } of tables) {
     assert.match(tablename, /^[A-Za-z0-9_]+$/);
     // Names come only from the verified isolated database catalog, never input.
+    const snapshot = tablename === "Session" ? "to_jsonb(t) - 'token' - 'updatedAt'" : "to_jsonb(t)";
     results[tablename] = await db.$queryRawUnsafe(`SELECT count(*)::text AS count,
-      md5(coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text)::text, '[]')) AS digest FROM "${tablename}" t`);
+      md5(coalesce(jsonb_agg(${snapshot} ORDER BY (${snapshot})::text)::text, '[]')) AS digest FROM "${tablename}" t`);
   }
   return results;
 }
@@ -141,7 +150,7 @@ async function main() {
   for (const id of ids) {
     await db.user.create({ data: { id, email: `${id}@example.invalid`, name: `Synthetic ${id}`,
       passwordHash: "not-a-real-password", role: id === "legacy" ? "SUPER_ADMIN" : "USER", department: "Preserve me" } });
-    const token = randomUUID(); tokens.set(id, token);
+    const token = createVersionedSessionToken(null); tokens.set(id, token);
     await db.session.create({ data: { userId: id, token, expiresAt: new Date(Date.now() + (id === "expired" ? -60_000 : 3600_000)) } });
   }
   await db.flexibleProject.create({ data: { id: "preserved-project", name: "Preserve ownership", slug: "synthetic",
@@ -149,6 +158,7 @@ async function main() {
     milestones: { create: { name: "Preserve responsibility", sortOrder: 1, responsibleUserId: "a" } } } });
   await denied(() => initialTechnicalAdmin(approval("tech")), "INVALID_SETUP_SCOPE");
   await initialTechnicalAdmin(approval("tech", { operation: "INITIAL_TECHNICAL_ADMIN" }));
+  await reauthenticate("tech");
   assert.equal((await row("tech")).businessRole, null);
   // Revoking the first grant must not reopen setup as a recovery backdoor.
   await service("tech").setTechnicalPrivileges(technical("tech", [], 1));
@@ -161,6 +171,7 @@ async function main() {
     await tx.userAuthorization.update({ where: { userId: "tech" }, data: { technicalPrivileges: ["TECHNICAL_ADMIN"] } });
   });
   await seedAuthorization("suspended-operator", null, ["TECHNICAL_ADMIN"], "SUSPENDED");
+  await reauthenticate("tech");
   await seedAuthorization("suspended-target", "DESIGNER", [], "SUSPENDED");
   const preserved = await businessSnapshot();
   await denied(() => service("legacy").assignBusinessRole(business("designer", "DESIGNER", null)), "ACTOR_NOT_ACTIVE");
@@ -179,6 +190,7 @@ async function main() {
   const bootstrapLoser = bootstraps.find((r) => r.status === "rejected");
   assert.equal(bootstrapLoser?.reason.code, "DIRECTOR_ALREADY_EXISTS");
   let directorId = (await db.userAuthorization.findFirstOrThrow({ where: { businessRole: "DIRECTOR" } })).userId;
+  await reauthenticate(directorId);
   let director = service(directorId);
   const replacement = directorId === "a" ? "b" : "a";
   assert.deepEqual((await row(directorId)).technicalPrivileges, []);
@@ -194,6 +206,7 @@ async function main() {
     assert.equal((await row(id)).authorizationVersion, 1);
   }
   await denied(() => director.assignBusinessRole({ ...business("designer", "DIGITAL_LEAD", 1), actorUserId: "operator" }), "INVALID_INPUT");
+  await reauthenticate("designer");
   await denied(() => service("designer").assignBusinessRole(business("designer", "DIRECTOR", 1)), "BUSINESS_AUTHORITY_REQUIRED");
   await denied(() => service("tech").assignBusinessRole(business("designer", "DIRECTOR", 1)), "BUSINESS_AUTHORITY_REQUIRED");
   await denied(() => director.setTechnicalPrivileges(technical("designer", ["TECHNICAL_ADMIN"], 1)), "TECHNICAL_AUTHORITY_REQUIRED");
@@ -242,6 +255,7 @@ async function main() {
   await denied(() => service("tech2").setTechnicalPrivileges(technical("digital", ["TECHNICAL_ADMIN"], 1)), "ACTOR_NOT_ACTIVE");
   await service("tech").setAuthorizationStatus(status("tech2", "ACTIVE", 2));
   await service("tech").setTechnicalPrivileges(technical(directorId, ["TECHNICAL_ADMIN"], 1));
+  await reauthenticate(directorId);
   assert.equal((await row(directorId)).businessRole, "DIRECTOR");
   await service("tech").setTechnicalPrivileges(technical(replacement, ["TECHNICAL_ADMIN"], null));
   console.log("PASS services: all five roles, independent privilege domains, forged actor/legacy escalation denial, status/version/no-op rules and actor attribution.");
@@ -269,14 +283,18 @@ async function main() {
   assert.deepEqual((await row(outgoing)).technicalPrivileges, ["TECHNICAL_ADMIN"]);
   assert.deepEqual((await row(replacement)).technicalPrivileges, ["TECHNICAL_ADMIN"]);
   directorId = replacement; director = service(directorId);
+  await denied(() => service(outgoing).transferDirector({ ...transfer, fromExpectedVersion: 3 }), "STALE_SESSION");
+  await reauthenticate(outgoing);
+  await reauthenticate(directorId);
   await denied(() => service(outgoing).transferDirector({ ...transfer, fromExpectedVersion: 3 }), "BUSINESS_AUTHORITY_REQUIRED");
   const transfers = await contended([
     () => director.transferDirector({ toUserId: "c", fromExpectedVersion: 2, toExpectedVersion: null, outgoingBusinessRole: null, reason }),
     () => director.transferDirector({ toUserId: outgoing, fromExpectedVersion: 2, toExpectedVersion: 3, outgoingBusinessRole: "DESIGNER", reason }),
   ]);
   assert.equal(transfers.filter((r) => r.status === "fulfilled").length, 1);
-  assert.equal(transfers.find((r) => r.status === "rejected")?.reason.code, "BUSINESS_AUTHORITY_REQUIRED");
+  assert.equal(transfers.find((r) => r.status === "rejected")?.reason.code, "STALE_SESSION");
   directorId = (await db.userAuthorization.findFirstOrThrow({ where: { businessRole: "DIRECTOR" } })).userId;
+  await reauthenticate(directorId);
   director = service(directorId);
   assert.equal(await db.userAuthorization.count({ where: { businessRole: "DIRECTOR" } }), 1);
   const beforeDelete = await state();
@@ -322,7 +340,7 @@ async function main() {
   }
   await assert.rejects(() => db.userAuthorizationChange.updateMany({ data: { reason: "tampered" } }));
   assert.deepEqual(await businessSnapshot(), preserved);
-  console.log(`PASS services: contiguous immutable audit history; all ${Object.keys(preserved).length} business tables, users, sessions, project owners/collaborators/responsibilities preserved.`);
+  console.log(`PASS services: contiguous immutable audit history; all ${Object.keys(preserved).length} business tables preserved (session tokens explicitly renewed by fixture reauthentication).`);
 }
 
 main().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => db.$disconnect());

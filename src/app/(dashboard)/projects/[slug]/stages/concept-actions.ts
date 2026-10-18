@@ -33,7 +33,7 @@ import { publishProjectActivityUpdatedAfterResponse } from "@/lib/realtime/serve
 import { revokeSkippedConceptStage, revokeConceptTaskCompletion } from "@/lib/project-stage-skip-revocation";
 
 export async function revokeConceptTaskCompletionAction(input: {
-  projectId: string; folderId: string; stageKey: ConceptWorkflowStageKey; executorId?: string;
+  projectId: string; folderId: string; stageKey: ConceptWorkflowStageKey; executorId?: string; reason?: string;
 }) {
   const user = await requireUser();
   try {
@@ -55,6 +55,7 @@ export async function revokeConceptTaskCompletionAction(input: {
 }
 
 export async function revokeSkippedConceptStageAction(input: {
+  reason?: string;
   projectId: string;
   stageKey: ConceptWorkflowStageKey;
 }) {

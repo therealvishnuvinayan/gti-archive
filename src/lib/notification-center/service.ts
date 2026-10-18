@@ -1,3 +1,4 @@
+import { projectReadScope } from "@/lib/authorization/project-read";
 import {
   Prisma,
   ProductionHandoverDeliveryStatus,
@@ -368,10 +369,12 @@ export async function createNotificationsForUsers(
 }
 
 export async function getUnreadNotificationCount(userId: string) {
+const readScope = await notificationProjectReadScope(userId);
+
   return withPrismaRetry(() =>
     prisma.notification.count({
       where: {
-        userId,
+        userId, AND: [readScope],
         isRead: false,
       },
     }),
@@ -382,11 +385,13 @@ export async function getRecentNotificationsForUser(
   userId: string,
   limit = DEFAULT_RECENT_LIMIT,
 ): Promise<NotificationRecentResponse> {
+const readScope = await notificationProjectReadScope(userId);
+
   const [items, unreadCount] = await withPrismaRetry(() =>
     prisma.$transaction([
       prisma.notification.findMany({
         where: {
-          userId,
+          userId, AND: [readScope],
         },
         orderBy: {
           createdAt: "desc",
@@ -407,7 +412,7 @@ export async function getRecentNotificationsForUser(
       }),
       prisma.notification.count({
         where: {
-          userId,
+          userId, AND: [readScope],
           isRead: false,
         },
       }),
@@ -424,14 +429,16 @@ export async function getRecentNotificationsForUser(
 export async function getNotificationsForUser(
   input: GetNotificationsForUserInput,
 ): Promise<NotificationListResponse> {
+const readScope = await notificationProjectReadScope(input.userId);
+
   const page = clampPage(input.page);
   const pageSize = clampPageSize(input.pageSize);
-  const where = buildNotificationWhere({
+  const where = { AND: [readScope, buildNotificationWhere({
     userId: input.userId,
     status: input.status ?? "all",
     type: input.type ?? "All Types",
     query: input.query,
-  });
+  })] };
 
   const [
     items,
@@ -454,30 +461,30 @@ export async function getNotificationsForUser(
       prisma.notification.count({ where }),
       prisma.notification.count({
         where: {
-          userId: input.userId,
+          userId: input.userId, AND: [readScope],
         },
       }),
       prisma.notification.count({
         where: {
-          userId: input.userId,
+          userId: input.userId, AND: [readScope],
           isRead: false,
         },
       }),
       prisma.notification.count({
         where: {
-          userId: input.userId,
+          userId: input.userId, AND: [readScope],
           isRead: true,
         },
       }),
       prisma.notification.count({
         where: {
-          userId: input.userId,
+          userId: input.userId, AND: [readScope],
           type: "MENTION",
         },
       }),
       prisma.notification.count({
         where: {
-          userId: input.userId,
+          userId: input.userId, AND: [readScope],
           type: {
             in: [...workflowNotificationTypes],
           },
@@ -568,4 +575,12 @@ export async function markAllNotificationsAsRead(userId: string) {
   return {
     unreadCount: 0,
   };
+}
+
+async function notificationProjectReadScope(userId: string) {
+ const scope = await projectReadScope({ id: userId }, true);
+ // Every current notification type carries project/workflow content. Unlinked
+ // historical notifications cannot be safely attributed to a project.
+ const projects = await prisma.project.findMany({where: scope.structured, select: {id: true}});
+ return { projectId: { in: projects.map(project => project.id) } };
 }

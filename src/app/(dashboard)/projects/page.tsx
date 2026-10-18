@@ -1,15 +1,18 @@
-import { UserRole } from "@prisma/client";
+import { getProjectContextIndex } from "@/lib/authorization/project-context";
+import { isProjectManagerReader } from "@/lib/authorization/project-read-rules";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
-import { ProjectsBrowser } from "@/components/projects/projects-browser";
 import { FlexibleProjectsRouteWorkspace } from "@/components/projects/flexible-projects-route-workspace";
+import { ProjectsBrowser } from "@/components/projects/projects-browser";
 import { UserProjectsBrowser } from "@/components/projects/user-projects-browser";
 import { requireUser } from "@/lib/auth";
 import {
   getFlexibleProjectsPage,
   getFlexibleProjectUserOptions,
 } from "@/lib/flexible-projects";
+import { canCreateProjects, canUseProjects } from "@/lib/permissions/resolver";
 import {
   PROJECT_LIST_ROLES,
   PROJECT_LIST_STATUSES,
@@ -23,7 +26,6 @@ import {
   getProjectsList,
   getProjectTypeSwitcherVisibility,
 } from "@/lib/projects";
-import { canCreateProjects, canUseProjects } from "@/lib/permissions/resolver";
 import {
   getUserProjectsList,
   USER_PROJECT_FILTERS,
@@ -112,9 +114,10 @@ export default async function ProjectsPage({
 
   if (resolvedSearchParams.view === "flexible") {
     const canCreateProject = canCreateProjects(user);
-    const [flexiblePage, flexibleUsers] = await Promise.all([
+    const [flexiblePage, flexibleUsers, limited] = await Promise.all([
       getFlexibleProjectsPage(user, Number.parseInt(resolvedSearchParams.page ?? "1", 10)),
       canCreateProject ? getFlexibleProjectUserOptions() : Promise.resolve([]),
+      getProjectContextIndex(user, true),
     ]);
 
     return (
@@ -129,11 +132,12 @@ export default async function ProjectsPage({
           canCreateProject={canCreateProject}
           showProjectTypeSwitcher={showProjectTypeSwitcher}
         />
+        {limited.flexible.length > 0 && <section className="space-y-3 p-6"><h2 className="text-xl font-semibold">Assigned project context ({limited.flexible.length})</h2>{limited.flexible.map(project => <p key={project.id}><Link className="text-emerald-800 underline" href={project.href}>{project.name}</Link></p>)}</section>}
       </DashboardLayout>
     );
   }
 
-  if (user.role === UserRole.USER) {
+  if (!isProjectManagerReader(user)) {
     const activeFilter = normalizeUserFilter(resolvedSearchParams.status);
     const activeSort = normalizeUserSort(resolvedSearchParams.sort);
     const query = resolvedSearchParams.q?.trim() ?? "";

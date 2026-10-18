@@ -1,3 +1,4 @@
+import { runProjectMutation } from "@/lib/authorization/project-write";
 import { AttachmentStatus, type User } from "@prisma/client";
 
 import {
@@ -131,7 +132,7 @@ async function assertAttachmentFavoriteAccess(
 
 export { getFavoriteAttachmentIdSetForUser } from "@/lib/file-favorite-queries";
 
-export async function addFileFavorite(
+async function addFileFavoriteImplementation(
   user: FavoriteAccessUser,
   attachmentId: string,
 ) {
@@ -170,7 +171,7 @@ export async function addFileFavorite(
   return { attachmentId, isFavoritedByCurrentUser: true };
 }
 
-export async function removeFileFavorite(
+async function removeFileFavoriteImplementation(
   user: FavoriteAccessUser,
   attachmentId: string,
 ) {
@@ -202,7 +203,7 @@ export async function removeFileFavorite(
   return { attachmentId, isFavoritedByCurrentUser: false };
 }
 
-export async function toggleFileFavorite(
+async function toggleFileFavoriteImplementation(
   user: FavoriteAccessUser,
   attachmentId: string,
 ) {
@@ -248,3 +249,18 @@ export async function toggleFileFavorite(
 
   return { attachmentId, isFavoritedByCurrentUser: true };
 }
+
+export async function addFileFavorite(
+  user: FavoriteAccessUser,
+  attachmentId: string,
+) { return runProjectMutation(user, "addFileFavorite", {kind:"file",id:attachmentId}, trustedUser => addFileFavoriteImplementation(trustedUser, attachmentId)); }
+
+export async function removeFileFavorite(
+  user: FavoriteAccessUser,
+  attachmentId: string,
+) { return runProjectMutation(user, "removeFileFavorite", {kind:"file",id:attachmentId}, trustedUser => removeFileFavoriteImplementation(trustedUser, attachmentId)); }
+
+export async function toggleFileFavorite(
+  user: FavoriteAccessUser,
+  attachmentId: string,
+) { return runProjectMutation(user, "toggleFileFavorite", {kind:"file",id:attachmentId}, trustedUser => toggleFileFavoriteImplementation(trustedUser, attachmentId)); }

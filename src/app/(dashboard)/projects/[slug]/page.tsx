@@ -1,6 +1,9 @@
-import { Suspense } from "react";
-import { UserRole } from "@prisma/client";
+import { getDirectorProjectResources } from "@/lib/authorization/project-context";
+import { canReadProjectResource } from "@/lib/authorization/project-read";
+import { isDirectorReader } from "@/lib/authorization/project-read-rules";
+import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { ProjectBackButton } from "@/components/projects/project-back-button";
@@ -8,11 +11,11 @@ import {
   ProjectOverviewLoadingShell,
   ProjectOverviewWorkspace,
 } from "@/components/projects/project-overview-workspace";
-import { UserProjectWorkspace } from "@/components/projects/user-project-workspace";
 import {
   ProjectAccessUnavailableState,
   ProjectNotFoundState,
 } from "@/components/projects/project-route-state";
+import { UserProjectWorkspace } from "@/components/projects/user-project-workspace";
 import { requireUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions/resolver";
 import {
@@ -53,11 +56,16 @@ async function ProjectOverviewContent({
     return <ProjectUnavailableContent slug={slug} user={user} />;
   }
 
+  const resources = await getDirectorProjectResources(project.id, user);
   return (
+    <>
     <ProjectOverviewWorkspace
       project={project}
+      allowLockedReads={isDirectorReader(user)}
       currentUserId={user.id}
     />
+    {resources && <section className="mx-auto max-w-5xl space-y-4 p-6"><h2 className="text-xl font-semibold">Project folders and files</h2>{resources.folders.map(folder => <p key={folder.id}><Link className="text-emerald-800 underline" href={folder.href}>{folder.owner.name}: {folder.name}</Link></p>)}{resources.files.map(file => <p key={file.id}><a className="text-emerald-800 underline" href={`/api/project-assets/${encodeURIComponent(file.id)}/download`}>{file.originalFileName}</a></p>)}</section>}
+    </>
   );
 }
 
@@ -102,7 +110,7 @@ export default async function ProjectDetailPage({
     redirect("/no-access");
   }
 
-  if (user.role === UserRole.USER) {
+  if (!await canReadProjectResource("structured", slug, "project.view", user)) {
     return (
       <DashboardLayout
         topbarProps={{

@@ -2,6 +2,7 @@ import { cache } from "react";
 import { Prisma } from "@prisma/client";
 
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { activeProjectMutation } from "@/lib/authorization/project-transaction";
 
 const stageParticipantSelect = {
   id: true,
@@ -90,13 +91,21 @@ export type ProjectStageAccessRecord = Prisma.ProjectGetPayload<{
 
 // React cache is request-local for Server Component renders. It deduplicates the
 // shared project/access read without making authorization data globally stale.
-export const getProjectStageAccessRecordById = cache(
-  async (projectId: string): Promise<ProjectStageAccessRecord | null> =>
-    withPrismaRetry(() =>
+async function loadProjectStageAccessRecord(projectId: string): Promise<ProjectStageAccessRecord | null> {
+  return withPrismaRetry(() =>
       prisma.project.findUnique({
         where: { id: projectId },
         relationLoadStrategy: "join",
         select: projectStageAccessSelect,
       }),
-    ),
-);
+  );
+}
+const cachedProjectStageAccessRecord = cache(loadProjectStageAccessRecord);
+
+export function getProjectStageAccessRecordById(projectId: string) {
+  // Mutations must see the transaction's current relationships and stage state,
+  // including changes made earlier in the same action.
+  return activeProjectMutation()
+    ? loadProjectStageAccessRecord(projectId)
+    : cachedProjectStageAccessRecord(projectId);
+}

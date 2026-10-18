@@ -135,7 +135,6 @@ export function CreateProjectForm({
   );
   const coOwnerCandidateOptions = useMemo(() => {
     const options: ProjectUserOption[] = eligibleOwnerCandidates
-      .filter((candidate) => candidate.role === "ADMIN")
       .map((candidate) => ({
         id: candidate.id,
         name: candidate.name,
@@ -448,6 +447,7 @@ export function CreateProjectForm({
               ) : null}
             </div>
 
+            {mode === "create" && canInviteCollaborator ? <>
             <div className="pt-0 text-[14px] font-[700] text-[#18211b] md:pt-[16px]">
               Project Collaborators
             </div>
@@ -485,6 +485,7 @@ export function CreateProjectForm({
                 </button>
               </div>
             </div>
+            </> : null}
           </div>
         </div>
 

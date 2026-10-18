@@ -1,10 +1,20 @@
 # FLUX V2 authorization foundations — Phase 1.1
 
-This module is inactive. Its definitions, eligibility and transition planner remain
-pure; Phase 1.4A adds separately constructed server-only Prisma assignment services
-described in [ASSIGNMENT-SERVICES.md](./ASSIGNMENT-SERVICES.md). No production caller
-uses them. Account mapping and resource-policy integration require separate approval. Capability
-identifiers describe V2 contracts; they do not imply implemented product features.
+Phase 1.5A connects V2 identity, status and authorization versions to application
+sessions. See [RUNTIME.md](./RUNTIME.md) for implemented behavior, the server policy
+API and the historical 1.5A milestone. [PROJECT-READ.md](./PROJECT-READ.md) documents
+the active Phase 1.5B project READ slice. [PROJECT-WRITE.md](./PROJECT-WRITE.md)
+documents the Phase 1.5C native mutation integration and remaining governance gates. Existing sessions
+must log in again. No schema migration is needed for this phase.
+
+The definitions, eligibility and transition planner below remain pure. The
+server-only assignment services are described in
+[ASSIGNMENT-SERVICES.md](./ASSIGNMENT-SERVICES.md). Runtime policy consumes these
+contracts; eligibility alone never authorizes. Five project READ and nine project
+WRITE capabilities are registered. Creation, deletion, Universal Tasker,
+Archive-management and technical resource capabilities remain unregistered.
+Capability identifiers do not imply implemented
+product features.
 
 ## Two independent domains
 
@@ -14,10 +24,10 @@ TECHNICAL_ADMIN and is independent: an account may eventually have a business ro
 technical privileges, both, or neither. Nothing maps legacy SUPER_ADMIN, ADMIN or
 USER to either domain. Their existing behavior remains in `src/lib/permissions/`.
 
-Only one active Director is intended. Phase 1.2 adds inactive persistence and
-transition foundations in [PERSISTENCE.md](./PERSISTENCE.md). The migration has been
-validated in disposable PostgreSQL, not applied to the application database;
-account mapping and runtime integration remain separate future work.
+Only one active Director is permitted by the persistence/governance constraints
+in [PERSISTENCE.md](./PERSISTENCE.md). That document records the original milestone.
+The supplied current state reports all 103 migrations and nine mapped accounts;
+Phase 1.5A does not repeat provisioning or modify those accounts.
 
 Technical capabilities cover application maintenance, diagnostics, configuration,
 system/account recovery, troubleshooting and security administration. They grant no
@@ -44,8 +54,10 @@ configurable grants must never override these restrictions or workflow requireme
 | Designer | Relevant project/task views; General/File Upload creation; own-task review/completion/deletion/management; permitted execution/completion requests; read-only spectator view; archive view/download |
 | Digital Lead | Designer eligibility plus archive category/folder management and verification |
 
-Resource authorization is a **future integration requirement**, not implemented
-here. `RESOURCE_CONTEXT` must identify trusted target or creation context.
+Resource adapters are a **future domain integration requirement**. The Phase 1.5A
+policy evaluator enforces the following requirements against evidence loaded by
+registered server code. Its production registry contains only project READ policies. `RESOURCE_CONTEXT` must
+identify trusted target or creation context.
 `RESOURCE_PERMISSION` must evaluate action-specific project participation, task
 ownership/assignment, folder/field grants and limited visible context. Project
 ownership alone must not imply task ownership. Task execution may convey a narrowly
@@ -92,9 +104,10 @@ own project/resource authority. Director intervention uses independent global
 business authority, never an elevation of spectator permissions.
 
 Self-review remains unresolved when the Task Owner is also an Executor of the
-submission under review. `SELF_REVIEW_POLICY` is an outstanding authorization
-requirement, not permission to approve one's own work. No such approval rule or
-resource evaluator is implemented here.
+submission under review. `SELF_REVIEW_POLICY` is an outstanding product-policy
+requirement, not permission to approve one's own work. The runtime evaluator
+denies review without an explicit approved policy result from a trusted adapter;
+no production self-review rule has been invented or enabled.
 
 Director's `BUSINESS_WIDE` scope removes the membership requirement, not resource
 context, workflow/data integrity, actual actor attribution or history preservation.
@@ -120,9 +133,9 @@ eligible as archive management; recipient/export scope still needs a resource ru
 Self-review, exact lifecycle/field constraints, template/stage lifecycle rules and
 exceptional support procedures also require approved policies before integration.
 
-The Phase 1.2 migration is an additive, offline-authored candidate. Its application
-still requires reconciliation of the deployed migration history. Role assignment,
-session/cache invalidation and integration into the legacy application are not active.
+The session/status/version boundary and project READ adapters are active; other
+resource-policy activation and legacy domain replacement remain deferred. The historical
+persistence and assignment milestone reports are not current rollout instructions.
 
 ## Local checks
 

@@ -44,7 +44,7 @@ function checkSchema(repository: string, direct: URL) {
   const args = [process.env.FLUX_PROVISION_PRISMA_CLI!, "migrate", "diff", "--from-schema-datasource", join(repository, "prisma/schema.prisma"),
     "--to-schema-datamodel", join(repository, "prisma/schema.prisma"), "--script", "--exit-code"];
   const result = spawnSync(process.execPath, args, { cwd: repository, encoding: "utf8", timeout: 90000,
-    env: { PATH: process.env.PATH, LANG: "C", LC_ALL: "C", DATABASE_URL: url.toString(), CHECKPOINT_DISABLE: "1", PRISMA_HIDE_UPDATE_MESSAGE: "1" } });
+    env: { PATH: process.env.PATH, LANG: "C", LC_ALL: "C", NODE_ENV: process.env.NODE_ENV, DATABASE_URL: url.toString(), CHECKPOINT_DISABLE: "1", PRISMA_HIDE_UPDATE_MESSAGE: "1" } });
   // Never relay raw Prisma errors: they may embed URLs, SQL or credentials.
   requireProvisioning(result.status === 0 && /This is an empty migration/.test(result.stdout), "SCHEMA_DIFF_FAILED_OR_DRIFT_DETECTED");
 }

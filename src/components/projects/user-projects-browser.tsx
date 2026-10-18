@@ -306,7 +306,7 @@ function UserProjectListRow({
         </div>
 
         <div>
-          <p className="text-[10px] font-[650] text-[#7b837c]">Last updated</p>
+          <p className="text-[10px] font-[650] text-[#7b837c]">Assigned work updated</p>
           <p className="mt-2 flex items-center gap-1.5 text-[12px] font-[550] text-[#303831]">
             <Clock3 className="size-3.5 text-[#687269]" />
             <time dateTime={project.updatedAt}>{formatDate(project.updatedAt)}</time>

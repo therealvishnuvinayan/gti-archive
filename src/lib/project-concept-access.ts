@@ -1,10 +1,11 @@
+import { refreshProjectReader } from "@/lib/authorization/project-read";
+import { canReadFullProject, hasProjectBusinessIdentity, isDirectorReader } from "@/lib/authorization/project-read-rules";
 import {
   type ProjectWorkflowStageKey,
   type ProjectWorkflowStageStatus,
 } from "@prisma/client";
 
 import {
-  isGlobalProjectAdministrator,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
@@ -26,22 +27,12 @@ type ConceptAccessActor = Pick<PermissionUser, "id" | "role">;
 export function canManageProjectConcept(
   user: ConceptAccessActor,
   context: ConceptAccessContext,
-) {
-  return (
-    isGlobalProjectAdministrator(user) ||
-    context.ownerId === user.id ||
-    context.coOwnerIds.includes(user.id)
-  );
-}
+) { return canReadFullProject(user, { ownerId: context.ownerId, coOwners: context.coOwnerIds.map(userId => ({ userId })) }); }
 
 export function canCompleteProjectConceptStage(
   user: ConceptAccessActor,
   context: ConceptAccessContext,
-) {
-  return (
-    isGlobalProjectAdministrator(user) || context.ownerId === user.id
-  );
-}
+) { return canManageProjectConcept(user, context); }
 
 export function canReviewProjectConcept(
   user: ConceptAccessActor,
@@ -56,19 +47,12 @@ export function canReviewProjectConcept(
 export function canViewProjectConcept(
   user: ConceptAccessActor,
   context: ConceptAccessContext,
-) {
-  return (
-    canManageProjectConcept(user, context) ||
-    context.assignedExecutorId === user.id
-  );
-}
+) { return canReadFullProject(user, {ownerId: context.ownerId, coOwners: context.coOwnerIds.map(userId => ({userId}))}) || (hasProjectBusinessIdentity(user) && context.assignedExecutorId === user.id); }
 
 export function canWorkOnProjectConcept(
   user: ConceptAccessActor,
   context: ConceptAccessContext,
-) {
-  return context.assignedExecutorId === user.id;
-}
+) { return hasProjectBusinessIdentity(user) && (isDirectorReader(user) || context.assignedExecutorId === user.id); }
 
 export function getProjectConceptParticipantUserIds(
   context: ConceptAccessContext,
@@ -160,11 +144,13 @@ export async function assertCanViewProjectConcept(
   user: ConceptAccessActor,
   input: { projectId: string; folderId?: string; taskerStageId?: string },
 ) {
+  user = await refreshProjectReader(user);
+
   const context = await getProjectConceptAccessContext(input);
 
   if (
     !context ||
-    !isProjectConceptWorkflowAccessible(context) ||
+    (!isDirectorReader(user) && !isProjectConceptWorkflowAccessible(context)) ||
     !canViewProjectConcept(user, context)
   ) {
     throw new Error("You do not have access to this concept.");

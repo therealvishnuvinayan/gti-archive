@@ -1,3 +1,8 @@
+import type {
+  BusinessAuthorizationRequirement,
+  BusinessRoleEligibilityDecision,
+  TechnicalPrivilegeEligibilityDecision,
+} from "./contracts";
 import {
   businessCapabilityValues,
   isBusinessCapability,
@@ -7,11 +12,6 @@ import {
   type BusinessCapability,
   type BusinessRole,
 } from "./definitions";
-import type {
-  BusinessAuthorizationRequirement,
-  BusinessRoleEligibilityDecision,
-  TechnicalPrivilegeEligibilityDecision,
-} from "./contracts";
 
 const directorOnlyCapabilities = [
   "project.approveCompletion",
@@ -60,8 +60,17 @@ const taskOwnerCapabilities = [
 
 const projectManagerCapabilities = [
   "project.view",
+  "project.viewContext",
+  "project.viewStage",
+  "project.viewFile",
+  "project.viewFolder",
   "project.create",
   "project.edit",
+  "project.manageStage",
+  "project.executeTask",
+  "project.writeFile",
+  "project.comment",
+  "project.respond",
   "project.manageParticipants",
   "project.requestCompletion",
   "task.view",
@@ -78,7 +87,14 @@ const projectManagerCapabilities = [
 ] as const satisfies readonly BusinessCapability[];
 
 const taskFocusedCapabilities = [
+  "project.executeTask",
+  "project.writeFile",
+  "project.comment",
+  "project.respond",
   "project.view",
+  "project.viewContext",
+  "project.viewFile",
+  "project.viewFolder",
   "task.view",
   "task.createGeneral",
   "task.createFileUpload",
@@ -112,7 +128,7 @@ const eligibleCapabilities: Record<BusinessRole, readonly BusinessCapability[]> 
   DIGITAL_LEAD: [...taskFocusedCapabilities, "archive.manageCategoriesFolders", "archive.verify"],
 };
 
-/** Pure, inactive eligibility assessment. Never use its truthiness as access. */
+/** Pure eligibility assessment. Runtime policy must evaluate its requirements. */
 export function getBusinessRoleEligibility(
   role: unknown,
   capability: unknown,

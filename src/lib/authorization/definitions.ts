@@ -1,4 +1,4 @@
-/** Inactive V2 contracts. These values do not map or replace Prisma UserRole. */
+/** V2 contracts used by runtime policy. Never map or cast these to UserRole. */
 export const businessRoleValues = [
   "DIRECTOR",
   "SENIOR_PROJECT_MANAGER",
@@ -17,8 +17,17 @@ export type TechnicalPrivilege = (typeof technicalPrivilegeValues)[number];
 export const businessCapabilityCatalog = {
   project: [
     "project.view",
+    "project.viewContext",
+    "project.viewStage",
+    "project.viewFile",
+    "project.viewFolder",
     "project.create",
     "project.edit",
+    "project.manageStage",
+    "project.executeTask",
+    "project.writeFile",
+    "project.comment",
+    "project.respond",
     "project.manageParticipants",
     "project.delete",
     "project.requestCompletion",
