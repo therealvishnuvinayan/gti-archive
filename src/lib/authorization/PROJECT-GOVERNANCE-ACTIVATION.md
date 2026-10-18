@@ -1,11 +1,49 @@
 # Phase 1.5D — development activation review
 
-Verified 2026-10-18. **Preflight and isolated verification PASS. Neon activation is
-paused for the explicit approval required by Step 2 of the activation request.**
-No Neon migration, preset approval, test record, account change, push or deployment
-was performed during this review.
+Verified 2026-10-18. **Authorized migration and post-migration verification PASS.**
+Following explicit user approval, only `20261018170000_project_governance` was
+applied to `flux-v2-dev / develop / neondb`. The command completed successfully at
+`2026-10-18T17:09:54.993Z`; the post-migration snapshot was captured at
+`2026-10-18T17:10:05.030Z`. No preset approval, project creation, account change,
+push, deployment or later-phase work was performed.
 
-## 1. Verified development target and current state
+## Migration execution result
+
+The target, exactly one pending migration, the reviewed SHA-256, all 103 historical
+checksums, existing schema, accounts/data fingerprints and recovery access were
+reconfirmed before execution. They matched the approved review. The controlled
+procedure then invoked Prisma migration deployment once against the reviewed
+staging copy. There was no failure, retry, reset or repair operation.
+
+| Post-migration check | Result |
+| --- | --- |
+| Database version | PostgreSQL `18.6 (653b019)` |
+| Successful migrations / pending | **104 / 0**; all checksums match |
+| Tables / Prisma drift | **96 / NONE** |
+| Existing accounts, passwords and roles | All nine preserved; complete User and UserAuthorization row fingerprints unchanged |
+| Existing authorization audit | All nine UserAuthorizationChange records preserved unchanged |
+| Historical migration ledger | All 103 prior rows preserved unchanged |
+| Existing application data | All 90 pre-existing application-table row counts and fingerprints unchanged |
+| Existing table definitions and enums | Unchanged; only the reviewed additions appeared |
+| Existing guard functions / custom triggers | All five functions and eight triggers unchanged |
+| New governance constraints | 18 foreign keys and five CHECK constraints, all validated |
+| New governance indexes / triggers | 22 indexes including primary keys, all valid/ready; ten enabled triggers |
+| New guard function | Body matches the reviewed migration SQL |
+| New governance data | All five tables empty; zero preset approvals or requests |
+| Unexpected schema/data differences | None |
+
+Execution evidence: `/private/tmp/flux-phase15d-migration-execution/`, including
+`preflight.json`, `before.json`, `after.json`, `provider.json`,
+`prisma-deploy.log` and `verification.json`. The controlled execution helper is
+`/private/tmp/flux-phase15d-controlled-migration.mjs`. Inspection and postchecks
+used database-enforced read-only connections. Only Prisma migration deployment
+received the write-capable direct connection.
+
+**Migration verification is complete. Work stopped at the user's requested
+boundary. The Artwork preset remains unapproved; no projects were created.**
+The sections below retain the pre-activation review and isolated-test evidence.
+
+## 1. Verified development target and state before migration
 
 | Item | Observed value |
 | --- | --- |
@@ -47,9 +85,9 @@ captured WAL LSN `0/22B8610`). This verifies access to historical state; a resto
 was not executed. Refresh the recovery timestamp immediately before activation:
 the six-hour window expires and is not a permanent backup.
 
-## 2. Exact proposed Neon operation — not executed
+## 2. Exact approved Neon operation — completed
 
-Apply only the reviewed migration:
+Applied only the reviewed migration:
 
 `20261018170000_project_governance`
 
@@ -69,7 +107,7 @@ A private reviewed copy of the schema and all 104 migrations is staged at
 migration hash and the target identity. Staged schema SHA-256:
 `b90ed15fca03a0f212207d66ab9ca073433f3c1c80ce58f3785562bc07d0f730`.
 
-After explicit approval, the procedure is:
+The procedure executed after explicit approval was:
 
 1. Recheck provider endpoint/branch identity, recovery availability, the 103-entry
    ledger/checksums, account state, existing schema and every staged file hash.
@@ -161,18 +199,23 @@ No application bug or missing approval UI was found. Temporary browser selectors
 were corrected to target visible controls and wait for streamed Next.js redirects
 and the loaded completion-blocker panel; these were test-harness issues. No
 authorization rule or application source was changed during this activation
-review. Repository edits are this new report and a follow-up link in
-`PROJECT-GOVERNANCE.md`; the earlier Phase 1.5D implementation remains in place.
+review. The migration execution follow-up updated only this report and the status
+in `PROJECT-GOVERNANCE.md`; application source and authorization rules were not
+changed.
 
 All 154 inspected protected historical migration, Archive/Library/S3 and account
-configuration files retain their pre-Phase-1.5D hashes. No actual data was modified;
-Archives, Library and S3 remain untouched. No external email, password/role change,
+configuration files retain their pre-Phase-1.5D hashes. No pre-existing application
+rows were modified; the only database changes were the approved schema additions
+and their migration-ledger entry. Archives, Library and S3 remain untouched.
+No external email, password/role change,
 project deletion, reset, `db push`, push, deployment or later milestone occurred.
 
-**Full sign-off remains pending**: explicit Neon migration approval, successful
-controlled application/postchecks, and the genuine Director's development preset
-approval. V2 read/write authorization remains intact. SPM creation in development
-stays blocked until migration and explicit preset designation are complete.
+**Migration activation and postchecks are complete.** The genuine Director's
+development preset approval remains pending and was explicitly excluded from this
+execution. V2 read/write authorization remains intact. SPM creation in development
+stays blocked until that explicit preset designation. Full business activation
+sign-off is not claimed; no further action will occur without the user's next
+instruction.
 
 Existing documented limits remain: external Artwork with unresolved document
 requirements cannot finalize, and unsupported SPM/JPM flexible creation remains

@@ -18,7 +18,7 @@ function fixture() {
     const assigned = new Set(order.slice(0, completed));
     return { environment, database: { database: "neondb", schema: "public", major: 18, readOnly: "on" },
       pooledFingerprint: "9d6f1df51a9db284", directFingerprint: "5b001dbfcdb263fa", manifestFingerprint: "6c64549f4682ae1b",
-      audience: "flux-v2-dev:develop:neondb:5b001dbfcdb263fa:6c64549f4682ae1b", migrations: 104, schemaDrift: "NONE",
+      audience: "flux-v2-dev:develop:neondb:5b001dbfcdb263fa:6c64549f4682ae1b", migrations: 105, schemaDrift: "NONE",
       signing: "PUBLIC_VERIFICATION_KEY_CONFIGURED; independent issuer approval still required",
       accounts: emails.map((email, index) => ({ email, id: `fixture-${index}`, identity: "PRESENT", legacyRole: "USER",
         businessRole: roles[index], technicalPrivileges: index >= 7 ? ["TECHNICAL_ADMIN"] : [],
@@ -42,7 +42,7 @@ test("exact approved initial state, version and audit attribution required", () 
     (p) => { p.database.major = 14; }, (p) => { p.database.readOnly = "off"; },
     (p) => { p.directFingerprint = "2326cc86483bda5d"; }, (p) => { p.pooledFingerprint = "other"; },
     (p) => { p.audience = "other"; }, (p) => { p.manifestFingerprint = "other"; },
-    (p) => { p.migrations = 103; }, (p) => { p.migrations = 105; }, (p) => { p.schemaDrift = "DETECTED"; },
+    (p) => { p.migrations = 104; }, (p) => { p.migrations = 106; }, (p) => { p.schemaDrift = "DETECTED"; },
     (p) => { p.counts.User = 10; }, (p) => { p.accounts.push(p.accounts[0]); },
     (p) => { p.accounts[0].technicalPrivileges = ["TECHNICAL_ADMIN"]; },
     (p) => { p.accounts[7].businessRole = "DIRECTOR"; }, (p) => { p.accounts[1].email = "outside@example.com"; },

@@ -57,7 +57,7 @@ async function main(){
   if(name==="react")return{cache:(fn:unknown)=>fn};
   if(name==="@/lib/prisma"||name==="../prisma"||name==="./prisma")return{prisma:projectTransactionClient(db),withPrismaRetry:(fn:()=>unknown)=>fn()};
   if(name==="@/lib/permissions/profiles")return{getPermissionProfileSnapshotForUser:async()=>({effectivePermissions:new Set(allPermissionKeys),rolePermissions:new Set(allPermissionKeys),archiveAccessGranted:true,archiveAccessLevel:"FULL"})};
-  if(name==="@/lib/s3"||name==="@/lib/storage/s3")return new Proxy({}, {get:(_t,key)=>key==="getFileExtension" ? localRequire(join(compiledRoot,"src/lib/upload-validation.js")).getFileExtension : key==="createPresignedDownloadUrl"||key==="createPresignedPreviewUrl"?async()=>{return "fixture-signed-url";}:()=>{throw new Error(`S3_OBJECT_ACCESS_FORBIDDEN:${String(key)}`);}});
+  if(name==="@/lib/s3"||name==="@/lib/storage/s3")return new Proxy({}, {get:(_t,key)=>key==="getFileExtension" ? localRequire(join(compiledRoot,"src/lib/upload-validation.js")).getFileExtension : key==="getObjectMetadata" ? async(storageKey:string)=>{if(storageKey!=="fixture/document")throw new Error("Unexpected fixture object");return {ContentLength:1,ContentType:"application/pdf",ETag:"legacy-fixture-object"};} : key==="createPresignedDownloadUrl"||key==="createPresignedPreviewUrl"?async()=>{return "fixture-signed-url";}:()=>{throw new Error(`S3_OBJECT_ACCESS_FORBIDDEN:${String(key)}`);}});
   return original.call(this,name.startsWith("@/")?resolve(compiledRoot,"src",name.slice(2)):name,...args);
  };
  try {

@@ -1,4 +1,7 @@
 import { ProjectCompletionGovernance } from "@/components/projects/project-completion-governance";
+import { ProjectCompletionChecklist } from "@/components/projects/project-completion-checklist";
+import { CompletionDocumentReviews } from "@/components/projects/completion-document-reviews";
+import { getProjectCompletionWorkflowForUser } from "@/lib/project-completion";
 import { getDirectorProjectResources } from "@/lib/authorization/project-context";
 import { canReadProjectResource } from "@/lib/authorization/project-read";
 import { isDirectorReader } from "@/lib/authorization/project-read-rules";
@@ -58,6 +61,8 @@ async function ProjectOverviewContent({
   }
 
   const resources = await getDirectorProjectResources(project.id, user);
+  const completionWorkflow = await canReadProjectResource("structured", project.id, "project.view", user)
+    ? await getProjectCompletionWorkflowForUser(user, project.id) : null;
   return (
     <>
     <ProjectOverviewWorkspace
@@ -66,6 +71,10 @@ async function ProjectOverviewContent({
       currentUserId={user.id}
     />
     <ProjectCompletionGovernance user={user} target={{ kind: "ARTWORK", projectId: project.id }} />
+    {completionWorkflow && <section className="mx-auto max-w-5xl space-y-4 p-6">
+      <ProjectCompletionChecklist projectId={project.id} workflow={completionWorkflow} />
+      <CompletionDocumentReviews projectId={project.id} canManage={completionWorkflow.canManage} />
+    </section>}
     {resources && <section className="mx-auto max-w-5xl space-y-4 p-6"><h2 className="text-xl font-semibold">Project folders and files</h2>{resources.folders.map(folder => <p key={folder.id}><Link className="text-emerald-800 underline" href={folder.href}>{folder.owner.name}: {folder.name}</Link></p>)}{resources.files.map(file => <p key={file.id}><a className="text-emerald-800 underline" href={`/api/project-assets/${encodeURIComponent(file.id)}/download`}>{file.originalFileName}</a></p>)}</section>}
     </>
   );

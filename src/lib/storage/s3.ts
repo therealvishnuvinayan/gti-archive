@@ -442,11 +442,13 @@ export async function copyStoredObject(input: {
   sourceKey: string;
   bucket: string;
   storageKey: string;
+  sourceETag?: string;
 }) {
   await getS3Client("regional").send(new CopyObjectCommand({
     Bucket: input.bucket,
     Key: input.storageKey,
     CopySource: `${input.sourceBucket}/${encodeURIComponent(input.sourceKey)}`,
+    CopySourceIfMatch: input.sourceETag,
   }));
 }
 

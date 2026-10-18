@@ -83,13 +83,13 @@ export async function databasePreflight(db: PrismaClient, manifest: Manifest, au
     const ledger = await tx.$queryRawUnsafe<Array<{ migration_name: string; checksum: string; finished: boolean; rolled_back: boolean; steps: number }>>(
       `SELECT migration_name, checksum, finished_at IS NOT NULL AS finished, rolled_back_at IS NOT NULL AS rolled_back,
        applied_steps_count AS steps FROM "_prisma_migrations" ORDER BY migration_name`);
-    // Phase 1.5D adds one reviewed migration and five governance tables. Keep
+    // Phase 1.5E adds one migration and three completion-document tables. Keep
     // exact schema expectations; target identity and checksum checks are unchanged.
-    requireProvisioning(manifest.length === 104 && ledger.length === manifest.length && ledger.every((entry, index) =>
+    requireProvisioning(manifest.length === 105 && ledger.length === manifest.length && ledger.every((entry, index) =>
       entry.migration_name === manifest[index].name && entry.checksum === manifest[index].checksum &&
       entry.finished && !entry.rolled_back && entry.steps > 0), "MIGRATION_HISTORY_MISMATCH");
     const tables = await tx.$queryRawUnsafe<Array<{ tablename: string }>>("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename");
-    requireProvisioning(tables.length === 96, "UNEXPECTED_APPLICATION_TABLES");
+    requireProvisioning(tables.length === 99, "UNEXPECTED_APPLICATION_TABLES");
     const permitted = new Set(["_prisma_migrations", "User", "UserAuthorization", "UserAuthorizationChange", "Session", "ProjectStatusGroupOption", "ProjectStatusOption"]);
     const counts: Record<string, number> = {};
     for (const { tablename } of tables) {

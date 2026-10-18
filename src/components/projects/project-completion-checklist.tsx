@@ -3,6 +3,7 @@
 import { FileUploadDropzone } from "@/components/ui/file-upload-dropzone";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { Download, Loader2, Lock } from "lucide-react";
 
@@ -608,6 +609,7 @@ function ProjectCompletionChecklistBody({
   workflow: ProjectCompletionWorkflowRecord;
   surface: "card" | "plain";
 }) {
+  const router = useRouter();
   const [workflowState, setWorkflowState] = useState<ProjectCompletionWorkflowRecord>(workflow);
   const [approvalRequired, setApprovalRequired] = useState<boolean>(
     workflow.approvalRequired ?? false,
@@ -651,9 +653,9 @@ function ProjectCompletionChecklistBody({
     { title: "Copyright Transfer", meta: copyrightStatusMeta },
     { title: "Final Invoice", meta: invoiceStatusMeta },
     {
-      title: "Review & Complete Project",
+      title: "Director Completion Review",
       meta: {
-        label: finalChecksResolved ? "Ready" : "Blocked",
+        label: finalChecksResolved ? "Documents ready" : "Blocked",
         className: finalChecksResolved
           ? "bg-[#edf7ef] text-[#2b8b56]"
           : "bg-[#fff7ea] text-[#b77420]",
@@ -662,7 +664,7 @@ function ProjectCompletionChecklistBody({
     {
       title: "Archive Project",
       meta: {
-        label: finalChecksResolved ? "Ready" : "Locked",
+        label: "After Director completion",
         className: finalChecksResolved
           ? "bg-[#edf7ef] text-[#2b8b56]"
           : "bg-[#f4f7f4] text-[#5f6b62]",
@@ -889,14 +891,9 @@ function ProjectCompletionChecklistBody({
         applyWorkflowUpdate(nextWorkflow);
       }
 
-      const label =
-        documentType === COMPLETION_DOCUMENT_TYPES.approval
-          ? "Authority approval completed."
-          : documentType === COMPLETION_DOCUMENT_TYPES.copyright
-            ? "Copyright transfer completed."
-            : "Final invoice uploaded.";
-
-      showSuccessToast(label);
+      showSuccessToast("Document submitted for review.");
+      window.dispatchEvent(new Event("completion-documents-changed"));
+      router.refresh();
     } catch (error) {
       const message =
         error instanceof Error
@@ -1103,8 +1100,8 @@ function ProjectCompletionChecklistBody({
                     </SelectContent>
                   </Select>
                   <p className="mt-2 text-[11px] text-[#728074]">
-                    Need another approval contact? Add them to the project collaborators
-                    first, then return here.
+                    Choose an authorized project manager here. External recipients use the
+                    submission links below after the request is prepared.
                   </p>
                 </div>
 
@@ -1198,17 +1195,8 @@ function ProjectCompletionChecklistBody({
                 <div className="rounded-[16px] border border-[#dce6dd] bg-white px-4 py-3 text-[12px] leading-5 text-[#5f6b62]">
                   <p className="font-[800] text-[#173120]">Waiting for approval proof</p>
                   <p className="mt-1">
-                    Authority approval is completed when{" "}
-                    {workflowState.approvalContactName ?? "the selected approval contact"}{" "}
-                    uploads the approval proof from their account.
+                    Approval evidence must be submitted and accepted by an authorized project manager.
                   </p>
-                  {workflowState.canManage ? (
-                    <p className="mt-1">
-                      The upload action is only shown to the selected approval contact, so
-                      the project owner can track this step but cannot approve it on their
-                      behalf.
-                    </p>
-                  ) : null}
                 </div>
               )}
             </div>
@@ -1394,7 +1382,7 @@ function ProjectCompletionChecklistBody({
                 ? "Not required for internal execution."
                 : "Final invoice is marked as not required for this project."}
             </p>
-          ) : workflowState.invoiceDocument ? (
+          ) : workflowState.invoiceStatus === "COMPLETED" && workflowState.invoiceDocument ? (
             <div className="mt-4 space-y-3">
               <p className="text-[13px] text-[#2b8b56]">
                 Final Invoice Completed
@@ -1499,24 +1487,6 @@ function ProjectCompletionChecklistBody({
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
-                {workflowState.canManage ? (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className="rounded-full text-[12px]"
-                    disabled={
-                      pendingAction === "invoice" ||
-                      uploadingDocumentType === COMPLETION_DOCUMENT_TYPES.invoice
-                    }
-                    onClick={handleMarkInvoiceNotRequired}
-                  >
-                    {pendingAction === "invoice" ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : null}
-                    Mark Final Invoice Not Required
-                  </Button>
-                ) : null}
-
               {workflowState.canUploadInvoice ? (
                 <FileUploadDropzone label="Upload Final Invoice" compact accept={completionDocumentAccept}
                     disabled={uploadingDocumentType !== null || pendingAction === "invoice"}
@@ -1535,7 +1505,7 @@ function ProjectCompletionChecklistBody({
           <div className="rounded-[20px] border border-[#dce6dd] bg-[#fbfcfa] p-4">
             <p className="text-[16px] font-semibold text-[#173120]">Completion Documents</p>
             <p className="mt-1 text-[13px] leading-6 text-[#5f6b62]">
-              These completion files remain available from this completed project workflow.
+              Accepted evidence and prior versions remain available in this project history.
             </p>
             <div className="mt-4">
               <CompletionDocumentList documents={workflowState.documents} />

@@ -184,7 +184,10 @@ async function frameworkChecks(){
     assert.ok(await flexible.getFlexibleProjectDetail("flex-unrelated",user));
     assert.ok(await five.getStageFiveWorkspaceData(user,"owned"));
     assert.ok(await seven.getStageSevenWorkspaceData(user,"owned"));
-    assert.equal(await completion.getProjectCompletionWorkflowForUser(user,"owned"),null);
+    const unconfigured = await completion.getProjectCompletionWorkflowForUser(user,"owned");
+    assert.equal(unconfigured?.workflowId,"unconfigured");
+    assert.equal(unconfigured?.needsInitialConfiguration,true);
+    assert.equal(await db.projectCompletionWorkflow.count(),0,"Completion read projection must not persist a workflow");
    }
   }
   await as("designer");const user=(await auth.getCurrentUser())!;

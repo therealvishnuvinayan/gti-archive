@@ -1,4 +1,5 @@
 import "server-only";
+import { assertCompletionDocumentEvidence } from "../completion-documents/evidence";
 import type { Prisma, GovernedProjectKind } from "@prisma/client";
 import { getWorkflowStageCompletionMode } from "../project-workflow";
 import { isProjectStatusCompleted } from "../project-statuses";
@@ -57,14 +58,8 @@ export async function completionEvidence(tx:Prisma.TransactionClient,target:Comp
   if(p.stages.some(stage=>stage.status!=="COMPLETED")||p.attachments.some(a=>a.status==="UPLOADING"))throw new Error("Native tasks or uploads remain unfinished.");
   const w=p.completionWorkflow;
   if(!w&&p.executionType!=="INTERNAL")throw new Error("Configure and resolve the existing completion document requirements before final completion.");
-  if(w)for(const [required,status,type] of [
-    [w.approvalRequired,w.approvalStatus,"AUTHORITY_APPROVAL_PROOF"],
-    [w.copyrightRequired,w.copyrightStatus,"COPYRIGHT_TRANSFER"],
-    [w.invoiceRequired,w.invoiceStatus,"INVOICE"],
-  ] as const) {
-    if(required===null||status==="PENDING"||(required&&(status!=="COMPLETED"||!w.documents.some(d=>d.type===type&&d.projectId===p.id&&d.workflowId===w.id))))throw new Error("Mandatory completion requirements or document evidence remain unresolved.");
-  }
-  return {ownerId:p.ownerId,snapshot:p};
+  const completionDocumentVerification = w ? await assertCompletionDocumentEvidence(tx,w) : [];
+  return {ownerId:p.ownerId,snapshot:{...p,completionDocumentVerification}};
 }
 export async function applyFinalCompletion(tx:Prisma.TransactionClient,target:CompletionTarget,actorId:string) {
   await completionEvidence(tx,target);

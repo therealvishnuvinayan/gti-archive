@@ -1,7 +1,7 @@
 import { runProjectMutation } from "@/lib/authorization/project-write";
 import { refreshProjectReader, requireProjectResourceRead } from "@/lib/authorization/project-read";
-import { isDirectorReader } from "@/lib/authorization/project-read-rules";
-import { randomUUID } from "node:crypto";
+import { canReadFullProject, projectReadActor } from "@/lib/authorization/project-read-rules";
+import { completionDocumentEvent, prepareCompletionUpload, finishCompletionUpload } from "@/lib/completion-documents/service";
 
 import {
   ArchiveRecordStatus,
@@ -17,43 +17,16 @@ import {
 } from "@prisma/client";
 
 import { getUserDisplayName } from "@/lib/auth";
-import {
-  notifyApprovalProofUploaded,
-  notifyCopyrightDocumentUploaded,
-  notifyInvoiceUploaded,
-  runNotificationTask,
-} from "@/lib/notification-center";
 import type { PermissionKey } from "@/lib/permissions/definitions";
-import {
-  hasProjectPermission,
-  type PermissionUser,
-} from "@/lib/permissions/resolver";
+import type { PermissionUser } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
-import {
-  canBypassCollaboratorVisibility,
-  getProjectCollaboratorVisibilityState,
-  isTimestampHiddenByPauseWindows
-} from "@/lib/project-collaborator-visibility";
-import { assertProjectAccess } from "@/lib/project-history";
 import { isProjectStatusCompleted } from "@/lib/project-statuses";
 import { sanitizeRichText } from "@/lib/rich-text";
 import {
-  buildProjectCompletionDocumentKey,
   createPresignedDownloadUrl,
   createPresignedPreviewUrl,
-  createPresignedUploadUrl,
   getFileExtension,
-  getMaxAssetUploadBytes,
-  getS3BucketName,
-  isAllowedProjectCompletionDocument,
-  sanitizeFileName,
 } from "@/lib/storage/s3";
-import {
-  COMPLETION_DOCUMENT_ALLOWED_EXTENSIONS,
-  UploadFileTypeError,
-  buildFileTypeNotAllowedPayload,
-} from "@/lib/upload-validation";
-
 export type ProjectCompletionWorkflowUser = Pick<
   User,
   "id" | "role" | "email" | "name"
@@ -177,31 +150,6 @@ function isInternalCompletionProject(
   return project.executionType === ProjectExecutionType.INTERNAL;
 }
 
-function getInternalCompletionWorkflowData(completedAt = new Date()) {
-  return {
-    approvalRequired: false,
-    approvalStatus: ProjectCompletionStepStatus.NOT_REQUIRED,
-    approvalContactUserId: null,
-    approvalNote: null,
-    approvalSelectedArchivedFileIds: [],
-    approvalSelectedProjectFileIds: [],
-    approvalRequestedAt: null,
-    approvalCompletedAt: null,
-    copyrightRequired: false,
-    copyrightStatus: ProjectCompletionStepStatus.NOT_REQUIRED,
-    copyrightContactUserId: null,
-    copyrightNote: null,
-    copyrightRequestedAt: null,
-    copyrightCompletedAt: null,
-    invoiceRequired: false,
-    invoiceStatus: ProjectCompletionStepStatus.NOT_REQUIRED,
-    invoiceContactUserId: null,
-    invoiceNote: null,
-    invoiceRequestedAt: null,
-    invoiceCompletedAt: null,
-    completedAt,
-  };
-}
 
 function formatCompletionTimestamp(value: Date | string | number | null | undefined) {
   if (!value) {
@@ -285,53 +233,17 @@ type ProjectCompletionPermissionProject = {
   } | null;
 };
 
-function canViewCompletionWorkflow(
-  project: ProjectCompletionPermissionProject,
-  user: ProjectCompletionWorkflowUser,
-) {
-  return (
-    hasProjectPermission(user, project, "completion.viewChecklist") ||
-    project.completionWorkflow?.approvalContactUserId === user.id ||
-    project.completionWorkflow?.copyrightContactUserId === user.id ||
-    project.completionWorkflow?.invoiceContactUserId === user.id
-  );
-}
-
-function canManageCompletionWorkflow(
-  project: ProjectCompletionPermissionProject,
-  user: ProjectCompletionWorkflowUser,
-) {
-  return hasProjectPermission(user, project, "completion.setApprovalRequired");
-}
-
-function canUploadApprovalProofForProject(
-  workflow: ProjectCompletionProjectRecord["completionWorkflow"] | null,
-  user: ProjectCompletionWorkflowUser,
-) {
-  return workflow?.approvalContactUserId === user.id;
-}
-
-function canUploadCopyrightDocumentForProject(
-  workflow: ProjectCompletionProjectRecord["completionWorkflow"] | null,
-  user: ProjectCompletionWorkflowUser,
-) {
-  return workflow?.copyrightContactUserId === user.id;
-}
-
-function canUploadInvoiceForProject(
-  workflow: ProjectCompletionProjectRecord["completionWorkflow"] | null,
-  user: ProjectCompletionWorkflowUser,
-) {
-  return workflow?.invoiceContactUserId === user.id;
+function canManageCompletionWorkflow(project: ProjectCompletionPermissionProject, user: ProjectCompletionWorkflowUser) {
+  return canReadFullProject(user, project);
 }
 
 function requireCompletionProjectPermission(
   project: ProjectCompletionPermissionProject,
   user: ProjectCompletionWorkflowUser,
-  permissionKey: PermissionKey,
+  _permissionKey: PermissionKey,
   message: string,
 ) {
-  if (!hasProjectPermission(user, project, permissionKey)) {
+  if (!canManageCompletionWorkflow(project, user)) {
     throw new Error(message);
   }
 }
@@ -350,33 +262,10 @@ function isCompletedProject(project: {
   );
 }
 
-function areAllStagesCompleted(project: {
-  stages?: Array<{ status: string }>;
-}) {
-  return (
-    Boolean(project.stages && project.stages.length > 0) &&
-    project.stages!.every((stage) => stage.status === "COMPLETED")
-  );
-}
-
-function canUseFinalCompletionWorkflow(project: {
-  status: Parameters<typeof isProjectStatusCompleted>[0];
-  archive: { id: string; status: ArchiveRecordStatus } | null;
-  archivedAt: Date | null;
-  completedAt: Date | null;
-  stages?: Array<{ status: string }>;
-}) {
-  return isCompletedProject(project) || areAllStagesCompleted(project);
-}
-
 export function isCompletionRequirementResolved(input: {
   required: boolean | null;
   status: ProjectCompletionStepStatus;
 }) {
-  if (input.status === ProjectCompletionStepStatus.NOT_REQUIRED) {
-    return true;
-  }
-
   if (input.required === false) {
     return true;
   }
@@ -402,7 +291,7 @@ export function getFinalCompletionArchiveBlockers(input: {
     | null
     | undefined;
 }) {
-  if (input.executionType === ProjectExecutionType.INTERNAL) {
+  if (input.executionType === ProjectExecutionType.INTERNAL && !input.workflow) {
     return [];
   }
 
@@ -512,25 +401,14 @@ function ensureRequirementChangeAllowed(
     : ProjectCompletionStepStatus.NOT_REQUIRED;
 }
 
-function compareProjectCompletionExecutors(
-  left: ProjectCompletionProjectRecord["executors"][number],
-  right: ProjectCompletionProjectRecord["executors"][number],
-) {
-  return getUserDisplayName(left.user).localeCompare(
-    getUserDisplayName(right.user),
-    undefined,
-    { sensitivity: "base" },
-  );
-}
-
-function mapContactOptions(project: ProjectCompletionProjectRecord) {
+function mapContactOptions(project: ProjectCompletionProjectRecord, actor: ProjectCompletionWorkflowUser) {
   const contactMap = new Map<string, ProjectCompletionContactOption>();
 
   const addContact = (
-    user: { id: string; name: string | null; email: string },
+    user: { id: string; name: string | null; email: string; authorization: { businessRole: string | null; accountStatus: string } | null },
     roleLabel: string,
   ) => {
-    if (!contactMap.has(user.id)) {
+    if (user.authorization?.accountStatus === "ACTIVE" && ["DIRECTOR", "SENIOR_PROJECT_MANAGER", "JUNIOR_PROJECT_MANAGER"].includes(user.authorization.businessRole ?? "") && !contactMap.has(user.id)) {
       contactMap.set(user.id, {
         id: user.id,
         name: user.name?.trim() || user.email,
@@ -548,22 +426,7 @@ function mapContactOptions(project: ProjectCompletionProjectRecord) {
     addContact(coOwner.user, "Project Co-Owner");
   }
 
-  for (const executor of [...project.executors].sort(compareProjectCompletionExecutors)) {
-    addContact(executor.user, "Executor");
-  }
-
-  const sortedCollaborators = [...project.collaborators].sort((left, right) =>
-    getUserDisplayName(left.user).localeCompare(
-      getUserDisplayName(right.user),
-      undefined,
-      { sensitivity: "base" },
-    ),
-  );
-
-  for (const collaborator of sortedCollaborators) {
-    addContact(collaborator.user, "Collaborator");
-  }
-
+  if (projectReadActor(actor)?.businessRole === "DIRECTOR") addContact({ ...actor, authorization: { businessRole: "DIRECTOR", accountStatus: "ACTIVE" } }, "Director");
   return Array.from(contactMap.values());
 }
 
@@ -585,11 +448,25 @@ function mapArchivedFileOption(
 }
 
 async function getPreArchiveFinalFileOptions(project: ProjectCompletionProjectRecord) {
-  const finalStage = project.stages.at(-1) ?? null;
-
-  if (!finalStage) {
-    return [];
+  // The V2 seven-stage flow retains its final files on production units; a
+  // legacy native ProjectStage is not required for those completion requests.
+  const units = await prisma.projectProductionUnit.findMany({
+    where: { projectId: project.id, status: { in: ["HANDOVER_READY", "HANDED_OVER"] } },
+    orderBy: { id: "asc" },
+    select: { sourceAttachment: true, files: { orderBy: { id: "asc" }, select: { attachment: true } } },
+  });
+  const productionFiles = new Map<string, ProjectCompletionArchivedFileOption>();
+  for (const file of units.flatMap(unit => [unit.sourceAttachment, ...unit.files.map(row => row.attachment)])) {
+    if (file.projectId !== project.id || file.status !== "READY" || ["PROJECT_PRIVATE_FILE", "PROJECT_RESEARCH_FILE"].includes(file.assetType)) continue;
+    productionFiles.set(file.id, {
+      id: file.id, sourceAttachmentId: file.id, finalArchiveFileName: file.originalFileName, originalFileName: file.originalFileName,
+      fileTypeLabel: getCompletionFileTypeLabel(file.originalFileName, file.mimeType), mimeType: file.mimeType,
+      fileSizeLabel: formatCompletionFileSize(file.fileSize), sourceLabel: "Final production file",
+      previewPath: `/api/project-assets/${file.id}/preview`, downloadPath: `/api/project-assets/${file.id}/download`,
+    });
   }
+  const finalStage = project.stages.at(-1) ?? null;
+  if (!finalStage) return Array.from(productionFiles.values());
 
   const latestApprovedRevision = await withPrismaRetry(() =>
     prisma.projectRevision.findFirst({
@@ -692,7 +569,7 @@ async function getPreArchiveFinalFileOptions(project: ProjectCompletionProjectRe
     downloadPath: `/api/project-assets/${attachment.id}/download`,
   } satisfies ProjectCompletionArchivedFileOption));
 
-  return [...approvedRevisionAttachments, ...approvedStageSubmissions];
+  return Array.from(new Map([...approvedRevisionAttachments, ...approvedStageSubmissions, ...productionFiles.values()].map(file => [file.id, file])).values());
 }
 
 function mapDocumentRecord(
@@ -708,7 +585,7 @@ function mapDocumentRecord(
     fileTypeLabel: getCompletionFileTypeLabel(document.archiveFileName, document.mimeType),
     fileSizeLabel: formatCompletionFileSize(document.fileSize),
     uploadedAt: formatCompletionTimestamp(document.uploadedAt) ?? "—",
-    uploadedBy: getUserDisplayName(document.uploadedBy),
+    uploadedBy: document.uploadedBy ? getUserDisplayName(document.uploadedBy) : `External recipient: ${document.externalSubmitterEmail ?? "unavailable"}`,
     previewPath: `/api/project-completion-documents/${document.id}/preview`,
     downloadPath: `/api/project-completion-documents/${document.id}/download`,
   } satisfies ProjectCompletionDocumentRecord;
@@ -748,6 +625,7 @@ async function getProjectCompletionProject(projectId: string) {
             id: true,
             name: true,
             email: true,
+            authorization: { select: { businessRole: true, accountStatus: true } },
           },
         },
         coOwners: {
@@ -758,6 +636,7 @@ async function getProjectCompletionProject(projectId: string) {
                 id: true,
                 name: true,
                 email: true,
+            authorization: { select: { businessRole: true, accountStatus: true } },
               },
             },
           },
@@ -770,6 +649,7 @@ async function getProjectCompletionProject(projectId: string) {
                 id: true,
                 name: true,
                 email: true,
+            authorization: { select: { businessRole: true, accountStatus: true } },
               },
             },
           },
@@ -796,6 +676,7 @@ async function getProjectCompletionProject(projectId: string) {
                 id: true,
                 name: true,
                 email: true,
+            authorization: { select: { businessRole: true, accountStatus: true } },
               },
             },
           },
@@ -846,6 +727,7 @@ async function getProjectCompletionProject(projectId: string) {
               select: {
                 name: true,
                 email: true,
+            authorization: { select: { businessRole: true, accountStatus: true } },
               },
             },
             approvalNote: true,
@@ -860,6 +742,7 @@ async function getProjectCompletionProject(projectId: string) {
               select: {
                 name: true,
                 email: true,
+            authorization: { select: { businessRole: true, accountStatus: true } },
               },
             },
             copyrightNote: true,
@@ -872,6 +755,7 @@ async function getProjectCompletionProject(projectId: string) {
               select: {
                 name: true,
                 email: true,
+            authorization: { select: { businessRole: true, accountStatus: true } },
               },
             },
             invoiceNote: true,
@@ -897,10 +781,12 @@ async function getProjectCompletionProject(projectId: string) {
                 bucket: true,
                 storageKey: true,
                 uploadedAt: true,
+                externalSubmitterEmail: true,
                 uploadedBy: {
                   select: {
                     name: true,
                     email: true,
+            authorization: { select: { businessRole: true, accountStatus: true } },
                   },
                 },
               },
@@ -912,51 +798,12 @@ async function getProjectCompletionProject(projectId: string) {
   );
 }
 
-async function ensureProjectCompletionViewAccess(
-  user: ProjectCompletionWorkflowUser,
-  projectId: string,
-) {
-  await assertProjectAccess(user, projectId);
-
+async function ensureProjectCompletionManageAccess(user: ProjectCompletionWorkflowUser, projectId: string) {
+  await requireProjectResourceRead("structured", projectId, "project.view", user);
   const project = await getProjectCompletionProject(projectId);
-
-  if (!project) {
-    throw new Error("Project not found.");
+  if (!project || !canManageCompletionWorkflow(project, user) || isCompletedProject(project)) {
+    throw new Error("Completion documentation requires an authorized manager of an active project.");
   }
-
-  if (!canUseFinalCompletionWorkflow(project)) {
-    return null;
-  }
-
-  if (!canViewCompletionWorkflow(project, user)) {
-    return null;
-  }
-
-  return project;
-}
-
-async function ensureProjectCompletionManageAccess(
-  user: ProjectCompletionWorkflowUser,
-  projectId: string,
-) {
-  await assertProjectAccess(user, projectId);
-
-  const project = await getProjectCompletionProject(projectId);
-
-  if (!project) {
-    throw new Error("Project not found.");
-  }
-
-  if (!canUseFinalCompletionWorkflow(project)) {
-    throw new Error(
-      "Complete the final stage before using the final completion checklist.",
-    );
-  }
-
-  if (!canManageCompletionWorkflow(project, user)) {
-    throw new Error("Only the project owner or an admin can manage the completion checklist.");
-  }
-
   return project;
 }
 
@@ -1009,7 +856,7 @@ async function ensureProjectCompletionDocumentAccess(
     throw new Error("Completion document not found.");
   }
 
-  await assertProjectAccess(user, document.projectId);
+
 
   return document;
 }
@@ -1030,12 +877,18 @@ async function ensureWorkflowExistsTx(tx: Prisma.TransactionClient, projectId: s
       approvalSelectedArchivedFileIds: true,
       approvalSelectedProjectFileIds: true,
       approvalContactUserId: true,
+      approvalNote: true,
+      approvalRequestedAt: true,
       copyrightRequired: true,
       copyrightStatus: true,
       copyrightContactUserId: true,
+      copyrightNote: true,
+      copyrightRequestedAt: true,
       invoiceRequired: true,
       invoiceStatus: true,
       invoiceContactUserId: true,
+      invoiceNote: true,
+      invoiceRequestedAt: true,
     },
   });
 }
@@ -1065,32 +918,12 @@ async function mapWorkflowRecord(
       : finalArchivedFiles.filter((file) => approvalSelectedArchivedFileIdSet.has(file.id))
     : finalArchivedFiles.filter((file) => approvalSelectedProjectFileIdSet.has(file.id));
   const documents = project.completionWorkflow.documents.map(mapDocumentRecord);
-  const documentByType = new Map(documents.map((document) => [document.type, document] as const));
-  const isInternalExecution = isInternalCompletionProject(project);
-  const approvalRequired = isInternalExecution
-    ? false
-    : project.completionWorkflow.approvalRequired;
-  const approvalStatus = isInternalExecution
-    ? ProjectCompletionStepStatus.NOT_REQUIRED
-    : project.completionWorkflow.approvalStatus;
-  const approvalSelectedArchivedFileIds = isInternalExecution
-    ? []
-    : project.completionWorkflow.approvalSelectedArchivedFileIds;
-  const approvalSelectedProjectFileIds = isInternalExecution
-    ? []
-    : project.completionWorkflow.approvalSelectedProjectFileIds;
-  const copyrightRequired = isInternalExecution
-    ? false
-    : project.completionWorkflow.copyrightRequired;
-  const copyrightStatus = isInternalExecution
-    ? ProjectCompletionStepStatus.NOT_REQUIRED
-    : project.completionWorkflow.copyrightStatus;
-  const invoiceStatus = isInternalExecution
-    ? ProjectCompletionStepStatus.NOT_REQUIRED
-    : project.completionWorkflow.invoiceStatus;
-  const invoiceRequired = isInternalExecution
-    ? false
-    : project.completionWorkflow.invoiceRequired;
+  const documentByType = new Map([...documents].reverse().map((document) => [document.type, document] as const));
+  const isInternalExecution = isInternalCompletionProject(project) &&
+    [project.completionWorkflow.approvalRequired, project.completionWorkflow.copyrightRequired, project.completionWorkflow.invoiceRequired].every(value => value === false);
+  const { approvalRequired, approvalStatus, approvalSelectedArchivedFileIds, approvalSelectedProjectFileIds,
+    copyrightRequired, copyrightStatus, invoiceRequired, invoiceStatus } = project.completionWorkflow;
+  const canManage = canManageCompletionWorkflow(project, user) && !isCompletedProject(project);
   const isApprovalResolved = isCompletionRequirementResolved({
     required: approvalRequired,
     status: approvalStatus,
@@ -1110,16 +943,10 @@ async function mapWorkflowRecord(
     executionType: project.executionType,
     executionTypeLabel: formatCompletionExecutionTypeLabel(project.executionType),
     isInternalExecution,
-    canManage: canManageCompletionWorkflow(project, user),
-    canUploadApprovalProof: isInternalExecution
-      ? false
-      : canUploadApprovalProofForProject(project.completionWorkflow, user),
-    canUploadCopyrightDocument: isInternalExecution
-      ? false
-      : canUploadCopyrightDocumentForProject(project.completionWorkflow, user),
-    canUploadInvoice: isInternalExecution
-      ? false
-      : canUploadInvoiceForProject(project.completionWorkflow, user),
+    canManage,
+    canUploadApprovalProof: canManage && approvalStatus === "PENDING",
+    canUploadCopyrightDocument: canManage && copyrightStatus === "PENDING",
+    canUploadInvoice: canManage && invoiceStatus === "PENDING",
     needsInitialConfiguration:
       !isInternalExecution &&
       (project.completionWorkflow.approvalRequired === null ||
@@ -1169,11 +996,10 @@ async function mapWorkflowRecord(
     isCopyrightUnlocked: isApprovalResolved,
     isCopyrightResolved,
     isInvoiceUnlocked:
-      isInternalExecution ||
       (isApprovalResolved && isCopyrightResolved),
-    availableContacts: mapContactOptions(project),
+    availableContacts: mapContactOptions(project, user),
     finalArchivedFiles,
-    approvalSelectedFiles: isInternalExecution ? [] : approvalSelectedFiles,
+    approvalSelectedFiles,
     documents,
     approvalProofDocument:
       documentByType.get(ProjectCompletionDocumentType.AUTHORITY_APPROVAL_PROOF) ?? null,
@@ -1182,81 +1008,6 @@ async function mapWorkflowRecord(
     invoiceDocument: documentByType.get(ProjectCompletionDocumentType.INVOICE) ?? null,
     archiveBlockers,
   } satisfies ProjectCompletionWorkflowRecord;
-}
-
-async function filterCompletionProjectForVisibility(
-  project: ProjectCompletionProjectRecord,
-  user: ProjectCompletionWorkflowUser,
-): Promise<ProjectCompletionProjectRecord> {
-if (isDirectorReader(user)) return project;
-
-  if (
-    canBypassCollaboratorVisibility(user, project.ownerId ?? "") ||
-    hasProjectPermission(user, project, "completion.viewChecklist")
-  ) {
-    return project;
-  }
-
-  const visibilityState = await getProjectCollaboratorVisibilityState(
-    project.id,
-    user.id,
-  );
-
-  if (!visibilityState) {
-    return project;
-  }
-
-  const hideAllVisibleFiles =
-    visibilityState.chatVisibilityPaused &&
-    visibilityState.visibilityPauses.length === 0;
-
-  if (!hideAllVisibleFiles && visibilityState.visibilityPauses.length === 0) {
-    return project;
-  }
-
-  const visibleArchiveFiles =
-    project.archive?.files.filter((file) => {
-      if (hideAllVisibleFiles) {
-        return false;
-      }
-
-      return !isTimestampHiddenByPauseWindows(
-        file.archivedAt,
-        visibilityState.visibilityPauses,
-      );
-    }) ?? [];
-  const visibleArchiveFileIds = new Set(visibleArchiveFiles.map((file) => file.id));
-  const visibleDocuments =
-    project.completionWorkflow?.documents.filter((document) => {
-      if (hideAllVisibleFiles) {
-        return false;
-      }
-
-      return !isTimestampHiddenByPauseWindows(
-        document.uploadedAt,
-        visibilityState.visibilityPauses,
-      );
-    }) ?? [];
-
-  return {
-    ...project,
-    archive: project.archive
-      ? {
-          ...project.archive,
-          files: visibleArchiveFiles,
-        }
-      : null,
-    completionWorkflow: project.completionWorkflow
-      ? {
-          ...project.completionWorkflow,
-          approvalSelectedArchivedFileIds:
-            project.completionWorkflow.approvalSelectedArchivedFileIds.filter(
-              (fileId) => visibleArchiveFileIds.has(fileId),
-            ),
-          documents: visibleDocuments,
-        }
-      : null,
-  };
 }
 
 function validateContactSelection(
@@ -1273,19 +1024,6 @@ function validateContactSelection(
   return selectedContact;
 }
 
-function buildCompletionDocumentStoragePrefix(
-  projectId: string,
-  documentType: ProjectCompletionDocumentType,
-) {
-  const placeholder = "__placeholder__";
-
-  return buildProjectCompletionDocumentKey({
-    projectId,
-    documentType,
-    safeFileName: placeholder,
-  }).replace(placeholder, "");
-}
-
 export async function getProjectCompletionWorkflowForUser(
   user: ProjectCompletionWorkflowUser,
   projectId: string,
@@ -1299,9 +1037,18 @@ export async function getProjectCompletionWorkflowForUser(
     return null;
   }
 
-  if (!project.completionWorkflow) return null;
-
-  return await mapWorkflowRecord(await filterCompletionProjectForVisibility(project, user), user);
+  if (!project.completionWorkflow) {
+    const exempt = project.executionType === "INTERNAL";
+    project.completionWorkflow = {
+      id: "unconfigured", documents: [], approvalSelectedArchivedFileIds: [], approvalSelectedProjectFileIds: [],
+      approvalRequired: exempt ? false : null, copyrightRequired: exempt ? false : null, invoiceRequired: exempt ? false : null,
+      approvalStatus: exempt ? "NOT_REQUIRED" : "NOT_STARTED", copyrightStatus: exempt ? "NOT_REQUIRED" : "NOT_STARTED", invoiceStatus: exempt ? "NOT_REQUIRED" : "NOT_STARTED",
+      approvalContactUserId: null, approvalContactUser: null, approvalNote: null, approvalRequestedAt: null, approvalCompletedAt: null,
+      copyrightContactUserId: null, copyrightContactUser: null, copyrightNote: null, copyrightRequestedAt: null, copyrightCompletedAt: null,
+      invoiceContactUserId: null, invoiceContactUser: null, invoiceNote: null, invoiceRequestedAt: null, invoiceCompletedAt: null, completedAt: null,
+    };
+  }
+  return mapWorkflowRecord(project, user);
 }
 
 async function configureProjectCompletionWorkflowImplementation(
@@ -1327,31 +1074,12 @@ async function configureProjectCompletionWorkflowImplementation(
     "You do not have permission to configure copyright transfer requirements.",
   );
 
-  if (isInternalCompletionProject(project)) {
-    await withPrismaRetry(() =>
-      prisma.$transaction(async (tx) => {
-        await ensureWorkflowExistsTx(tx, project.id);
-        await tx.projectCompletionWorkflow.update({
-          where: {
-            projectId: project.id,
-          },
-          data: getInternalCompletionWorkflowData(),
-        });
-      }),
-    );
 
-    const workflow = await getProjectCompletionWorkflowForUser(user, input.projectId);
-
-    if (!workflow) {
-      throw new Error("Unable to load the updated project completion workflow.");
-    }
-
-    return workflow;
-  }
 
   await withPrismaRetry(() =>
     prisma.$transaction(async (tx) => {
       const workflow = await ensureWorkflowExistsTx(tx, project.id);
+      if (workflow.approvalRequired === input.approvalRequired && workflow.copyrightRequired === input.copyrightRequired && workflow.invoiceRequired === input.invoiceRequired) return;
       const nextApprovalStatus = ensureRequirementChangeAllowed(
         "Authority approval",
         workflow.approvalRequired,
@@ -1452,11 +1180,8 @@ async function prepareAuthorityApprovalRequestImplementation(
     "You do not have permission to prepare authority approval requests.",
   );
 
-  if (isInternalCompletionProject(project)) {
-    throw new Error("Authority approval is not required for internal execution.");
-  }
 
-  const contactOptions = mapContactOptions(project);
+  const contactOptions = mapContactOptions(project, user);
   validateContactSelection(contactOptions, input.contactUserId, "approval");
   const finalApprovalFiles = await getPreArchiveFinalFileOptions(project);
 
@@ -1490,6 +1215,8 @@ async function prepareAuthorityApprovalRequestImplementation(
         throw new Error("Authority approval has already been completed.");
       }
 
+      if (workflow.approvalStatus === "PENDING" && workflow.approvalContactUserId === input.contactUserId && workflow.approvalNote === (sanitizeRichText(input.note) || null) && JSON.stringify([...workflow.approvalSelectedProjectFileIds].sort()) === JSON.stringify([...selectedFileIds].sort())) return;
+
       await tx.projectCompletionWorkflow.update({
         where: {
           projectId: project.id,
@@ -1500,7 +1227,7 @@ async function prepareAuthorityApprovalRequestImplementation(
           approvalNote: sanitizeRichText(input.note) || null,
           approvalSelectedProjectFileIds: selectedFileIds,
           approvalSelectedArchivedFileIds: [],
-          approvalRequestedAt: new Date(),
+          approvalRequestedAt: new Date(Math.max(Date.now(), (workflow.approvalRequestedAt?.getTime() ?? 0) + 1)),
           approvalCompletedAt: null,
           invoiceStatus: getNextInvoiceStatus(workflow.invoiceStatus),
         },
@@ -1533,11 +1260,8 @@ async function prepareCopyrightTransferRequestImplementation(
     "You do not have permission to prepare copyright transfer requests.",
   );
 
-  if (isInternalCompletionProject(project)) {
-    throw new Error("Copyright transfer is not required for internal execution.");
-  }
 
-  const contactOptions = mapContactOptions(project);
+  const contactOptions = mapContactOptions(project, user);
   validateContactSelection(contactOptions, input.contactUserId, "copyright");
 
   await withPrismaRetry(() =>
@@ -1567,6 +1291,8 @@ async function prepareCopyrightTransferRequestImplementation(
         throw new Error("Copyright transfer has already been completed.");
       }
 
+      if (workflow.copyrightStatus === "PENDING" && workflow.copyrightContactUserId === input.contactUserId && workflow.copyrightNote === (sanitizeRichText(input.note) || null)) return;
+
       await tx.projectCompletionWorkflow.update({
         where: {
           projectId: project.id,
@@ -1575,7 +1301,7 @@ async function prepareCopyrightTransferRequestImplementation(
           copyrightStatus: ProjectCompletionStepStatus.PENDING,
           copyrightContactUserId: input.contactUserId,
           copyrightNote: sanitizeRichText(input.note) || null,
-          copyrightRequestedAt: new Date(),
+          copyrightRequestedAt: new Date(Math.max(Date.now(), (workflow.copyrightRequestedAt?.getTime() ?? 0) + 1)),
           copyrightCompletedAt: null,
           invoiceStatus: getNextInvoiceStatus(workflow.invoiceStatus),
         },
@@ -1602,11 +1328,8 @@ async function requestProjectFinalInvoiceImplementation(
 ) {
   const project = await ensureProjectCompletionManageAccess(user, input.projectId);
 
-  if (isInternalCompletionProject(project)) {
-    throw new Error("Final invoice is not required for internal execution.");
-  }
 
-  const contactOptions = mapContactOptions(project);
+  const contactOptions = mapContactOptions(project, user);
   validateContactSelection(contactOptions, input.contactUserId, "invoice");
 
   await withPrismaRetry(() =>
@@ -1640,6 +1363,8 @@ async function requestProjectFinalInvoiceImplementation(
         throw new Error("Final invoice has already been completed.");
       }
 
+      if (workflow.invoiceStatus === "PENDING" && workflow.invoiceContactUserId === input.contactUserId && workflow.invoiceNote === (sanitizeRichText(input.note) || null)) return;
+
       await tx.projectCompletionWorkflow.update({
         where: {
           projectId: project.id,
@@ -1648,7 +1373,7 @@ async function requestProjectFinalInvoiceImplementation(
           invoiceStatus: ProjectCompletionStepStatus.PENDING,
           invoiceContactUserId: input.contactUserId,
           invoiceNote: sanitizeRichText(input.note) || null,
-          invoiceRequestedAt: new Date(),
+          invoiceRequestedAt: new Date(Math.max(Date.now(), (workflow.invoiceRequestedAt?.getTime() ?? 0) + 1)),
           invoiceCompletedAt: null,
           completedAt: null,
         },
@@ -1673,27 +1398,7 @@ async function markProjectInvoiceNotRequiredImplementation(
 ) {
   const project = await ensureProjectCompletionManageAccess(user, input.projectId);
 
-  if (isInternalCompletionProject(project)) {
-    await withPrismaRetry(() =>
-      prisma.$transaction(async (tx) => {
-        await ensureWorkflowExistsTx(tx, project.id);
-        await tx.projectCompletionWorkflow.update({
-          where: {
-            projectId: project.id,
-          },
-          data: getInternalCompletionWorkflowData(),
-        });
-      }),
-    );
 
-    const workflow = await getProjectCompletionWorkflowForUser(user, input.projectId);
-
-    if (!workflow) {
-      throw new Error("Unable to load the updated project completion workflow.");
-    }
-
-    return workflow;
-  }
 
   await withPrismaRetry(() =>
     prisma.$transaction(async (tx) => {
@@ -1714,21 +1419,14 @@ async function markProjectInvoiceNotRequiredImplementation(
         );
       }
 
-      if (workflow.invoiceStatus === ProjectCompletionStepStatus.COMPLETED) {
-        throw new Error("Final invoice has already been completed.");
-      }
+      ensureRequirementChangeAllowed("Final invoice", workflow.invoiceRequired, workflow.invoiceStatus, false);
 
       if (workflow.invoiceStatus === ProjectCompletionStepStatus.NOT_REQUIRED) {
         return;
       }
 
-      const invoiceDocument = await tx.projectCompletionDocument.findUnique({
-        where: {
-          workflowId_type: {
-            workflowId: workflow.id,
-            type: ProjectCompletionDocumentType.INVOICE,
-          },
-        },
+      const invoiceDocument = await tx.projectCompletionDocument.findFirst({
+        where: { workflowId: workflow.id, type: ProjectCompletionDocumentType.INVOICE },
         select: {
           id: true,
         },
@@ -1766,454 +1464,11 @@ async function markProjectInvoiceNotRequiredImplementation(
   return workflow;
 }
 
-async function requestProjectCompletionDocumentUploadImplementation(
-  user: ProjectCompletionWorkflowUser,
-  input: RequestProjectCompletionDocumentUploadInput,
-): Promise<RequestProjectCompletionDocumentUploadResult> {
-  if (!input.originalFileName.trim()) {
-    throw new Error("A completion document file name is required.");
-  }
-
-  if (!input.mimeType.trim()) {
-    throw new Error("A valid completion document MIME type is required.");
-  }
-
-  if (!Number.isFinite(input.fileSize) || input.fileSize <= 0) {
-    throw new Error("A valid completion document file size is required.");
-  }
-
-  if (input.fileSize > getMaxAssetUploadBytes()) {
-    throw new Error("The selected file exceeds the upload size limit.");
-  }
-
-  if (!isAllowedProjectCompletionDocument(input.originalFileName, input.mimeType)) {
-    throw new UploadFileTypeError(
-      buildFileTypeNotAllowedPayload({
-        fileName: input.originalFileName,
-        mimeType: input.mimeType,
-        allowedExtensions: COMPLETION_DOCUMENT_ALLOWED_EXTENSIONS,
-        error: "Completion document file type is not allowed.",
-      }),
-    );
-  }
-
-  const project = await ensureProjectCompletionViewAccess(user, input.projectId);
-
-  if (!project) {
-    throw new Error("You do not have access to this completion workflow.");
-  }
-
-  if (isInternalCompletionProject(project)) {
-    throw new Error("Completion documents are not required for internal execution.");
-  }
-
-  const workflow = await getProjectCompletionWorkflowForUser(user, input.projectId);
-
-  if (!workflow) {
-    throw new Error("You do not have access to this completion workflow.");
-  }
-
-  switch (input.documentType) {
-    case ProjectCompletionDocumentType.AUTHORITY_APPROVAL_PROOF:
-      if (!workflow.canUploadApprovalProof) {
-        throw new Error("Only the selected approval contact can upload authority approval proof.");
-      }
-
-      if (workflow.approvalStatus !== ProjectCompletionStepStatus.PENDING) {
-        throw new Error("Prepare the authority approval request before uploading proof.");
-      }
-      break;
-    case ProjectCompletionDocumentType.COPYRIGHT_TRANSFER:
-      if (!workflow.canUploadCopyrightDocument) {
-        throw new Error("Only the selected copyright contact can upload copyright transfer documents.");
-      }
-
-      if (!workflow.isApprovalResolved) {
-        throw new Error(
-          "Complete authority approval before uploading the signed copyright transfer document.",
-        );
-      }
-
-      if (workflow.copyrightStatus !== ProjectCompletionStepStatus.PENDING) {
-        throw new Error("Prepare the copyright transfer request before uploading the signed document.");
-      }
-      break;
-    case ProjectCompletionDocumentType.INVOICE:
-      if (!workflow.canUploadInvoice) {
-        throw new Error("Only the selected final invoice recipient can upload the final invoice.");
-      }
-
-      if (!workflow.isInvoiceUnlocked) {
-        throw new Error(
-          "Complete or skip authority approval and copyright transfer before uploading the final invoice.",
-        );
-      }
-
-      if (workflow.invoiceStatus !== ProjectCompletionStepStatus.PENDING) {
-        throw new Error("Final invoice must be requested before upload.");
-      }
-      break;
-  }
-
-  const safeFileName = `${Date.now()}-${randomUUID().slice(0, 8)}-${sanitizeFileName(
-    input.originalFileName,
-  )}`;
-  const storageKey = buildProjectCompletionDocumentKey({
-    projectId: input.projectId,
-    documentType: input.documentType,
-    safeFileName,
-  });
-  const uploadUrl = await createPresignedUploadUrl({
-    storageKey,
-    mimeType: input.mimeType,
-  });
-
-  return {
-    uploadUrl,
-    storageKey,
-  };
+async function requestProjectCompletionDocumentUploadImplementation(user: ProjectCompletionWorkflowUser, input: RequestProjectCompletionDocumentUploadInput) {
+  return prepareCompletionUpload({ userId: user.id }, input);
 }
-
-async function finalizeProjectCompletionDocumentUploadImplementation(
-  user: ProjectCompletionWorkflowUser,
-  input: {
-    projectId: string;
-    documentType: ProjectCompletionDocumentType;
-    originalFileName: string;
-    mimeType: string;
-    fileSize: number;
-    storageKey: string;
-    failed?: boolean;
-  },
-) {
-  if (input.failed) {
-    return;
-  }
-
-  if (!isAllowedProjectCompletionDocument(input.originalFileName, input.mimeType)) {
-    throw new UploadFileTypeError(
-      buildFileTypeNotAllowedPayload({
-        fileName: input.originalFileName,
-        mimeType: input.mimeType,
-        allowedExtensions: COMPLETION_DOCUMENT_ALLOWED_EXTENSIONS,
-        error: "Completion document file type is not allowed.",
-      }),
-    );
-  }
-
-  const expectedPrefix = buildCompletionDocumentStoragePrefix(
-    input.projectId,
-    input.documentType,
-  );
-
-  if (!input.storageKey.startsWith(expectedPrefix)) {
-    throw new Error("Completion document storage key is invalid.");
-  }
-
-  await assertProjectAccess(user, input.projectId);
-
-  await withPrismaRetry(() =>
-    prisma.$transaction(async (tx) => {
-      const project = await tx.project.findUnique({
-        where: {
-          id: input.projectId,
-        },
-        select: {
-          id: true,
-          ownerId: true,
-          coOwners: {
-            select: { userId: true },
-          },
-          executors: {
-            select: {
-              userId: true,
-            },
-          },
-          executionType: true,
-          status: {
-            select: {
-              id: true,
-              name: true,
-              slug: true,
-              color: true,
-              group: {
-                select: {
-                  id: true,
-                  name: true,
-                  slug: true,
-                  color: true,
-                  isActive: true,
-                },
-              },
-            },
-          },
-          archivedAt: true,
-          completedAt: true,
-          archive: {
-            select: {
-              id: true,
-              status: true,
-            },
-          },
-          stages: {
-            where: { isTasker: false },
-            select: {
-              status: true,
-            },
-          },
-        },
-      });
-
-      if (!project) {
-        throw new Error("Project not found.");
-      }
-
-      if (!canUseFinalCompletionWorkflow(project)) {
-        throw new Error(
-          "Complete the final stage before uploading completion documents.",
-        );
-      }
-
-      if (project.executionType === ProjectExecutionType.INTERNAL) {
-        throw new Error("Completion documents are not required for internal execution.");
-      }
-
-      const workflow = await ensureWorkflowExistsTx(tx, project.id);
-      const canUploadApprovalProof = workflow.approvalContactUserId === user.id;
-      const canUploadCopyrightDocument = workflow.copyrightContactUserId === user.id;
-      const canUploadInvoice = workflow.invoiceContactUserId === user.id;
-      const archiveFileName = input.originalFileName.trim();
-      const uploadedAt = new Date();
-
-      switch (input.documentType) {
-        case ProjectCompletionDocumentType.AUTHORITY_APPROVAL_PROOF:
-          if (!canUploadApprovalProof) {
-            throw new Error("Only the selected approval contact can upload authority approval proof.");
-          }
-
-          if (workflow.approvalStatus !== ProjectCompletionStepStatus.PENDING) {
-            throw new Error("Prepare the authority approval request before uploading proof.");
-          }
-
-          await tx.projectCompletionDocument.upsert({
-            where: {
-              workflowId_type: {
-                workflowId: workflow.id,
-                type: ProjectCompletionDocumentType.AUTHORITY_APPROVAL_PROOF,
-              },
-            },
-            update: {
-              originalFileName: input.originalFileName,
-              archiveFileName,
-              mimeType: input.mimeType,
-              fileSize: input.fileSize,
-              bucket: getS3BucketName(),
-              storageKey: input.storageKey,
-              uploadedById: user.id,
-              uploadedAt,
-            },
-            create: {
-              projectId: project.id,
-              workflowId: workflow.id,
-              type: ProjectCompletionDocumentType.AUTHORITY_APPROVAL_PROOF,
-              originalFileName: input.originalFileName,
-              archiveFileName,
-              mimeType: input.mimeType,
-              fileSize: input.fileSize,
-              bucket: getS3BucketName(),
-              storageKey: input.storageKey,
-              uploadedById: user.id,
-              uploadedAt,
-            },
-          });
-
-          await tx.projectCompletionWorkflow.update({
-            where: {
-              projectId: project.id,
-            },
-            data: {
-              approvalStatus: ProjectCompletionStepStatus.COMPLETED,
-              approvalCompletedAt: uploadedAt,
-              invoiceStatus: getNextInvoiceStatus(workflow.invoiceStatus),
-              completedAt: getWorkflowCompletedAtValue({
-                approvalRequired: workflow.approvalRequired,
-                approvalStatus: ProjectCompletionStepStatus.COMPLETED,
-                copyrightRequired: workflow.copyrightRequired,
-                copyrightStatus: workflow.copyrightStatus,
-                invoiceRequired: workflow.invoiceRequired,
-                invoiceStatus: getNextInvoiceStatus(workflow.invoiceStatus),
-              }),
-            },
-          });
-          break;
-        case ProjectCompletionDocumentType.COPYRIGHT_TRANSFER:
-          if (!canUploadCopyrightDocument) {
-            throw new Error("Only the selected copyright contact can upload copyright transfer documents.");
-          }
-
-          if (
-            !isCompletionRequirementResolved({
-              required: workflow.approvalRequired,
-              status: workflow.approvalStatus,
-            })
-          ) {
-            throw new Error(
-              "Complete authority approval before uploading the signed copyright transfer document.",
-            );
-          }
-
-          if (workflow.copyrightStatus !== ProjectCompletionStepStatus.PENDING) {
-            throw new Error("Prepare the copyright transfer request before uploading the signed document.");
-          }
-
-          await tx.projectCompletionDocument.upsert({
-            where: {
-              workflowId_type: {
-                workflowId: workflow.id,
-                type: ProjectCompletionDocumentType.COPYRIGHT_TRANSFER,
-              },
-            },
-            update: {
-              originalFileName: input.originalFileName,
-              archiveFileName,
-              mimeType: input.mimeType,
-              fileSize: input.fileSize,
-              bucket: getS3BucketName(),
-              storageKey: input.storageKey,
-              uploadedById: user.id,
-              uploadedAt,
-            },
-            create: {
-              projectId: project.id,
-              workflowId: workflow.id,
-              type: ProjectCompletionDocumentType.COPYRIGHT_TRANSFER,
-              originalFileName: input.originalFileName,
-              archiveFileName,
-              mimeType: input.mimeType,
-              fileSize: input.fileSize,
-              bucket: getS3BucketName(),
-              storageKey: input.storageKey,
-              uploadedById: user.id,
-              uploadedAt,
-            },
-          });
-
-          await tx.projectCompletionWorkflow.update({
-            where: {
-              projectId: project.id,
-            },
-            data: {
-              copyrightStatus: ProjectCompletionStepStatus.COMPLETED,
-              copyrightCompletedAt: uploadedAt,
-              invoiceStatus: getNextInvoiceStatus(workflow.invoiceStatus),
-              completedAt: getWorkflowCompletedAtValue({
-                approvalRequired: workflow.approvalRequired,
-                approvalStatus: workflow.approvalStatus,
-                copyrightRequired: workflow.copyrightRequired,
-                copyrightStatus: ProjectCompletionStepStatus.COMPLETED,
-                invoiceRequired: workflow.invoiceRequired,
-                invoiceStatus: getNextInvoiceStatus(workflow.invoiceStatus),
-              }),
-            },
-          });
-          break;
-        case ProjectCompletionDocumentType.INVOICE:
-          if (!canUploadInvoice) {
-            throw new Error("Only the selected final invoice recipient can upload the final invoice.");
-          }
-
-          if (
-            !isCompletionRequirementResolved({
-              required: workflow.approvalRequired,
-              status: workflow.approvalStatus,
-            }) ||
-            !isCompletionRequirementResolved({
-              required: workflow.copyrightRequired,
-              status: workflow.copyrightStatus,
-            })
-          ) {
-            throw new Error(
-              "Complete or skip authority approval and copyright transfer before uploading the final invoice.",
-            );
-          }
-
-          if (workflow.invoiceStatus !== ProjectCompletionStepStatus.PENDING) {
-            throw new Error("Final invoice must be requested before upload.");
-          }
-
-          await tx.projectCompletionDocument.upsert({
-            where: {
-              workflowId_type: {
-                workflowId: workflow.id,
-                type: ProjectCompletionDocumentType.INVOICE,
-              },
-            },
-            update: {
-              originalFileName: input.originalFileName,
-              archiveFileName,
-              mimeType: input.mimeType,
-              fileSize: input.fileSize,
-              bucket: getS3BucketName(),
-              storageKey: input.storageKey,
-              uploadedById: user.id,
-              uploadedAt,
-            },
-            create: {
-              projectId: project.id,
-              workflowId: workflow.id,
-              type: ProjectCompletionDocumentType.INVOICE,
-              originalFileName: input.originalFileName,
-              archiveFileName,
-              mimeType: input.mimeType,
-              fileSize: input.fileSize,
-              bucket: getS3BucketName(),
-              storageKey: input.storageKey,
-              uploadedById: user.id,
-              uploadedAt,
-            },
-          });
-
-          await tx.projectCompletionWorkflow.update({
-            where: {
-              projectId: project.id,
-            },
-            data: {
-              invoiceStatus: ProjectCompletionStepStatus.COMPLETED,
-              invoiceCompletedAt: uploadedAt,
-              completedAt: uploadedAt,
-            },
-          });
-          break;
-      }
-    }),
-  );
-
-  switch (input.documentType) {
-    case ProjectCompletionDocumentType.AUTHORITY_APPROVAL_PROOF:
-      await runNotificationTask("approval-proof-uploaded", () =>
-        notifyApprovalProofUploaded({
-          projectId: input.projectId,
-          actorId: user.id,
-        }),
-      );
-      break;
-    case ProjectCompletionDocumentType.COPYRIGHT_TRANSFER:
-      await runNotificationTask("copyright-document-uploaded", () =>
-        notifyCopyrightDocumentUploaded({
-          projectId: input.projectId,
-          actorId: user.id,
-        }),
-      );
-      break;
-    case ProjectCompletionDocumentType.INVOICE:
-      await runNotificationTask("invoice-uploaded", () =>
-        notifyInvoiceUploaded({
-          projectId: input.projectId,
-          actorId: user.id,
-        }),
-      );
-      break;
-  }
+async function finalizeProjectCompletionDocumentUploadImplementation(user: ProjectCompletionWorkflowUser, input: RequestProjectCompletionDocumentUploadInput & { storageKey: string; failed?: boolean }) {
+  return finishCompletionUpload({ userId: user.id }, input);
 }
 
 export async function getProjectCompletionDocumentDownloadUrlForUser(
@@ -2253,8 +1508,13 @@ export async function configureProjectCompletionWorkflow(
     invoiceRequired: boolean;
   },
 ) {
-  return runProjectMutation(user, "configureProjectCompletionWorkflow", { kind: "structured", id: input.projectId }, async (trustedUser) =>
-    configureProjectCompletionWorkflowImplementation(trustedUser, input), input);
+  return runProjectMutation(user, "configureProjectCompletionWorkflow", { kind: "structured", id: input.projectId }, async (trustedUser) => {
+    const before = await prisma.projectCompletionWorkflow.findUnique({ where: { projectId: input.projectId } });
+    const result = await configureProjectCompletionWorkflowImplementation(trustedUser, input);
+    const after = await prisma.projectCompletionWorkflow.findUniqueOrThrow({ where: { projectId: input.projectId } });
+    if (JSON.stringify(before) !== JSON.stringify(after)) await completionDocumentEvent({ userId: trustedUser.id }, after, "configureProjectCompletionWorkflow", { before, after });
+    return result;
+  }, input);
 }
 
 export async function prepareAuthorityApprovalRequest(
@@ -2266,8 +1526,13 @@ export async function prepareAuthorityApprovalRequest(
     note?: string;
   },
 ) {
-  return runProjectMutation(user, "prepareAuthorityApprovalRequest", { kind: "structured", id: input.projectId }, async (trustedUser) =>
-    prepareAuthorityApprovalRequestImplementation(trustedUser, input), input);
+  return runProjectMutation(user, "prepareAuthorityApprovalRequest", { kind: "structured", id: input.projectId }, async (trustedUser) => {
+    const before = await prisma.projectCompletionWorkflow.findUnique({ where: { projectId: input.projectId } });
+    const result = await prepareAuthorityApprovalRequestImplementation(trustedUser, input);
+    const after = await prisma.projectCompletionWorkflow.findUniqueOrThrow({ where: { projectId: input.projectId } });
+    if (JSON.stringify(before) !== JSON.stringify(after)) await completionDocumentEvent({ userId: trustedUser.id }, after, "prepareAuthorityApprovalRequest", { before, after });
+    return result;
+  }, input);
 }
 
 export async function prepareCopyrightTransferRequest(
@@ -2278,8 +1543,13 @@ export async function prepareCopyrightTransferRequest(
     note?: string;
   },
 ) {
-  return runProjectMutation(user, "prepareCopyrightTransferRequest", { kind: "structured", id: input.projectId }, async (trustedUser) =>
-    prepareCopyrightTransferRequestImplementation(trustedUser, input), input);
+  return runProjectMutation(user, "prepareCopyrightTransferRequest", { kind: "structured", id: input.projectId }, async (trustedUser) => {
+    const before = await prisma.projectCompletionWorkflow.findUnique({ where: { projectId: input.projectId } });
+    const result = await prepareCopyrightTransferRequestImplementation(trustedUser, input);
+    const after = await prisma.projectCompletionWorkflow.findUniqueOrThrow({ where: { projectId: input.projectId } });
+    if (JSON.stringify(before) !== JSON.stringify(after)) await completionDocumentEvent({ userId: trustedUser.id }, after, "prepareCopyrightTransferRequest", { before, after });
+    return result;
+  }, input);
 }
 
 export async function requestProjectFinalInvoice(
@@ -2290,8 +1560,13 @@ export async function requestProjectFinalInvoice(
     note?: string;
   },
 ) {
-  return runProjectMutation(user, "requestProjectFinalInvoice", { kind: "structured", id: input.projectId }, async (trustedUser) =>
-    requestProjectFinalInvoiceImplementation(trustedUser, input), input);
+  return runProjectMutation(user, "requestProjectFinalInvoice", { kind: "structured", id: input.projectId }, async (trustedUser) => {
+    const before = await prisma.projectCompletionWorkflow.findUnique({ where: { projectId: input.projectId } });
+    const result = await requestProjectFinalInvoiceImplementation(trustedUser, input);
+    const after = await prisma.projectCompletionWorkflow.findUniqueOrThrow({ where: { projectId: input.projectId } });
+    if (JSON.stringify(before) !== JSON.stringify(after)) await completionDocumentEvent({ userId: trustedUser.id }, after, "requestProjectFinalInvoice", { before, after });
+    return result;
+  }, input);
 }
 
 export async function markProjectInvoiceNotRequired(
@@ -2300,8 +1575,13 @@ export async function markProjectInvoiceNotRequired(
     projectId: string;
   },
 ) {
-  return runProjectMutation(user, "markProjectInvoiceNotRequired", { kind: "structured", id: input.projectId }, async (trustedUser) =>
-    markProjectInvoiceNotRequiredImplementation(trustedUser, input), input);
+  return runProjectMutation(user, "markProjectInvoiceNotRequired", { kind: "structured", id: input.projectId }, async (trustedUser) => {
+    const before = await prisma.projectCompletionWorkflow.findUnique({ where: { projectId: input.projectId } });
+    const result = await markProjectInvoiceNotRequiredImplementation(trustedUser, input);
+    const after = await prisma.projectCompletionWorkflow.findUniqueOrThrow({ where: { projectId: input.projectId } });
+    if (JSON.stringify(before) !== JSON.stringify(after)) await completionDocumentEvent({ userId: trustedUser.id }, after, "markProjectInvoiceNotRequired", { before, after });
+    return result;
+  }, input);
 }
 
 export async function requestProjectCompletionDocumentUpload(

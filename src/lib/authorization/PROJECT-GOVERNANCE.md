@@ -2,12 +2,18 @@
 
 Implemented locally on 2026-10-18. This report supersedes the creation and final
 completion exclusions in the Phase 1.5A–C reports. Existing native read/write
-restrictions remain in force. The migration has **not** been applied to Neon.
+restrictions remain in force. Following explicit user approval, the single
+governance migration was applied to `flux-v2-dev / develop / neondb` on 2026-10-18.
+Postchecks passed: 104 successful migrations, no drift and all existing accounts,
+roles, audit history and application rows preserved. The Artwork preset remains
+unapproved; no projects were created.
 
 Activation follow-up: [PROJECT-GOVERNANCE-ACTIVATION.md](./PROJECT-GOVERNANCE-ACTIVATION.md)
-records the verified Neon target, migration checksums, recovery readiness and
-subsequent isolated browser verification. Neon modification remains paused for
-the explicit migration approval required by the activation request.
+records the verified Neon target, migration checksums, recovery readiness,
+subsequent isolated browser verification and successful authorized migration.
+Work stopped after migration verification, as requested. The original implementation
+report below is historical; its pending-migration/browser statements are superseded
+by that activation follow-up.
 
 ## 1. Exact files created or modified
 
