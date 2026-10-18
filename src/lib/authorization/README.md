@@ -1,8 +1,9 @@
 # FLUX V2 authorization foundations — Phase 1.1
 
-This module is inactive. It has no imports from authentication, Prisma, the legacy
-permission resolver or application services. No production caller should use it
-until account mapping and resource-policy integration are approved. Capability
+This module is inactive. Its definitions, eligibility and transition planner remain
+pure; Phase 1.4A adds separately constructed server-only Prisma assignment services
+described in [ASSIGNMENT-SERVICES.md](./ASSIGNMENT-SERVICES.md). No production caller
+uses them. Account mapping and resource-policy integration require separate approval. Capability
 identifiers describe V2 contracts; they do not imply implemented product features.
 
 ## Two independent domains
@@ -14,8 +15,9 @@ technical privileges, both, or neither. Nothing maps legacy SUPER_ADMIN, ADMIN o
 USER to either domain. Their existing behavior remains in `src/lib/permissions/`.
 
 Only one active Director is intended. Phase 1.2 adds inactive persistence and
-transition foundations in [PERSISTENCE.md](./PERSISTENCE.md). Its migration has not
-been applied; account mapping and runtime integration remain separate future work.
+transition foundations in [PERSISTENCE.md](./PERSISTENCE.md). The migration has been
+validated in disposable PostgreSQL, not applied to the application database;
+account mapping and runtime integration remain separate future work.
 
 Technical capabilities cover application maintenance, diagnostics, configuration,
 system/account recovery, troubleshooting and security administration. They grant no

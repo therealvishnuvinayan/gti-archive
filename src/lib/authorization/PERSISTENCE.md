@@ -64,7 +64,13 @@ It does **not** block current login or revoke sessions in this phase: authentica
 still uses the legacy model. Neither status nor version may be presented as an
 active access-control safeguard until runtime integration is approved.
 
-## Future writer requirements — not implemented
+## Writer requirements and Phase 1.4A implementation
+
+The inactive server-only services in [ASSIGNMENT-SERVICES.md](./ASSIGNMENT-SERVICES.md)
+now implement requirements 1–5 below, including separate signed initial setup,
+session-based actor verification, locked state rechecks and trigger-backed writes.
+Exceptional recovery is not implemented. Requirement 6 remains a runtime activation
+gate; these services have no normal UI/API callers and do not change legacy login.
 
 1. Resolve the actual authenticated actor and authorize the specific operation.
    Business role management and technical privilege management need independent
@@ -105,8 +111,9 @@ authorized later task before application. Do not replay historical migrations or
 accept a reset as reconciliation. Do not use `db push` to substitute for this SQL:
 Prisma cannot express the partial index, checks and triggers used here.
 
-Deployment is blocked until that review and PostgreSQL transaction/concurrency
-tests are approved. Existing `vercel-build` runs `scripts/prisma-migrate-deploy.mjs`;
+Isolated PostgreSQL migration, drift and transaction/concurrency tests passed in
+Phase 1.3. Deployment remains blocked until the actual target database review and
+separate authorization. Existing `vercel-build` runs `scripts/prisma-migrate-deploy.mjs`;
 this candidate must not be pushed/deployed automatically before the gate is met.
 
 ## Legacy dependencies retained
@@ -129,5 +136,8 @@ attachments and their existing relationships are preserved.
 schema/SQL checks. `pnpm authorization:foundation-check` retains Phase 1.1 coverage.
 Prisma schema validation can run offline on a temporary schema copy with a dummy
 URL and no project environment loading. No generated application client is changed.
-Static SQL checks and schema validation do not execute PostgreSQL constraints or
-prove concurrency behavior; database integration tests remain explicitly deferred.
+Static checks alone do not prove PostgreSQL constraints or concurrency. The
+`scripts/run-authorization-isolated-integration.mjs` runner now verifies them in a
+new disposable PostgreSQL cluster. Its `--services` option additionally generates
+a temporary client and executes Phase 1.4A service integration checks. It never
+loads the application environment or reuses an existing application database.
