@@ -5,7 +5,9 @@ only. **Do not run any role `apply` command until the product owner explicitly
 authorizes the complete role initialization.** No identity creation or password
 change is part of this procedure. V2 runtime authorization remains inactive.
 
-The verified nine identities all have legacy `USER` and no V2 authorization row.
+The original preparation baseline had nine legacy `USER` identities and no V2
+authorization rows. Always use the live preflight for the current state; the
+guided continuation below requires the Director bootstrap to be complete.
 The confirmed actual operator for both signed bootstraps is `developer1@example.test`.
 The signing key holder must independently authenticate the operator and approve
 each request; choosing an email or knowing the shared test password is not proof
@@ -36,6 +38,74 @@ The expected initial result is nine authorization rows, one Director, two techni
 administrators and nine immutable authorization audit rows. Bootstrap audit actors
 are Developer One; subsequent business assignment actors are the Director and the
 Developer Two privilege assignment actor is Developer One.
+
+## Guided continuation after the Director bootstrap
+
+After the product owner has approved the remaining assignments, run this one
+command from the repository root in a real local interactive terminal:
+
+```sh
+node scripts/development-role-setup.mjs --environment flux-v2-dev/develop
+```
+
+The coordinator uses the existing `development-users.mjs` CLI and the existing
+offline signer as separate processes. It does not load `.env`, read a signing
+private key, connect to PostgreSQL itself, issue sessions, or implement permissions.
+The signer receives no database configuration; the database executor receives no
+private signing key. The fixed local key/trust paths below must already exist.
+Same-user process separation is not an OS access-control boundary.
+
+Preflight pins the approved endpoint fingerprints, database/schema/version,
+103 migration checksums, schema consistency and exact nine-account manifest. It
+requires one already-completed Director at authorization version 1, no Director
+technical privileges, and consistent version-1 assignments/audit attribution for
+any steps already completed. It never repeats the Director bootstrap. Unexpected
+users, roles, versions, audit actors, assignment order or business data stop it.
+
+Remaining work runs in order: Developer One bootstrap, six marketing assignments,
+then Developer Two. Each completed step is rechecked with the read-only CLI.
+Ordinary assignments also verify each individual committed transaction before
+continuing. Already-correct assignments are retained without new versions/audits.
+
+The interactions that remain are:
+
+1. If Developer One is still unassigned, the coordinator exports a fresh
+   `technical-request-<UUID>.json` and invokes the existing offline signer. Review
+   operation `INITIAL_TECHNICAL_ADMIN`, actual operator/target IDs (both Developer
+   One), audience, null expected version, reason, change ID and expiry. Independently
+   authenticate the actual operator and enter the displayed `SIGN` confirmation.
+   No existing request/envelope is reused or overwritten; approval still expires
+   after ten minutes. No automatic renewal or re-signing happens after failure.
+2. For each pending write phase, supply your non-secret operator reference and the
+   existing CLI's exact `APPLY` confirmation. These confirmations stay intact.
+3. Sign in normally to local FLUX as `director@example.test` before the marketing
+   assignments. Supply that login's `gti_session` cookie only at the masked CLI
+   prompt. Then sign in as `developer1@example.test` and supply its real cookie at
+   the Developer Two step. Passwords remain in the normal browser login; never put
+   passwords or session tokens in chat, command arguments, files or logs. No new
+   login endpoint or synthetic session is used. You may use separate browser
+   profiles to keep both normal sessions available.
+
+Keep the local FLUX application configured for the approved development database.
+The existing login is a Next.js server action that sets an HTTP-only cookie, so
+this coordinator intentionally retains browser authentication and the existing
+masked session prompt. It does not add a CLI password authenticator or browser
+automation. No copying of intermediate command output into chat is needed.
+
+On success, expect `REMAINING_ROLE_INITIALIZATION_VERIFIED`, nine version-1 audit
+records with the intended actors, one Director, two technical administrators and
+the full final account matrix. All nine legacy roles remain `USER`.
+
+On any failure or uncertain commit, no further writes run. The coordinator attempts
+only a read-only reconciliation and prints completed/pending accounts. Review that
+result before manually rerunning the same command; verified completed phases are
+skipped. If state cannot be verified or conflicts with the approved sequence, stop
+for investigation. A completed rerun performs only read-only verification. No key
+rotation, role reset, password change, automatic write retry or Phase 1.5 work occurs.
+
+Isolated validation: `pnpm users:v2:check` includes coordinator failure/resume tests,
+the real offline signing/terminal checks and a separate disposable PostgreSQL
+guided-workflow fixture. It never uses the Neon environment or real account secrets.
 
 ## Local signing preparation — no database writes
 

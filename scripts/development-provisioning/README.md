@@ -5,6 +5,11 @@ activate V2 runtime authorization, send email, access S3, migrate databases, or
 modify existing identities/passwords. It uses the existing password implementation,
 signed bootstrap factories, and trusted-session role-assignment service.
 
+For the approved continuation after the Director bootstrap, the one-command
+guided workflow is documented in [ROLE-BOOTSTRAP.md](./ROLE-BOOTSTRAP.md#guided-continuation-after-the-director-bootstrap).
+It preserves separate signing, existing write confirmations and genuine browser
+sessions, verifies each phase, and resumes only from a verified partial state.
+
 ## Approval boundary
 
 Implementation, disposable tests and remote **read-only** preflight are authorized.

@@ -78,7 +78,8 @@ async function main() {
     console.log(JSON.stringify({ environment: environmentName, database: preflight.identity, pooledFingerprint: "9d6f1df51a9db284",
       directFingerprint: "5b001dbfcdb263fa", manifestFingerprint, audience, migrations: preflight.migrationCount, schemaDrift: "NONE",
       accounts: publicState(preflight.state), counts: preflight.counts, directors: preflight.state.directors,
-      technicalAdministrators: preflight.state.technicalAdministrators, auditCount: preflight.state.auditCount, signing,
+      technicalAdministrators: preflight.state.technicalAdministrators, auditCount: preflight.state.auditCount,
+      authorizationAudit: preflight.state.authorizationAudit, signing,
       legacyRuntime: "All nine identities use USER. V2 UI authority is inactive.", confirmationRequired: confirmation }, null, 2));
     if (mode === "verify") {
       requireProvisioning(preflight.state.users.length === 9 && preflight.state.users.every((user) => user.authorization) &&
@@ -135,7 +136,8 @@ async function main() {
     }
     const result = await databasePreflight(reader, manifest, authorizationSql);
     console.log(JSON.stringify({ event: "VERIFIED_AFTER_OPERATION", accounts: publicState(result.state), auditCount: result.state.auditCount,
-      directors: result.state.directors, technicalAdministrators: result.state.technicalAdministrators }, null, 2));
+      directors: result.state.directors, technicalAdministrators: result.state.technicalAdministrators,
+      authorizationAudit: result.state.authorizationAudit }, null, 2));
   } finally { await writer?.$disconnect(); await reader.$disconnect(); }
 }
 

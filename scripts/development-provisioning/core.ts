@@ -68,6 +68,8 @@ export async function inspectState(db: Reader) {
   }
   requireProvisioning(history.every((entry) => users.some((user) => user.id === entry.userId)), "UNEXPECTED_AUDIT_SUBJECT");
   return { users, auditCount: history.length,
+    authorizationAudit: history.map(({ userId, actorUserId, authorizationVersion, changeId, reason }) =>
+      ({ userId, actorUserId, authorizationVersion, changeId, reason })),
     directors: users.filter((user) => user.authorization?.businessRole === "DIRECTOR").length,
     technicalAdministrators: users.filter((user) => user.authorization?.technicalPrivileges.includes("TECHNICAL_ADMIN")).length };
 }
@@ -215,6 +217,19 @@ export async function assignRemaining(db: PrismaClient, domain: "business" | "te
     const input = { userId: user.id, expectedVersion: user.authorization?.authorizationVersion ?? null, reason };
     if (domain === "business") await service.assignBusinessRole({ ...input, businessRole: target.businessRole });
     else await service.setTechnicalPrivileges({ ...input, technicalPrivileges: [...target.technicalPrivileges] });
+    // Verify each transaction before moving on, including no-op resumes. The
+    // existing service still authenticates the session even for matching roles.
+    const verified = await inspectState(db);
+    const assigned = verified.users.find((row) => row.id === user.id)!;
+    const expected = user.authorization?.authorizationVersion ?? 1;
+    requireProvisioning(assigned.authorization?.authorizationVersion === expected &&
+      verified.auditCount === fresh.auditCount + (user.authorization ? 0 : 1) &&
+      digest(verified.users.filter((row) => row.id !== user.id)) === digest(fresh.users.filter((row) => row.id !== user.id)) &&
+      fresh.authorizationAudit.every((entry) => verified.authorizationAudit.some((after) => digest(after) === digest(entry))),
+    "ASSIGNMENT_POST_COMMIT_VERIFICATION_FAILED");
+    if (!user.authorization) requireProvisioning(verified.authorizationAudit.some((entry) => entry.userId === user.id &&
+      entry.authorizationVersion === 1 && entry.actorUserId === expectedActor.id && entry.reason === reason.trim()),
+    "ASSIGNMENT_AUDIT_ATTRIBUTION_MISMATCH");
     completed.push(target.email);
   } } catch { throw new PartialAssignmentError(completed, attempted); }
   return completed;

@@ -229,6 +229,7 @@ function checkAssignmentServices() {
 }
 
 function checkProvisioning() {
+  console.log(run(process.execPath, ["--test", join(repository, "scripts/development-role-setup.test.mjs")], { env, timeout: 30000 }));
   console.log(run(process.execPath, [join(repository, "scripts/development-signing-check.mjs"), root], { env, timeout: 30000 }));
   const provisioningDatabase = "flux_v2_provisioning_test";
   sql(`CREATE DATABASE "${provisioningDatabase}"`, "postgres");
@@ -250,6 +251,15 @@ function checkProvisioning() {
       FLUX_AUTH_TEST_REPOSITORY: repository }, timeout: 90000,
   }));
   checkProvisioningTerminal(join(output, "scripts/development-provisioning/terminal.js"));
+  const guidedDatabase = "flux_v2_guided_test";
+  sql(`CREATE DATABASE "${guidedDatabase}"`, "postgres");
+  const guidedUrl = databaseUrl.replace(`/${database}?`, `/${guidedDatabase}?`);
+  run(process.execPath, [prismaCli, "migrate", "deploy", "--schema", schemaPath], { env: { ...env, DATABASE_URL: guidedUrl } });
+  console.log(run(process.execPath, ["--conditions=react-server", join(repository, "scripts/development-role-setup-integration-check.mjs")], {
+    env: { ...env, FLUX_AUTH_TEST_ROOT: root, FLUX_AUTH_TEST_URL: guidedUrl, FLUX_AUTH_TEST_REPOSITORY: repository }, timeout: 90000,
+  }));
+  assert.match(run(process.execPath, [prismaCli, "migrate", "diff", "--from-url", guidedUrl,
+    "--to-schema-datamodel", schemaPath, "--script"], { env: { ...env, DATABASE_URL: guidedUrl } }), /This is an empty migration/);
   const drift = run(process.execPath, [prismaCli, "migrate", "diff", "--from-url", provisioningUrl,
     "--to-schema-datamodel", schemaPath, "--script"], { env: testEnv });
   assert.match(drift, /This is an empty migration/);
