@@ -5,7 +5,7 @@ type Account = { name: string; email: string; businessRole: BusinessRole | null;
 
 // An explicit development manifest, never a general-purpose user import.
 export const accounts: readonly Account[] = Object.freeze([
-  { name: "Slavomir Kluziak", email: "slavomir.kluziak@gulbahartobacco.com", businessRole: "DIRECTOR", technicalPrivileges: [] },
+  { name: "Slavomir Kluziak", email: "director@example.test", businessRole: "DIRECTOR", technicalPrivileges: [] },
   { name: "Senior PM One", email: "spm1@example.test", businessRole: "SENIOR_PROJECT_MANAGER", technicalPrivileges: [] },
   { name: "Senior PM Two", email: "spm2@example.test", businessRole: "SENIOR_PROJECT_MANAGER", technicalPrivileges: [] },
   { name: "Junior PM One", email: "jpm1@example.test", businessRole: "JUNIOR_PROJECT_MANAGER", technicalPrivileges: [] },

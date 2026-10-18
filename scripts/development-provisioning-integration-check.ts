@@ -6,8 +6,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { PrismaClient } from "@prisma/client";
 import { accounts, approvedTarget, audience, environmentName } from "./development-provisioning/accounts";
-import { applySignedSetup, assignRemaining, databasePreflight, digest, inspectState, PartialAssignmentError, provisionIdentities, validatePassword } from "./development-provisioning/core";
-import { hashAuthPassword, verifyAuthPassword } from "../src/lib/auth-password";
+import { applySignedSetup, assignRemaining, databasePreflight, digest, inspectState, PartialAssignmentError, provisionIdentities, setupTarget, validatePassword } from "./development-provisioning/core";
+import { hashAuthPassword, normalizeAuthEmail, verifyAuthPassword } from "../src/lib/auth-password";
 import { createRoleAssignmentService } from "../src/lib/authorization/role-assignment-service";
 import { terminalInput } from "./development-provisioning/terminal";
 
@@ -60,6 +60,16 @@ async function run() {
   const authorizationSql = readFileSync(join(root, "migrations/20261018120000_v2_authorization_foundation/migration.sql"), "utf8");
   const initial = await databasePreflight(db, manifest, authorizationSql);
   assert.ok(initial.state.users.length === 0 && initial.state.auditCount === 0);
+
+  check = "nine fictional identities and Director bootstrap target";
+  assert.equal(accounts.length, 9);
+  assert.equal(new Set(accounts.map((account) => account.email)).size, 9);
+  assert.ok(accounts.every((account) => /^[^@\s]+@example\.test$/.test(account.email)));
+  assert.deepEqual(setupTarget("bootstrap-director"), {
+    name: "Slavomir Kluziak", email: "director@example.test", businessRole: "DIRECTOR", technicalPrivileges: [],
+  });
+
+  check = "preflight integrity guards";
   const preserved = await unrelatedSnapshot();
   assert.throws(() => terminalInput("No interactive fixture input", true));
   await assert.rejects(databasePreflight(db, manifest.map((entry, index) => index ? entry : { ...entry, checksum: "incorrect" }), authorizationSql));
@@ -133,6 +143,11 @@ async function run() {
     assert.ok(user.role === "USER" && verifyAuthPassword(expected, user.passwordHash));
   }
 
+  check = "fictional Director email and existing password verification";
+  const testDirector = await db.user.findUniqueOrThrow({ where: { email: normalizeAuthEmail(" DIRECTOR@EXAMPLE.TEST ") } });
+  assert.equal(testDirector.id, retainedUser.id);
+  assert.ok(verifyAuthPassword(passwordSets[0].get("director@example.test")!, testDirector.passwordHash));
+
   check = "signed bootstrap rejection and identity binding";
   const director = await approval("BOOTSTRAP_DIRECTOR", accounts[0].email);
   await rejectedWithoutAuthorizationChanges(() => applySignedSetup(db, "bootstrap-director", accounts[7].email, trustedKey,
@@ -204,7 +219,7 @@ async function run() {
   assert.ok(final.state.directors === 1 && final.state.technicalAdministrators === 2 && final.state.users.length === 9);
   assert.ok(preserved === await unrelatedSnapshot());
   assert.ok((await db.user.findMany({ select: { role: true } })).every((user) => user.role === "USER"));
-  console.log("PASS: provisioning target guards, password policy/hash/confirmation/uniqueness, identity conflicts, atomic rollback, concurrent creation, partial identity/assignment resume, repeatability, signed bootstrap/replay/expiry/scope, genuine sessions, domain separation, audit/version integrity, and unchanged unrelated tables.");
+  console.log("PASS: nine fictional identities, Director bootstrap target and password verification, provisioning target guards, password policy/hash/confirmation/uniqueness, identity conflicts, atomic rollback, concurrent creation, partial identity/assignment resume, repeatability, signed bootstrap/replay/expiry/scope, genuine sessions, domain separation, audit/version integrity, and unchanged unrelated tables.");
 }
 
 run().catch(() => { console.error(`FAIL: isolated provisioning check: ${check}. Sensitive fixture values withheld.`); process.exitCode = 1; })

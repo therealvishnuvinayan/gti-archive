@@ -17,7 +17,7 @@ Codex cannot collect the operator's passwords through chat or tool arguments.
 
 | Name | Email | V2 business role | Technical privilege |
 | --- | --- | --- | --- |
-| Slavomir Kluziak | slavomir.kluziak@gulbahartobacco.com | DIRECTOR | None |
+| Slavomir Kluziak | director@example.test | DIRECTOR | None |
 | Senior PM One | spm1@example.test | SENIOR_PROJECT_MANAGER | None |
 | Senior PM Two | spm2@example.test | SENIOR_PROJECT_MANAGER | None |
 | Junior PM One | jpm1@example.test | JUNIOR_PROJECT_MANAGER | None |
@@ -28,6 +28,9 @@ Codex cannot collect the operator's passwords through chat or tool arguments.
 | Developer Two | developer2@example.test | None | TECHNICAL_ADMIN |
 
 All nine identities use legacy `USER`, with `projectCreationAccessGranted=false`.
+All nine email addresses are fictional development identities under `example.test`.
+The existing password login normalizes the email, looks up the user and verifies
+the stored password hash; it requires neither email delivery nor email verification.
 V2 Director/technical assignments do not grant legacy ADMIN/SUPER_ADMIN access.
 Login can establish an ordinary application session, but V2 business or technical
 UI powers remain inactive until the separately approved runtime integration.
@@ -73,8 +76,8 @@ The existing `src/lib/auth-password.ts` scrypt hash/verification functions are
 used unchanged. Cleartext is never placed in arguments, logs, environment,
 temporary files, receipts or snapshots. In-memory references are released after
 use; JavaScript strings do not offer a guaranteed memory-zeroization facility.
-The CLI does not send invitations or reset emails, including to the real Director
-address. Only missing identities are inserted, all in one transaction after
+The CLI does not send invitations or reset emails to any account.
+Only missing identities are inserted, all in one transaction after
 password entry and a locked state recheck. Existing identities/passwords are
 never rewritten. Name/email/legacy-role conflicts stop the command.
 
@@ -92,6 +95,11 @@ operator-owned file at `~/.config/flux-v2-development/trust.json`, outside the
 repository, with its containing directory mode 0700 and file mode 0600. It has
 exactly two keys: `publicKeyPem` (an Ed25519 SPKI PUBLIC KEY PEM) and `audience`
 (the exact environment/database/manifest audience printed by `plan`).
+
+Changing the Director email changes the manifest digest, typed confirmation and
+signing audience. Use the current plan's audience for the public-key trust
+configuration and independent approvals; envelopes for the previous manifest
+are not valid for this manifest.
 
 The independent authority must authenticate the actual operator and approve the
 target, scope, expected version, reason, database audience and expiry. Selecting
@@ -131,8 +139,8 @@ its existing result. Missing trust/approval stops before any role assignment.
 
 ## Ordinary assignments through genuine application sessions
 
-Once the Director is initialized, sign in normally as Slavomir in the local
-application connected to this development DB. Run:
+Once the Director is initialized, sign in normally as `director@example.test`
+in the local application connected to this development DB. Run:
 
 ```sh
 pnpm users:v2 apply --environment flux-v2-dev/develop --step business-roles --reason '<approved reason>'
