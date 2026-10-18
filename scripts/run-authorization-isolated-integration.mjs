@@ -182,7 +182,8 @@ try {
     console.log("FAIL: full repository schema consistency. V2 behavior passed; the identical pre-existing drift above requires separate review.");
     process.exitCode = 1;
   }
-  if (process.argv.includes("--services")) checkAssignmentServices();
+  if (process.argv.includes("--services") || process.argv.includes("--provisioning")) checkAssignmentServices();
+  if (process.argv.includes("--provisioning")) checkProvisioning();
   console.log("Existing application databases, credentials, S3 and runtime authorization were not used.");
 } finally {
   cleanup();
@@ -225,6 +226,86 @@ function checkAssignmentServices() {
     "--to-schema-datamodel", schemaPath, "--script"], { env: serviceEnv });
   assert.match(drift, /This is an empty migration/);
   console.log("PASS: Phase 1.4A Prisma service integration, targeted TypeScript and empty schema drift.");
+}
+
+function checkProvisioning() {
+  const provisioningDatabase = "flux_v2_provisioning_test";
+  sql(`CREATE DATABASE "${provisioningDatabase}"`, "postgres");
+  const provisioningUrl = databaseUrl.replace(`/${database}?`, `/${provisioningDatabase}?`);
+  const testEnv = { ...prismaEnv, DATABASE_URL: provisioningUrl };
+  run(process.execPath, [prismaCli, "migrate", "deploy", "--schema", schemaPath], { env: testEnv });
+  const clientPath = join(root, "client"), output = join(root, "provisioning-compiled");
+  const configPath = join(root, "tsconfig.provisioning.json");
+  writeFileSync(configPath, JSON.stringify({
+    extends: join(repository, "scripts/tsconfig.development-provisioning-tests.json"),
+    compilerOptions: { outDir: output, paths: { "@/*": [join(repository, "src/*")], "@prisma/client": [clientPath] },
+      typeRoots: [join(repository, "node_modules/@types")] },
+  }));
+  run(process.execPath, [require.resolve("typescript/bin/tsc"), "--project", configPath], { timeout: 60000 });
+  mkdirSync(join(output, "node_modules"), { recursive: true });
+  symlinkSync(dirname(require.resolve("next/dist/compiled/server-only/package.json")), join(output, "node_modules/server-only"), "dir");
+  console.log(run(process.execPath, ["--conditions=react-server", join(output, "scripts/development-provisioning-integration-check.js")], {
+    env: { ...testEnv, FLUX_AUTH_TEST_ROOT: root, FLUX_AUTH_TEST_URL: provisioningUrl, FLUX_AUTH_TEST_CLIENT: clientPath }, timeout: 90000,
+  }));
+  checkProvisioningTerminal(join(output, "scripts/development-provisioning/terminal.js"));
+  const drift = run(process.execPath, [prismaCli, "migrate", "diff", "--from-url", provisioningUrl,
+    "--to-schema-datamodel", schemaPath, "--script"], { env: testEnv });
+  assert.match(drift, /This is an empty migration/);
+  console.log("PASS: Phase 1.4D isolated provisioning and empty schema drift. No remote database was used.");
+}
+
+function checkProvisioningTerminal(terminalModule) {
+  // Python's standard-library PTY controls a synthetic local terminal. Generated
+  // fixture secrets travel only through that PTY, never arguments or output.
+  const program = String.raw`
+import base64, os, pty, select, subprocess, sys, time
+node, module = sys.argv[1:]
+code = """
+const {terminalInput}=require(process.argv[1]);
+(async()=>{const before=!!process.stdin.isRaw;
+ const first=await terminalInput('Secret',true),second=await terminalInput('Confirm',true);
+ if(first!==second||!!process.stdin.isRaw!==before)throw Error('TERMINAL_ASSERTION_FAILED');
+ console.log('TERMINAL_PASS');
+})().catch(e=>{console.log(e.code||'TERMINAL_FAILURE');process.exitCode=1;});
+"""
+for scenario in ['confirmed','cancelled','multiline']:
+    master, slave = pty.openpty()
+    process = subprocess.Popen([node,'-e',code,module],stdin=slave,stdout=slave,stderr=slave)
+    os.close(slave)
+    output = bytearray()
+    secret = base64.urlsafe_b64encode(os.urandom(24))
+    def until(marker):
+        deadline=time.monotonic()+10
+        while marker not in output:
+            if time.monotonic()>deadline: raise RuntimeError('Terminal fixture timeout')
+            readable,_,_=select.select([master],[],[],0.1)
+            if readable:
+                try: chunk=os.read(master,65536)
+                except OSError: chunk=b''
+                if not chunk: raise RuntimeError('Terminal fixture ended unexpectedly')
+                output.extend(chunk)
+    try:
+        until(b'Secret: ')
+        if scenario=='confirmed':
+            os.write(master,secret+b'x\x7f\r')
+            until(b'Confirm: ')
+            os.write(master,secret+b'\r')
+            until(b'TERMINAL_PASS')
+            if b'*' not in output: raise RuntimeError('Masking absent')
+        elif scenario=='cancelled':
+            os.write(master,b'\x03')
+            until(b'OPERATOR_CANCELLED')
+        else:
+            os.write(master,secret+b'\n'+secret+b'\n')
+            until(b'MULTILINE_INPUT_REJECTED')
+        if secret in output: raise RuntimeError('Secret echoed by terminal')
+        process.wait(timeout=5)
+    finally:
+        if process.poll() is None: process.kill(); process.wait()
+        os.close(master)
+print('PASS: actual PTY masking, confirmation, backspace, cancellation, multiline rejection and terminal restoration; no fixture secrets printed.')
+`;
+  console.log(run("python3", ["-c", program, process.execPath, terminalModule], { timeout: 45000 }));
 }
 
 function jsonOnControl() {

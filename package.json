@@ -86,6 +86,8 @@
     "assets:client-check": "node scripts/asset-tag-client-check.cjs",
     "prisma:push": "prisma db push",
     "users:create": "node scripts/create-user.mjs",
+    "users:v2": "node scripts/development-users.mjs",
+    "users:v2:check": "node scripts/run-authorization-isolated-integration.mjs --services --provisioning",
     "project-tags:integration-check": "tsc --project scripts/tsconfig.project-tags-integration.json && node scripts/run-project-tags-isolated-integration.mjs",
     "project-tags:ui-check": "node scripts/project-tags-ui-check.cjs",
     "tasks:integration-check": "tsc --project scripts/tsconfig.tasks-integration.json && node scripts/run-tasks-isolated-integration.mjs",
