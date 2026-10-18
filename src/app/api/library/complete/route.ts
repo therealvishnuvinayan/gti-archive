@@ -1,3 +1,4 @@
+import { libraryErrorResponse } from "@/lib/library-http";
 import { revalidatePath } from "next/cache";
 import { after, NextResponse } from "next/server";
 
@@ -93,14 +94,6 @@ export async function POST(request: Request) {
           ? error.message
           : "Unable to complete the library upload right now.",
     });
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unable to complete the library upload right now.",
-      },
-      { status: 400 },
-    );
+    return libraryErrorResponse(error);
   }
 }

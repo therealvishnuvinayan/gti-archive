@@ -159,8 +159,12 @@ async function frameworkChecks(){
    const flexiblePage=await flexible.getFlexibleProjectsPage(user);
    assert.equal(flexiblePage.total+limitedIndex.flexible.length,index.flexible.length);
    const snapshot=await dashboard.getDashboardSnapshot(user);assert.equal(snapshot.kpis[0].value,index.total);
-   const libraryPage=await library.getLibraryPageDataForUser(user);
-   if(["tech","unassigned","designer","digital"].includes(id))assert.ok(!JSON.stringify(libraryPage).includes("file-designer"));
+   if (["tech", "unassigned"].includes(id)) await assert.rejects(() => library.getLibraryPageDataForUser(user));
+   else {
+    const libraryPage = await library.getLibraryPageDataForUser(user);
+    if (id === "designer") assert.ok(libraryPage.items.some(file => file.id === "file-designer"));
+    if (id === "digital") assert.ok(!JSON.stringify(libraryPage).includes("file-designer"));
+   }
    for(const row of index.artwork) assert.ok(await context.getRestrictedProjectContext(row.id,user));
    if(["tech","unassigned"].includes(id))assert.equal(index.total,0);
    if(["designer","digital"].includes(id)){

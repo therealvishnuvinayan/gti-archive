@@ -166,7 +166,7 @@ const library = read("src/lib/library.ts");
 includes(library, "input.assetTagId", "asset-tag filtering permission enforcement");
 includes(
   library,
-  '!hasPermission(user, "file.download")',
+  'runLibraryOperation(user, "library.download", `manual:${assetId}`',
   "manual Library download permission enforcement",
 );
 const libraryWorkspace = read("src/components/library/library-workspace.tsx");

@@ -64,6 +64,8 @@
     "autosave:ui-check": "node scripts/project-form-autosave-checks.mjs",
     "users:avatar-check": "node scripts/user-avatar-management-checks.mjs",
     "user-role:foundation-check": "tsc --project scripts/tsconfig.user-role-foundation.json && COMPILED_ALIAS_ROOT=.tmp/user-role-foundation node -r ./scripts/register-compiled-alias.cjs .tmp/user-role-foundation/scripts/user-role-foundation-check.js",
+    "library:authorization-check": "node scripts/run-authorization-isolated-integration.mjs --library",
+    "library:browser-check": "node scripts/library-browser-check.mjs",
     "authorization:foundation-check": "tsc --project scripts/tsconfig.authorization-foundation.json && node .tmp/authorization-foundation/scripts/authorization-foundation-check.js",
     "authorization:persistence-check": "tsc --project scripts/tsconfig.authorization-persistence.json && node .tmp/authorization-persistence/scripts/authorization-persistence-check.js",
     "completion-documents:check": "node scripts/run-authorization-isolated-integration.mjs --completion-documents",

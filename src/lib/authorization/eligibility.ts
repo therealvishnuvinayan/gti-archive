@@ -69,7 +69,12 @@ const taskOwnerCapabilities = [
   "task.manage",
 ] as const satisfies readonly BusinessCapability[];
 
+const libraryReaderCapabilities = [
+  "library.view", "library.download", "library.favorite", "library.accessProjectFile",
+] as const satisfies readonly BusinessCapability[];
+
 const projectManagerCapabilities = [
+  ...libraryReaderCapabilities,
   "project.requestCreation",
   "project.activateCreation",
   "project.viewGovernance",
@@ -101,6 +106,7 @@ const projectManagerCapabilities = [
 ] as const satisfies readonly BusinessCapability[];
 
 const taskFocusedCapabilities = [
+  ...libraryReaderCapabilities,
   "project.executeTask",
   "project.writeFile",
   "project.comment",

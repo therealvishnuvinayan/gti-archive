@@ -1,3 +1,4 @@
+import { libraryErrorResponse } from "@/lib/library-http";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 
@@ -26,16 +27,6 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Unable to delete the file right now.";
-
-    return NextResponse.json(
-      { error: message },
-      {
-        status: /permission|access/i.test(message) ? 403 : 400,
-      },
-    );
+    return libraryErrorResponse(error);
   }
 }

@@ -19,8 +19,7 @@ export async function GET() {
   const canUseAssetTags =
     (hasPermission(user, "library.view") &&
       hasPermission(user, "library.uploadAsset")) ||
-    canUploadArchiveFiles(user) ||
-    hasPermission(user, "settings.manageMasterData");
+    canUploadArchiveFiles(user);
 
   if (!canUseAssetTags) {
     timer.end("asset-tags request forbidden");

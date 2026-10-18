@@ -944,7 +944,7 @@ export function LibraryWorkspace({
                                 }
                                 favoriteApiPath={
                                   item.source === "PROJECT_ATTACHMENT"
-                                    ? `/api/project-assets/${item.id}/favorite`
+                                    ? `/api/library/attachments/${item.id}/favorite`
                                     : `/api/library/manual-assets/${item.id}/favorite`
                                 }
                                 className="h-9 w-9 rounded-full text-[#7a847d] hover:bg-[#fff4f5]"

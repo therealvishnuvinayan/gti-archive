@@ -22,7 +22,7 @@ export type AuthorizationRequest = Readonly<{
 export type AuthorizationContext = {
   resource: {
     id: string;
-    kind: "project" | "projectCreation" | "task" | "template" | "archive" | "technical";
+    kind: "project" | "projectCreation" | "task" | "template" | "archive" | "library" | "technical";
     projectId?: string;
   };
   project?: { id: string; participantUserIds: readonly string[] };
@@ -91,6 +91,7 @@ function resourceMatches(request: AuthorizationRequest, context: AuthorizationCo
   if (capability.startsWith("task.")) return resource.kind === "task" && task?.id === resource.id &&
     !!resource.projectId && project?.id === resource.projectId;
   if (capability.startsWith("template.")) return resource.kind === "template";
+  if (capability.startsWith("library.")) return resource.kind === "library";
   if (capability.startsWith("archive.")) return resource.kind === "archive";
   return capability.startsWith("technical.") && resource.kind === "technical";
 }

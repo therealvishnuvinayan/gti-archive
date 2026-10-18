@@ -1,3 +1,4 @@
+import { canLibrary } from "@/lib/authorization/library-rules";
 import { canArchive, archiveAccessLevel } from "@/lib/authorization/archive-rules";
 import {
   Prisma,
@@ -154,6 +155,12 @@ export function hasPermission(user: PermissionUser, permissionKey: PermissionKey
     if (permissionKey === "archive.uploadFile") return canArchive(user, "archive.upload");
     return false;
   }
+  if (permissionKey.startsWith("library.")) {
+    if (permissionKey === "library.view" || permissionKey === "library.filter") return canLibrary(user, "library.view");
+    if (permissionKey === "library.uploadAsset") return canLibrary(user, "library.upload");
+    if (permissionKey === "library.deleteFile") return canLibrary(user, "library.delete");
+    return false;
+  }
   return getBasePermissionSet(user).has(permissionKey);
 }
 
@@ -211,7 +218,7 @@ export function assertCanUseArchives(
 }
 
 export function getUserPermissionSet(user: PermissionUser) {
-  return new Set([...getBasePermissionSet(user)].filter(key => !key.startsWith("archive.") || hasPermission(user, key)));
+  return new Set([...getBasePermissionSet(user)].filter(key => (!key.startsWith("archive.") && !key.startsWith("library.")) || hasPermission(user, key)));
 }
 
 function hasProjectPermissionGrant(
@@ -291,7 +298,7 @@ export function hasProjectPermission(
   project: ProjectPermissionContext,
   permissionKey: PermissionKey,
 ) {
-  if (permissionKey.startsWith("archive.")) return hasPermission(user, permissionKey);
+  if (permissionKey.startsWith("archive.") || permissionKey.startsWith("library.")) return hasPermission(user, permissionKey);
   // Compatibility flags never constitute a mutation grant. Domain services
   // resolve current identity/resource authority inside their V2 transaction.
   if (["project.view", "stage.view", "project.viewBudget", "project.viewParticipants", "chat.view", "compare.view", "file.view", "file.download"].includes(permissionKey)) {

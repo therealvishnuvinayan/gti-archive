@@ -163,12 +163,20 @@ for (const role of businessRoleValues) {
 }
 
 for (const capability of businessCapabilityCatalog.archive) {
-  if (capability === "archive.delete" || capability === "archive.verify") {
+  if (capability === "archive.delete" || capability === "archive.category.delete" || capability === "archive.verify") {
     denied("SENIOR_PROJECT_MANAGER", capability, true);
   } else {
     eligible("SENIOR_PROJECT_MANAGER", capability);
   }
   denied("JUNIOR_PROJECT_MANAGER", capability);
+}
+// Library rights are independent of Archive rights. Management writes remain
+// Director-only until a business-approved manager/grant contract exists.
+for (const role of businessRoleValues) {
+  for (const capability of businessCapabilityCatalog.library) {
+    if (role === "DIRECTOR" || ["library.view", "library.download", "library.favorite", "library.accessProjectFile"].includes(capability)) eligible(role, capability);
+    else denied(role, capability);
+  }
 }
 eligible("DESIGNER", "archive.view");
 eligible("DESIGNER", "archive.download");

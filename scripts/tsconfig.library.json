@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.authorization-services.json",
+  "compilerOptions": { "outDir": "../.tmp/library" },
+  "include": ["library-authorization-integration-check.ts"]
+}

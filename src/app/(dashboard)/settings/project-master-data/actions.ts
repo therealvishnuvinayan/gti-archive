@@ -1,4 +1,6 @@
 "use server";
+
+import { runLibraryOperation } from "@/lib/authorization/library";
 import { runArchiveOperation } from "@/lib/authorization/archive";
 import { canArchive, archiveCategoryWhere, archiveScopeForUser } from "@/lib/authorization/archive-rules";
 
@@ -550,8 +552,7 @@ export async function saveProjectStatusAction(input: SaveMasterDataInput) {
   };
 }
 
-export async function saveAssetTagAction(input: SaveMasterDataInput) {
-  await requireAdminUser();
+async function saveAssetTagActionImplementation(input: SaveMasterDataInput) {
 
   const parsed = normalizeMasterDataInput(input);
 
@@ -874,8 +875,7 @@ export async function setProjectStatusAction(input: ToggleMasterDataInput) {
   return { success: true };
 }
 
-export async function setAssetTagStatusAction(input: ToggleMasterDataInput) {
-  await requireAdminUser();
+async function setAssetTagStatusActionImplementation(input: ToggleMasterDataInput) {
 
   await withPrismaRetry(() =>
     prisma.assetTag.update({
@@ -1081,8 +1081,7 @@ export async function deleteProjectStatusAction(id: string) {
   return { success: true };
 }
 
-export async function deleteAssetTagAction(id: string) {
-  await requireMasterDataDeletePermission();
+async function deleteAssetTagActionImplementation(id: string) {
 
   const tag = await withPrismaRetry(() =>
     prisma.assetTag.findUnique({
@@ -1191,4 +1190,19 @@ export async function deleteArchiveCategoryAction(id: string) {
 
   return { success: true };
   });
+}
+
+export async function saveAssetTagAction(input: SaveMasterDataInput) {
+  const user = await requireUser();
+  return runLibraryOperation(user, "library.manageTags", "root", () => saveAssetTagActionImplementation(input));
+}
+
+export async function setAssetTagStatusAction(input: ToggleMasterDataInput) {
+  const user = await requireUser();
+  return runLibraryOperation(user, "library.manageTags", "root", () => setAssetTagStatusActionImplementation(input));
+}
+
+export async function deleteAssetTagAction(id: string) {
+  const user = await requireUser();
+  return runLibraryOperation(user, "library.manageTags", "root", () => deleteAssetTagActionImplementation(id));
 }

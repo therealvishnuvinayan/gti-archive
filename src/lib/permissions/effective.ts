@@ -24,6 +24,6 @@ export function resolveEffectivePermissionSet(input: {
   }
 
   // Archive capabilities are projected from a trusted V2 principal by the resolver.
-  for (const key of ["archive.view", "archive.uploadFile", "archive.download"] as const) effectivePermissions.delete(key);
+  for (const key of ["archive.view", "archive.uploadFile", "archive.download", "library.view", "library.filter", "library.uploadAsset", "library.deleteFile"] as const) effectivePermissions.delete(key);
   return effectivePermissions;
 }

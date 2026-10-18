@@ -66,6 +66,11 @@ export const businessCapabilityCatalog = {
     "task.manage",
     "task.viewAsSpectator",
   ],
+  library: [
+    "library.view", "library.download", "library.upload", "library.editMetadata",
+    "library.manageTags", "library.favorite", "library.share", "library.delete",
+    "library.accessProjectFile",
+  ],
   archive: [
     "archive.view",
     "archive.download",

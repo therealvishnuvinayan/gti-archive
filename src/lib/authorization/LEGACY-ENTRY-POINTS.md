@@ -1,5 +1,15 @@
 # Phase 1.5A legacy authorization entry-point inventory
 
+## Phase 1.5G Library update
+
+Library services, direct APIs, upload/finalize, signing, favorites and shared
+asset-tag mutations now use V2 authorization. The user confirmed restrictive
+SPM/JPM scope. See [LIBRARY.md](./LIBRARY.md) for current coverage, unresolved
+management/grant decisions, verification and remaining legacy boundaries.
+Historical Library rows and findings below describe the earlier inventory;
+they no longer represent the active Library access policy. Phase 1.5F Archive
+policies remain unchanged.
+
 ## Phase 1.5D governance update
 
 - `/projects/new` and `projects/governance-actions.ts` use the trusted session and
