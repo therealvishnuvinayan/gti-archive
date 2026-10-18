@@ -25,28 +25,10 @@ assert.ok(editGuardStart >= 0 && editMutationStart > editGuardStart);
 
 const editGuard = archives.slice(editGuardStart, editMutationStart);
 
-for (const snippet of [
-  "assertCanUseArchives(",
-  "assertCanAccessArchivedProjectFileAsset(",
-  "assertCanAccessManualArchiveFileAsset(",
-]) {
-  includes(editGuard, snippet, `Archive edit guard must include ${snippet}`);
-}
-
-for (const forbidden of [
-  "assertProjectAccess(",
-  "assertProjectTimestampVisibleForUser(",
-  "isProjectOwner(",
-  "isProjectExecutor(",
-  "isSuperAdminRole(",
-  "archivedById === user.id",
-  "uploadedById === user.id",
-]) {
-  assert.ok(
-    !editGuard.includes(forbidden),
-    `Archive editing must not be restricted by ${forbidden}`,
-  );
-}
+includes(editGuard, 'runArchiveOperation(user, "archive.editMetadata"', "Editing requires its own central capability");
+assert.ok(workspace.includes("{canEdit && <Button"));
+assert.ok(workspace.includes("{canDelete && <Button"));
+assert.ok(workspace.includes("{canShare && <ArchiveShareButton"));
 
 includes(
   archives,

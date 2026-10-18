@@ -1,3 +1,5 @@
+import { getCurrentUser } from "@/lib/auth";
+import { canArchive, archiveScopeForActor } from "@/lib/authorization/archive-rules";
 import {
   ArchiveAccessLevel,
   UserRole,
@@ -45,7 +47,6 @@ export type ManagedUserUpdateInput = {
   updatedById?: string | null;
 };
 
-const archiveAccessLevelValues = ["NONE", "FULL", "PARTIAL"] as const;
 
 function formatArchiveAccessDate(date: Date | null | undefined) {
   if (!date) {
@@ -188,7 +189,7 @@ function mapManagedUser(user: {
     } | null;
   }>;
 }): ManagedUserRecord {
-  const archiveAccessLevel = "FULL" as const;
+  const archiveAccessLevel = user.archiveAccess?.level ?? "NONE";
   const archiveAssetAccesses = (user.archiveAssetAccesses ?? [])
     .map(mapArchiveAssetAccess)
     .filter((asset): asset is ManagedArchiveAssetAccessRecord => Boolean(asset));
@@ -200,11 +201,19 @@ function mapManagedUser(user: {
     avatarUrl: user.avatarUrl,
     role: user.role,
     projectCreationAccessGranted: user.projectCreationAccessGranted,
-    canAccessArchives: true,
+    canAccessArchives: archiveAccessLevel !== "NONE",
     archiveAccessLevel,
     archiveAssetAccesses,
     status: getManagedUserStatus(user),
   };
+}
+
+async function presentManagedUser(user: Parameters<typeof mapManagedUser>[0]) {
+  const [reader, identity] = await Promise.all([getCurrentUser(), prisma.userAuthorization.findUnique({ where: { userId: user.id } })]);
+  const record = mapManagedUser(user);
+  const scope = archiveScopeForActor({ userId: user.id, businessRole: identity?.accountStatus === "ACTIVE" ? identity.businessRole : null });
+  return { ...record, canAccessArchives: scope.level !== "NONE", archiveAccessLevel: scope.level,
+    archiveAssetAccesses: reader && canArchive(reader, "archive.manageAccess") ? record.archiveAssetAccesses : [] };
 }
 
 export async function listUsersForPermissionManagement() {
@@ -274,7 +283,7 @@ export async function listUsersForPermissionManagement() {
     }),
   );
 
-  return users.map(mapManagedUser);
+  return Promise.all(users.map(presentManagedUser));
 }
 
 export async function getManagedUserPermissionRecord(userId: string) {
@@ -342,17 +351,7 @@ export async function getManagedUserPermissionRecord(userId: string) {
     }),
   );
 
-  return user ? mapManagedUser(user) : null;
-}
-
-function getRequestedArchiveAccessLevel(
-  input: Pick<ManagedUserUpdateInput, "role" | "archiveAccessLevel">,
-) {
-  if (!archiveAccessLevelValues.includes(input.archiveAccessLevel)) {
-    throw new Error("Choose a valid archive access level.");
-  }
-
-  return ArchiveAccessLevel.FULL;
+  return user ? presentManagedUser(user) : null;
 }
 
 export async function updateManagedUserPermissions(
@@ -381,7 +380,6 @@ export async function updateManagedUserPermissions(
         throw new Error("Protected Super Admin accounts cannot be changed here.");
       }
 
-      const archiveAccessLevel = getRequestedArchiveAccessLevel(input);
       await tx.user.update({
         where: {
           id: input.userId,
@@ -399,12 +397,7 @@ export async function updateManagedUserPermissions(
         },
       });
 
-      await tx.userArchiveAccess.upsert({
-        where: { userId: input.userId },
-        update: { level: archiveAccessLevel, grantedById: input.updatedById ?? undefined },
-        create: { userId: input.userId, level: archiveAccessLevel, grantedById: input.updatedById ?? undefined },
-      });
-      await tx.userArchiveAssetAccess.deleteMany({ where: { userId: input.userId } });
+      // Legacy profile edits never grant, revoke or clear V2 Archive resource access.
 
       return tx.user.findUniqueOrThrow({
         where: {
@@ -470,5 +463,5 @@ export async function updateManagedUserPermissions(
     }),
   );
 
-  return mapManagedUser(updatedUser);
+  return presentManagedUser(updatedUser);
 }

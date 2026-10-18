@@ -1,3 +1,4 @@
+import { canArchive } from "@/lib/authorization/archive-rules";
 import { redirect } from "next/navigation";
 
 import { ArchiveCategoryWorkspace } from "@/components/archives/archive-category-workspace";
@@ -80,6 +81,9 @@ export default async function ArchiveCategoryPage({
       }}
     >
       <ArchiveCategoryWorkspace
+        canEdit={canArchive(user, "archive.editMetadata")}
+        canDelete={canArchive(user, "archive.delete")}
+        canShare={canArchive(user, "archive.shareExternal")}
         categoryId={category.id}
         categoryTitle={category.name}
         categoryDescription={category.description}

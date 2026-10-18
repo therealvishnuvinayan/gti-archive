@@ -5,7 +5,7 @@ import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import {
   canAccessArchivesArea,
   canUploadArchiveFiles,
-  canManageArchiveCategoryAccess,
+  canManageArchiveCategories as canManageCategories,
   listArchiveCategorySummaries,
 } from "@/lib/archives";
 import { getUserDisplayName, requireUser } from "@/lib/auth";
@@ -20,7 +20,7 @@ export default async function ArchivesPage() {
 
   const summaries = await listArchiveCategorySummaries(user);
   const canUploadArchives = canUploadArchiveFiles(user);
-  const canManageArchiveCategories = canManageArchiveCategoryAccess(user);
+  const canManageArchiveCategories = canManageCategories(user);
 
   return (
     <DashboardLayout

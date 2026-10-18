@@ -1,5 +1,6 @@
 import { Prisma, PrismaClient } from "@prisma/client";
 import { activeProjectMutation, projectTransactionClient } from "./authorization/project-transaction";
+import { activeArchiveOperation } from "./authorization/archive-transaction";
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
@@ -172,7 +173,7 @@ export async function withPrismaRetry<T>(
   try {
     return await operation();
   } catch (error) {
-    if (activeProjectMutation()) throw error; // Never replay a partially executed mutation.
+    if (activeProjectMutation() || activeArchiveOperation()) throw error; // Never replay a partially executed mutation.
     if (!isPrismaConnectionError(error) || attempts <= 1) {
       throw error;
     }

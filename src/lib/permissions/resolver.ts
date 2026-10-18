@@ -1,3 +1,4 @@
+import { canArchive, archiveAccessLevel } from "@/lib/authorization/archive-rules";
 import {
   Prisma,
   type Project,
@@ -96,13 +97,6 @@ function hasProjectCollaboratorGrant(
   return getProjectCollaboratorGrant(user, project)?.[grantKey] === true;
 }
 
-function hasProjectArchiveAccessGrant(
-  user: PermissionUser,
-  project: ProjectPermissionContext,
-) {
-  return hasProjectCollaboratorGrant(user, project, "canAccessProjectArchives");
-}
-
 export function isProjectAdmin(user: Pick<PermissionUser, "role">) {
   return isGlobalProjectAdministrator(user);
 }
@@ -154,8 +148,12 @@ export function hasPermission(user: PermissionUser, permissionKey: PermissionKey
     const role = projectReadActor(user)?.businessRole;
     return role === "DIRECTOR" || role === "SENIOR_PROJECT_MANAGER" || role === "JUNIOR_PROJECT_MANAGER";
   }
-  // Archives are shared by every authenticated account, independent of role profiles.
-  if (permissionKey.startsWith("archive.")) return Boolean(user.id);
+  if (permissionKey.startsWith("archive.")) {
+    if (permissionKey === "archive.view") return canArchive(user, "archive.view");
+    if (permissionKey === "archive.download") return canArchive(user, "archive.download");
+    if (permissionKey === "archive.uploadFile") return canArchive(user, "archive.upload");
+    return false;
+  }
   return getBasePermissionSet(user).has(permissionKey);
 }
 
@@ -165,7 +163,7 @@ export function canCreateProjects(user: PermissionUser) {
 }
 
 export function getArchiveAccessLevel(user: PermissionUser): "NONE" | "FULL" | "PARTIAL" {
-  return user.id ? "FULL" as const : "NONE" as const;
+  return archiveAccessLevel(user);
 }
 
 export function canUseArchives(user: PermissionUser) {
@@ -213,7 +211,7 @@ export function assertCanUseArchives(
 }
 
 export function getUserPermissionSet(user: PermissionUser) {
-  return getBasePermissionSet(user);
+  return new Set([...getBasePermissionSet(user)].filter(key => !key.startsWith("archive.") || hasPermission(user, key)));
 }
 
 function hasProjectPermissionGrant(
@@ -293,6 +291,7 @@ export function hasProjectPermission(
   project: ProjectPermissionContext,
   permissionKey: PermissionKey,
 ) {
+  if (permissionKey.startsWith("archive.")) return hasPermission(user, permissionKey);
   // Compatibility flags never constitute a mutation grant. Domain services
   // resolve current identity/resource authority inside their V2 transaction.
   if (["project.view", "stage.view", "project.viewBudget", "project.viewParticipants", "chat.view", "compare.view", "file.view", "file.download"].includes(permissionKey)) {
@@ -350,26 +349,11 @@ export function hasProjectPermission(
       );
     case "compare.createComment":
       return canAddProjectCaptions(user, project);
-    case "archive.view":
-      return (
-        isProjectAdmin(user) ||
-        isProjectOwnerOrCoOwner(user, project) ||
-        hasProjectArchiveAccessGrant(user, project)
-      );
-    case "archive.download":
-      return (
-        isProjectAdmin(user) ||
-        isProjectOwnerOrCoOwner(user, project) ||
-        (hasProjectArchiveAccessGrant(user, project) &&
-          hasProjectCollaboratorGrant(user, project, "canDownloadFiles"))
-      );
-    case "archive.uploadFile":
-      return isProjectAdmin(user) || isProjectOwnerOrCoOwner(user, project);
     case "compare.view":
       return (
         isProjectAdmin(user) ||
         isProjectOwnerOrCoOwner(user, project) ||
-        hasProjectArchiveAccessGrant(user, project)
+        hasProjectCollaboratorGrant(user, project, "canAccessProjectArchives")
       );
   }
 

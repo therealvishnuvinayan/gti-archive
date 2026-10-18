@@ -1,6 +1,7 @@
 import "server-only";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { Prisma, PrismaClient } from "@prisma/client";
+import { activeArchiveOperation } from "./archive-transaction";
 
 /** Request-local transaction propagation for the existing native service graph.
  * No request can supply this context. Nested native transactions join the outer
@@ -22,7 +23,7 @@ export function inAuthorizedProjectMutation(user: { id: string }, projectId: str
 
 export function projectTransactionClient(rootPrisma: PrismaClient): PrismaClient { return new Proxy(rootPrisma, {
   get(target, property) {
-    const context = activeProjectMutation();
+    const context = activeProjectMutation() ?? activeArchiveOperation();
     if (context && property === "$transaction") {
       return async (operation: unknown) => {
         if (typeof operation === "function") return operation(context.tx);

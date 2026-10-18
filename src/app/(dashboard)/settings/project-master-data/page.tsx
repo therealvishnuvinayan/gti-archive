@@ -1,3 +1,4 @@
+import { canArchive } from "@/lib/authorization/archive-rules";
 import { redirect } from "next/navigation";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
@@ -26,6 +27,8 @@ export default async function ProjectMasterDataPage() {
         archiveCategories={masterData.archiveCategories}
         archiveCategoryAccessUsers={masterData.archiveCategoryAccessUsers}
         summary={masterData.summary}
+        canManageArchiveItems={canArchive(user, "archive.category.create")}
+        canDeleteArchiveItems={canArchive(user, "archive.category.delete")}
         canManageItems={hasPermission(user, "settings.manageMasterData")}
         canDeleteItems={hasPermission(user, "settings.deleteMasterData")}
       />

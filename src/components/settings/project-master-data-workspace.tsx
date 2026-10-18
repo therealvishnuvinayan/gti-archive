@@ -112,6 +112,8 @@ type ProjectMasterDataWorkspaceProps = {
   summary: ProjectMasterDataSummary;
   canManageItems: boolean;
   canDeleteItems: boolean;
+  canManageArchiveItems: boolean;
+  canDeleteArchiveItems: boolean;
 };
 
 type DeleteTarget = {
@@ -592,6 +594,7 @@ function MasterDataDrawer({
   mode,
   form,
   archiveCategories,
+  archiveCategoryAccessUsers,
   projectStatusGroups,
   iconPreviewSrc,
   iconUploadError,
@@ -909,6 +912,14 @@ function MasterDataDrawer({
                       </div>
                     </div>
 
+                    {archiveCategoryAccessUsers.length > 0 && <fieldset className="space-y-2">
+                      <legend className="text-sm font-semibold">Category access</legend>
+                      <p className="text-xs">No selection leaves the category unrestricted. Designer and Digital Lead still need file grants.</p>
+                      {archiveCategoryAccessUsers.map(user => <label key={user.id} className="flex gap-2 text-sm">
+                        <input type="checkbox" checked={form.allowedUserIds.includes(user.id)} onChange={event => onChange("allowedUserIds", event.target.checked ? [...form.allowedUserIds, user.id] : form.allowedUserIds.filter(id => id !== user.id))} />
+                        {user.name}
+                      </label>)}
+                    </fieldset>}
                     <label className="space-y-2">
                       <span className="block text-[13px] font-[700] text-[#2b352d]">
                         Sort Order
@@ -1063,6 +1074,7 @@ export function ProjectMasterDataWorkspace({
   summary,
   canManageItems,
   canDeleteItems,
+  canManageArchiveItems, canDeleteArchiveItems, archiveCategoryAccessUsers,
 }: ProjectMasterDataWorkspaceProps) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<MasterDataTab>(archiveOnly ? "archiveCategories" : "categories");
@@ -1089,7 +1101,7 @@ export function ProjectMasterDataWorkspace({
   }, [selectedIconPreviewSrc]);
 
   function openAddDrawer(tab: MasterDataTab) {
-    if (!canManageItems) {
+    if (!(activeTab === "archiveCategories" ? canManageArchiveItems : canManageItems)) {
       return;
     }
 
@@ -1108,7 +1120,7 @@ export function ProjectMasterDataWorkspace({
     tab: MasterDataTab,
     item: MasterDataTableItem,
   ) {
-    if (!canManageItems) {
+    if (!(activeTab === "archiveCategories" ? canManageArchiveItems : canManageItems)) {
       return;
     }
 
@@ -1369,7 +1381,7 @@ export function ProjectMasterDataWorkspace({
     tab: MasterDataTab,
     item: MasterDataTableItem,
   ) {
-    if (!canDeleteItems) {
+    if (!(activeTab === "archiveCategories" ? canDeleteArchiveItems : canDeleteItems)) {
       return;
     }
 
@@ -1443,7 +1455,7 @@ export function ProjectMasterDataWorkspace({
             {archiveOnly ? "Archive Categories" : "Project Master Data"}
           </h1>
           <p className="mt-3 max-w-[720px] text-[16px] leading-7 text-[#6f776f]">
-            {archiveOnly ? "Add, edit, activate, and delete archive categories. Every category is shared with all users." : "Manage reusable project categories, project statuses, project tags, asset tags, and archive categories."}
+            {archiveOnly ? "Add, edit, activate, and delete archive categories. Category restrictions and file grants control scoped access." : "Manage reusable project categories, project statuses, project tags, asset tags, and archive categories."}
           </p>
         </header>
 
@@ -1632,8 +1644,8 @@ export function ProjectMasterDataWorkspace({
               onAdd={() => openAddDrawer("archiveCategories")}
               onEdit={(item) => openEditDrawer("archiveCategories", item)}
               onDelete={(item) => handleDelete("archiveCategories", item)}
-              canManage={canManageItems}
-              canDelete={canDeleteItems}
+              canManage={canManageArchiveItems}
+              canDelete={canDeleteArchiveItems}
               pending={isPending}
             />
           </TabsContent>
@@ -1642,12 +1654,12 @@ export function ProjectMasterDataWorkspace({
       </section>
 
       <MasterDataDrawer
-        isOpen={canManageItems && drawerOpen}
+        isOpen={(activeTab === "archiveCategories" ? canManageArchiveItems : canManageItems) && drawerOpen}
         tab={activeTab}
         mode={dialogMode}
         form={form}
         archiveCategories={archiveCategories}
-        archiveCategoryAccessUsers={[]}
+        archiveCategoryAccessUsers={archiveCategoryAccessUsers}
         projectStatusGroups={projectStatusGroups}
         iconPreviewSrc={iconPreviewSrc}
         iconUploadError={iconUploadError}

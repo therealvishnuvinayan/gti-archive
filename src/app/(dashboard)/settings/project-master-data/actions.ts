@@ -1,4 +1,6 @@
 "use server";
+import { runArchiveOperation } from "@/lib/authorization/archive";
+import { canArchive, archiveCategoryWhere, archiveScopeForUser } from "@/lib/authorization/archive-rules";
 
 import { revalidatePath, revalidateTag } from "next/cache";
 
@@ -626,7 +628,8 @@ export async function saveAssetTagAction(input: SaveMasterDataInput) {
 }
 
 export async function saveArchiveCategoryAction(input: SaveMasterDataInput) {
-  const user = await requireUser();
+  const actor = await requireUser();
+  return runArchiveOperation(actor, input.id ? "archive.category.update" : "archive.category.create", input.id ? `category:${input.id}` : "root", async user => {
 
   const parsed = normalizeMasterDataInput(input);
 
@@ -638,8 +641,20 @@ export async function saveArchiveCategoryAction(input: SaveMasterDataInput) {
     return { error: "Archive category slug is required." };
   }
 
-  // Archive categories are always shared; legacy restrictions are cleared when saved.
-  parsed.allowedUserIds = [];
+  const current = parsed.id ? await prisma.archiveCategory.findUnique({ where: { id: parsed.id }, include: { allowedUsers: true } }) : null;
+  const currentGrants = current?.allowedUsers.map(row => row.userId).sort() ?? [];
+  if (input.allowedUserIds === undefined) parsed.allowedUserIds = currentGrants;
+  if (!canArchive(user, "archive.manageAccess")) {
+    if (JSON.stringify([...parsed.allowedUserIds].sort()) !== JSON.stringify(currentGrants)) {
+      return { error: "Category editing does not authorize access changes." };
+    }
+  }
+  if (parsed.parentId && !await prisma.archiveCategory.findFirst({ where: { AND: [{ id: parsed.parentId }, archiveCategoryWhere(archiveScopeForUser(user), false)] } })) {
+    return { error: "Parent archive category is not authorized." };
+  }
+  if (parsed.iconUrl?.startsWith(buildArchiveCategoryIconPrefix()) && parsed.iconUrl !== current?.iconUrl && !parsed.iconUrl.startsWith(`${buildArchiveCategoryIconPrefix()}${user.id}/`)) {
+    return { error: "Archive category icon is not owned by this session." };
+  }
 
   const descriptionError = validateMasterDataDescription(
     parsed.description,
@@ -737,6 +752,8 @@ export async function saveArchiveCategoryAction(input: SaveMasterDataInput) {
             },
           });
 
+      if (JSON.stringify([...parsed.allowedUserIds].sort()) !== JSON.stringify(currentGrants)) {
+      await runArchiveOperation(user, "archive.manageAccess", `category:${savedCategory.id}`, async () => {
       await tx.archiveCategoryAccess.deleteMany({
         where: {
           archiveCategoryId: savedCategory.id,
@@ -754,6 +771,8 @@ export async function saveArchiveCategoryAction(input: SaveMasterDataInput) {
         });
       }
 
+      });
+      }
       return savedCategory;
     }),
   );
@@ -770,6 +789,7 @@ export async function saveArchiveCategoryAction(input: SaveMasterDataInput) {
       name: category.name,
     },
   };
+  });
 }
 
 export async function setProjectCategoryStatusAction(input: ToggleMasterDataInput) {
@@ -874,7 +894,8 @@ export async function setAssetTagStatusAction(input: ToggleMasterDataInput) {
 }
 
 export async function setArchiveCategoryStatusAction(input: ToggleMasterDataInput) {
-  await requireUser();
+  const actor = await requireUser();
+  return runArchiveOperation(actor, "archive.category.update", `category:${input.id}`, async () => {
 
   const category = await withPrismaRetry(() =>
     prisma.archiveCategory.update({
@@ -896,6 +917,7 @@ export async function setArchiveCategoryStatusAction(input: ToggleMasterDataInpu
   revalidatePath(`/archives/${category.slug}`);
 
   return { success: true };
+  });
 }
 
 export async function deleteProjectCategoryAction(id: string) {
@@ -1109,7 +1131,8 @@ export async function deleteAssetTagAction(id: string) {
 }
 
 export async function deleteArchiveCategoryAction(id: string) {
-  await requireUser();
+  const actor = await requireUser();
+  return runArchiveOperation(actor, "archive.category.delete", `category:${id}`, async () => {
 
   const category = await withPrismaRetry(() =>
     prisma.archiveCategory.findUnique({
@@ -1167,4 +1190,5 @@ export async function deleteArchiveCategoryAction(id: string) {
   revalidatePath(`/archives/${category.slug}`);
 
   return { success: true };
+  });
 }

@@ -32,6 +32,10 @@ const taskFocusedRoleRestrictions = [
   "archive.upload",
   "archive.editMetadata",
   "archive.share",
+  "archive.shareExternal",
+  "archive.manageAccess",
+  "archive.publishFromProject",
+  "archive.category.delete",
   "archive.delete",
 ] as const satisfies readonly BusinessCapability[];
 
@@ -43,12 +47,15 @@ const fixedRoleRestrictions: Record<BusinessRole, readonly BusinessCapability[]>
     ...directorOnlyCapabilities,
     "archive.verify",
     "archive.delete",
+    "archive.category.delete",
   ],
   JUNIOR_PROJECT_MANAGER: [...directorOnlyCapabilities, "archive.verify"],
   DESIGNER: [
     ...directorOnlyCapabilities,
     ...taskFocusedRoleRestrictions,
     "archive.manageCategoriesFolders",
+    "archive.category.create",
+    "archive.category.update",
     "archive.verify",
   ],
   DIGITAL_LEAD: [...directorOnlyCapabilities, ...taskFocusedRoleRestrictions],
@@ -129,10 +136,15 @@ const eligibleCapabilities: Record<BusinessRole, readonly BusinessCapability[]> 
     "archive.editMetadata",
     "archive.manageCategoriesFolders",
     "archive.share",
+    "archive.shareExternal",
+    "archive.category.create",
+    "archive.category.update",
+    "archive.manageAccess",
+    "archive.publishFromProject",
   ],
   JUNIOR_PROJECT_MANAGER: projectManagerCapabilities,
   DESIGNER: taskFocusedCapabilities,
-  DIGITAL_LEAD: [...taskFocusedCapabilities, "archive.manageCategoriesFolders", "archive.verify"],
+  DIGITAL_LEAD: [...taskFocusedCapabilities, "archive.manageCategoriesFolders", "archive.category.create", "archive.category.update", "archive.verify"],
 };
 
 /** Pure eligibility assessment. Runtime policy must evaluate its requirements. */

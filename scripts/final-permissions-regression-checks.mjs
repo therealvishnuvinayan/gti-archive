@@ -47,8 +47,8 @@ includes(
 );
 includes(
   resolver,
-  'if (permissionKey.startsWith("archive.")) return Boolean(user.id);',
-  "Archive permissions must be available to every signed-in account",
+  'if (permissionKey === "archive.view") return canArchive(user, "archive.view");',
+  "Archive permissions must use trusted V2 role eligibility",
 );
 includes(
   resolver,

@@ -1,4 +1,5 @@
 import { canReadFullProject } from "@/lib/authorization/project-read-rules";
+import { canArchive } from "@/lib/authorization/archive-rules";
 import { runProjectMutation } from "@/lib/authorization/project-write";
 import { refreshProjectReader, requireProjectResourceRead } from "@/lib/authorization/project-read";
 import {
@@ -25,8 +26,6 @@ import {
 import { sendResendEmail } from "@/lib/email/resend";
 import {
   hasProjectPermission,
-  isProjectCoOwner,
-  isProjectOwner,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
@@ -59,7 +58,6 @@ import {
   createPresignedDownloadUrl,
   createPresignedPreviewUrl,
 } from "@/lib/storage/s3";
-import { isSuperAdminRole } from "@/lib/user-role-compatibility";
 import {
   ACCESSIBLE_WORKFLOW_STAGE_STATUSES,
   canOpenImplementedWorkflowStage,
@@ -735,11 +733,7 @@ export async function getStageSixWorkspaceData(
     participants: getParticipants(project),
     handoverRecipients: getHandoverRecipients(project),
     canManage: canManageStageSix(user, project),
-    canSaveArchive:
-      (isSuperAdminRole(user.role) ||
-        isProjectOwner(user, project) ||
-        isProjectCoOwner(user, project)) &&
-      hasProjectPermission(user, project, "project.completeArchive"),
+    canSaveArchive: canArchive(user, "archive.publishFromProject") && canReadFullProject(user, project),
     stageCompleted:
       stageStatus(project, ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER) ===
       ProjectWorkflowStageStatus.COMPLETED,

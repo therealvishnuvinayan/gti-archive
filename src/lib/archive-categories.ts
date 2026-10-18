@@ -1,6 +1,8 @@
+import { refreshProjectReader } from "@/lib/authorization/project-read";
+import { runArchiveOperation } from "@/lib/authorization/archive";
+import { archiveScopeForUser, archiveCategoryWhere, canArchive } from "@/lib/authorization/archive-rules";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import {
-  canUseArchives,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 
@@ -81,31 +83,15 @@ function mapArchiveCategory(category: {
   } satisfies ArchiveCategoryRecord;
 }
 
-function getAccessibleActiveCategoryWhere(
-  user?: ({ id: string } & PermissionUser) | null,
-) {
-  if (!user) {
-    return {
-      isActive: true,
-    };
-  }
-
-  if (!canUseArchives(user)) {
-    return {
-      id: "__no_access__",
-      isActive: true,
-    };
-  }
-
-  return { isActive: true };
-}
-
 export async function getActiveArchiveCategoryOptions(
   user?: ({ id: string } & PermissionUser) | null,
 ): Promise<ArchiveCategoryOption[]> {
+  const fresh = await refreshProjectReader(user ?? undefined);
+  if (!canArchive(fresh, "archive.view")) return [];
+  return runArchiveOperation(fresh, "archive.view", "root", async user => {
   const categories = await withPrismaRetry(() =>
     prisma.archiveCategory.findMany({
-      where: getAccessibleActiveCategoryWhere(user),
+      where: archiveCategoryWhere(archiveScopeForUser(user)),
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
       include: {
         parent: {
@@ -134,9 +120,10 @@ export async function getActiveArchiveCategoryOptions(
       iconKey: mapped.iconKey,
       color: mapped.color,
       parentId: mapped.parentId,
-      parentName: mapped.parentName,
+      parentName: mapped.parentId && categories.some(row => row.id === mapped.parentId) ? mapped.parentName : null,
       sortOrder: mapped.sortOrder,
     };
+  });
   });
 }
 
@@ -147,10 +134,14 @@ export async function getArchiveCategoryBySlug(slug: string) {
     return null;
   }
 
+  const user = await refreshProjectReader();
+  if (!canArchive(user, "archive.view")) return null;
+  return runArchiveOperation(user, "archive.view", "root", async user => {
   const category = await withPrismaRetry(() =>
-    prisma.archiveCategory.findUnique({
+    prisma.archiveCategory.findFirst({
       where: {
         slug: normalizedSlug,
+        ...archiveCategoryWhere(archiveScopeForUser(user)),
       },
       include: {
         parent: {
@@ -172,5 +163,9 @@ export async function getArchiveCategoryBySlug(slug: string) {
     }),
   );
 
-  return category ? mapArchiveCategory(category) : null;
+  if (!category) return null;
+  const visible = await prisma.archiveCategory.findMany({ where: archiveCategoryWhere(archiveScopeForUser(user)), select: { id: true } });
+  const ids = new Set(visible.map(row => row.id));
+  return mapArchiveCategory({ ...category, parent: category.parentId && ids.has(category.parentId) ? category.parent : null, children: category.children.filter(row => ids.has(row.id)), allowedUsers: canArchive(user, "archive.manageAccess") ? category.allowedUsers : [] });
+  });
 }

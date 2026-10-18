@@ -398,8 +398,8 @@ export async function getPermissionProfileSnapshotForUser(
   return {
     effectivePermissions,
     rolePermissions,
-    archiveAccessGranted: true,
-    archiveAccessLevel: "FULL",
+    archiveAccessGranted: false,
+    archiveAccessLevel: "NONE",
   };
 }
 

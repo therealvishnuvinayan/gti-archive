@@ -1,4 +1,5 @@
 "use client";
+import { ArchiveAccessButton } from "./archive-access-button";
 
 import { useMemo, useState, useTransition } from "react";
 import {
@@ -56,6 +57,9 @@ type ArchiveCategoryWorkspaceProps = {
   items: ArchivedProjectFileRecord[];
   initialSearch?: string;
   canUploadArchives: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
+  canShare: boolean;
   currentUserDisplayName: string;
 };
 
@@ -194,7 +198,7 @@ export function ArchiveCategoryWorkspace({
   categoryColor,
   items,
   initialSearch = "",
-  canUploadArchives,
+  canUploadArchives, canEdit, canDelete, canShare,
   currentUserDisplayName,
 }: ArchiveCategoryWorkspaceProps) {
   const router = useRouter();
@@ -368,7 +372,7 @@ export function ArchiveCategoryWorkspace({
                 {formatArchiveCategoryPassportTitle(categoryTitle)}
               </h1>
             </div>
-            <RichTextContent value={categoryDescription} fallback="Allowed users can view, edit information for, or download archived files in this category." className="mt-3 max-w-[760px] text-[15px] leading-6 text-[#5f695f]" />
+            <RichTextContent value={categoryDescription} fallback="Authorized users can locate and download archived files in this category." className="mt-3 max-w-[760px] text-[15px] leading-6 text-[#5f695f]" />
           </div>
           <ArchiveUploadButton
             canUploadAssets={canUploadArchives}
@@ -613,11 +617,12 @@ export function ArchiveCategoryWorkspace({
                           Download
                         </a>
                       </Button>
-                      <ArchiveShareButton
+                      {canShare && <ArchiveAccessButton fileId={item.id} />}
+                      {canShare && <ArchiveShareButton
                         archivedFileId={item.id}
                         fileName={item.finalArchiveFileName}
-                      />
-                      <Button
+                      />}
+                      {canEdit && <Button
                         type="button"
                         variant="secondary"
                         onClick={() => setEditingArchiveItem(item)}
@@ -625,8 +630,8 @@ export function ArchiveCategoryWorkspace({
                       >
                         <Pencil className="h-4 w-4 text-brand" />
                         Edit
-                      </Button>
-                      <Button
+                      </Button>}
+                      {canDelete && <Button
                         type="button"
                         variant="secondary"
                         onClick={() => { setDeleteError(undefined); setDeleteTarget(item); }}
@@ -634,7 +639,7 @@ export function ArchiveCategoryWorkspace({
                       >
                         <Trash2 className="h-4 w-4" />
                         Delete
-                      </Button>
+                      </Button>}
                       {item.artworkMetadata ? (
                         <button
                           type="button"
