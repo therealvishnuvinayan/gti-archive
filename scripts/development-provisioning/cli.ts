@@ -5,38 +5,19 @@ import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import { PrismaClient } from "@prisma/client";
 import { AuthorizationMutationError } from "../../src/lib/authorization/assignment-transaction";
-import { accounts, approvedTarget, audience, confirmation, environmentName, manifestFingerprint, ProvisioningError, requireProvisioning } from "./accounts";
+import { accounts, approvedTarget, audience, confirmation, environmentName, manifestFingerprint, parseProvisioningArguments, provisioningSteps, ProvisioningError, requireProvisioning, requireSharedTestPasswordAllowed } from "./accounts";
 import { applySignedSetup, assignRemaining, databasePreflight, digest, PartialAssignmentError, provisionIdentities, publicState, setupTarget, type Manifest } from "./core";
-import { terminalInput } from "./terminal";
+import { identityPasswordInput, terminalInput } from "./terminal";
 import { createHash } from "node:crypto";
 
-const steps = ["identities", "bootstrap-director", "bootstrap-technical", "business-roles", "technical-roles"] as const;
-type Step = typeof steps[number];
 const help = `Private FLUX development provisioning (no emails, no runtime permission activation).
 Usage: pnpm users:v2 <plan|apply|verify> --environment ${environmentName}
-  [--step ${steps.join("|")}] [--operator-email <approved account>]
+  [--step ${provisioningSteps.join("|")}] [--operator-email <approved account>]
   [--approval-file <absolute signed-envelope path>] [--reason <non-secret reason>]
+  [--shared-test-password] (apply --step identities only; approved empty development target)
 apply requires a real local TTY, the exact target/manifest confirmation, and a step.
 Passwords and existing application session tokens are entered only at masked prompts.
 No --password, --session, --yes, custom database URL, or signing-key option exists.`;
-
-function parseArguments(args: string[]) {
-  if (args.length === 0 || (args.length === 1 && args[0] === "--help")) { console.log(help); return null; }
-  const [mode, ...rest] = args;
-  requireProvisioning(["plan", "apply", "verify"].includes(mode), "INVALID_MODE_USE_HELP");
-  const allowed = new Set(["--environment", "--step", "--operator-email", "--approval-file", "--reason"]);
-  const options: Record<string, string> = {};
-  for (let index = 0; index < rest.length; index += 2) {
-    const key = rest[index], value = rest[index + 1];
-    requireProvisioning(allowed.has(key) && !(key in options) && value && !value.startsWith("--"), "UNSUPPORTED_OR_DUPLICATE_ARGUMENT");
-    options[key] = value;
-  }
-  const step = options["--step"] as Step | undefined;
-  requireProvisioning(!step || steps.includes(step), "INVALID_STEP");
-  requireProvisioning(mode !== "apply" || step, "EXPLICIT_APPLY_STEP_REQUIRED");
-  requireProvisioning(options["--environment"] === environmentName, "DEVELOPMENT_ENVIRONMENT_REQUIRED");
-  return { mode, options, step };
-}
 
 function protectedFile(path: string, repository: string) {
   requireProvisioning(isAbsolute(path), "PROTECTED_FILE_REQUIRES_ABSOLUTE_PATH");
@@ -85,11 +66,14 @@ function checkSchema(repository: string, direct: URL) {
 }
 
 async function main() {
-  const parsed = parseArguments(process.argv.slice(2));
-  if (!parsed) return;
+  const parsed = parseProvisioningArguments(process.argv.slice(2));
+  if (!parsed) { console.log(help); return; }
   const { mode, options, step } = parsed;
   const repository = realpathSync(process.env.FLUX_PROVISION_REPOSITORY ?? "missing-repository");
   const target = approvedTarget(process.env.DATABASE_URL ?? "", options["--environment"], process.env.NODE_ENV);
+  const sharedTestPassword = parsed.sharedTestPassword ? { databaseUrl: process.env.DATABASE_URL ?? "",
+    environment: options["--environment"], nodeEnvironment: process.env.NODE_ENV } : undefined;
+  if (sharedTestPassword) requireSharedTestPasswordAllowed(sharedTestPassword);
   const manifest = migrationManifest(repository);
   const authorizationSql = readFileSync(join(repository, "prisma/migrations/20261018120000_v2_authorization_foundation/migration.sql"), "utf8");
   const direct = new URL(target.direct);
@@ -102,6 +86,7 @@ async function main() {
     const preflight = await databasePreflight(reader, manifest, authorizationSql);
     requireProvisioning(preflight.identity.database === "neondb" && preflight.identity.schema === "public" && preflight.identity.major === 18,
       "DATABASE_IDENTITY_OR_VERSION_MISMATCH");
+    if (sharedTestPassword) requireProvisioning(preflight.state.users.length === 0, "SHARED_PASSWORD_REQUIRES_EMPTY_ACCOUNTS_REVIEW_EXISTING_STATE");
     checkSchema(repository, direct);
     let signing: string;
     try { trustedKey(repository); signing = "PUBLIC_VERIFICATION_KEY_CONFIGURED; independent issuer approval still required"; }
@@ -151,9 +136,7 @@ async function main() {
     checkSchema(repository, direct);
     writer = new PrismaClient({ datasourceUrl: direct.toString(), log: [] });
     if (step === "identities") {
-      const result = await provisionIdentities(writer, async (email) => ({
-        password: await terminalInput(`Unique password for ${email}`, true), confirmation: await terminalInput("Confirm password", true),
-      }));
+      const result = await provisionIdentities(writer, (email) => identityPasswordInput(sharedTestPassword ? undefined : email), sharedTestPassword);
       // User has no creation-audit model. This safe operator receipt complements, but does not replace, V2 role audit records.
       console.log(JSON.stringify({ event: "IDENTITIES_PROVISIONED", operator, environment: environmentName, manifestFingerprint, ...result }));
     } else if (setup) {

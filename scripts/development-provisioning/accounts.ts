@@ -54,3 +54,43 @@ export function approvedTarget(raw: string, environment: string, nodeEnvironment
   requireProvisioning(endpointFingerprint(direct) === "5b001dbfcdb263fa", "DATABASE_NOT_ALLOWLISTED");
   return { pooled: url, direct };
 }
+
+export type SharedTestPasswordContext = { databaseUrl: string; environment: string; nodeEnvironment?: string };
+
+export function requireSharedTestPasswordAllowed(context: SharedTestPasswordContext, accountManifest = accounts) {
+  approvedTarget(context.databaseUrl, context.environment, context.nodeEnvironment);
+  requireProvisioning(context.nodeEnvironment === "development", "SHARED_PASSWORD_DEVELOPMENT_ONLY");
+  // Pin the approved identities, names and intended roles independently of the mutable source manifest digest.
+  const fingerprint = createHash("sha256").update(JSON.stringify(accountManifest)).digest("hex").slice(0, 16);
+  requireProvisioning(fingerprint === "6c64549f4682ae1b" && accountManifest.length === 9 &&
+    accountManifest.every((account) => /^[^@\s]+@example\.test$/.test(account.email)), "SHARED_PASSWORD_MANIFEST_NOT_APPROVED");
+}
+
+export const provisioningSteps = ["identities", "bootstrap-director", "bootstrap-technical", "business-roles", "technical-roles"] as const;
+type Step = typeof provisioningSteps[number];
+
+export function parseProvisioningArguments(args: string[]) {
+  if (args.length === 0 || (args.length === 1 && args[0] === "--help")) return null;
+  const [mode, ...rest] = args;
+  requireProvisioning(["plan", "apply", "verify"].includes(mode), "INVALID_MODE_USE_HELP");
+  const allowed = new Set(["--environment", "--step", "--operator-email", "--approval-file", "--reason"]);
+  const options: Record<string, string> = {};
+  let sharedTestPassword = false;
+  for (let index = 0; index < rest.length;) {
+    const key = rest[index++];
+    if (key === "--shared-test-password") {
+      requireProvisioning(!sharedTestPassword, "UNSUPPORTED_OR_DUPLICATE_ARGUMENT");
+      sharedTestPassword = true;
+      continue;
+    }
+    const value = rest[index++];
+    requireProvisioning(allowed.has(key) && !(key in options) && value && !value.startsWith("--"), "UNSUPPORTED_OR_DUPLICATE_ARGUMENT");
+    options[key] = value;
+  }
+  const step = options["--step"] as Step | undefined;
+  requireProvisioning(!step || provisioningSteps.includes(step), "INVALID_STEP");
+  requireProvisioning(mode !== "apply" || step, "EXPLICIT_APPLY_STEP_REQUIRED");
+  requireProvisioning(options["--environment"] === environmentName, "DEVELOPMENT_ENVIRONMENT_REQUIRED");
+  requireProvisioning(!sharedTestPassword || (mode === "apply" && step === "identities"), "SHARED_PASSWORD_IDENTITIES_APPLY_ONLY");
+  return { mode, options, step, sharedTestPassword };
+}

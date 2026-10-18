@@ -4,7 +4,7 @@ import { hashAuthPassword, normalizeAuthEmail, verifyAuthPassword } from "../../
 import { getPasswordValidationErrors } from "../../src/lib/password-rules";
 import { createDirectorBootstrapInvoker, createInitialTechnicalAdministratorInvoker } from "../../src/lib/authorization/director-bootstrap";
 import { createRoleAssignmentService } from "../../src/lib/authorization/role-assignment-service";
-import { accounts, audience, requireProvisioning } from "./accounts";
+import { accounts, audience, requireProvisioning, requireSharedTestPasswordAllowed, type SharedTestPasswordContext } from "./accounts";
 
 export class PartialAssignmentError extends Error {
   constructor(readonly completed: readonly string[], readonly attempted: string | null) {
@@ -131,22 +131,37 @@ export async function databasePreflight(db: PrismaClient, manifest: Manifest, au
 }
 
 /** All missing identities commit together. Existing identities/passwords are never rewritten. */
-export async function provisionIdentities(db: PrismaClient, passwordFor: (email: string) => Promise<{ password: string; confirmation: string }>) {
+export async function provisionIdentities(db: PrismaClient, passwordFor: (email: string) => Promise<{ password: string; confirmation: string }>,
+  sharedTestPassword?: SharedTestPasswordContext) {
+  if (sharedTestPassword) requireSharedTestPasswordAllowed(sharedTestPassword);
   const before = await inspectState(db);
+  if (sharedTestPassword) requireProvisioning(before.users.length === 0, "SHARED_PASSWORD_REQUIRES_EMPTY_ACCOUNTS_REVIEW_EXISTING_STATE");
   const existing = await db.user.findMany({ select: { passwordHash: true } });
   const hashes = existing.map((user) => user.passwordHash);
   const pending: Array<{ name: string; email: string; passwordHash: string }> = [];
-  for (const account of accounts.filter((item) => !before.users.some((user) => user.email === item.email))) {
-    const secret = await passwordFor(account.email);
-    try {
-      validatePassword(secret.password, secret.confirmation, account.email);
-      requireProvisioning(!hashes.some((hash) => verifyAuthPassword(secret.password, hash)), "PASSWORD_MUST_BE_UNIQUE_PER_ACCOUNT");
-      const passwordHash = hashAuthPassword(secret.password);
-      hashes.push(passwordHash);
-      pending.push({ name: account.name, email: account.email, passwordHash });
-    } finally { secret.password = ""; secret.confirmation = ""; }
-  }
   try {
+    if (sharedTestPassword) {
+      const secret = await passwordFor(accounts[0].email);
+      try {
+        requireProvisioning(secret.password === secret.confirmation, "PASSWORD_CONFIRMATION_MISMATCH");
+        requireProvisioning(getPasswordValidationErrors(secret.password).length === 0, "APPLICATION_PASSWORD_POLICY_FAILED");
+        requireProvisioning(secret.password.length >= 8 && secret.password.length <= 256 && secret.password.trim() === secret.password &&
+          !/[\x00-\x1f\x7f]/.test(secret.password), "USE_8_TO_256_CHARACTERS_WITHOUT_CONTROL_CHARACTERS");
+        // Hash independently per identity; never reuse a salted hash or retain plaintext for the write transaction.
+        for (const account of accounts) pending.push({ name: account.name, email: account.email, passwordHash: hashAuthPassword(secret.password) });
+      } finally { secret.password = ""; secret.confirmation = ""; }
+    } else {
+      for (const account of accounts.filter((item) => !before.users.some((user) => user.email === item.email))) {
+        const secret = await passwordFor(account.email);
+        try {
+          validatePassword(secret.password, secret.confirmation, account.email);
+          requireProvisioning(!hashes.some((hash) => verifyAuthPassword(secret.password, hash)), "PASSWORD_MUST_BE_UNIQUE_PER_ACCOUNT");
+          const passwordHash = hashAuthPassword(secret.password);
+          hashes.push(passwordHash);
+          pending.push({ name: account.name, email: account.email, passwordHash });
+        } finally { secret.password = ""; secret.confirmation = ""; }
+      }
+    }
     return await db.$transaction(async (tx) => {
       await tx.$executeRawUnsafe("SET LOCAL lock_timeout = '5s'");
       await tx.$executeRawUnsafe('LOCK TABLE "User" IN SHARE ROW EXCLUSIVE MODE');

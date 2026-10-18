@@ -1,6 +1,14 @@
 import { stdin, stdout } from "node:process";
 import { ProvisioningError, requireProvisioning } from "./accounts";
 
+export async function identityPasswordInput(email?: string) {
+  let password = "";
+  try {
+    password = await terminalInput(email ? `Unique password for ${email}` : "Shared development password for all nine accounts", true);
+    return { password, confirmation: await terminalInput("Confirm password", true) };
+  } finally { password = ""; }
+}
+
 // No readline history, command arguments, files or environment variables carry secrets.
 // Raw input also prevents a pasted multiline secret from being echoed by the TTY.
 export function terminalInput(label: string, secret = false): Promise<string> {

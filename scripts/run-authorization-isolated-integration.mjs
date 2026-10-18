@@ -261,19 +261,21 @@ function checkProvisioningTerminal(terminalModule) {
 import base64, os, pty, select, subprocess, sys, time
 node, module = sys.argv[1:]
 code = """
-const {terminalInput}=require(process.argv[1]);
+const {terminalInput,identityPasswordInput}=require(process.argv[1]);
 (async()=>{const before=!!process.stdin.isRaw;
- const first=await terminalInput('Secret',true),second=await terminalInput('Confirm',true);
+ const {password:first,confirmation:second}=process.argv[2]==='shared-confirmed'
+   ?await identityPasswordInput()
+   :{password:await terminalInput('Secret',true),confirmation:await terminalInput('Confirm',true)};
  if(first!==second||!!process.stdin.isRaw!==before)throw Error('TERMINAL_ASSERTION_FAILED');
  console.log('TERMINAL_PASS');
 })().catch(e=>{console.log(e.code||'TERMINAL_FAILURE');process.exitCode=1;});
 """
-for scenario in ['confirmed','cancelled','multiline']:
+for scenario in ['confirmed','cancelled','multiline','shared-confirmed']:
     master, slave = pty.openpty()
-    process = subprocess.Popen([node,'-e',code,module],stdin=slave,stdout=slave,stderr=slave)
+    process = subprocess.Popen([node,'-e',code,module,scenario],stdin=slave,stdout=slave,stderr=slave)
     os.close(slave)
     output = bytearray()
-    secret = base64.urlsafe_b64encode(os.urandom(24))
+    secret = b'A'+os.urandom(2).hex().encode()+b'@12' if scenario=='shared-confirmed' else base64.urlsafe_b64encode(os.urandom(24))
     def until(marker):
         deadline=time.monotonic()+10
         while marker not in output:
@@ -285,13 +287,15 @@ for scenario in ['confirmed','cancelled','multiline']:
                 if not chunk: raise RuntimeError('Terminal fixture ended unexpectedly')
                 output.extend(chunk)
     try:
-        until(b'Secret: ')
-        if scenario=='confirmed':
+        until(b'Shared development password for all nine accounts: ' if scenario=='shared-confirmed' else b'Secret: ')
+        if scenario in ['confirmed','shared-confirmed']:
             os.write(master,secret+b'x\x7f\r')
-            until(b'Confirm: ')
+            until(b'Confirm password: ' if scenario=='shared-confirmed' else b'Confirm: ')
             os.write(master,secret+b'\r')
             until(b'TERMINAL_PASS')
             if b'*' not in output: raise RuntimeError('Masking absent')
+            if scenario=='shared-confirmed' and (output.count(b'Shared development password for all nine accounts: ')!=1 or output.count(b'Confirm password: ')!=1):
+                raise RuntimeError('Expected exactly one shared password prompt and one confirmation')
         elif scenario=='cancelled':
             os.write(master,b'\x03')
             until(b'OPERATOR_CANCELLED')
@@ -299,11 +303,12 @@ for scenario in ['confirmed','cancelled','multiline']:
             os.write(master,secret+b'\n'+secret+b'\n')
             until(b'MULTILINE_INPUT_REJECTED')
         if secret in output: raise RuntimeError('Secret echoed by terminal')
+        if any(secret in arg.encode() for arg in process.args): raise RuntimeError('Secret present in command arguments')
         process.wait(timeout=5)
     finally:
         if process.poll() is None: process.kill(); process.wait()
         os.close(master)
-print('PASS: actual PTY masking, confirmation, backspace, cancellation, multiline rejection and terminal restoration; no fixture secrets printed.')
+print('PASS: actual PTY masking, one shared password prompt plus one confirmation, backspace, cancellation, multiline rejection and terminal restoration; no fixture secrets printed or supplied in command arguments.')
 `;
   console.log(run("python3", ["-c", program, process.execPath, terminalModule], { timeout: 45000 }));
 }

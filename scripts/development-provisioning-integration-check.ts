@@ -5,9 +5,10 @@ import { readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { PrismaClient } from "@prisma/client";
-import { accounts, approvedTarget, audience, environmentName } from "./development-provisioning/accounts";
+import { accounts, approvedTarget, audience, environmentName, parseProvisioningArguments, requireSharedTestPasswordAllowed } from "./development-provisioning/accounts";
 import { applySignedSetup, assignRemaining, databasePreflight, digest, inspectState, PartialAssignmentError, provisionIdentities, setupTarget, validatePassword } from "./development-provisioning/core";
 import { hashAuthPassword, normalizeAuthEmail, verifyAuthPassword } from "../src/lib/auth-password";
+import { getPasswordValidationErrors, MIN_PASSWORD_LENGTH } from "../src/lib/password-rules";
 import { createRoleAssignmentService } from "../src/lib/authorization/role-assignment-service";
 import { terminalInput } from "./development-provisioning/terminal";
 
@@ -89,6 +90,89 @@ async function run() {
   assert.throws(() => approvedTarget(fixtureUrl.toString(), "production"));
   assert.throws(() => approvedTarget(fixtureUrl.toString(), environmentName, "production"));
 
+  check = "shared password target, manifest and command guards";
+  const sharedContext = { databaseUrl: fixtureUrl.toString(), environment: environmentName, nodeEnvironment: "development" };
+  requireSharedTestPasswordAllowed(sharedContext); // Metadata validation only; db remains the private disposable socket client.
+  const invalidContexts = [
+    ...["production", "test", undefined].map((nodeEnvironment) => ({ ...sharedContext, nodeEnvironment })),
+    ...["production", "unknown", "flux-v2-dev/other"].map((environment) => ({ ...sharedContext, environment })),
+    ...[(u: URL) => { u.hostname = "unknown.invalid"; }, (u: URL) => { u.pathname = "/other"; },
+      (u: URL) => { u.hostname = u.hostname.replace("-pooler.", "."); },
+      (u: URL) => { u.searchParams.set("host", "production.invalid"); }].map((mutate) => {
+      const u = new URL(fixtureUrl); mutate(u); return { ...sharedContext, databaseUrl: u.toString() };
+    }),
+  ];
+  for (const context of invalidContexts) {
+    assert.throws(() => requireSharedTestPasswordAllowed(context));
+    let prompted = false;
+    await assert.rejects(provisionIdentities(db, async () => { prompted = true; throw new Error("Unexpected prompt"); }, context));
+    assert.ok(!prompted && await db.user.count() === 0);
+  }
+  for (const changed of [accounts.slice(1), [...accounts, accounts[0]],
+    accounts.map((account, index) => index ? account : { ...account, email: "different@example.test" }),
+    accounts.map((account, index) => index ? account : { ...account, email: "director@example.invalid" }),
+    accounts.map((account, index) => index ? account : { ...account, name: "Different identity" }),
+    accounts.map((account, index) => index ? account : { ...account, businessRole: null }),
+  ]) assert.throws(() => requireSharedTestPasswordAllowed(sharedContext, changed));
+  const identityArgs = ["apply", "--environment", environmentName, "--step", "identities"];
+  assert.equal(parseProvisioningArguments(identityArgs)?.sharedTestPassword, false);
+  assert.equal(parseProvisioningArguments([...identityArgs, "--shared-test-password"])?.sharedTestPassword, true);
+  assert.equal(parseProvisioningArguments(["apply", "--shared-test-password", ...identityArgs.slice(1)])?.sharedTestPassword, true);
+  const argumentFixture = secret(); // Never supplied to a process argument; parser rejection tests use memory only.
+  for (const args of [[...identityArgs, "--shared-test-password", "--shared-test-password"],
+    [...identityArgs, "--shared-test-password", argumentFixture], [...identityArgs, "--password", argumentFixture],
+    [...identityArgs, `--shared-test-password=${argumentFixture}`],
+    ...["plan", "verify"].map((mode) => [mode, ...identityArgs.slice(1), "--shared-test-password"]),
+    ...["bootstrap-director", "bootstrap-technical", "business-roles", "technical-roles"].map((step) =>
+      ["apply", "--environment", environmentName, "--step", step, "--shared-test-password"]),
+  ]) {
+    assert.throws(() => parseProvisioningArguments(args), (error: unknown) =>
+      error instanceof Error && !error.message.includes(argumentFixture));
+  }
+
+  check = "shared eight-character password, confirmation, independent salts and login compatibility";
+  const sharedSecret = `A${randomBytes(2).toString("hex")}@12`; // Random eight-character fixture; no configured password in source.
+  assert.equal(sharedSecret.length, 8);
+  assert.throws(() => validatePassword(sharedSecret, sharedSecret, accounts[0].email)); // Default provisioning policy remains strict.
+  for (const [password, confirmation] of [[sharedSecret, secret()], [sharedSecret.slice(0, 7), sharedSecret.slice(0, 7)],
+    [sharedSecret.toLowerCase(), sharedSecret.toLowerCase()], [" "+sharedSecret, " "+sharedSecret],
+    [sharedSecret+"\n", sharedSecret+"\n"], [sharedSecret.repeat(33), sharedSecret.repeat(33)]]) {
+    await assert.rejects(provisionIdentities(db, async () => ({ password, confirmation }), sharedContext));
+    assert.equal(await db.user.count(), 0);
+  }
+  let sharedPrompts = 0;
+  const entered = { password: sharedSecret, confirmation: sharedSecret };
+  const logEntries: string[] = [], originalLogs = { log: console.log, warn: console.warn, error: console.error };
+  const capture = (...values: unknown[]) => { logEntries.push(JSON.stringify(values)); };
+  try {
+    console.log = capture; console.warn = capture; console.error = capture;
+    const result = await provisionIdentities(db, async () => { sharedPrompts++; return entered; }, sharedContext);
+    assert.ok(result.created.length === 9 && result.retained === 0 && !JSON.stringify(result).includes(sharedSecret));
+  } finally { Object.assign(console, originalLogs); }
+  assert.ok(sharedPrompts === 1 && entered.password === "" && entered.confirmation === "");
+  assert.ok(!logEntries.join("").includes(sharedSecret));
+  const sharedUsers = await db.user.findMany();
+  assert.equal(sharedUsers.length, 9);
+  assert.equal(new Set(sharedUsers.map((user) => user.passwordHash)).size, 9);
+  assert.equal(new Set(sharedUsers.map((user) => user.passwordHash.split(":")[0])).size, 9);
+  for (const user of sharedUsers) {
+    const loginUser = await db.user.findUniqueOrThrow({ where: { email: normalizeAuthEmail(` ${user.email.toUpperCase()} `) } });
+    assert.ok(verifyAuthPassword(sharedSecret, loginUser.passwordHash));
+    assert.ok(user.role === "USER" && !user.projectCreationAccessGranted && user.passwordHash !== sharedSecret);
+  }
+  assert.ok(await db.userAuthorization.count() === 0 && await db.userAuthorizationChange.count() === 0 && await db.session.count() === 0);
+  assert.ok(preserved === await unrelatedSnapshot());
+  const sharedSnapshot = digest(sharedUsers);
+  await assert.rejects(provisionIdentities(db, async () => { sharedPrompts++; return entered; }, sharedContext));
+  assert.ok(sharedPrompts === 1 && digest(await db.user.findMany()) === sharedSnapshot);
+  // Remove only this disposable suite's own new fixture identities, before running the existing normal-mode suite.
+  await db.user.deleteMany({ where: { id: { in: sharedUsers.map((user) => user.id) } } });
+  assert.equal(await db.user.count(), 0);
+  assert.equal(MIN_PASSWORD_LENGTH, 6);
+  assert.deepEqual(getPasswordValidationErrors(sharedSecret.slice(0, 5) + "2"), []);
+  assert.ok(getPasswordValidationErrors(sharedSecret.toLowerCase()).length > 0);
+  assert.ok(getPasswordValidationErrors(sharedSecret.replace(/[0-9]/g, "x")).length > 0);
+
   check = "password policy, confirmation, salt and verification";
   const sample = secret(), first = hashAuthPassword(sample), second = hashAuthPassword(sample);
   validatePassword(sample, sample, accounts[0].email);
@@ -106,12 +190,16 @@ async function run() {
   await db.$executeRawUnsafe('CREATE TRIGGER provisioning_test_reject BEFORE INSERT ON "User" FOR EACH ROW EXECUTE FUNCTION provisioning_test_reject()');
   await assert.rejects(provisionIdentities(db, passwords()));
   assert.ok(await db.user.count() === 0);
+  await assert.rejects(provisionIdentities(db, async () => ({ password: sharedSecret, confirmation: sharedSecret }), sharedContext));
+  assert.ok(await db.user.count() === 0);
   await db.$executeRawUnsafe('DROP TRIGGER provisioning_test_reject ON "User"');
   await db.$executeRawUnsafe('DROP FUNCTION provisioning_test_reject()');
 
   check = "partial identity resume and conflicting records";
   const retainedUser = await db.user.create({ data: { name: accounts[0].name, email: accounts[0].email,
     passwordHash: hashAuthPassword(passwordSets[0].get(accounts[0].email)!), role: "USER" } });
+  await assert.rejects(provisionIdentities(db, async () => { sharedPrompts++; return entered; }, sharedContext));
+  assert.ok(sharedPrompts === 1 && digest(await db.user.findUniqueOrThrow({ where: { id: retainedUser.id } })) === digest(retainedUser));
   await assert.rejects(db.$transaction(async (tx) => {
     await tx.user.update({ where: { id: retainedUser.id }, data: { role: "ADMIN" } });
     await inspectState(tx); // Rejection rolls back the conflicting test fixture.
@@ -219,6 +307,7 @@ async function run() {
   assert.ok(final.state.directors === 1 && final.state.technicalAdministrators === 2 && final.state.users.length === 9);
   assert.ok(preserved === await unrelatedSnapshot());
   assert.ok((await db.user.findMany({ select: { role: true } })).every((user) => user.role === "USER"));
+  console.log("PASS: shared password development/endpoint/manifest/argument guards, eight-character input, one password collection, confirmation, independent salts, login compatibility, no secret logging, unchanged application/default password policies, and existing-account protection.");
   console.log("PASS: nine fictional identities, Director bootstrap target and password verification, provisioning target guards, password policy/hash/confirmation/uniqueness, identity conflicts, atomic rollback, concurrent creation, partial identity/assignment resume, repeatability, signed bootstrap/replay/expiry/scope, genuine sessions, domain separation, audit/version integrity, and unchanged unrelated tables.");
 }
 

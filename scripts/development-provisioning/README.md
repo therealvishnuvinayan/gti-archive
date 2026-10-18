@@ -70,7 +70,35 @@ shown by the CLI. Enter a unique password and confirmation at each masked prompt
 Use password-manager-generated passwords of 16–256 characters. The CLI enforces
 the application's uppercase/number policy plus rejection of controls, obvious
 identity/product/common-password patterns and highly repetitive credentials.
-Passwords must differ from those of all other provisioned accounts.
+By default, passwords must differ from those of all other provisioned accounts.
+
+For the explicitly approved shared development password exception, run instead:
+
+```sh
+pnpm users:v2 apply --environment flux-v2-dev/develop --step identities --shared-test-password
+```
+
+This flag takes no value. It asks for the shared password **once**, then one masked
+confirmation, and hashes it independently with a fresh scrypt salt for each of the
+nine identities. Enter the password only at those prompts; never put it in command
+arguments, source, configuration, logs or chat. No password value is shipped with
+the tool. This mode accepts 8–256 characters with the existing application's
+uppercase/number requirements and rejects controls and leading/trailing whitespace.
+
+The exception requires `NODE_ENV=development`, the exact approved pooled/direct
+endpoint fingerprints, `neondb/public` on PostgreSQL 18, and the unchanged approved
+nine-account manifest (`6c64549f4682ae1b`), all under `example.test`. The launcher
+continues to reject production/CI and conflicting local environment bindings.
+The flag is rejected for plan/verify, bootstrap and role-assignment steps. The
+normal provisioning policy and application login/registration/reset policies are
+unchanged. It grants no V2 role or technical privilege.
+
+Shared mode stops before password entry if **any account already exists**. It also
+rechecks state under the existing transaction lock after password entry. If an
+operation fails or its result is uncertain, run the read-only `plan` command and
+review the identities before any retry. Partial accounts and their passwords must
+be retained; obtaining approval for a reviewed recovery using the normal resume
+path is required, rather than resetting accounts or overwriting their passwords.
 
 The existing `src/lib/auth-password.ts` scrypt hash/verification functions are
 used unchanged. Cleartext is never placed in arguments, logs, environment,
@@ -196,3 +224,9 @@ multiline-paste rejection. Only synthetic temporary passwords/signing keys are u
 test artifacts are removed after shutdown; no application DB or external service
 is used. Local operator execution compiles into a private temporary directory and
 uses Next's actual server-only package under its server export condition.
+
+Shared-mode checks cover the exact target/manifest/argument restrictions, eight-character
+input, confirmation, a single password collection, distinct salts, existing login
+verification, unchanged default policies, partial-account refusal and atomic rollback.
+The PTY suite exercises the actual shared prompt helper and confirms that the password
+is masked, collected only once plus confirmation, and absent from output and arguments.
