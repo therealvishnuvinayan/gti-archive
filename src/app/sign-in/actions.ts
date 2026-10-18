@@ -3,7 +3,8 @@
 import { redirect } from "next/navigation";
 
 import type { SignInState } from "@/app/sign-in/sign-in-state";
-import { AuthError, signInUser } from "@/lib/auth";
+import { AuthError, signInUser, getCurrentUser } from "@/lib/auth";
+import { getAuthenticatedDefaultRoute } from "@/lib/permissions/fallback-route";
 import { getSafeReturnUrl } from "@/lib/safe-return-url";
 
 export async function signInAction(
@@ -29,5 +30,6 @@ export async function signInAction(
     return { error: "Unable to sign in right now. Please try again." };
   }
 
-  redirect(returnTo ?? "/");
+  const user = await getCurrentUser();
+  redirect(returnTo ?? (user ? getAuthenticatedDefaultRoute(user) : "/no-access"));
 }

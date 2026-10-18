@@ -1,3 +1,4 @@
+import { activeWorkspaceOperation } from "./authorization/workspace-transaction";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { activeProjectMutation, projectTransactionClient } from "./authorization/project-transaction";
 import { activeLibraryOperation } from "./authorization/library-transaction";
@@ -174,7 +175,7 @@ export async function withPrismaRetry<T>(
   try {
     return await operation();
   } catch (error) {
-    if (activeProjectMutation() || activeArchiveOperation() || activeLibraryOperation()) throw error; // Never replay a partially executed mutation.
+    if (activeProjectMutation() || activeArchiveOperation() || activeLibraryOperation() || activeWorkspaceOperation()) throw error; // Never replay a partially executed mutation.
     if (!isPrismaConnectionError(error) || attempts <= 1) {
       throw error;
     }

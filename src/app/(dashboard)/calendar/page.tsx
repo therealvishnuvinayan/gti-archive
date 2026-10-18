@@ -53,6 +53,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
         focusedEventId={resolvedSearchParams?.event}
         availableCollaborators={availableCollaborators}
         assignedCollaborators={assignedCollaborators}
+        canUseBusinessCalendars={access.canViewSharedSchedule}
         canCreateEvents={hasPermission(user, "calendar.create")}
         canManageCollaborators={access.canManageCollaborators}
       />

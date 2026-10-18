@@ -58,6 +58,8 @@ const sidebarSections: SidebarSection[] = [
         icon: FileSpreadsheet,
         visibilityKey: "projectTracker",
       },
+      { label: "Project Approvals", href: "/projects/approvals", icon: ShieldUser, visibilityKey: "projectApprovals" },
+      { label: "Archive Categories", href: "/archives/settings/categories", icon: Archive, visibilityKey: "archiveCategories" },
       { label: "Tasks", href: "/tasks", icon: ListTodo, visibilityKey: "tasks" },
       { label: "Calendar", href: "/calendar", icon: CalendarDays, visibilityKey: "calendar" },
       {
@@ -67,7 +69,7 @@ const sidebarSections: SidebarSection[] = [
         visibilityKey: "collaboration",
       },
       {
-        label: "Users & Permissions",
+        label: "Business Users",
         href: "/users",
         icon: ShieldUser,
         visibilityKey: "users",
@@ -85,70 +87,6 @@ const sidebarSections: SidebarSection[] = [
     ],
   },
 ];
-
-const PROJECT_BADGE_COUNT_CACHE_KEY = "gti:sidebar-project-badge-count";
-const PROJECT_BADGE_COUNT_CACHE_TTL_MS = 30_000;
-
-function readCachedProjectBadgeCount() {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  try {
-    const cachedValue = window.sessionStorage.getItem(PROJECT_BADGE_COUNT_CACHE_KEY);
-
-    if (!cachedValue) {
-      return null;
-    }
-
-    const payload = JSON.parse(cachedValue) as {
-      total?: unknown;
-      cachedAt?: unknown;
-    };
-
-    if (
-      typeof payload.total !== "number" ||
-      typeof payload.cachedAt !== "number" ||
-      Date.now() - payload.cachedAt > PROJECT_BADGE_COUNT_CACHE_TTL_MS
-    ) {
-      return null;
-    }
-
-    return payload.total;
-  } catch {
-    return null;
-  }
-}
-
-function cacheProjectBadgeCount(total: number) {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  try {
-    window.sessionStorage.setItem(
-      PROJECT_BADGE_COUNT_CACHE_KEY,
-      JSON.stringify({
-        total,
-        cachedAt: Date.now(),
-      }),
-    );
-  } catch {
-    // Ignore storage failures; the count can still load from the API.
-  }
-}
-
-function clearCachedProjectBadgeCount() {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  try {
-    window.sessionStorage.removeItem(PROJECT_BADGE_COUNT_CACHE_KEY);
-  } catch {
-    // Ignore storage failures; the badge can remain hidden without cache access.
-  }
-}
 
 type SidebarProps = {
   isCollapsed: boolean;
@@ -321,7 +259,6 @@ export function Sidebar({
 
   useEffect(() => {
     if (!visibility.projectCounts) {
-      clearCachedProjectBadgeCount();
       return;
     }
 
@@ -330,15 +267,6 @@ export function Sidebar({
     }
 
     const controller = new AbortController();
-    const cachedCount = readCachedProjectBadgeCount();
-
-    const cacheTimeoutId =
-      typeof cachedCount === "number"
-        ? window.setTimeout(() => {
-            setFetchedProjectBadgeCount(cachedCount);
-          }, 0)
-        : null;
-
     const timeoutId = window.setTimeout(() => {
       fetch("/api/projects/dashboard-count", {
         method: "GET",
@@ -355,7 +283,6 @@ export function Sidebar({
         .then((payload) => {
           if (typeof payload?.total === "number") {
             setFetchedProjectBadgeCount(payload.total);
-            cacheProjectBadgeCount(payload.total);
           }
         })
         .catch((error) => {
@@ -366,10 +293,6 @@ export function Sidebar({
     }, 500);
 
     return () => {
-      if (cacheTimeoutId !== null) {
-        window.clearTimeout(cacheTimeoutId);
-      }
-
       window.clearTimeout(timeoutId);
       controller.abort();
     };

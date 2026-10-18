@@ -18,7 +18,6 @@ import {
   ProjectRevisionStatus,
   StageStatus,
   SubmissionReviewStatus,
-  UserRole,
 } from "@prisma/client";
 
 import { getFavoriteAttachmentIdSetForUser } from "@/lib/file-favorite-queries";
@@ -1784,12 +1783,12 @@ async function setProjectCollaboratorChatVisibilityImplementation(
         },
         select: {
           id: true,
-          role: true,
+          authorization: { select: { businessRole: true, accountStatus: true } },
         },
       }),
     );
 
-    if (!targetUser || targetUser.role !== UserRole.USER) {
+    if (!targetUser?.authorization?.businessRole || targetUser.authorization.accountStatus !== "ACTIVE") {
       throw new Error("Collaborator not found.");
     }
 

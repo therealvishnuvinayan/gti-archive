@@ -4,7 +4,7 @@ import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { SettingsWorkspace } from "@/components/settings/settings-workspace";
 import { getUserDisplayName, requireUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions/resolver";
-import { isBusinessAdministratorRole } from "@/lib/user-role-compatibility";
+import { projectReadActor } from "@/lib/authorization/project-read-rules";
 
 function formatRole(role: string) {
   return role
@@ -64,7 +64,7 @@ export default async function SettingsPage() {
   const canUpdateProfile = hasPermission(user, "settings.updateOwnProfile");
   const canChangePassword = hasPermission(user, "settings.changeOwnPassword");
   const canViewUsers =
-    isBusinessAdministratorRole(user.role) && hasPermission(user, "users.view");
+    hasPermission(user, "users.view");
 
   return (
     <DashboardLayout>
@@ -72,7 +72,7 @@ export default async function SettingsPage() {
         user={{
           name: getUserDisplayName(user),
           email: user.email,
-          role: formatRole(user.role),
+          role: [projectReadActor(user)?.businessRole, ...(projectReadActor(user)?.technicalPrivileges ?? [])].filter(Boolean).map(value => formatRole(value!)).join(" · ") || "No assigned role",
           memberSince: formatMemberSince(user.createdAt),
           passwordChangedAt: formatPasswordChangedAt(user.passwordChangedAt),
           avatarSrc: user.avatarUrl

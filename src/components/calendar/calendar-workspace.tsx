@@ -68,6 +68,7 @@ type CalendarWorkspaceProps = {
   availableCollaborators: CollaboratorRecord[];
   assignedCollaborators: CollaboratorRecord[];
   canCreateEvents: boolean;
+  canUseBusinessCalendars: boolean;
   canManageCollaborators: boolean;
 };
 
@@ -188,7 +189,7 @@ function getDefaultForm(date: string, start = "09:00", end = "10:00"): CalendarF
     date,
     start,
     end,
-    calendar: "Projects",
+    calendar: "Events",
     tone: "green",
   };
 }
@@ -228,6 +229,7 @@ export function CalendarWorkspace({
   availableCollaborators,
   assignedCollaborators,
   canCreateEvents,
+  canUseBusinessCalendars,
   canManageCollaborators,
 }: CalendarWorkspaceProps) {
   const [selectedDate, setSelectedDate] = useState<Date>(() => resolveInitialDate(initialDate));
@@ -922,7 +924,7 @@ export function CalendarWorkspace({
           <CardTitle className="text-[13px]">My Calendar</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2.5 pt-0">
-          {calendarTypes.map((type) => (
+          {calendarTypes.filter(type => canUseBusinessCalendars || type === "Events" || type === "Reminders").map((type) => (
             <Button
               key={type}
               type="button"
@@ -1309,6 +1311,7 @@ export function CalendarWorkspace({
       </section>
 
       <EventDialog
+        canUseBusinessCalendars={canUseBusinessCalendars}
         form={form}
         error={dialogError}
         isOpen={dialogOpen}

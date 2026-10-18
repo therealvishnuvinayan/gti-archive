@@ -40,6 +40,7 @@ export type CalendarFormState = {
 };
 
 type EventDialogProps = {
+  canUseBusinessCalendars?: boolean;
   form: CalendarFormState;
   error?: string;
   isOpen: boolean;
@@ -174,6 +175,7 @@ export function EventDialog({
   pending = false,
   submitLabel = "Save Event",
   title,
+  canUseBusinessCalendars = false,
   onChange,
   onClose,
   onSubmit,
@@ -248,7 +250,7 @@ export function EventDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {calendarOptions.map((option) => (
+                  {calendarOptions.filter(option => canUseBusinessCalendars || option === "Events" || option === "Reminders").map((option) => (
                     <SelectItem key={option} value={option}>
                       {option}
                     </SelectItem>

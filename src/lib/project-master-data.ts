@@ -1,3 +1,4 @@
+import { hasProjectBusinessIdentity } from "@/lib/authorization/project-read-rules";
 import { getCurrentUser } from "@/lib/auth";
 import { canArchive, archiveCategoryWhere, archiveScopeForUser } from "@/lib/authorization/archive-rules";
 import { unstable_cache } from "next/cache";
@@ -286,6 +287,8 @@ function mapProjectStatusGroupItem(item: {
 }
 
 export async function getProjectMasterData(): Promise<ProjectMasterDataRecord> {
+  const user = await getCurrentUser();
+  if (!user || !hasProjectBusinessIdentity(user)) throw new Error("Business master-data access required.");
   const fetchMasterData = unstable_cache(
     async () =>
       withPrismaRetry(() =>
@@ -363,7 +366,6 @@ export async function getProjectMasterData(): Promise<ProjectMasterDataRecord> {
     cachedArchiveCategoryAccessUsers,
   ] =
     await fetchMasterData();
-  const user = await getCurrentUser();
   const allowed = user && canArchive(user, "archive.category.create")
     ? await prisma.archiveCategory.findMany({ where: archiveCategoryWhere(archiveScopeForUser(user), false), select: { id: true } }) : [];
   const visibleIds = new Set(allowed.map(row => row.id));

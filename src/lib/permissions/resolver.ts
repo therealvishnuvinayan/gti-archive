@@ -11,7 +11,7 @@ import {
 
 import { canReadFullProject, hasProjectBusinessIdentity, projectReadActor, structuredProjectReadWhere } from "@/lib/authorization/project-read-rules";
 import {
-  defaultRolePermissions,
+  allPermissionKeys,
   type PermissionKey,
 } from "@/lib/permissions/definitions";
 import type { PermissionProfileSnapshot } from "@/lib/permissions/profiles";
@@ -19,7 +19,7 @@ import type {
   ProjectCollaboratorPermissionKey,
   ProjectCollaboratorPermissions,
 } from "@/lib/project-collaborator-permissions";
-import { isBusinessAdministratorRole } from "@/lib/user-role-compatibility";
+
 
 export type PermissionUser = Pick<User, "id" | "role"> &
   Partial<Pick<User, "projectCreationAccessGranted">> & {
@@ -43,6 +43,8 @@ export type SidebarVisibility = {
   fluxAi: boolean;
   projects: boolean;
   projectTracker: boolean;
+  projectApprovals: boolean;
+  archiveCategories: boolean;
   tasks: boolean;
   projectCounts: boolean;
   calendar: boolean;
@@ -56,14 +58,6 @@ export type SidebarVisibility = {
   settings: boolean;
   help: boolean;
 };
-
-function getBasePermissionSet(user: PermissionUser) {
-  if (user.permissionProfileSnapshot) {
-    return new Set(user.permissionProfileSnapshot.effectivePermissions);
-  }
-
-  return new Set(defaultRolePermissions[user.role]);
-}
 
 function isProjectMember(
   user: PermissionUser,
@@ -105,7 +99,7 @@ export function isProjectAdmin(user: Pick<PermissionUser, "role">) {
 export function isGlobalProjectAdministrator(
   user: Pick<PermissionUser, "role">,
 ) {
-  return isBusinessAdministratorRole(user.role);
+  return projectReadActor(user)?.businessRole === "DIRECTOR";
 }
 
 export function isProjectOwner(
@@ -161,7 +155,23 @@ export function hasPermission(user: PermissionUser, permissionKey: PermissionKey
     if (permissionKey === "library.deleteFile") return canLibrary(user, "library.delete");
     return false;
   }
-  return getBasePermissionSet(user).has(permissionKey);
+  const actor = projectReadActor(user);
+  if (!actor) return false;
+  if (["settings.viewOwnProfile", "settings.updateOwnProfile", "settings.changeOwnPassword", "help.view"].includes(permissionKey)) return true;
+  const role = actor.businessRole;
+  if (!role) return false;
+  const director = role === "DIRECTOR";
+  const manager = director || role === "SENIOR_PROJECT_MANAGER" || role === "JUNIOR_PROJECT_MANAGER";
+  if (["dashboard.view", "dashboard.viewRecentProjects"].includes(permissionKey)) return manager;
+  if (permissionKey === "dashboard.viewProjectCounts") return true;
+  if (permissionKey === "fluxAi.view") return canArchive(user, "archive.view");
+  if (["users.view", "settings.viewMasterData", "settings.manageMasterData", "settings.deleteMasterData"].includes(permissionKey)) return director;
+  if (["calendar.view", "calendar.create", "calendar.delete", "notification.view", "notification.markRead"].includes(permissionKey)) return true;
+  // These compatibility flags only render native project controls; actual
+  // operations still require their project/task transaction policy.
+  if (/^(chat|file|compare)\./.test(permissionKey)) return true;
+  // Legacy account/profile editing, invitations and calendar sharing are closed.
+  return false;
 }
 
 export function canCreateProjects(user: PermissionUser) {
@@ -218,7 +228,7 @@ export function assertCanUseArchives(
 }
 
 export function getUserPermissionSet(user: PermissionUser) {
-  return new Set([...getBasePermissionSet(user)].filter(key => (!key.startsWith("archive.") && !key.startsWith("library.")) || hasPermission(user, key)));
+  return new Set(allPermissionKeys.filter(key => hasPermission(user, key)));
 }
 
 function hasProjectPermissionGrant(
@@ -262,7 +272,7 @@ function isProjectOwnerManagePermission(permissionKey: PermissionKey) {
 }
 
 export function canManageContactDirectories(user: PermissionUser) {
-  return isBusinessAdministratorRole(user.role) && hasPermission(user, "project.update");
+  return projectReadActor(user)?.businessRole === "DIRECTOR";
 }
 
 export function getSidebarVisibility(user: PermissionUser): SidebarVisibility {
@@ -271,8 +281,10 @@ export function getSidebarVisibility(user: PermissionUser): SidebarVisibility {
   return {
     dashboard: hasPermission(user, "dashboard.view"),
     fluxAi: canUseFluxAi(user),
-    projects,
-    projectTracker: projects && hasPermission(user, "project.update"),
+    projects: projects && canCreateProjects(user),
+    projectTracker: false,
+    projectApprovals: canCreateProjects(user),
+    archiveCategories: canArchive(user, "archive.category.create") || canArchive(user, "archive.category.update"),
     tasks: canUseTasks(user),
     projectCounts:
       projects && hasPermission(user, "dashboard.viewProjectCounts"),
@@ -280,7 +292,7 @@ export function getSidebarVisibility(user: PermissionUser): SidebarVisibility {
     collaboration: hasPermission(user, "collaboration.viewDirectory"),
     clients: canManageContactDirectories(user),
     finalBeneficiaries: canManageContactDirectories(user),
-    users: isBusinessAdministratorRole(user.role) && hasPermission(user, "users.view"),
+    users: hasPermission(user, "users.view"),
     notifications: hasPermission(user, "notification.view"),
     library: hasPermission(user, "library.view"),
     archives: canUseArchives(user),

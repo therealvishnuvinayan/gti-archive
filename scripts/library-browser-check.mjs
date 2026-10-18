@@ -95,7 +95,7 @@ try {
   const page=await pageFor(id);
   assert.equal(await page.evaluate(async()=>(await fetch('/api/library')).status),403);
   assert.equal(await page.evaluate(async()=>(await fetch('/api/library/manual-assets/manual-director/download')).status),403);
-  await page.goto(origin+'/library');await page.waitForURL(url=>url.pathname==='/');
+  await page.goto(origin+'/library');await page.waitForURL(url=>url.pathname==='/settings');
   assert.equal(await page.getByRole('link',{name:'Library',exact:true}).count(),0);
  }
  const unrelated=await pageFor('designer2');await unrelated.goto(origin+'/library');await unrelated.getByText('No library files found.',{exact:true}).waitFor();await shot(unrelated,'unassigned-task-library');

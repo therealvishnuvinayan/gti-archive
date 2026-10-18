@@ -1,3 +1,4 @@
+import { runWorkspaceOperation } from "@/lib/authorization/workspace";
 import { Prisma, ProjectInquiryPartyRole } from "@prisma/client";
 
 import { canManageContactDirectories, type PermissionUser } from "@/lib/permissions/resolver";
@@ -40,7 +41,7 @@ export type SaveContactDirectoryResult =
   | { contact: ContactDirectoryRecord }
   | { error: string; fieldErrors?: ProjectContactFieldErrors };
 
-export async function getContactDirectory(user: PermissionUser, kind: ContactDirectoryKind) {
+async function getContactDirectoryImplementation(user: PermissionUser, kind: ContactDirectoryKind) {
   if (!canManageContactDirectories(user) || !isContactDirectoryKind(kind)) {
     throw new Error("You do not have permission to manage this directory.");
   }
@@ -51,7 +52,7 @@ export async function getContactDirectory(user: PermissionUser, kind: ContactDir
   }));
 }
 
-export async function saveContactDirectoryEntry(
+async function saveContactDirectoryEntryImplementation(
   user: PermissionUser,
   kind: ContactDirectoryKind,
   input: ProjectContactInput,
@@ -93,7 +94,7 @@ export async function saveContactDirectoryEntry(
   }));
 }
 
-export async function deleteContactDirectoryEntry(user: PermissionUser, kind: ContactDirectoryKind, contactId: string) {
+async function deleteContactDirectoryEntryImplementation(user: PermissionUser, kind: ContactDirectoryKind, contactId: string) {
   if (!canManageContactDirectories(user) || !isContactDirectoryKind(kind)) {
     return { error: "You do not have permission to manage this directory." };
   }
@@ -103,4 +104,19 @@ export async function deleteContactDirectoryEntry(user: PermissionUser, kind: Co
   }));
   if (!deleted.count) return { error: "This entry is no longer available in this directory." };
   return { success: true as const };
+}
+
+export async function getContactDirectory(...args: Parameters<typeof getContactDirectoryImplementation>): ReturnType<typeof getContactDirectoryImplementation> {
+  const [user, ...rest] = args;
+  return runWorkspaceOperation(user, "workspace.contacts", "root", actor => getContactDirectoryImplementation(actor, ...rest));
+}
+
+export async function saveContactDirectoryEntry(...args: Parameters<typeof saveContactDirectoryEntryImplementation>): ReturnType<typeof saveContactDirectoryEntryImplementation> {
+  const [user, ...rest] = args;
+  return runWorkspaceOperation(user, "workspace.contacts", "root", actor => saveContactDirectoryEntryImplementation(actor, ...rest));
+}
+
+export async function deleteContactDirectoryEntry(...args: Parameters<typeof deleteContactDirectoryEntryImplementation>): ReturnType<typeof deleteContactDirectoryEntryImplementation> {
+  const [user, ...rest] = args;
+  return runWorkspaceOperation(user, "workspace.contacts", "root", actor => deleteContactDirectoryEntryImplementation(actor, ...rest));
 }

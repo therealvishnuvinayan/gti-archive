@@ -1,3 +1,4 @@
+import { runWorkspaceOperation } from "@/lib/authorization/workspace";
 import { refreshProjectReader } from "@/lib/authorization/project-read";
 import { isDirectorReader } from "@/lib/authorization/project-read-rules";
 import type {
@@ -6,10 +7,7 @@ import type {
   CalendarEventType,
   User,
 } from "@prisma/client";
-import { UserRole } from "@prisma/client";
-import { unstable_cache } from "next/cache";
 
-import { CALENDAR_COLLABORATORS_CACHE_TAG } from "@/lib/collaboration";
 import {
   hasPermission,
   type PermissionUser,
@@ -130,24 +128,14 @@ function combineDateAndTime(date: string, time: string) {
   return new Date(`${date}T${time}:00`);
 }
 
-function canDeleteCalendarEvent(
-  event: Pick<CalendarEvent, "createdById">,
-  user: CalendarAccessUser,
-  access: CalendarAccessState,
-) {
-  return (
-    hasPermission(user, "calendar.delete") &&
-    (user.role === UserRole.SUPER_ADMIN ||
-      user.role === UserRole.ADMIN ||
-      event.createdById === user.id ||
-      access.canManageCollaborators)
-  );
+function canDeleteCalendarEvent(event: Pick<CalendarEvent, "createdById" | "type">, user: CalendarAccessUser) {
+  return hasPermission(user, "calendar.delete") && (["EVENTS", "REMINDERS"].includes(event.type)
+    ? event.createdById === user.id : isDirectorReader(user));
 }
 
 function mapCalendarEvent(
   event: CalendarEventWithCreator,
   user: CalendarAccessUser,
-  access: CalendarAccessState,
 ): CalendarEventRecord {
   return {
     id: event.id,
@@ -158,7 +146,7 @@ function mapCalendarEvent(
     end: toTimeKey(event.endAt),
     calendar: reverseCalendarTypeMap[event.type],
     tone: reverseEventToneMap[event.tone],
-    canDelete: canDeleteCalendarEvent(event, user, access),
+    canDelete: canDeleteCalendarEvent(event, user),
     createdByName: event.createdBy?.name ?? undefined,
     createdByEmail: event.createdBy?.email ?? undefined,
   };
@@ -213,74 +201,23 @@ export function parseCalendarEventInput(
   } as const;
 }
 
-export function buildCalendarAccessState(
-  user: CalendarAccessUser,
-  isAssignedCollaborator: boolean,
-): CalendarAccessState {
-  if (!hasPermission(user, "calendar.view")) {
-    return {
-      canManageCollaborators: false,
-      canViewSharedSchedule: false,
-    };
-  }
-
-  if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.ADMIN) {
-    return {
-      canManageCollaborators: hasPermission(user, "calendar.assignParticipants"),
-      canViewSharedSchedule: true,
-    };
-  }
-
-  return {
-    canManageCollaborators:
-      isAssignedCollaborator &&
-      hasPermission(user, "calendar.assignParticipants"),
-    canViewSharedSchedule: isAssignedCollaborator,
-  };
+export function buildCalendarAccessState(user: CalendarAccessUser, isAssignedCollaborator: boolean): CalendarAccessState {
+  void isAssignedCollaborator; // Historical assignments do not confer V2 authority.
+  return { canManageCollaborators: false, canViewSharedSchedule: isDirectorReader(user) };
+}
+export async function getCalendarAccessState(user: CalendarAccessUser): Promise<CalendarAccessState> {
+  return buildCalendarAccessState(await refreshProjectReader(user), false);
 }
 
-export async function getCalendarAccessState(
-  user: CalendarAccessUser,
-): Promise<CalendarAccessState> {
-  if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.ADMIN) {
-    return buildCalendarAccessState(user, false);
-  }
-
-  const cachedAccessState = unstable_cache(
-    async () => {
-      const assignment = await withPrismaRetry(() =>
-        prisma.calendarCollaborator.findUnique({
-          where: {
-            userId: user.id,
-          },
-          select: {
-            id: true,
-          },
-        }),
-      );
-
-      return buildCalendarAccessState(user, Boolean(assignment));
-    },
-    [`calendar-access:${user.id}:${user.role}`],
-    {
-      revalidate: 20,
-      tags: [CALENDAR_COLLABORATORS_CACHE_TAG],
-    },
-  );
-
-  return cachedAccessState();
-}
-
-export async function getCalendarEvents(user: CalendarAccessUser) {
+async function getCalendarEventsImplementation(user: CalendarAccessUser) {
   user = await refreshProjectReader(user);
 
-  const access = await getCalendarAccessState(user);
 
   const events = await (async () =>
       withPrismaRetry(() =>
         prisma.calendarEvent.findMany({
           where: isDirectorReader(user)
-            ? (access.canViewSharedSchedule ? {} : { OR: [{createdById: user.id}, {type: {in: ["PROJECTS", "PAYMENTS"]}}] })
+            ? { OR: [{createdById: user.id}, {type: {in: ["PROJECTS", "PAYMENTS"]}}] }
             : { createdById: user.id, type: { in: ["EVENTS", "REMINDERS"] } },
           include: {
             createdBy: {
@@ -296,10 +233,10 @@ export async function getCalendarEvents(user: CalendarAccessUser) {
         }),
       ) )();
 
-  return events.map((event) => mapCalendarEvent(event, user, access));
+  return events.map((event) => mapCalendarEvent(event, user));
 }
 
-export async function createCalendarEvent(
+async function createCalendarEventImplementation(
   user: CalendarAccessUser,
   input: SaveCalendarEventInput,
 ): Promise<CreateCalendarEventResult> {
@@ -329,14 +266,11 @@ export async function createCalendarEvent(
   });
 
   return {
-    event: mapCalendarEvent(event, user, {
-      canManageCollaborators: true,
-      canViewSharedSchedule: true,
-    }),
+    event: mapCalendarEvent(event, user),
   } as const;
 }
 
-export async function deleteCalendarEvent(
+async function deleteCalendarEventImplementation(
   user: CalendarAccessUser,
   eventId: string,
 ): Promise<DeleteCalendarEventResult> {
@@ -346,7 +280,6 @@ export async function deleteCalendarEvent(
     return { error: "Calendar event id is missing." };
   }
 
-  const access = await getCalendarAccessState(user);
   const event = await withPrismaRetry(() =>
     prisma.calendarEvent.findUnique({
       where: {
@@ -355,6 +288,7 @@ export async function deleteCalendarEvent(
       select: {
         id: true,
         createdById: true,
+        type: true,
       },
     }),
   );
@@ -363,7 +297,7 @@ export async function deleteCalendarEvent(
     return { error: "This calendar event could not be found." };
   }
 
-  if (!canDeleteCalendarEvent(event, user, access)) {
+  if (!canDeleteCalendarEvent(event, user)) {
     return { error: "You are not allowed to delete this calendar event." };
   }
 
@@ -376,4 +310,17 @@ export async function deleteCalendarEvent(
   );
 
   return { success: true, deletedEventId: normalizedId };
+}
+
+export async function getCalendarEvents(user: CalendarAccessUser) {
+  return runWorkspaceOperation(user, "workspace.calendar.view", "root", actor => getCalendarEventsImplementation(actor));
+}
+export async function createCalendarEvent(user: CalendarAccessUser, input: SaveCalendarEventInput): Promise<CreateCalendarEventResult> {
+  const snapshot = { ...input };
+  const parsed = parseCalendarEventInput(snapshot);
+  if ("error" in parsed) return parsed;
+  return runWorkspaceOperation(user, "workspace.calendar.create", parsed.data.type, actor => createCalendarEventImplementation(actor, snapshot));
+}
+export async function deleteCalendarEvent(user: CalendarAccessUser, eventId: string): Promise<DeleteCalendarEventResult> {
+  return runWorkspaceOperation(user, "workspace.calendar.delete", eventId.trim(), actor => deleteCalendarEventImplementation(actor, eventId.trim()));
 }

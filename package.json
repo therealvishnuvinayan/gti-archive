@@ -11,7 +11,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit --project tsconfig.typecheck.json",
     "layout:ui-check": "node scripts/dashboard-layout-ui-checks.mjs",
-    "navigation:ui-check": "node --no-warnings scripts/dashboard-navigation-checks.mjs",
+    "navigation:ui-check": "tsc --project scripts/tsconfig.dashboard-navigation.json && node scripts/dashboard-navigation-checks.mjs",
     "notifications:realtime-check": "node scripts/notification-realtime-checks.mjs",
     "submission:realtime-check": "node scripts/submission-realtime-checks.mjs",
     "archive:access-level-check": "node scripts/archive-access-level-checks.mjs",
@@ -20,7 +20,7 @@
     "archive:direct-wizard-check": "node scripts/archive-direct-wizard-checks.mjs",
     "flow:check": "node scripts/flow-regression-checks.mjs",
     "flux-ai:archive-finder-check": "node scripts/flux-ai-archive-finder-checks.mjs && tsc --project scripts/tsconfig.flux-ai-archive-query.json && node .tmp/flux-ai-archive-query/scripts/flux-ai-archive-query-check.js",
-    "flux-ai:archive-search-integration-check": "tsc --project scripts/tsconfig.flux-ai-archive-search-integration.json && COMPILED_ALIAS_ROOT=.tmp/flux-ai-archive-search-integration node -r ./scripts/register-compiled-alias.cjs .tmp/flux-ai-archive-search-integration/scripts/flux-ai-archive-search-integration-check.js",
+    "flux-ai:archive-search-integration-check": "node scripts/run-authorization-isolated-integration.mjs --search",
     "phase0:check": "node scripts/phase0-regression-checks.mjs",
     "phase3:check": "node scripts/phase3-caption-regression-checks.mjs",
     "project-create:role-check": "node scripts/project-create-final-role-checks.mjs",
@@ -98,7 +98,9 @@
     "project-tags:integration-check": "tsc --project scripts/tsconfig.project-tags-integration.json && node scripts/run-project-tags-isolated-integration.mjs",
     "project-tags:ui-check": "node scripts/project-tags-ui-check.cjs",
     "tasks:integration-check": "tsc --project scripts/tsconfig.tasks-integration.json && node scripts/run-tasks-isolated-integration.mjs",
-    "tasks:ui-check": "tsc --project scripts/tsconfig.tasks-integration.json && COMPILED_ALIAS_ROOT=.tmp/tasks-integration node -r ./scripts/register-compiled-alias.cjs scripts/tasks-ui-check.cjs"
+    "tasks:ui-check": "tsc --project scripts/tsconfig.tasks-integration.json && COMPILED_ALIAS_ROOT=.tmp/tasks-integration node -r ./scripts/register-compiled-alias.cjs scripts/tasks-ui-check.cjs",
+    "authorization:workspace-check": "node scripts/run-authorization-isolated-integration.mjs --workspace",
+    "authorization:workspace-browser-check": "node scripts/workspace-browser-check.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1053.0",

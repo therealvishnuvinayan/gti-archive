@@ -1,5 +1,16 @@
 # Phase 1.5A legacy authorization entry-point inventory
 
+## Phase 1.5H current status
+
+The historical inventories below are superseded for navigation, administration,
+calendar, contact directories, master-data entry points, search history and
+realtime token issuance by [PHASE-1-COMPLETION.md](./PHASE-1-COMPLETION.md).
+The compatibility resolver now requires a trusted V2 principal for every key;
+legacy role/profile values confer no runtime authority. Unsupported account,
+invitation and permission mutations are denied at actions and services.
+See the current report for the definitive deferred-feature and verification audit.
+
+
 ## Phase 1.5G Library update
 
 Library services, direct APIs, upload/finalize, signing, favorites and shared

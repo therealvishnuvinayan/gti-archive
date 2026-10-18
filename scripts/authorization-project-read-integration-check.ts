@@ -149,7 +149,7 @@ async function frameworkChecks(){
   for(const [id]of roles){
    await as(id);const user=(await auth.getCurrentUser())!;assert.ok(user);
    const index=await context.getProjectContextIndex(user);
-   if(id==="tech")assert.equal((await calendar.getCalendarEvents(user)).length,0);
+   if(id==="tech")await assert.rejects(() => calendar.getCalendarEvents(user));
    if(id==="designer")assert.equal((await calendar.getCalendarEvents(user)).length,1);
    if(id==="director")assert.equal((await calendar.getCalendarEvents(user)).length,1);
    const listed=await projects.getProjectsList({query:"",status:"ALL"},user);
@@ -158,7 +158,7 @@ async function frameworkChecks(){
    const limitedIndex=await context.getProjectContextIndex(user,true);
    const flexiblePage=await flexible.getFlexibleProjectsPage(user);
    assert.equal(flexiblePage.total+limitedIndex.flexible.length,index.flexible.length);
-   const snapshot=await dashboard.getDashboardSnapshot(user);assert.equal(snapshot.kpis[0].value,index.total);
+   if (["director", "spm", "jpm", "outsider"].includes(id)) { const snapshot=await dashboard.getDashboardSnapshot(user);assert.equal(snapshot.kpis[0].value,index.total); } else await assert.rejects(() => dashboard.getDashboardSnapshot(user));
    if (["tech", "unassigned"].includes(id)) await assert.rejects(() => library.getLibraryPageDataForUser(user));
    else {
     const libraryPage = await library.getLibraryPageDataForUser(user);

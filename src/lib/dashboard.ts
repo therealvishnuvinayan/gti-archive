@@ -1,3 +1,4 @@
+import { runWorkspaceOperation } from "@/lib/authorization/workspace";
 import { getProjectContextIndex } from "@/lib/authorization/project-context";
 import { refreshProjectReader } from "@/lib/authorization/project-read";
 import { isDirectorReader, projectReadActor, structuredProjectReadWhere } from "@/lib/authorization/project-read-rules";
@@ -1387,7 +1388,7 @@ export async function getDashboardSnapshot(
   user: DashboardUser,
   now = new Date(),
 ): Promise<DashboardSnapshot> {
-  return (await buildDashboardSnapshot(user, now)).snapshot;
+  return runWorkspaceOperation(user, "workspace.dashboard", "root", async actor => (await buildDashboardSnapshot(actor, now)).snapshot);
 }
 
 export async function getNeedsAttentionItems(

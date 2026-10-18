@@ -1,4 +1,5 @@
 import "server-only";
+import { workspacePolicies } from "./workspace-policies";
 
 import { readCurrentSessionToken } from "../auth";
 import { prisma } from "../prisma";
@@ -11,7 +12,7 @@ import { archivePolicies } from "./archive-policies";
 
 // Native reads/writes remain registered; governed creation and final completion
 // use the Phase 1.5D policies. Deletion, template publishing and Tasker stay closed.
-const integratedResourcePolicies: ResourcePolicies = { ...projectReadPolicies, ...projectWritePolicies, ...projectGovernancePolicies, ...archivePolicies, ...libraryPolicies };
+const integratedResourcePolicies: ResourcePolicies = { ...projectReadPolicies, ...projectWritePolicies, ...projectGovernancePolicies, ...archivePolicies, ...libraryPolicies, ...workspacePolicies };
 
 export const runtimeAuthorization = createAuthorizationService({
   database: prisma,

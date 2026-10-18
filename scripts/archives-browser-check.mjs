@@ -92,7 +92,7 @@ try {
  pass('SPM file-grant UI persists actual grantor and unlocks only the selected file for the Designer');
  const digital=await pageFor('digital');await digital.goto(origin+'/archives/settings/categories');await digital.getByRole('button',{name:/Add.*category/i}).waitFor();assert.equal(await digital.getByRole('button',{name:/delete/i}).count(),0);await shot(digital,'digital-category-management');
  const director=await pageFor('director');await director.goto(origin+'/archives/settings/categories');await director.getByRole('button',{name:/Add.*category/i}).waitFor();await shot(director,'director-category-management');
- const designer=await pageFor('designer');await designer.goto(origin+'/archives/settings/categories');await designer.waitForURL(url=>url.pathname==='/');assert.ok(!new URL(designer.url()).pathname.includes('/archives/settings/categories'));
+ const designer=await pageFor('designer');await designer.goto(origin+'/archives/settings/categories');await designer.waitForURL(url=>url.pathname==='/tasks');assert.ok(!new URL(designer.url()).pathname.includes('/archives/settings/categories'));
  pass('Digital Lead category management is available without deletion; Designer cannot enter category management');
  assert.equal(JSON.stringify(await db.userAuthorization.findMany({orderBy:{userId:'asc'},include:{user:{select:{role:true,email:true,passwordHash:true}}}})),accountSnapshot);
  assert.equal(await db.project.count(),0);assert.deepEqual(result.pageErrors,[]);assert.deepEqual(result.blockedExternalRequests,[]);assert.ok(!logs.join('').includes('EXTERNAL_NETWORK_FORBIDDEN'));

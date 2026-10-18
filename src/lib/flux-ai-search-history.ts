@@ -1,3 +1,5 @@
+import { getCurrentUser } from "@/lib/auth";
+import { runArchiveOperation } from "@/lib/authorization/archive";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 export const RECENT_FLUX_AI_SEARCH_LIMIT = 5;
@@ -16,7 +18,7 @@ function normalizeSearchQuery(query: string) {
   };
 }
 
-export async function getRecentFluxAiSearches(userId: string) {
+async function getRecentFluxAiSearchesImplementation(userId: string) {
   const searches = await withPrismaRetry(() =>
     prisma.fluxAiSearchHistory.findMany({
       where: { userId },
@@ -29,7 +31,7 @@ export async function getRecentFluxAiSearches(userId: string) {
   return searches.map((search) => search.query);
 }
 
-export async function recordFluxAiSearch(userId: string, query: string) {
+async function recordFluxAiSearchImplementation(userId: string, query: string) {
   const { displayQuery, normalizedQuery } = normalizeSearchQuery(query);
 
   if (!displayQuery || !normalizedQuery) {
@@ -81,7 +83,7 @@ export async function recordFluxAiSearch(userId: string, query: string) {
   );
 }
 
-export async function deleteRecentFluxAiSearch(userId: string, query: string) {
+async function deleteRecentFluxAiSearchImplementation(userId: string, query: string) {
   const { normalizedQuery } = normalizeSearchQuery(query);
 
   if (!normalizedQuery) {
@@ -104,11 +106,35 @@ export async function deleteRecentFluxAiSearch(userId: string, query: string) {
   );
 }
 
-export async function clearRecentFluxAiSearches(userId: string) {
+async function clearRecentFluxAiSearchesImplementation(userId: string) {
   return withPrismaRetry(() =>
     prisma.$transaction(async (tx) => {
       await tx.fluxAiSearchHistory.deleteMany({ where: { userId } });
       return [] as string[];
     }),
   );
+}
+
+export async function getRecentFluxAiSearches(...args: Parameters<typeof getRecentFluxAiSearchesImplementation>): ReturnType<typeof getRecentFluxAiSearchesImplementation> {
+  const user = await getCurrentUser();
+  if (!user || user.id !== args[0]) throw new Error("Search history authentication mismatch.");
+  return runArchiveOperation(user, "archive.view", "root", () => getRecentFluxAiSearchesImplementation(...args));
+}
+
+export async function recordFluxAiSearch(...args: Parameters<typeof recordFluxAiSearchImplementation>): ReturnType<typeof recordFluxAiSearchImplementation> {
+  const user = await getCurrentUser();
+  if (!user || user.id !== args[0]) throw new Error("Search history authentication mismatch.");
+  return runArchiveOperation(user, "archive.view", "root", () => recordFluxAiSearchImplementation(...args));
+}
+
+export async function deleteRecentFluxAiSearch(...args: Parameters<typeof deleteRecentFluxAiSearchImplementation>): ReturnType<typeof deleteRecentFluxAiSearchImplementation> {
+  const user = await getCurrentUser();
+  if (!user || user.id !== args[0]) throw new Error("Search history authentication mismatch.");
+  return runArchiveOperation(user, "archive.view", "root", () => deleteRecentFluxAiSearchImplementation(...args));
+}
+
+export async function clearRecentFluxAiSearches(...args: Parameters<typeof clearRecentFluxAiSearchesImplementation>): ReturnType<typeof clearRecentFluxAiSearchesImplementation> {
+  const user = await getCurrentUser();
+  if (!user || user.id !== args[0]) throw new Error("Search history authentication mismatch.");
+  return runArchiveOperation(user, "archive.view", "root", () => clearRecentFluxAiSearchesImplementation(...args));
 }

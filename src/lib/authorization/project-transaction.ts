@@ -1,4 +1,5 @@
 import "server-only";
+import { activeWorkspaceOperation } from "./workspace-transaction";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { activeLibraryOperation } from "./library-transaction";
@@ -24,7 +25,7 @@ export function inAuthorizedProjectMutation(user: { id: string }, projectId: str
 
 export function projectTransactionClient(rootPrisma: PrismaClient): PrismaClient { return new Proxy(rootPrisma, {
   get(target, property) {
-    const context = activeProjectMutation() ?? activeArchiveOperation() ?? activeLibraryOperation();
+    const context = activeProjectMutation() ?? activeArchiveOperation() ?? activeLibraryOperation() ?? activeWorkspaceOperation();
     if (context && property === "$transaction") {
       return async (operation: unknown) => {
         if (typeof operation === "function") return operation(context.tx);

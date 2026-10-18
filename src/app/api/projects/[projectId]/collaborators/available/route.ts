@@ -62,7 +62,7 @@ export async function GET(
     }
 
     const collaboratorsStartedAt = performance.now();
-    const collaborators = await getCollaborators();
+    const collaborators = await getCollaborators(projectId);
     logStageChatTiming(
       "init",
       "collaborator directory query",

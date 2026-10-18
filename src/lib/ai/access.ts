@@ -1,6 +1,5 @@
 import { canReadProjectResource, refreshProjectReader } from "@/lib/authorization/project-read";
 import {
-  hasPermission,
   hasProjectPermission,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
@@ -24,7 +23,7 @@ export async function canUseChatAiTools(
   const projectId = input.projectId?.trim();
 
   if (!projectId) {
-    return hasPermission(user, "chat.createComment");
+    return false;
   }
 
   const stageId = input.stageId?.trim();

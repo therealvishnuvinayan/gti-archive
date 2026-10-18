@@ -91,9 +91,9 @@ export async function getUserTaskSidebarCount(user: PermissionUser) {
 
   if (!canUseTasks(user)) return 0;
 
-  return (() => withPrismaRetry(() => prisma.projectConceptFolder.count({
-      where: getTaskListWhere(user),
-    })))();
+  return (() => withPrismaRetry(() => prisma.projectConceptFolder.findMany({
+      where: getTaskListWhere(user), select: { projectId: true, taskerStage: { select: { projectId: true } } },
+    }).then(rows => rows.filter(row => row.projectId === row.taskerStage.projectId).length)))();
 }
 
 export async function getUserTasksPageData(
@@ -142,6 +142,7 @@ export async function getUserTasksPageData(
           },
           taskerStage: {
             select: {
+              projectId: true,
               status: true,
               actualStartedAt: true,
               completedAt: true,
@@ -170,6 +171,7 @@ export async function getUserTasksPageData(
   const now = Date.now();
 
   for (const record of records) {
+    if (record.taskerStage.projectId !== record.project.id) continue;
     const display = deriveUserTaskDisplayState(record);
     const stageNumber =
       record.workflowStageKey === ProjectWorkflowStageKey.CONCEPT_CREATION
