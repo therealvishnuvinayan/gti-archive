@@ -1,0 +1,98 @@
+/** Inactive V2 contracts. These values do not map or replace Prisma UserRole. */
+export const businessRoleValues = [
+  "DIRECTOR",
+  "SENIOR_PROJECT_MANAGER",
+  "JUNIOR_PROJECT_MANAGER",
+  "DESIGNER",
+  "DIGITAL_LEAD",
+] as const;
+
+export type BusinessRole = (typeof businessRoleValues)[number];
+
+export const technicalPrivilegeValues = ["TECHNICAL_ADMIN"] as const;
+
+export type TechnicalPrivilege = (typeof technicalPrivilegeValues)[number];
+
+/** Future contracts, not a claim that these operations already exist. */
+export const businessCapabilityCatalog = {
+  project: [
+    "project.view",
+    "project.create",
+    "project.edit",
+    "project.manageParticipants",
+    "project.delete",
+    "project.requestCompletion",
+    "project.approveCompletion",
+    "project.directorIntervention",
+  ],
+  template: [
+    "template.createProposal",
+    "template.editProposal",
+    "template.approvePublish",
+    "template.configureCustomStages",
+  ],
+  task: [
+    "task.view",
+    "task.createGeneral",
+    "task.createFileUpload",
+    "task.createDataInput",
+    "task.createInspectFile",
+    "task.createInitialConcept",
+    "task.createFinalConcept",
+    "task.execute",
+    // Executor request; does not mark the task completed.
+    "task.requestCompletion",
+    // Owner review includes accepting submissions, subject to self-review policy.
+    "task.review",
+    // Owner's Mark as Completed action; distinct from an executor request.
+    "task.complete",
+    "task.delete",
+    "task.manage",
+    "task.viewAsSpectator",
+  ],
+  archive: [
+    "archive.view",
+    "archive.download",
+    "archive.upload",
+    "archive.editMetadata",
+    "archive.manageCategoriesFolders",
+    "archive.share",
+    "archive.verify",
+    "archive.delete",
+  ],
+} as const;
+
+export type BusinessCapability =
+  (typeof businessCapabilityCatalog)[keyof typeof businessCapabilityCatalog][number];
+
+export const businessCapabilityValues: readonly BusinessCapability[] =
+  Object.values(businessCapabilityCatalog).flat();
+
+/** Application maintenance only; no deployment, database or secrets authority. */
+export const technicalCapabilityValues = [
+  "technical.maintenance",
+  "technical.diagnostics",
+  "technical.configureApplication",
+  "technical.systemRecovery",
+  "technical.accountRecovery",
+  "technical.troubleshoot",
+  "technical.securityAdministration",
+] as const;
+
+export type TechnicalCapability = (typeof technicalCapabilityValues)[number];
+
+export function isBusinessRole(value: unknown): value is BusinessRole {
+  return typeof value === "string" && businessRoleValues.includes(value as BusinessRole);
+}
+
+export function isTechnicalPrivilege(value: unknown): value is TechnicalPrivilege {
+  return value === "TECHNICAL_ADMIN";
+}
+
+export function isBusinessCapability(value: unknown): value is BusinessCapability {
+  return typeof value === "string" && businessCapabilityValues.includes(value as BusinessCapability);
+}
+
+export function isTechnicalCapability(value: unknown): value is TechnicalCapability {
+  return typeof value === "string" && technicalCapabilityValues.includes(value as TechnicalCapability);
+}
