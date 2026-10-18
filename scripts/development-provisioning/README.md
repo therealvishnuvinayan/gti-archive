@@ -55,7 +55,8 @@ pnpm users:v2 plan --environment flux-v2-dev/develop
 pnpm users:v2 verify --environment flux-v2-dev/develop
 ```
 
-Both modes enforce read-only connections. Each checks 103 migration records and
+Both modes enforce read-only connections. Phase 1.5D requires 104 migration records
+(including the separately authorized governance migration) and
 checksums, Prisma drift, Director protections, all application-table counts,
 the exact manifest identities and existing assignment/audit consistency. All
 unrelated business tables must remain empty. Status reference data is retained.

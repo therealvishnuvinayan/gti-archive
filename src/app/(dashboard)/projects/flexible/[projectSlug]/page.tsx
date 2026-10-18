@@ -1,3 +1,4 @@
+import { ProjectCompletionGovernance } from "@/components/projects/project-completion-governance";
 import { RestrictedProjectContextView } from "@/components/projects/restricted-project-context";
 import { getFlexibleContextBySlug } from "@/lib/authorization/project-context";
 import { notFound, redirect } from "next/navigation";
@@ -39,6 +40,7 @@ export default async function FlexibleProjectPage({
         userOptions={userOptions}
         currentUserId={user.id}
       />
+      <ProjectCompletionGovernance user={user} target={{ kind: "FLEXIBLE", projectId: project.id }} />
     </DashboardLayout>
   );
 }

@@ -159,7 +159,9 @@ export function hasPermission(user: PermissionUser, permissionKey: PermissionKey
   return getBasePermissionSet(user).has(permissionKey);
 }
 
-export function canCreateProjects(user: PermissionUser) { void user; return false; // No approved template / creation approval record exists yet.
+export function canCreateProjects(user: PermissionUser) {
+  const role = projectReadActor(user)?.businessRole;
+  return role === "DIRECTOR" || role === "SENIOR_PROJECT_MANAGER" || role === "JUNIOR_PROJECT_MANAGER";
 }
 
 export function getArchiveAccessLevel(user: PermissionUser): "NONE" | "FULL" | "PARTIAL" {

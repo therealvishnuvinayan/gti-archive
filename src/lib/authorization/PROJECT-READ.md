@@ -1,5 +1,8 @@
 # Phase 1.5B — project READ authorization
 
+Phase 1.5D adds scoped governance inboxes without relaxing these project reads:
+see [PROJECT-GOVERNANCE.md](./PROJECT-GOVERNANCE.md).
+
 Implemented 2026-10-18. This is the current project-read report; it supersedes the
 project-read portions of the historical Phase 1.5A inventory. Phase 1.5C now adds
 native project mutation authorization: see [PROJECT-WRITE.md](./PROJECT-WRITE.md).

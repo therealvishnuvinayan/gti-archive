@@ -33,11 +33,11 @@ includes(
 includes(
   resolver,
   'if (permissionKey === "project.create") return false;',
-  "Phase 1.5C blocks creation until approved templates and approval records exist",
+  "Legacy creation flags cannot grant direct project creation",
 );
 includes(
   resolver,
-  "No approved template / creation approval record exists yet.",
+  "export function canCreateProjects(user: PermissionUser)",
   "legacy per-user creation flags must not bypass V2 governance",
 );
 includes(
@@ -143,6 +143,13 @@ for (const [stage, helper] of [
     `Stage ${stage} V2 manager relationship gate`,
   );
 }
+
+const governance = read("src/lib/project-governance/service.ts");
+includes(governance, '"project.requestCreation"', "Creation enters trusted V2 governance");
+includes(governance, '"project.activateCreation"', "Activation has a separate central authorization check");
+const governancePolicy = read("src/lib/authorization/project-governance-policies.ts");
+includes(governancePolicy, "validateStoredCreation", "Activation revalidates immutable configuration and participants");
+includes(governancePolicy, "validPreset", "SPM creation requires explicit preset approval");
 
 const calendarPage = read("src/app/(dashboard)/calendar/page.tsx");
 includes(

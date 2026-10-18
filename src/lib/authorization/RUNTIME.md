@@ -1,5 +1,9 @@
 # FLUX V2 Phase 1.5A — runtime authorization foundation
 
+Phase 1.5D registers transactional project creation, completion and template
+proposal policies: see [PROJECT-GOVERNANCE.md](./PROJECT-GOVERNANCE.md). Session
+validation, authorization versions and business/technical separation remain intact.
+
 Implemented on 2026-10-18. This phase changes authentication, adds the runtime
 policy boundary, and strengthens assignment-service session validation. It does
 not activate V2 business access by itself. **Phase 1.5B now activates the project

@@ -19,7 +19,7 @@ export function validatePlan(plan) {
   check(plan?.environment === environment && plan.database?.database === "neondb" && plan.database?.schema === "public" &&
     plan.database?.major === 18 && plan.database?.readOnly === "on" && plan.pooledFingerprint === "9d6f1df51a9db284" &&
     plan.directFingerprint === "5b001dbfcdb263fa" && plan.manifestFingerprint === manifest && plan.audience === audience &&
-    plan.migrations === 103 && plan.schemaDrift === "NONE", "APPROVED_DATABASE_PREFLIGHT_REQUIRED");
+    plan.migrations === 104 && plan.schemaDrift === "NONE", "APPROVED_DATABASE_PREFLIGHT_REQUIRED");
   check(plan.signing?.startsWith("PUBLIC_VERIFICATION_KEY_CONFIGURED"), "EXISTING_PUBLIC_TRUST_REQUIRED");
   check(Array.isArray(plan.accounts) && plan.accounts.length === 9 && plan.counts?.User === 9 &&
     new Set(plan.accounts.map((account) => account.id)).size === 9, "EXACT_NINE_IDENTITIES_REQUIRED");

@@ -271,6 +271,7 @@ async function checkFrameworkAuthentication() {
   const cookieWrites: Array<{ value: string; options: Record<string, unknown> }> = [];
   const compiledRoot = dirname(dirname(__filename));
   moduleApi._load = function (name, ...args) {
+    if (name === "@prisma/client") return localRequire(join(root, "client"));
     if (name === "next/headers") return { cookies: async () => ({
       get: (key: string) => jar.has(key) ? { value: jar.get(key) } : undefined,
       set: (key: string, value: string, options: Record<string, unknown>) => { jar.set(key, value); cookieWrites.push({ value, options }); },
@@ -328,5 +329,9 @@ main().catch((error: unknown) => {
   // Never print fixture bearer tokens, hashes, URLs, SQL parameters or raw errors.
   console.error("FAIL runtime:", error instanceof Error ? error.name : "UnknownError");
   if (error instanceof assert.AssertionError) console.error(error.message);
+  // Module-load diagnostics contain file paths, not fixture credentials or SQL.
+  if (error instanceof Error && "code" in error && error.code === "MODULE_NOT_FOUND" && "requireStack" in error) {
+    console.error("Missing runtime dependency; require chain:", error.requireStack);
+  }
   process.exitCode = 1;
 }).finally(() => db.$disconnect());

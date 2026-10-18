@@ -1,4 +1,5 @@
-import { canReadFullProject, isDirectorReader } from "@/lib/authorization/project-read-rules";
+import { finalizeProjectAsDirector } from "./project-governance/service";
+import { canReadFullProject } from "@/lib/authorization/project-read-rules";
 import { runProjectMutation } from "@/lib/authorization/project-write";
 import { refreshProjectReader, requireProjectResourceRead } from "@/lib/authorization/project-read";
 import {
@@ -30,11 +31,9 @@ import {
   getProjectStageAccessRecordById,
   type ProjectStageAccessRecord,
 } from "@/lib/project-stage-data";
-import { getWorkflowStageCompletionMode } from "@/lib/project-workflow";
 import { publishNotificationChanges } from "@/lib/realtime/server";
 import {
   buildRequestReminderCreateData,
-  disableProjectRequestReminders,
   isRequestReminderInterval,
   mapRequestReminder,
   setRequestReminder,
@@ -1562,91 +1561,6 @@ async function markPhysicalSampleRoundReceivedImplementation(
   });
 }
 
-async function closeStageSevenProjectImplementation(
-  user: PermissionUser,
-  input: { projectId: string },
-) {
-  const project = await getAuthorizedStageSevenProject(user, input.projectId);
-  if (
-    !project ||
-    !canManageStageSeven(user, project) ||
-    !isDirectorReader(user)
-  ) {
-    throw new StageSevenWorkflowError(
-      "Only a project owner, co-owner, or administrator can complete the project.",
-    );
-  }
-  if (project.archivedAt) throw new StageSevenWorkflowError("Archived projects are read-only.");
-
-  return serializable(async (tx) => {
-    const existing = await tx.projectClosure.findUnique({
-      where: { projectId: input.projectId },
-    });
-    if (existing) {
-      return { duplicate: true, closedAt: existing.closedAt.toISOString() } as const;
-    }
-    const workflowStages = await tx.projectWorkflowStage.findMany({
-      where: { projectId: input.projectId },
-    });
-    const stage = workflowStages.find(
-      (workflowStage) =>
-        workflowStage.stageKey ===
-        ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION,
-    );
-    if (
-      !stage ||
-      getWorkflowStageCompletionMode(
-        workflowStages,
-        ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION,
-      ) !== "TRANSITION"
-    ) {
-      throw new StageSevenWorkflowError("Stage 7 is not currently available.");
-    }
-    const units = await tx.projectProductionUnit.findMany({
-      where: {
-        projectId: input.projectId,
-        status: {
-          in: [
-            ProjectProductionUnitStatus.HANDOVER_READY,
-            ProjectProductionUnitStatus.HANDED_OVER,
-          ],
-        },
-      },
-      select: { id: true, supervision: { select: { status: true } } },
-    });
-    if (!units.length) {
-      throw new StageSevenWorkflowError("No approved Production Units are available.");
-    }
-    if (
-      units.some(
-        (unit) => unit.supervision?.status !== ProductionSupervisionStatus.SIGNED_OFF,
-      )
-    ) {
-      throw new StageSevenWorkflowError(
-        "All physical Production Unit samples must be accepted before the project can be completed.",
-      );
-    }
-    const now = new Date();
-    const closure = await tx.projectClosure.create({
-      data: { projectId: input.projectId, closedById: user.id, closedAt: now },
-    });
-    await tx.projectWorkflowStage.update({
-      where: { id: stage.id },
-      data: { status: ProjectWorkflowStageStatus.COMPLETED, completedAt: now },
-    });
-    await tx.project.update({
-      where: { id: input.projectId },
-      data: { completedAt: now },
-    });
-    await disableProjectRequestReminders(tx, {
-      projectId: input.projectId,
-      stage: "SEVEN",
-      now,
-    });
-    return { duplicate: false, closedAt: closure.closedAt.toISOString() } as const;
-  });
-}
-
 export async function processStageSevenOverdueDeadlines(now = new Date()) {
   const currentDate = startOfUtcDate(now);
   const rounds = await withPrismaRetry(() =>
@@ -1811,6 +1725,7 @@ export async function closeStageSevenProject(
   user: PermissionUser,
   input: { projectId: string },
 ) {
-  return runProjectMutation(user, "closeStageSevenProject", { kind: "structured", id: input.projectId }, async (trustedUser) =>
-    closeStageSevenProjectImplementation(trustedUser, input), input);
+  const result = await finalizeProjectAsDirector(user, { kind: "ARTWORK", projectId: input.projectId }, "Director finalization from Stage 7");
+  if (!result.closedAt) throw new StageSevenWorkflowError("Project finalization did not complete.");
+  return { duplicate: false, closedAt: result.closedAt } as const;
 }

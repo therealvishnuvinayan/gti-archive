@@ -1,3 +1,4 @@
+import { isDirectorReader } from "@/lib/authorization/project-read-rules";
 import { getProjectContextIndex } from "@/lib/authorization/project-context";
 import { isProjectManagerReader } from "@/lib/authorization/project-read-rules";
 import Link from "next/link";
@@ -10,7 +11,6 @@ import { UserProjectsBrowser } from "@/components/projects/user-projects-browser
 import { requireUser } from "@/lib/auth";
 import {
   getFlexibleProjectsPage,
-  getFlexibleProjectUserOptions,
 } from "@/lib/flexible-projects";
 import { canCreateProjects, canUseProjects } from "@/lib/permissions/resolver";
 import {
@@ -113,22 +113,20 @@ export default async function ProjectsPage({
   const showProjectTypeSwitcher = await getProjectTypeSwitcherVisibility(user);
 
   if (resolvedSearchParams.view === "flexible") {
-    const canCreateProject = canCreateProjects(user);
-    const [flexiblePage, flexibleUsers, limited] = await Promise.all([
+    const canCreateProject = isDirectorReader(user);
+    const [flexiblePage, limited] = await Promise.all([
       getFlexibleProjectsPage(user, Number.parseInt(resolvedSearchParams.page ?? "1", 10)),
-      canCreateProject ? getFlexibleProjectUserOptions() : Promise.resolve([]),
       getProjectContextIndex(user, true),
     ]);
 
     return (
       <DashboardLayout>
+        {canCreateProjects(user) && <Link className="mb-4 inline-block underline" href="/projects/approvals">Project approvals and requests</Link>}
         <FlexibleProjectsRouteWorkspace
           projects={flexiblePage.projects}
           projectCount={flexiblePage.total}
           currentPage={flexiblePage.page}
           pageSize={flexiblePage.pageSize}
-          users={flexibleUsers}
-          currentUserId={user.id}
           canCreateProject={canCreateProject}
           showProjectTypeSwitcher={showProjectTypeSwitcher}
         />
@@ -179,6 +177,7 @@ export default async function ProjectsPage({
 
   return (
     <DashboardLayout>
+      <Link className="mb-4 inline-block underline" href="/projects/approvals">Project approvals and requests</Link>
       <ProjectsBrowser
         projects={data.projects}
         projectCount={data.projectCount}

@@ -2,18 +2,16 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
 import { ArrowRight, CalendarDays, ChevronLeft, ChevronRight, Milestone, PanelsTopLeft, Plus } from "lucide-react";
 
 import { MotionItem, MotionSection, MotionStaggerGroup } from "@/components/motion/motion-primitives";
-import { FlexibleProjectDialog } from "@/components/projects/flexible-project-dialog";
 import { ProjectPageHeader } from "@/components/projects/project-page-header";
 import { ProjectLayoutToggle, useProjectsLayout } from "@/components/projects/project-layout-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { RichTextContent } from "@/components/ui/rich-text-editor";
-import type { FlexibleProjectListItem, FlexibleProjectUserOption } from "@/lib/flexible-projects";
+import type { FlexibleProjectListItem } from "@/lib/flexible-projects";
 import { formatProjectPriority } from "@/lib/project-priority";
 
 function initials(name: string) {
@@ -131,18 +129,13 @@ export function FlexibleProjectsBrowser({
   projectCount,
   currentPage,
   pageSize,
-  users,
-  currentUserId,
 }: {
   canCreateProject: boolean;
   projects: FlexibleProjectListItem[];
   projectCount: number;
   currentPage: number;
   pageSize: number;
-  users: FlexibleProjectUserOption[];
-  currentUserId: string;
 }) {
-  const [createOpen, setCreateOpen] = useState(false);
   const [layout, changeLayout] = useProjectsLayout();
   const router = useRouter();
   const pathname = usePathname();
@@ -167,7 +160,7 @@ export function FlexibleProjectsBrowser({
             <div className="flex flex-wrap items-center gap-3">
               <ProjectLayoutToggle layout={layout} onChange={changeLayout} />
               {canCreateProject ? (
-                <Button type="button" onClick={() => setCreateOpen(true)} className="h-12 self-start rounded-full px-6 text-[14px] lg:self-auto">
+                <Button type="button" onClick={() => router.push("/projects/new?kind=FLEXIBLE")} className="h-12 self-start rounded-full px-6 text-[14px] lg:self-auto">
                   <Plus className="size-4" /> New Private Project
                 </Button>
               ) : null}
@@ -188,7 +181,7 @@ export function FlexibleProjectsBrowser({
             <PanelsTopLeft className="mx-auto size-9 text-[#75a086]" />
             <h3 className="mt-4 text-[18px] font-[750] text-[#202a23]">No private projects yet</h3>
             <p className="mt-1 text-[13px] text-[#717a73]">Projects you own or collaborate on will appear here.</p>
-            {canCreateProject ? <Button type="button" onClick={() => setCreateOpen(true)} className="mt-5"><Plus className="size-4" /> New Private Project</Button> : null}
+            {canCreateProject ? <Button type="button" onClick={() => router.push("/projects/new?kind=FLEXIBLE")} className="mt-5"><Plus className="size-4" /> New Private Project</Button> : null}
           </div>
         </MotionSection>
       )}
@@ -210,7 +203,6 @@ export function FlexibleProjectsBrowser({
         </nav>
       ) : null}
 
-      {createOpen ? <FlexibleProjectDialog mode="create" users={users} currentUserId={currentUserId} onClose={() => setCreateOpen(false)} /> : null}
     </div>
   );
 }

@@ -1,5 +1,23 @@
 # Phase 1.5A legacy authorization entry-point inventory
 
+## Phase 1.5D governance update
+
+- `/projects/new` and `projects/governance-actions.ts` use the trusted session and
+  `project-governance/service.ts`; old creation services/actions remain blocked.
+- `/projects/approvals` contains Director decisions, each manager's own requests,
+  explicit legacy Artwork preset designation and SPM template proposals. Proposals
+  cannot publish templates or confer a creation grant.
+- `closeStageSevenProject` and its existing server action now use the shared
+  Director finalization service. The Stage 7 UI links to final-completion review.
+- Structured and flexible overview pages expose completion requests to the actual
+  SPM/JPM owner and direct finalization to the Director. Finishing milestones still
+  cannot finalize a flexible project.
+- The Archive completion seam, old completion-document mutations, deletion,
+  ownership transfer, unapproved creation and template publishing remain closed.
+- See [PROJECT-GOVERNANCE.md](./PROJECT-GOVERNANCE.md) for migration dependencies,
+  protected paths, verification and the exact Phase 1.5D manifest. The tables below
+  remain historical inventories.
+
 Historical Phase 1.5A snapshot: 2026-10-18. The project READ portions of this
 inventory are superseded by [PROJECT-READ.md](./PROJECT-READ.md), and the native
 project mutation portions by [PROJECT-WRITE.md](./PROJECT-WRITE.md).

@@ -66,6 +66,7 @@
     "user-role:foundation-check": "tsc --project scripts/tsconfig.user-role-foundation.json && COMPILED_ALIAS_ROOT=.tmp/user-role-foundation node -r ./scripts/register-compiled-alias.cjs .tmp/user-role-foundation/scripts/user-role-foundation-check.js",
     "authorization:foundation-check": "tsc --project scripts/tsconfig.authorization-foundation.json && node .tmp/authorization-foundation/scripts/authorization-foundation-check.js",
     "authorization:persistence-check": "tsc --project scripts/tsconfig.authorization-persistence.json && node .tmp/authorization-persistence/scripts/authorization-persistence-check.js",
+    "authorization:project-governance-check": "node scripts/run-authorization-isolated-integration.mjs --project-governance",
     "authorization:project-write-check": "node scripts/run-authorization-isolated-integration.mjs --project-write",
     "authorization:project-read-check": "node scripts/run-authorization-isolated-integration.mjs --project-read",
     "authorization:runtime-check": "node scripts/run-authorization-isolated-integration.mjs --services --runtime",

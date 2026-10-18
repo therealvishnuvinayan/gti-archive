@@ -85,7 +85,7 @@ function resourceMatches(request: AuthorizationRequest, context: AuthorizationCo
   const { capability, targetId } = request;
   const { resource, project, task } = context;
   if (!resource || resource.id !== targetId) return false;
-  if (capability === "project.create") return resource.kind === "projectCreation";
+  if (["project.create", "project.requestCreation", "project.decideCreation", "project.activateCreation", "project.approveLegacyPreset", "project.viewGovernance"].includes(capability)) return resource.kind === "projectCreation";
   if (capability.startsWith("project.")) return resource.kind === "project" && project?.id === (resource.projectId ?? resource.id);
   if (capability.startsWith("task.create")) return resource.kind === "project" && project?.id === resource.id;
   if (capability.startsWith("task.")) return resource.kind === "task" && task?.id === resource.id &&
@@ -198,6 +198,14 @@ export function createAuthorizationService(dependencies: {
     return evaluate(actor, request, context, eligibility.requirements);
   }
   return {
+    /** Trusted server composition for a second policy check in an existing
+     * transaction. The caller cannot supply a principal or policy evidence. */
+    async runAuthorizedInTransaction<T>(tx: Prisma.TransactionClient, raw: unknown,
+      operation: (tx: Prisma.TransactionClient, grant: Extract<AuthorizationDecision, { decision: "ALLOW" }>) => Promise<T>): Promise<T> {
+      const decision = await check(tx, raw);
+      if (decision.decision === "DENY") throw new AuthorizationDeniedError(decision);
+      return operation(tx, decision);
+    },
     /** A point-in-time decision, never a reusable mutation credential. */
     authorize(raw: unknown): Promise<AuthorizationDecision> {
       return dependencies.database.$transaction((tx) => check(tx, raw), { isolationLevel: "ReadCommitted" });

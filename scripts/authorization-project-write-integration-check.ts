@@ -246,6 +246,9 @@ async function main(){
   await db.projectWorkflowStage.update({where:{projectId_stageKey:{projectId:"owned",stageKey:"IMPLEMENTATION_AND_SUPERVISION"}},data:{status:"AVAILABLE",unlockedAt:new Date(),completedAt:null}});
   await db.projectProductionUnit.update({where:{id:"unit"},data:{status:"HANDOVER_READY"}});
   await db.projectProductionSupervision.create({data:{id:"supervision",projectId:"owned",productionUnitId:"unit",status:"SIGNED_OFF",signedOffById:"director",signedOffAt:new Date()}});
+  // Final completion now checks native tasks and explicit document scope as well.
+  await db.project.update({where:{id:"owned"},data:{executionType:"INTERNAL"}});
+  await db.projectStage.updateMany({where:{projectId:"owned"},data:{status:"COMPLETED"}});
   const closer=await user("director");
   await seven.closeStageSevenProject(closer,{projectId:"owned"});
   assert.equal((await db.projectClosure.findUniqueOrThrow({where:{projectId:"owned"}})).closedById,"director");

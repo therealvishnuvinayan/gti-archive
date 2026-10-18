@@ -1,5 +1,10 @@
 # FLUX V2 Phase 1.5C — project write authorization
 
+Phase 1.5D now supplies governed creation, template proposals and shared final
+completion: see [PROJECT-GOVERNANCE.md](./PROJECT-GOVERNANCE.md). The creation and
+completion exclusions below record the end of Phase 1.5C. Its native write
+restrictions remain in force; Stage 7 final closure now delegates to governance.
+
 Implemented 2026-10-18. Native authenticated project mutations now use the V2
 policy engine and a shared authorization/mutation transaction. This report
 supersedes the project-write exclusions in the Phase 1.5A/B milestone reports.

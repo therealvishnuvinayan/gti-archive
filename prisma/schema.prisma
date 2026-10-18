@@ -568,6 +568,15 @@ model User {
   projectTrackerActivities            ProjectTrackerActivity[]             @relation("ProjectTrackerActivityActor")
   createdAt                           DateTime                             @default(now())
   updatedAt                           DateTime                             @updatedAt
+  creationRequests        ProjectCreationRequest[]        @relation("GovernanceRequester")
+  creationDecisions       ProjectCreationRequest[]        @relation("GovernanceDecider")
+  completionRequests      ProjectFinalCompletionRequest[] @relation("CompletionRequester")
+  completionDecisions     ProjectFinalCompletionRequest[] @relation("CompletionDecider")
+  legacyPresetApprovals   LegacyProjectPresetApproval[]   @relation("PresetApprover")
+  legacyPresetRevocations LegacyProjectPresetApproval[]   @relation("PresetRevoker")
+  projectGovernanceEvents ProjectGovernanceEvent[]
+  templateProposals ProjectTemplateProposal[] @relation("TemplateProposer")
+  templateProposalDecisions ProjectTemplateProposal[] @relation("TemplateProposalDecider")
 }
 
 // Optional record: absence means not mapped to V2, never infer legacy privileges.
@@ -736,6 +745,8 @@ model Project {
   @@index([isPinned])
   @@index([createdAt])
   @@index([createdById])
+  creationRequest         ProjectCreationRequest?
+  finalCompletionRequests ProjectFinalCompletionRequest[]
 }
 
 model FlexibleProject {
@@ -762,6 +773,8 @@ model FlexibleProject {
   @@index([ownerId, updatedAt])
   @@index([createdById])
   @@index([status, updatedAt])
+  creationRequest         ProjectCreationRequest?
+  finalCompletionRequests ProjectFinalCompletionRequest[]
 }
 
 model FlexibleProjectCollaborator {
@@ -2563,4 +2576,137 @@ model CalendarEvent {
   @@index([startAt])
   @@index([endAt])
   @@index([createdById])
+}
+
+enum GovernedProjectKind {
+  ARTWORK
+  FLEXIBLE
+}
+
+enum ProjectGovernanceStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  ACTIVATED
+}
+
+model LegacyProjectPresetApproval {
+  id               String                   @id @default(cuid())
+  presetKey        String
+  definitionHash   String
+  definition       Json
+  approvedById     String
+  approvedBy       User                     @relation("PresetApprover", fields: [approvedById], references: [id], onDelete: Restrict)
+  approvedAt       DateTime                 @default(now())
+  reason           String
+  revokedAt        DateTime?
+  revokedById      String?
+  revokedBy        User?                    @relation("PresetRevoker", fields: [revokedById], references: [id], onDelete: Restrict)
+  revocationReason String?
+  requests         ProjectCreationRequest[]
+  events           ProjectGovernanceEvent[]
+
+  @@index([presetKey, definitionHash])
+}
+
+model ProjectCreationRequest {
+  id                String                       @id @default(cuid())
+  clientRequestId   String
+  requesterId       String
+  requester         User                         @relation("GovernanceRequester", fields: [requesterId], references: [id], onDelete: Restrict)
+  requesterVersion  Int
+  kind              GovernedProjectKind
+  configuration     Json
+  configurationHash String
+  presetApprovalId  String?
+  presetApproval    LegacyProjectPresetApproval? @relation(fields: [presetApprovalId], references: [id], onDelete: Restrict)
+  status            ProjectGovernanceStatus      @default(SUBMITTED)
+  submittedAt       DateTime                     @default(now())
+  expiresAt         DateTime
+  decidedById       String?
+  decidedBy         User?                        @relation("GovernanceDecider", fields: [decidedById], references: [id], onDelete: Restrict)
+  decidedAt         DateTime?
+  decisionReason    String?
+  activatedAt       DateTime?
+  projectId         String?                      @unique
+  project           Project?                     @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  flexibleProjectId String?                      @unique
+  flexibleProject   FlexibleProject?             @relation(fields: [flexibleProjectId], references: [id], onDelete: Restrict)
+  events            ProjectGovernanceEvent[]
+
+  @@unique([requesterId, clientRequestId])
+  @@index([status, submittedAt])
+}
+
+model ProjectFinalCompletionRequest {
+  id                String                   @id @default(cuid())
+  projectId         String?
+  project           Project?                 @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  flexibleProjectId String?
+  flexibleProject   FlexibleProject?         @relation(fields: [flexibleProjectId], references: [id], onDelete: Restrict)
+  requesterId       String
+  requester         User                     @relation("CompletionRequester", fields: [requesterId], references: [id], onDelete: Restrict)
+  requesterVersion  Int
+  snapshot          Json
+  snapshotHash      String
+  reason            String
+  status            ProjectGovernanceStatus  @default(SUBMITTED)
+  submittedAt       DateTime                 @default(now())
+  expiresAt         DateTime
+  decidedById       String?
+  decidedBy         User?                    @relation("CompletionDecider", fields: [decidedById], references: [id], onDelete: Restrict)
+  decidedAt         DateTime?
+  decisionReason    String?
+  completedAt       DateTime?
+  events            ProjectGovernanceEvent[]
+
+  @@index([projectId, submittedAt])
+  @@index([flexibleProjectId, submittedAt])
+  @@index([status, submittedAt])
+}
+
+model ProjectGovernanceEvent {
+  id                  String                         @id @default(cuid())
+  actorId             String
+  actor               User                           @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  action              String
+  reason              String
+  details             Json
+  createdAt           DateTime                       @default(now())
+  creationRequestId   String?
+  creationRequest     ProjectCreationRequest?        @relation(fields: [creationRequestId], references: [id], onDelete: Restrict)
+  completionRequestId String?
+  completionRequest   ProjectFinalCompletionRequest? @relation(fields: [completionRequestId], references: [id], onDelete: Restrict)
+  presetApprovalId    String?
+  presetApproval      LegacyProjectPresetApproval?   @relation(fields: [presetApprovalId], references: [id], onDelete: Restrict)
+  templateProposalId String?
+  templateProposal ProjectTemplateProposal? @relation(fields: [templateProposalId], references: [id], onDelete: Restrict)
+
+  @@index([creationRequestId, createdAt])
+  @@index([completionRequestId, createdAt])
+  @@index([presetApprovalId, createdAt])
+  @@index([templateProposalId, createdAt])
+}
+
+// Proposal endorsement only. No published template or creation grant is produced.
+model ProjectTemplateProposal {
+  id String @id @default(cuid())
+  clientRequestId String
+  requesterId String
+  requester User @relation("TemplateProposer", fields: [requesterId], references: [id], onDelete: Restrict)
+  requesterVersion Int
+  proposal Json
+  proposalHash String
+  status ProjectGovernanceStatus @default(SUBMITTED)
+  submittedAt DateTime @default(now())
+  expiresAt DateTime
+  decidedById String?
+  decidedBy User? @relation("TemplateProposalDecider", fields: [decidedById], references: [id], onDelete: Restrict)
+  decidedAt DateTime?
+  decisionReason String?
+  events ProjectGovernanceEvent[]
+
+  @@unique([requesterId, clientRequestId])
+  @@index([status, submittedAt])
 }

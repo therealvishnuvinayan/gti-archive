@@ -14,6 +14,10 @@ import {
 } from "./definitions";
 
 const directorOnlyCapabilities = [
+  "template.decideProposal",
+  "project.decideCreation",
+  "project.approveLegacyPreset",
+  "project.finalize",
   "project.approveCompletion",
   "project.directorIntervention",
   "template.approvePublish",
@@ -59,6 +63,9 @@ const taskOwnerCapabilities = [
 ] as const satisfies readonly BusinessCapability[];
 
 const projectManagerCapabilities = [
+  "project.requestCreation",
+  "project.activateCreation",
+  "project.viewGovernance",
   "project.view",
   "project.viewContext",
   "project.viewStage",
@@ -167,7 +174,7 @@ export function getBusinessRoleEligibility(
       requirements.push("DIRECTOR_APPROVAL_BEFORE_TEMPLATE_PUBLICATION");
     }
   }
-  if (role === "JUNIOR_PROJECT_MANAGER" && capability === "project.create") {
+  if (role === "JUNIOR_PROJECT_MANAGER" && (capability === "project.create" || capability === "project.activateCreation")) {
     requirements.push("DIRECTOR_APPROVAL_BEFORE_PROJECT_CREATION", "SENIOR_PROJECT_MANAGER_CO_OWNER");
   }
   if (capability.startsWith("task.")) requirements.push("READ_ONLY_SPECTATOR");

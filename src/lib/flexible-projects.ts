@@ -668,7 +668,7 @@ async function lockFlexibleProject(tx: Prisma.TransactionClient, projectId: stri
 }
 
 async function syncFlexibleProjectStatus(tx: Prisma.TransactionClient, projectId: string) { // Milestone execution cannot approve final project completion. A project
-  // remains ACTIVE until the separate Director completion workflow is integrated.
+  // remains ACTIVE until the separate Director governance service finalizes it.
   await tx.flexibleProject.update({ where: { id: projectId }, data: { status: FlexibleProjectStatus.ACTIVE, completedAt: null } });
 }
 
