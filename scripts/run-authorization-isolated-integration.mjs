@@ -229,6 +229,7 @@ function checkAssignmentServices() {
 }
 
 function checkProvisioning() {
+  console.log(run(process.execPath, [join(repository, "scripts/development-signing-check.mjs"), root], { env, timeout: 30000 }));
   const provisioningDatabase = "flux_v2_provisioning_test";
   sql(`CREATE DATABASE "${provisioningDatabase}"`, "postgres");
   const provisioningUrl = databaseUrl.replace(`/${database}?`, `/${provisioningDatabase}?`);
@@ -245,7 +246,8 @@ function checkProvisioning() {
   mkdirSync(join(output, "node_modules"), { recursive: true });
   symlinkSync(dirname(require.resolve("next/dist/compiled/server-only/package.json")), join(output, "node_modules/server-only"), "dir");
   console.log(run(process.execPath, ["--conditions=react-server", join(output, "scripts/development-provisioning-integration-check.js")], {
-    env: { ...testEnv, FLUX_AUTH_TEST_ROOT: root, FLUX_AUTH_TEST_URL: provisioningUrl, FLUX_AUTH_TEST_CLIENT: clientPath }, timeout: 90000,
+    env: { ...testEnv, FLUX_AUTH_TEST_ROOT: root, FLUX_AUTH_TEST_URL: provisioningUrl, FLUX_AUTH_TEST_CLIENT: clientPath,
+      FLUX_AUTH_TEST_REPOSITORY: repository }, timeout: 90000,
   }));
   checkProvisioningTerminal(join(output, "scripts/development-provisioning/terminal.js"));
   const drift = run(process.execPath, [prismaCli, "migrate", "diff", "--from-url", provisioningUrl,

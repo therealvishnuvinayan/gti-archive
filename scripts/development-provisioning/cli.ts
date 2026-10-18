@@ -1,41 +1,25 @@
 import { createPublicKey, randomUUID } from "node:crypto";
-import { closeSync, constants, existsSync, fstatSync, lstatSync, openSync, readFileSync, readdirSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, isAbsolute, join, relative, sep } from "node:path";
+import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { PrismaClient } from "@prisma/client";
 import { AuthorizationMutationError } from "../../src/lib/authorization/assignment-transaction";
 import { accounts, approvedTarget, audience, confirmation, environmentName, manifestFingerprint, parseProvisioningArguments, provisioningSteps, ProvisioningError, requireProvisioning, requireSharedTestPasswordAllowed } from "./accounts";
 import { applySignedSetup, assignRemaining, databasePreflight, digest, PartialAssignmentError, provisionIdentities, publicState, setupTarget, type Manifest } from "./core";
 import { identityPasswordInput, terminalInput } from "./terminal";
+import { protectedFile, writeProtectedRequest } from "./protected-files";
 import { createHash } from "node:crypto";
 
 const help = `Private FLUX development provisioning (no emails, no runtime permission activation).
 Usage: pnpm users:v2 <plan|apply|verify> --environment ${environmentName}
   [--step ${provisioningSteps.join("|")}] [--operator-email <approved account>]
   [--approval-file <absolute signed-envelope path>] [--reason <non-secret reason>]
+  [--request-file <new absolute private path>] (plan with a bootstrap step only)
   [--shared-test-password] (apply --step identities only; approved empty development target)
 apply requires a real local TTY, the exact target/manifest confirmation, and a step.
 Passwords and existing application session tokens are entered only at masked prompts.
 No --password, --session, --yes, custom database URL, or signing-key option exists.`;
-
-function protectedFile(path: string, repository: string) {
-  requireProvisioning(isAbsolute(path), "PROTECTED_FILE_REQUIRES_ABSOLUTE_PATH");
-  const parent = realpathSync(dirname(path));
-  const rel = relative(repository, parent);
-  requireProvisioning(rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel), "PROTECTED_FILES_MUST_BE_OUTSIDE_REPOSITORY");
-  const directory = lstatSync(parent);
-  requireProvisioning(directory.uid === process.getuid?.() && (directory.mode & 0o077) === 0, "PROTECTED_DIRECTORY_REQUIRES_OWNER_ONLY_ACCESS");
-  const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-  try {
-    const stat = fstatSync(descriptor);
-    requireProvisioning(stat.isFile() && stat.uid === process.getuid?.() && (stat.mode & 0o077) === 0 && stat.size <= 16384,
-      "PROTECTED_FILE_REQUIRES_OWNER_ONLY_ACCESS");
-    const content = readFileSync(descriptor, "utf8");
-    requireProvisioning(!/PRIVATE KEY/.test(content), "PRIVATE_SIGNING_KEYS_FORBIDDEN");
-    return content;
-  } finally { closeSync(descriptor); }
-}
 
 function trustedKey(repository: string) {
   // Trusted local composition, not a public request/command-supplied key or audience.
@@ -112,6 +96,7 @@ async function main() {
         const payload = JSON.stringify({ operation: setup === "bootstrap-director" ? "BOOTSTRAP_DIRECTOR" : "INITIAL_TECHNICAL_ADMIN", audience,
           actorUserId: actor.id, targetUserId: subject.id, expectedVersion: subject.authorization?.authorizationVersion ?? null,
           reason: options["--reason"], changeId: randomUUID(), issuedAt: now, expiresAt: now + 600000 });
+        if (options["--request-file"]) writeProtectedRequest(options["--request-file"], repository, payload);
         console.log(JSON.stringify({ unsignedPayload: payload, instruction: "Independently authenticate and authorize the operator, then sign these exact UTF-8 bytes outside this process. This is not an authorization." }, null, 2));
       }
       return;

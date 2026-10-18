@@ -73,7 +73,7 @@ export function parseProvisioningArguments(args: string[]) {
   if (args.length === 0 || (args.length === 1 && args[0] === "--help")) return null;
   const [mode, ...rest] = args;
   requireProvisioning(["plan", "apply", "verify"].includes(mode), "INVALID_MODE_USE_HELP");
-  const allowed = new Set(["--environment", "--step", "--operator-email", "--approval-file", "--reason"]);
+  const allowed = new Set(["--environment", "--step", "--operator-email", "--approval-file", "--reason", "--request-file"]);
   const options: Record<string, string> = {};
   let sharedTestPassword = false;
   for (let index = 0; index < rest.length;) {
@@ -92,5 +92,7 @@ export function parseProvisioningArguments(args: string[]) {
   requireProvisioning(mode !== "apply" || step, "EXPLICIT_APPLY_STEP_REQUIRED");
   requireProvisioning(options["--environment"] === environmentName, "DEVELOPMENT_ENVIRONMENT_REQUIRED");
   requireProvisioning(!sharedTestPassword || (mode === "apply" && step === "identities"), "SHARED_PASSWORD_IDENTITIES_APPLY_ONLY");
+  requireProvisioning(!options["--request-file"] || (mode === "plan" && (step === "bootstrap-director" || step === "bootstrap-technical")),
+    "REQUEST_EXPORT_REQUIRES_BOOTSTRAP_PLAN");
   return { mode, options, step, sharedTestPassword };
 }

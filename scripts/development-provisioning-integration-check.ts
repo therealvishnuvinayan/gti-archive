@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash, generateKeyPairSync, randomBytes, randomUUID, sign } from "node:crypto";
 import { createRequire } from "node:module";
+import { spawnSync } from "node:child_process";
 import { readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,9 +12,11 @@ import { hashAuthPassword, normalizeAuthEmail, verifyAuthPassword } from "../src
 import { getPasswordValidationErrors, MIN_PASSWORD_LENGTH } from "../src/lib/password-rules";
 import { createRoleAssignmentService } from "../src/lib/authorization/role-assignment-service";
 import { terminalInput } from "./development-provisioning/terminal";
+import { protectedFile, writeProtectedRequest } from "./development-provisioning/protected-files";
 
 // No application URL fallback and no remotely selectable target, including through flags.
 const root = realpathSync(process.env.FLUX_AUTH_TEST_ROOT ?? "missing-test-root");
+const repository = realpathSync(process.env.FLUX_AUTH_TEST_REPOSITORY ?? "missing-repository");
 const parent = realpathSync(process.platform === "darwin" ? "/private/tmp" : tmpdir());
 assert.ok(root.startsWith(parent + "/flux-v2-auth-pg-") && (statSync(root).mode & 0o777) === 0o700);
 const socket = join(root, "s"), data = join(root, "data");
@@ -35,6 +38,54 @@ async function approval(operation: string, targetEmail: string, overrides: Recor
   const payload = JSON.stringify({ operation, audience, actorUserId: actor.id, targetUserId: target.id, expectedVersion: null,
     reason, changeId: randomUUID(), issuedAt: Date.now() - 1000, expiresAt: Date.now() + 60000, ...overrides });
   return { payload, signature: sign(null, Buffer.from(payload), privateKey).toString("base64url") };
+}
+
+async function offlineApproval(operation: string, targetEmail: string) {
+  const { payload } = await approval(operation, targetEmail);
+  const expected = JSON.parse(payload), directory = join(root, "offline-issuer"), approvals = join(root, "offline-approvals");
+  const requestFile = join(approvals, `${expected.changeId}-request.json`), approvalFile = join(approvals, `${expected.changeId}-envelope.json`);
+  writeProtectedRequest(requestFile, repository, payload);
+  assert.throws(() => writeProtectedRequest(requestFile, repository, payload));
+  assert.throws(() => writeProtectedRequest(join(repository, "forbidden-request.json"), repository, payload));
+  assert.equal(protectedFile(requestFile, repository), payload);
+  assert.throws(() => protectedFile(join(directory, "issuer-private.pem"), repository));
+  // Exercise the real offline CLI in a separate process/TTY with NO database environment.
+  const program = String.raw`
+import json, os, pty, select, subprocess, sys, time
+node, tool, directory, request_file, approval_file = sys.argv[1:]
+with open(request_file) as f: request = json.load(f)
+master, slave = pty.openpty()
+child = subprocess.Popen([node, tool, 'sign', '--environment', 'flux-v2-dev/develop', '--key-directory', directory,
+    '--request-file', request_file, '--approval-file', approval_file, '--operation', request['operation'],
+    '--operator-id', request['actorUserId'], '--target-id', request['targetUserId']], stdin=slave, stdout=slave, stderr=slave)
+os.close(slave)
+output = bytearray()
+confirmation = ('SIGN '+request['operation']+' '+request['changeId']).encode()
+def until(marker):
+    deadline = time.monotonic()+10
+    while marker not in output:
+        if time.monotonic()>deadline: raise RuntimeError('Signing fixture timeout')
+        readable,_,_ = select.select([master],[],[],0.1)
+        if readable:
+            try: chunk=os.read(master,65536)
+            except OSError: chunk=b''
+            if not chunk: raise RuntimeError('Signing fixture ended unexpectedly')
+            output.extend(chunk)
+try:
+    until(b'Type '+confirmation+b': ')
+    os.write(master,confirmation+b'\n')
+    until(b'SIGNED_APPROVAL_SAVED')
+    child.wait(timeout=5)
+    if child.returncode or b'PRIVATE KEY' in output: raise RuntimeError('Signing fixture failed')
+finally:
+    if child.poll() is None: child.kill(); child.wait()
+    os.close(master)
+`;
+  const result = spawnSync("python3", ["-c", program, process.execPath, join(repository, "scripts/development-signing.mjs"), directory, requestFile, approvalFile], {
+    env: { PATH: process.env.PATH, LANG: "C", LC_ALL: "C", NODE_ENV: "development" }, encoding: "utf8", timeout: 20000,
+  });
+  assert.ok(result.status === 0 && !result.stdout && !result.stderr);
+  return JSON.parse(protectedFile(approvalFile, repository)) as { payload: string; signature: string };
 }
 async function rejectedWithoutAuthorizationChanges(operation: () => Promise<unknown>) {
   const before = digest(await inspectState(db));
@@ -115,6 +166,8 @@ async function run() {
     accounts.map((account, index) => index ? account : { ...account, businessRole: null }),
   ]) assert.throws(() => requireSharedTestPasswordAllowed(sharedContext, changed));
   const identityArgs = ["apply", "--environment", environmentName, "--step", "identities"];
+  assert.throws(() => parseProvisioningArguments([...identityArgs, "--request-file", "/unused/request.json"]));
+  assert.ok(parseProvisioningArguments(["plan", "--environment", environmentName, "--step", "bootstrap-director", "--request-file", "/unused/request.json"]));
   assert.equal(parseProvisioningArguments(identityArgs)?.sharedTestPassword, false);
   assert.equal(parseProvisioningArguments([...identityArgs, "--shared-test-password"])?.sharedTestPassword, true);
   assert.equal(parseProvisioningArguments(["apply", "--shared-test-password", ...identityArgs.slice(1)])?.sharedTestPassword, true);
@@ -246,11 +299,17 @@ async function run() {
     await approval("BOOTSTRAP_DIRECTOR", accounts[0].email, { issuedAt: Date.now() - 120000, expiresAt: Date.now() - 1000 })));
   await rejectedWithoutAuthorizationChanges(async () => applySignedSetup(db, "bootstrap-director", accounts[7].email, trustedKey,
     await approval("INITIAL_TECHNICAL_ADMIN", accounts[0].email)));
-  await applySignedSetup(db, "bootstrap-director", accounts[7].email, trustedKey, director);
-  await rejectedWithoutAuthorizationChanges(() => applySignedSetup(db, "bootstrap-director", accounts[7].email, trustedKey, director));
-  const technical = await approval("INITIAL_TECHNICAL_ADMIN", accounts[7].email);
-  await applySignedSetup(db, "bootstrap-technical", accounts[7].email, trustedKey, technical);
-  await rejectedWithoutAuthorizationChanges(() => applySignedSetup(db, "bootstrap-technical", accounts[7].email, trustedKey, technical));
+  const issuerPublicKey = JSON.parse(protectedFile(join(root, "offline-issuer/trust.json"), repository)).publicKeyPem as string;
+  const signedDirector = await offlineApproval("BOOTSTRAP_DIRECTOR", accounts[0].email);
+  await applySignedSetup(db, "bootstrap-director", accounts[7].email, issuerPublicKey, signedDirector);
+  await rejectedWithoutAuthorizationChanges(() => applySignedSetup(db, "bootstrap-director", accounts[7].email, issuerPublicKey, signedDirector));
+  const technical = await offlineApproval("INITIAL_TECHNICAL_ADMIN", accounts[7].email);
+  await applySignedSetup(db, "bootstrap-technical", accounts[7].email, issuerPublicKey, technical);
+  await rejectedWithoutAuthorizationChanges(() => applySignedSetup(db, "bootstrap-technical", accounts[7].email, issuerPublicKey, technical));
+  const bootstrapped = await inspectState(db);
+  assert.ok(bootstrapped.directors === 1 && bootstrapped.technicalAdministrators === 1 && bootstrapped.auditCount === 2);
+  assert.deepEqual(bootstrapped.users.find((user) => user.email === accounts[0].email)?.authorization?.technicalPrivileges, []);
+  assert.equal(bootstrapped.users.find((user) => user.email === accounts[7].email)?.authorization?.businessRole, null);
 
   check = "actual sessions, domain separation and ordinary assignments";
   const users = await db.user.findMany();
@@ -304,10 +363,12 @@ async function run() {
   assert.ok(history.filter((entry) => entry.userId === designer.id).every((entry) => entry.actorUserId === directorUser.id));
   assert.ok(history.filter((entry) => entry.userId === developer.id).every((entry) => entry.actorUserId === developer.id));
   const final = await databasePreflight(db, manifest, authorizationSql);
+  assert.ok(beforePasswords === digest(await db.user.findMany({ orderBy: { id: "asc" }, select: { id: true, passwordHash: true } })));
   assert.ok(final.state.directors === 1 && final.state.technicalAdministrators === 2 && final.state.users.length === 9);
   assert.ok(preserved === await unrelatedSnapshot());
   assert.ok((await db.user.findMany({ select: { role: true } })).every((user) => user.role === "USER"));
   console.log("PASS: shared password development/endpoint/manifest/argument guards, eight-character input, one password collection, confirmation, independent salts, login compatibility, no secret logging, unchanged application/default password policies, and existing-account protection.");
+  console.log("PASS: independent offline signer processes and actual approval prompts, protected request export, Director then technical bootstrap through existing services, separation, replay rejection, audit attribution and unchanged passwords/legacy roles.");
   console.log("PASS: nine fictional identities, Director bootstrap target and password verification, provisioning target guards, password policy/hash/confirmation/uniqueness, identity conflicts, atomic rollback, concurrent creation, partial identity/assignment resume, repeatability, signed bootstrap/replay/expiry/scope, genuine sessions, domain separation, audit/version integrity, and unchanged unrelated tables.");
 }
 

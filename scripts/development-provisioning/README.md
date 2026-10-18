@@ -117,8 +117,10 @@ No audit schema or migration is added in this phase.
 
 ## Independent signing authority
 
-The signer must remain outside the database execution process. No signing utility
-or private key is shipped, generated or loaded by this CLI. Configure a trusted
+The signer must remain outside the database execution process. This database CLI
+never generates or loads a private key. The separate offline issuer is
+`scripts/development-signing.mjs`; see the complete [Phase 1.4F operator procedure](ROLE-BOOTSTRAP.md).
+No signing secret is shipped with either tool. Configure a trusted
 operator-owned file at `~/.config/flux-v2-development/trust.json`, outside the
 repository, with its containing directory mode 0700 and file mode 0600. It has
 exactly two keys: `publicKeyPem` (an Ed25519 SPKI PUBLIC KEY PEM) and `audience`
@@ -141,7 +143,8 @@ approved account email and a meaningful non-secret reason:
 
 ```sh
 pnpm users:v2 plan --environment flux-v2-dev/develop --step bootstrap-director \
-  --operator-email '<approved-operator-email>' --reason '<approved reason>'
+  --operator-email '<approved-operator-email>' --reason '<approved reason>' \
+  --request-file /absolute/private/new-director-request.json
 ```
 
 The output contains an **unsigned** payload string. The independent authority signs
@@ -150,6 +153,9 @@ its exact UTF-8 bytes with Ed25519, returning an envelope with exactly `payload`
 object. The payload expires within ten minutes; prepare a new approved envelope
 when expired. Store the envelope in an operator-owned mode-0600 file in a private
 mode-0700 directory outside the repository. Do not supply a private key file.
+`--request-file` exports the exact payload bytes to a new mode-0600 file outside
+the repository. It never overwrites an existing file and is accepted only for a
+read-only bootstrap plan. It does not sign or apply the request.
 
 ```sh
 pnpm users:v2 apply --environment flux-v2-dev/develop --step bootstrap-director \
