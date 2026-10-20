@@ -1,5 +1,12 @@
 # FLUX V2 — Phase 1.5H completion audit
 
+**Phase 1.5I update:** [BUSINESS-ADMINISTRATION.md](./BUSINESS-ADMINISTRATION.md)
+supersedes this report's read-only administration limitation and recommended next
+milestone. Existing-account business management, protected Director transfer and
+separate technical privilege controls are now integrated with the audited V2
+services. Onboarding and the other explicitly deferred workflows remain separate.
+The remainder of this document preserves H's implementation/verification record.
+
 Reviewed against HEAD `7827c86` (Phase 1.5G), 2026-10-18. This report supersedes earlier reports' historical statements about remaining legacy navigation/account permissions. RUNTIME, PROJECT-READ, PROJECT-WRITE, PROJECT-GOVERNANCE, COMPLETION-DOCUMENTS, ARCHIVES, LIBRARY and LEGACY-ENTRY-POINTS were checked against their implementations.
 
 ## Result

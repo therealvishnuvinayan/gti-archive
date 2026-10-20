@@ -1,5 +1,13 @@
 # Phase 1.5A legacy authorization entry-point inventory
 
+## Phase 1.5I administration update
+
+`/users` now uses the audited V2 assignment service for business-role/status
+changes, history and protected Director transfer. Technical grants have a
+separate `/settings/technical-administration` interface. New exact-input server
+actions authenticate the genuine session; legacy user/profile/invitation actions
+remain denied. See [BUSINESS-ADMINISTRATION.md](./BUSINESS-ADMINISTRATION.md).
+
 ## Phase 1.5H current status
 
 The historical inventories below are superseded for navigation, administration,

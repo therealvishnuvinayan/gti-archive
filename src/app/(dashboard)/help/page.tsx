@@ -14,8 +14,8 @@ export default async function HelpPage() {
     {nav.tasks && <p><Link href="/tasks" className="underline">Tasks</Link> contains the existing concept work. Assigned work gives access to its permitted context and files. Additional universal task types are planned for a later milestone.</p>}
     {nav.archives && <p><Link href="/archives" className="underline">Archives</Link> is global for Director and SPM. Designer and Digital Lead access requires the existing file and category grants. Digital Lead category management does not grant file access or verification authority.</p>}
     {nav.library && <p><Link href="/library" className="underline">Library</Link> follows project and task permissions. SPM/JPM can also read their own manual uploads. Library management remains Director-only.</p>}
-    {nav.users && <p><Link href="/users" className="underline">Business Users</Link> is a read-only directory. The legacy account and permission editors are disabled. Business role changes must use the audited V2 assignment service; technical privileges cannot be granted through business authority.</p>}
-    {!nav.tasks && <p>This account has no business access. Only implemented personal account settings are available here; technical privileges do not grant project or approval access.</p>}
+    {nav.users && <p><Link href="/users" className="underline">Business Users</Link> supports audited business role changes, permitted suspension/reactivation, history and protected Director transfer. Changes require a reason and confirmation. Technical privileges cannot be granted through business authority. New-account invitations remain unavailable.</p>}
+    {!nav.tasks && <p>This account has no business access. Settings offers personal controls and, for Technical Administrators, separate audited technical privilege management. Technical privileges do not grant project or approval access.</p>}
     <p>Project Tracker, project realtime subscriptions, new templates, Stage Builder and additional task types are not active in this authorization phase.</p>
   </section></DashboardLayout>;
 }

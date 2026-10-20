@@ -109,7 +109,7 @@ try {
    if(!business){assert.equal(denied.library,403);assert.equal(denied.count.total,undefined);}
   }
   await page.goto(origin+'/users');
-  if(id==='director') {await page.getByRole('heading',{name:'Business Users',exact:true}).waitFor();assert.equal(await page.locator('tbody tr').count(),9);assert.equal(await page.getByRole('button',{name:/Save|Assign|Edit/}).count(),0);await shot(page,'director-business-users');}
+  if(id==='director') {await page.getByRole('heading',{name:'Business Users',exact:true}).waitFor();assert.equal(await page.locator('tbody tr').count(),9);assert.equal(await page.getByRole('button',{name:'Edit role',exact:true}).count(),8);await shot(page,'director-business-users');}
   else {await page.waitForURL(u=>u.pathname!== '/users');assert.equal(await page.locator('tbody tr').count(),0);}
   await page.goto(origin+'/settings');
   assert.ok(!(await page.locator('body').innerText()).includes('Super Admin'));

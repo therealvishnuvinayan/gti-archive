@@ -9,7 +9,7 @@ import { projectTransactionClient } from "../src/lib/authorization/project-trans
 import { createVersionedSessionToken } from "../src/lib/authorization/session";
 import { allPermissionKeys } from "../src/lib/permissions/definitions";
 
-export async function workspaceFixture(database: "flux_v2_workspace_test" | "flux_v2_search_test") {
+export async function workspaceFixture(database: "flux_v2_workspace_test" | "flux_v2_search_test" | "flux_v2_administration_test") {
 const root = realpathSync(process.env.FLUX_AUTH_TEST_ROOT ?? "missing-isolated-root");
 const temporaryParent = realpathSync(process.platform === "darwin" ? "/private/tmp" : tmpdir());
 assert.ok(root.startsWith(temporaryParent + "/flux-v2-auth-pg-"));

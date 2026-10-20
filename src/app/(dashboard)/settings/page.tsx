@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { SettingsWorkspace } from "@/components/settings/settings-workspace";
@@ -68,6 +69,11 @@ export default async function SettingsPage() {
 
   return (
     <DashboardLayout>
+      {projectReadActor(user)?.technicalPrivileges.includes("TECHNICAL_ADMIN") && <section className="mx-6 mt-6 rounded-2xl border border-line bg-white p-5">
+        <h2 className="text-lg font-semibold">Technical Administration</h2>
+        <p className="my-2 text-sm text-muted-foreground">Manage technical privileges for existing accounts with recorded reasons and history.</p>
+        <Link className="text-sm font-medium underline" href="/settings/technical-administration">Manage technical privileges</Link>
+      </section>}
       <SettingsWorkspace
         user={{
           name: getUserDisplayName(user),

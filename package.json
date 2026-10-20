@@ -99,6 +99,8 @@
     "project-tags:ui-check": "node scripts/project-tags-ui-check.cjs",
     "tasks:integration-check": "tsc --project scripts/tsconfig.tasks-integration.json && node scripts/run-tasks-isolated-integration.mjs",
     "tasks:ui-check": "tsc --project scripts/tsconfig.tasks-integration.json && COMPILED_ALIAS_ROOT=.tmp/tasks-integration node -r ./scripts/register-compiled-alias.cjs scripts/tasks-ui-check.cjs",
+    "authorization:administration-check": "node scripts/run-authorization-isolated-integration.mjs --administration",
+    "authorization:administration-browser-check": "node scripts/administration-browser-check.mjs",
     "authorization:workspace-check": "node scripts/run-authorization-isolated-integration.mjs --workspace",
     "authorization:workspace-browser-check": "node scripts/workspace-browser-check.mjs"
   },
