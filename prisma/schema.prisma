@@ -452,6 +452,9 @@ enum FluxAiMessageRole {
 }
 
 model User {
+  approvalRequests ApprovalRequest[] @relation("ApprovalRequester")
+  approvalDecisions ApprovalDecision[]
+  approvalEvents ApprovalEvent[]
   sharedFileVersions SharedFileVersion[]
   id                                  String                               @id @default(cuid())
   email                               String                               @unique
@@ -689,6 +692,7 @@ model RolePermission {
 }
 
 model Project {
+  approvalRequests ApprovalRequest[]
   sharedFiles SharedFile[]
   id                     String                         @id @default(cuid())
   name                   String
@@ -2493,6 +2497,7 @@ model CompletionDocumentAccess {
 }
 
 model CompletionDocumentSubmission {
+  approvalRequest ApprovalRequest?
   sharedFileReference SharedFileReference?
   id String @id @default(cuid())
   projectId String
@@ -2527,6 +2532,9 @@ model CompletionDocumentSubmission {
 }
 
 model CompletionDocumentEvent {
+  requestedApproval ApprovalRequest? @relation("ApprovalSubmissionEvent")
+  approvalDecision ApprovalDecision?
+  approvalEvents ApprovalEvent[]
   sharedFileProvenance SharedFileProvenance?
   id String @id @default(cuid())
   projectId String
@@ -2857,6 +2865,7 @@ model SharedFile {
 }
 
 model SharedFileVersion {
+  approvalEvidence ApprovalEvidence[]
   id String @id @default(cuid())
   fileId String
   file SharedFile @relation(fields: [fileId], references: [id], onDelete: Restrict, onUpdate: Restrict)
@@ -2918,4 +2927,132 @@ model SharedFileProvenance {
   completionEvent CompletionDocumentEvent @relation(fields: [completionEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   createdAt DateTime @default(now())
   @@index([versionId])
+}
+
+
+// Only the typed completion-document adapter is registered in Phase 2.2.
+enum ApprovalSubjectType {
+  COMPLETION_DOCUMENT_SUBMISSION
+}
+
+enum ApprovalRequestState {
+  PENDING
+  APPROVED
+  REJECTED
+  SUPERSEDED
+}
+
+enum ApprovalStepEligibility {
+  DOCUMENT_REVIEWER
+  DIRECTOR
+}
+
+enum ApprovalDecisionOutcome {
+  APPROVE
+  REJECT
+}
+
+enum ApprovalEventAction {
+  REQUESTED
+  DECIDED
+  SUPERSEDED
+  STALE_REJECTED
+}
+
+model ApprovalRequest {
+  id String @id @default(cuid())
+  subjectType ApprovalSubjectType
+  subjectId String
+  subjectVersion String
+  projectId String
+  project Project @relation(fields: [projectId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  completionSubmissionId String @unique
+  completionSubmission CompletionDocumentSubmission @relation(fields: [completionSubmissionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  submissionEventId String @unique
+  submissionEvent CompletionDocumentEvent @relation("ApprovalSubmissionEvent", fields: [submissionEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  requestedById String?
+  requestedBy User? @relation("ApprovalRequester", fields: [requestedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  externalRequesterEmail String?
+  requestedAt DateTime
+  policyKey String
+  policySnapshot Json
+  subjectSnapshot Json
+  evidenceHash String
+  expiresAt DateTime?
+  state ApprovalRequestState @default(PENDING)
+  revision Int @default(0)
+  currentStep Int @default(1)
+  supersededAt DateTime?
+  supersessionReason String?
+  steps ApprovalStep[]
+  evidence ApprovalEvidence[]
+  decisions ApprovalDecision[]
+  events ApprovalEvent[]
+  @@unique([subjectType, subjectId, subjectVersion])
+  @@index([projectId, state])
+}
+
+model ApprovalStep {
+  id String @id @default(cuid())
+  requestId String
+  request ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  position Int
+  eligibility ApprovalStepEligibility
+  decision ApprovalDecision?
+  @@unique([requestId, position])
+  @@unique([id, requestId])
+}
+
+model ApprovalEvidence {
+  id String @id @default(cuid())
+  requestId String
+  request ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  fileVersionId String
+  fileVersion SharedFileVersion @relation(fields: [fileVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  snapshot Json
+  @@unique([requestId, fileVersionId])
+  @@index([fileVersionId])
+}
+
+model ApprovalDecision {
+  id String @id @default(cuid())
+  requestId String
+  request ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  stepId String @unique
+  step ApprovalStep @relation(fields: [stepId, requestId], references: [id, requestId], onDelete: Restrict, onUpdate: Restrict)
+  commandId String
+  expectedRevision Int
+  evidenceHash String
+  outcome ApprovalDecisionOutcome
+  reason String
+  actorId String
+  actor User @relation(fields: [actorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actorRole String
+  actorVersion Int
+  sessionId String
+  decidedAt DateTime
+  nativeEventId String? @unique
+  nativeEvent CompletionDocumentEvent? @relation(fields: [nativeEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  event ApprovalEvent?
+  @@unique([requestId, commandId])
+  @@unique([requestId, expectedRevision])
+  @@unique([stepId, requestId])
+  @@index([actorId])
+}
+
+model ApprovalEvent {
+  id String @id @default(cuid())
+  requestId String
+  request ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  action ApprovalEventAction
+  actorId String?
+  actor User? @relation(fields: [actorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  externalActorEmail String?
+  nativeEventId String?
+  nativeEvent CompletionDocumentEvent? @relation(fields: [nativeEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  decisionId String? @unique
+  decision ApprovalDecision? @relation(fields: [decisionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  details Json
+  createdAt DateTime @default(now())
+  @@index([requestId, createdAt])
 }

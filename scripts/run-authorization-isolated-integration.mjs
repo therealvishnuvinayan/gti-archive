@@ -194,10 +194,17 @@ try {
   if (process.argv.includes("--archives")) checkAssignmentServices("archives");
   if (process.argv.includes("--completion-documents")) checkAssignmentServices("completion-documents");
   if (process.argv.includes("--file-identity")) { checkSharedFileMigration(); checkAssignmentServices("file-identity"); }
+  if (process.argv.includes("--approvals")) { checkApprovalMigration(); checkAssignmentServices("approvals"); }
   if (process.argv.includes("--project-governance")) checkAssignmentServices("project-governance");
   if (process.argv.includes("--project-write")) checkAssignmentServices("project-write");
   if (process.argv.includes("--provisioning")) checkProvisioning();
   console.log("Existing application databases, credentials and S3 were not used.");
+} catch (error) {
+  // Prisma can report only the aborted transaction after a PL/pgSQL compile
+  // error. Keep the original fixture-server diagnostic before removing it.
+  const log = join(root, "postgres.log");
+  if (existsSync(log)) console.error(readFileSync(log, "utf8").split("\n").filter(line => /\] (ERROR|DETAIL|CONTEXT|HINT):/.test(line)).slice(-30).join("\n"));
+  throw error;
 } finally {
   cleanup();
   console.log("Disposable PostgreSQL cluster stopped and removed.");
@@ -210,7 +217,8 @@ function checkAssignmentServices(runtime = false) {
   const workspace = runtime === "workspace", search = runtime === "search";
   const library = runtime === "library";
   const archives = runtime === "archives";
-  const fileIdentity = runtime === "file-identity";
+  const approvals = runtime === "approvals";
+  const fileIdentity = runtime === "file-identity" || approvals;
   const documents = runtime === "completion-documents" || fileIdentity;
   const governance = runtime === "project-governance";
   const projectWrite = runtime === "project-write";
@@ -244,7 +252,7 @@ function checkAssignmentServices(runtime = false) {
   mkdirSync(marker, { recursive: true });
   writeFileSync(join(marker, "index.js"), "// Isolated Node server test only.\n");
   console.log(run(process.execPath, [join(output, administration ? "scripts/administration-integration-check.js" : workspace ? "scripts/workspace-authorization-integration-check.js" : search ? "scripts/flux-ai-archive-search-integration-check.js" : library ? "scripts/library-authorization-integration-check.js" : archives ? "scripts/archives-authorization-integration-check.js" : documents ? "scripts/completion-documents-integration-check.js" : governance ? "scripts/authorization-project-governance-integration-check.js" : projectWrite ? "scripts/authorization-project-write-integration-check.js" : projectRead ? "scripts/authorization-project-read-integration-check.js" : runtime ? "scripts/authorization-runtime-integration-check.js" : "scripts/authorization-services-integration-check.js")], {
-    env: { ...serviceEnv, NODE_ENV: "production", FLUX_FILE_IDENTITY_TEST: fileIdentity ? "1" : "", FLUX_AUTH_TEST_ROOT: root, FLUX_AUTH_TEST_URL: serviceUrl, FLUX_AUTH_TEST_CLIENT: clientPath,
+    env: { ...serviceEnv, NODE_ENV: "production", FLUX_FILE_IDENTITY_TEST: fileIdentity ? "1" : "", FLUX_APPROVAL_TEST: approvals ? "1" : "", FLUX_AUTH_TEST_ROOT: root, FLUX_AUTH_TEST_URL: serviceUrl, FLUX_AUTH_TEST_CLIENT: clientPath,
       NODE_PATH: join(repository, "node_modules") },
     timeout: 60000,
   }));
@@ -253,7 +261,14 @@ function checkAssignmentServices(runtime = false) {
   assert.match(drift, /This is an empty migration/);
   sql(`DROP DATABASE "${serviceDatabase}"`, "postgres");
   sql("CHECKPOINT", "postgres");
-  console.log(`PASS: ${fileIdentity ? "Phase 2.1 shared file identity" : administration ? "Phase 1.5I administration" : workspace ? "Phase 1.5H workspace" : search ? "Phase 1.5H search" : library ? "Phase 1.5G Library" : archives ? "Phase 1.5F Archives" : documents ? "Phase 1.5E completion documents" : governance ? "Phase 1.5D project governance" : projectWrite ? "Phase 1.5C project write" : projectRead ? "Phase 1.5B project read" : runtime ? "Phase 1.5A runtime" : "Phase 1.4A Prisma service"} integration, targeted TypeScript and empty schema drift.`);
+  console.log(`PASS: ${approvals ? "Phase 2.2 reusable approvals" : fileIdentity ? "Phase 2.1 shared file identity" : administration ? "Phase 1.5I administration" : workspace ? "Phase 1.5H workspace" : search ? "Phase 1.5H search" : library ? "Phase 1.5G Library" : archives ? "Phase 1.5F Archives" : documents ? "Phase 1.5E completion documents" : governance ? "Phase 1.5D project governance" : projectWrite ? "Phase 1.5C project write" : projectRead ? "Phase 1.5B project read" : runtime ? "Phase 1.5A runtime" : "Phase 1.4A Prisma service"} integration, targeted TypeScript and empty schema drift.`);
+}
+
+function withoutApprovalSchema(schema) {
+  for (const name of ["ApprovalRequest", "ApprovalStep", "ApprovalEvidence", "ApprovalDecision", "ApprovalEvent", "ApprovalSubjectType", "ApprovalRequestState", "ApprovalStepEligibility", "ApprovalDecisionOutcome", "ApprovalEventAction"]) {
+    schema = schema.replace(new RegExp(`^(?:model|enum) ${name} \\{[\\s\\S]*?^\\}`, "m"), "");
+  }
+  return schema.replace(/^  (?:approvalRequests|approvalDecisions|approvalEvents|approvalRequest|requestedApproval|approvalDecision|approvalEvidence)\s+[^\n]+\n/gm, "");
 }
 
 function checkSharedFileMigration() {
@@ -262,11 +277,12 @@ function checkSharedFileMigration() {
   const url = databaseUrl.replace(`/${database}?`, `/${db}?`), isolatedEnv = { ...env, DATABASE_URL: url };
   mkdirSync(join(directory, "migrations"), { recursive: true });
   copyFileSync(join(migrationRoot, "migration_lock.toml"), join(directory, "migrations/migration_lock.toml"));
-  for (const name of readdirSync(migrationRoot).filter(name => /^\d+_/.test(name) && name !== candidate)) {
+  for (const name of readdirSync(migrationRoot).filter(name => /^\d+_/.test(name) && name < candidate)) {
     mkdirSync(join(directory, "migrations", name));
     copyFileSync(join(migrationRoot, name, "migration.sql"), join(directory, "migrations", name, "migration.sql"));
   }
-  let baseline = readFileSync(schemaPath, "utf8");
+  const phase21Schema = withoutApprovalSchema(readFileSync(schemaPath, "utf8"));
+  let baseline = phase21Schema;
   for (const name of ["SharedFile", "SharedFileVersion", "SharedFileReference", "SharedFileProvenance", "SharedFileVersionStatus", "SharedFileChecksumEvidence", "SharedFileReferenceRole"]) {
     const block = new RegExp(`^(?:model|enum) ${name} \\{[\\s\\S]*?^\\}`, "m");
     assert.match(baseline, block); baseline = baseline.replace(block, "");
@@ -302,7 +318,7 @@ function checkSharedFileMigration() {
   const before = snapshot();
   mkdirSync(join(directory, "migrations", candidate));
   copyFileSync(join(migrationRoot, candidate, "migration.sql"), join(directory, "migrations", candidate, "migration.sql"));
-  copyFileSync(schemaPath, baselinePath);
+  writeFileSync(baselinePath, phase21Schema);
   migrate(["migrate", "deploy", "--schema", baselinePath]);
   assert.deepEqual(snapshot(), before, "Every pre-existing row and migration checksum must remain identical");
   assert.equal(sql('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL', db), "106");
@@ -314,6 +330,57 @@ function checkSharedFileMigration() {
   sql(`DROP DATABASE "${db}"`, "postgres");
   sql("CHECKPOINT", "postgres");
   console.log(`PASS files migration: 105/99 -> 106/103 migrations/tables; unchanged old schema, every legacy row/checksum/approval/file/handoff/account/audit, no backfill, zero drift; SHA-256 ${checksum}.`);
+}
+
+function checkApprovalMigration() {
+  const candidate = "20261020200000_reusable_approval_engine", db = "flux_v2_approval_migration_test";
+  const directory = join(root, "approval-baseline"), baselinePath = join(directory, "schema.prisma");
+  const url = databaseUrl.replace(`/${database}?`, `/${db}?`), isolatedEnv = { ...env, DATABASE_URL: url };
+  mkdirSync(join(directory, "migrations"), { recursive: true });
+  copyFileSync(join(migrationRoot, "migration_lock.toml"), join(directory, "migrations/migration_lock.toml"));
+  for (const name of readdirSync(migrationRoot).filter(name => /^\d+_/.test(name) && name < candidate)) {
+    mkdirSync(join(directory, "migrations", name));
+    copyFileSync(join(migrationRoot, name, "migration.sql"), join(directory, "migrations", name, "migration.sql"));
+  }
+  writeFileSync(baselinePath, withoutApprovalSchema(readFileSync(schemaPath, "utf8")));
+  sql(`CREATE DATABASE "${db}"`, "postgres");
+  const migrate = args => run(process.execPath, [prismaCli, ...args], { env: isolatedEnv });
+  migrate(["migrate", "deploy", "--schema", baselinePath]);
+  assert.equal(sql('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL', db), "106");
+  assert.equal(sql("SELECT count(*) FROM pg_tables WHERE schemaname='public'", db), "103");
+  assert.match(migrate(["migrate", "diff", "--from-url", url, "--to-schema-datamodel", baselinePath, "--script"]), /This is an empty migration/);
+  seedSyntheticBusinessRecords(db);
+  sql(`BEGIN; ${context("approval-migration-bootstrap")}
+    INSERT INTO "UserAuthorization" ("userId","businessRole") VALUES ('director-a','DIRECTOR'),('spm','SENIOR_PROJECT_MANAGER'),('jpm','JUNIOR_PROJECT_MANAGER');
+    INSERT INTO "Project" (id,name,"ownerId","createdById","updatedAt") VALUES ('approval-existing','Preserved completion','spm','operator',now());
+    INSERT INTO "ProjectCompletionWorkflow" (id,"projectId","invoiceRequired","invoiceStatus","updatedAt") VALUES ('approval-workflow','approval-existing',true,'COMPLETED',now());
+    INSERT INTO "ProjectCompletionDocument" (id,"projectId","workflowId",type,"originalFileName","archiveFileName","mimeType","fileSize",bucket,"storageKey","uploadedById","uploadedAt","updatedAt")
+      VALUES ('approval-legacy-document','approval-existing','approval-workflow','INVOICE','legacy.pdf','legacy.pdf','application/pdf',7,'synthetic-no-s3','legacy/invoice','spm',now(),now());
+    SELECT set_config('flux.completion_actor','spm',true);
+    INSERT INTO "CompletionDocumentEvent" (id,"projectId","workflowId","actorId",action,details) VALUES ('approval-native-history','approval-existing','approval-workflow','spm','FIXTURE_PRESERVED','{}');
+    INSERT INTO "SharedFile" (id) VALUES ('approval-existing-file');
+    INSERT INTO "SharedFileVersion" (id,"fileId",number,"uploadedById","originalFileName","mimeType","fileSize",bucket,"storageKey")
+      VALUES ('approval-existing-version','approval-existing-file',1,'operator','fixture.svg','image/svg+xml',9,'synthetic-no-s3','fixture/library');
+    INSERT INTO "SharedFileReference" (id,"versionId",role,"manualLibraryAssetId") VALUES ('approval-existing-reference','approval-existing-version','SOURCE','fixture-library');
+    UPDATE "SharedFileVersion" SET status='READY',"objectETag"='opaque-fixture-validator',"observedAt"=now(),"finalizedAt"=now() WHERE id='approval-existing-version';
+    COMMIT;`, db);
+  const tables = sql("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename", db).split("\n");
+  const snapshot = () => tables.map(table => {
+    assert.match(table, /^[A-Za-z0-9_]+$/);
+    return sql(`SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text)::text,'[]') FROM "${table}" t${table === "_prisma_migrations" ? ` WHERE migration_name <> '${candidate}'` : ""}`, db);
+  });
+  const before = snapshot();
+  mkdirSync(join(directory, "migrations", candidate));copyFileSync(join(migrationRoot, candidate, "migration.sql"), join(directory, "migrations", candidate, "migration.sql"));
+  copyFileSync(schemaPath, baselinePath);migrate(["migrate", "deploy", "--schema", baselinePath]);
+  assert.deepEqual(snapshot(), before, "All existing rows and ledger checksums must survive approval migration unchanged");
+  assert.equal(sql('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL', db), "107");
+  assert.equal(sql("SELECT count(*) FROM pg_tables WHERE schemaname='public'", db), "108");
+  for (const table of ["ApprovalRequest","ApprovalStep","ApprovalEvidence","ApprovalDecision","ApprovalEvent"]) assert.equal(sql(`SELECT count(*) FROM "${table}"`, db), "0");
+  const checksum = createHash("sha256").update(readFileSync(join(migrationRoot,candidate,"migration.sql"))).digest("hex");
+  assert.equal(sql(`SELECT checksum FROM "_prisma_migrations" WHERE migration_name='${candidate}'`, db), checksum);
+  assert.match(migrate(["migrate", "diff", "--from-url", url, "--to-schema-datamodel", baselinePath, "--script"]), /This is an empty migration/);
+  sql(`DROP DATABASE "${db}"`, "postgres");sql("CHECKPOINT", "postgres");
+  console.log(`PASS approval migration: 106/103 -> 107/108; all old rows, roles, native evidence, file versions, Archives/Library and ledger checksums unchanged; no backfill, zero drift; SHA-256 ${checksum}.`);
 }
 
 function checkProvisioning() {

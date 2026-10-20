@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.authorization-services.json",
+  "compilerOptions": { "outDir": "../.tmp/approval-unit" },
+  "include": ["approval-engine-unit-check.ts"]
+}

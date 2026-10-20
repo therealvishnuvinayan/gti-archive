@@ -196,6 +196,14 @@ async function main(){
   } else {
     assert.equal(await db.sharedFile.count(), 0, "Default-off workflow does not adopt historical/new files");
   }
+  if (process.env.FLUX_APPROVAL_TEST === "1") {
+    const { verifyApprovalEngine } = localRequire(join(compiledRoot,"scripts/approval-engine-integration-check.js")) as typeof import("./approval-engine-integration-check");
+    await verifyApprovalEngine({ db, objects, user, fixture, load: (name: string) => localRequire(join(compiledRoot, name)),
+      renewSession: async (id: string) => { const assignment = await db.userAuthorization.findUniqueOrThrow({ where: { userId: id } });
+        const value = createVersionedSessionToken(assignment.authorizationVersion); tokens.set(id, value);
+        await db.session.create({ data: { userId: id, token: value, expiresAt: new Date(Date.now() + 3600000) } }); return user(id); } });
+  }
+
  } finally { moduleApi._load=original; }
 }
 main().then(()=>console.log("PASS Phase 1.5E completion document integration on disposable PostgreSQL.")).finally(()=>db.$disconnect()).catch(error=>{console.error(error);process.exitCode=1;});

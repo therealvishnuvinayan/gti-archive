@@ -60,8 +60,11 @@ export async function verifySharedFiles({ db, objects, storageCalls, user, fixtu
   assert.match(response.headers.get("Content-Security-Policy")!, /sandbox/);
   const director = await user("director");
   const submissionRoute = load("src/app/api/project-completion-documents/submissions/[submissionId]/route.js") as typeof import("../src/app/api/project-completion-documents/submissions/[submissionId]/route");
+  const previousAppUrl = process.env.APP_URL;
+  process.env.APP_URL = "https://flux-review.example.invalid";
   const redirect = await submissionRoute.GET(new Request("http://localhost/submission"), { params: Promise.resolve({ submissionId: firstSource.id }) });
-  assert.equal(redirect.status, 307); assert.match(redirect.headers.get("Location")!, /^http:\/\/localhost\/api\/file-versions\//);
+  assert.equal(redirect.status, 307); assert.equal(new URL(redirect.headers.get("Location")!).origin, process.env.APP_URL);
+  assert.match(new URL(redirect.headers.get("Location")!).pathname, /^\/api\/file-versions\//);
   const documentId = accepted[0].id;
   const downloadPath = await docs.getProjectCompletionDocumentDownloadUrlForUser(director, documentId);
   const previewPath = await docs.getProjectCompletionDocumentPreviewUrlForUser(director, documentId);
@@ -74,8 +77,10 @@ export async function verifySharedFiles({ db, objects, storageCalls, user, fixtu
   const previewRoute = load("src/app/api/project-completion-documents/[documentId]/preview/route.js") as typeof import("../src/app/api/project-completion-documents/[documentId]/preview/route");
   for (const route of [downloadRoute, previewRoute]) {
     const result = await route.GET(new Request("http://localhost/document"), { params: Promise.resolve({ documentId }) });
-    assert.equal(result.status, 307); assert.match(result.headers.get("Location")!, /^http:\/\/localhost\/api\/file-versions\//);
+    assert.equal(result.status, 307); assert.equal(new URL(result.headers.get("Location")!).origin, process.env.APP_URL);
+    assert.match(new URL(result.headers.get("Location")!).pathname, /^\/api\/file-versions\//);
   }
+  if (previousAppUrl === undefined) delete process.env.APP_URL; else process.env.APP_URL = previousAppUrl;
   for (const id of ["designer", "digital", "tech", "outsider", "unassigned"]) {
     await user(id); const reads = storageCalls.reads;
     await assert.rejects(files.getSharedFileIdentity(firstSource));
