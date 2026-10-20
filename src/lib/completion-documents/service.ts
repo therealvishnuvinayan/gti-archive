@@ -9,6 +9,9 @@ import { isProjectStatusCompleted } from "../project-statuses";
 import { buildProjectCompletionDocumentKey, copyStoredObject, createPresignedDownloadUrl, createPresignedUploadUrl,
   getMaxAssetUploadBytes, getObjectMetadata, getS3BucketName, isAllowedProjectCompletionDocument, sanitizeFileName } from "@/lib/storage/s3";
 import { completionDocumentEvidenceHash, completionStep, stepState } from "./evidence";
+import { recordCompletionFileEvent, assertCompletionFileObservation } from "@/lib/files/completion-adapter";
+import { getSharedFileDownloadPath } from "@/lib/files/access";
+import type { FileObjectObservation } from "@/lib/files/contracts";
 
 type DB = Prisma.TransactionClient;
 type Actor = { userId: string } | { accessId: string; email: string };
@@ -23,11 +26,12 @@ function transaction(actor: { userId: string }, projectId: string) {
 async function bindActor(tx: DB, actor: Actor) {
   await tx.$queryRaw`SELECT set_config('flux.completion_actor', ${"userId" in actor ? actor.userId : ""}, true), set_config('flux.completion_access', ${"accessId" in actor ? actor.accessId : ""}, true)`;
 }
-async function event(tx: DB, actor: Actor, workflow: Target, action: string, details: unknown, links: { submissionId?: string; accessId?: string } = {}) {
+async function event(tx: DB, actor: Actor, workflow: Target, action: string, details: unknown, links: { submissionId?: string; accessId?: string } = {}, observation?: FileObjectObservation) {
   await bindActor(tx, actor);
-  await tx.completionDocumentEvent.create({ data: { projectId: workflow.projectId, workflowId: workflow.id, action,
+  const recorded = await tx.completionDocumentEvent.create({ data: { projectId: workflow.projectId, workflowId: workflow.id, action,
     actorId: "userId" in actor ? actor.userId : null, externalActorEmail: "email" in actor ? actor.email : null,
     details: JSON.parse(JSON.stringify(details)), ...links } });
+  await recordCompletionFileEvent(tx, recorded.id, observation);
 }
 export async function completionDocumentEvent(actor: { userId: string }, workflow: Target, action: string, details: unknown) {
   await event(transaction(actor, workflow.projectId), actor, workflow, action, details);
@@ -72,6 +76,10 @@ export async function prepareCompletionUpload(actor: { userId: string }, input: 
 
 async function finish(tx: DB, actor: Actor, input: CompletionUploadInput & { storageKey: string; failed?: boolean }) {
   const workflow = await activeWorkflow(tx, input.projectId);
+  // Lock the row that finalization actually changes BEFORE any storage effect.
+  // A project lock alone does not refresh a waiting Serializable snapshot; a
+  // replay could otherwise copy twice before its later database update aborts.
+  await tx.$queryRaw`SELECT id FROM "CompletionDocumentSubmission" WHERE "uploadKey" = ${input.storageKey} FOR UPDATE`;
   const s = await tx.completionDocumentSubmission.findUnique({ where: { uploadKey: input.storageKey } });
   if (!s || s.projectId !== input.projectId || s.workflowId !== workflow.id || s.type !== input.documentType || s.originalFileName !== input.originalFileName || s.mimeType !== input.mimeType || s.fileSize !== input.fileSize ||
     ("userId" in actor ? s.submittedById !== actor.userId || !!s.accessId : s.accessId !== actor.accessId || s.externalSubmitterEmail !== actor.email)) throw new Error("Upload ticket does not match this project, file or submitter.");
@@ -94,7 +102,7 @@ async function finish(tx: DB, actor: Actor, input: CompletionUploadInput & { sto
   const sealed = await getObjectMetadata(s.storageKey, s.bucket);
   if (sealed.ContentLength !== s.fileSize || sealed.ContentType !== s.mimeType || !sealed.ETag) throw new Error("Unable to verify the sealed completion evidence.");
   await tx.completionDocumentSubmission.update({ where: { id: s.id }, data: { status: "SUBMITTED", uploadedAt: new Date(), objectETag: sealed.ETag } });
-  await event(tx, actor, workflow, "DOCUMENT_SUBMITTED", { etag: sealed.ETag }, { submissionId: s.id });
+  await event(tx, actor, workflow, "DOCUMENT_SUBMITTED", { etag: sealed.ETag }, { submissionId: s.id }, sealed);
   return { submissionId: s.id, status: "SUBMITTED" };
 }
 export async function finishCompletionUpload(actor: { userId: string }, input: CompletionUploadInput & { storageKey: string; failed?: boolean }) { return finish(transaction(actor, input.projectId), actor, input); }
@@ -118,6 +126,7 @@ export async function reviewCompletionDocument(user: { id: string }, input: { pr
       if (!s.uploadedAt || !s.objectETag) throw new Error("Verified upload evidence is missing.");
       const metadata = await getObjectMetadata(s.storageKey, s.bucket);
       if (metadata.ETag !== s.objectETag || metadata.ContentLength !== s.fileSize || metadata.ContentType !== s.mimeType) throw new Error("Stored evidence has changed or is missing.");
+      await assertCompletionFileObservation(tx, s.id, metadata);
     }
     await bindActor(tx, identity);
     const reviewedAt = new Date();
@@ -220,5 +229,7 @@ export async function getCompletionSubmissionDownload(user: { id: string }, subm
   const s = await prisma.completionDocumentSubmission.findUniqueOrThrow({ where: { id: submissionId } });
   await requireProjectResourceRead("structured", s.projectId, "project.view", user);
   if (!s.uploadedAt || !s.objectETag || ["UPLOADING", "FAILED"].includes(s.status)) throw new Error("Document has not been submitted.");
+  const versionPath = await getSharedFileDownloadPath({ kind: "completion-submission", id: submissionId });
+  if (versionPath) return versionPath;
   return createPresignedDownloadUrl({ bucket: s.bucket, storageKey: s.storageKey, fileName: s.originalFileName, mimeType: s.mimeType });
 }

@@ -477,6 +477,18 @@ export async function getObjectMetadata(
   );
 }
 
+/** Shared versions use a conditional GET, not HEAD followed by an unguarded URL.
+ * A non-null object version is pinned when available; ETag remains an opaque
+ * storage validator and is never labelled a cryptographic checksum. */
+export async function readPinnedStoredObject(input: {
+  bucket: string; storageKey: string; objectVersionId: string | null; objectETag: string; checksumSha256: string | null;
+}) {
+  if (!input.objectETag.trim() || input.objectVersionId === "null") throw new Error("Invalid pinned object reference.");
+  return getS3Client().send(new GetObjectCommand({ Bucket: input.bucket, Key: input.storageKey,
+    VersionId: input.objectVersionId ?? undefined, IfMatch: input.objectETag,
+    ChecksumMode: input.checksumSha256 ? "ENABLED" : undefined }));
+}
+
 export async function deleteObjectIfNeeded(
   storageKey: string,
   bucket = getS3BucketName(),

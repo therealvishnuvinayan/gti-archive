@@ -452,6 +452,7 @@ enum FluxAiMessageRole {
 }
 
 model User {
+  sharedFileVersions SharedFileVersion[]
   id                                  String                               @id @default(cuid())
   email                               String                               @unique
   name                                String?
@@ -688,6 +689,7 @@ model RolePermission {
 }
 
 model Project {
+  sharedFiles SharedFile[]
   id                     String                         @id @default(cuid())
   name                   String
   category               String?
@@ -754,6 +756,7 @@ model Project {
 }
 
 model FlexibleProject {
+  sharedFiles SharedFile[]
   id            String                        @id @default(cuid())
   slug          String                        @unique
   name          String
@@ -796,6 +799,7 @@ model FlexibleProjectCollaborator {
 }
 
 model FlexibleMilestone {
+  sharedFiles SharedFile[]
   id                String                      @id @default(cuid())
   projectId         String
   project           FlexibleProject             @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -836,6 +840,7 @@ model FlexibleMilestoneNote {
 }
 
 model FlexibleProjectAttachment {
+  sharedFileReference SharedFileReference?
   id               String             @id @default(cuid())
   projectId        String
   project          FlexibleProject    @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -1200,6 +1205,7 @@ model ProjectPrivateFolder {
 }
 
 model ProjectConceptFolder {
+  sharedFiles SharedFile[]
   id                               String                  @id @default(cuid())
   projectId                        String
   project                          Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -1945,6 +1951,7 @@ model CalendarCollaborator {
 }
 
 model ProjectStage {
+  sharedFiles SharedFile[]
   id                 String                @id @default(cuid())
   projectId          String
   project            Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -2088,6 +2095,7 @@ model FluxAiSearchHistory {
 }
 
 model ProjectAttachment {
+  sharedFileReference SharedFileReference?
   id                         String                                @id @default(cuid())
   projectId                  String
   project                    Project                               @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -2277,6 +2285,7 @@ model ProjectArchive {
 }
 
 model ArchivedProjectFile {
+  sharedFileReference SharedFileReference?
   id                   String                   @id @default(cuid())
   archiveId            String
   archive              ProjectArchive           @relation(fields: [archiveId], references: [id], onDelete: Cascade)
@@ -2384,6 +2393,7 @@ enum ArchiveArtworkMetadataSourceType {
 }
 
 model ProjectCompletionWorkflow {
+  sharedFiles SharedFile[]
   id                              String                      @id @default(cuid())
   projectId                       String                      @unique
   project                         Project                     @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -2428,6 +2438,7 @@ model ProjectCompletionWorkflow {
 }
 
 model ProjectCompletionDocument {
+  sharedFileReference SharedFileReference?
   id               String                        @id @default(cuid())
   projectId        String
   project          Project                       @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -2482,6 +2493,7 @@ model CompletionDocumentAccess {
 }
 
 model CompletionDocumentSubmission {
+  sharedFileReference SharedFileReference?
   id String @id @default(cuid())
   projectId String
   workflowId String
@@ -2515,6 +2527,7 @@ model CompletionDocumentSubmission {
 }
 
 model CompletionDocumentEvent {
+  sharedFileProvenance SharedFileProvenance?
   id String @id @default(cuid())
   projectId String
   workflowId String
@@ -2533,6 +2546,7 @@ model CompletionDocumentEvent {
 }
 
 model ManualArchiveFile {
+  sharedFileReference SharedFileReference?
   id                  String                                @id @default(cuid())
   fileName            String
   originalFileName    String
@@ -2584,6 +2598,7 @@ model ArchiveFileShareLink {
 }
 
 model ManualLibraryAsset {
+  sharedFileReference SharedFileReference?
   id                          String                            @id @default(cuid())
   assetName                   String
   originalFileName            String
@@ -2798,4 +2813,109 @@ model ProjectTemplateProposal {
 
   @@unique([requesterId, clientRequestId])
   @@index([status, submittedAt])
+}
+
+// Phase 2.1: additive identity/provenance. No historical backfill or implicit ACL.
+// PostgreSQL migration supplies immutability, one-source and cross-record checks.
+enum SharedFileVersionStatus {
+  UPLOADING
+  READY
+  FAILED
+}
+
+enum SharedFileChecksumEvidence {
+  UNKNOWN
+  S3_FULL_OBJECT_SHA256
+}
+
+enum SharedFileReferenceRole {
+  SOURCE
+  REFERENCE
+  ACCEPTED_EVIDENCE
+}
+
+model SharedFile {
+  id String @id @default(cuid())
+  projectId String?
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  flexibleProjectId String?
+  flexibleProject FlexibleProject? @relation(fields: [flexibleProjectId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  stageId String?
+  stage ProjectStage? @relation(fields: [stageId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  conceptFolderId String?
+  conceptFolder ProjectConceptFolder? @relation(fields: [conceptFolderId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  milestoneId String?
+  milestone FlexibleMilestone? @relation(fields: [milestoneId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  completionWorkflowId String?
+  completionWorkflow ProjectCompletionWorkflow? @relation(fields: [completionWorkflowId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  completionDocumentType ProjectCompletionDocumentType?
+  createdAt DateTime @default(now())
+  versions SharedFileVersion[]
+  @@unique([completionWorkflowId, completionDocumentType])
+  @@index([projectId])
+  @@index([flexibleProjectId])
+}
+
+model SharedFileVersion {
+  id String @id @default(cuid())
+  fileId String
+  file SharedFile @relation(fields: [fileId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  number Int
+  status SharedFileVersionStatus @default(UPLOADING)
+  uploadedById String?
+  uploadedBy User? @relation(fields: [uploadedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  externalUploaderEmail String?
+  uploaderUnknown Boolean @default(false)
+  originalFileName String
+  mimeType String
+  fileSize Int
+  bucket String
+  storageKey String
+  objectVersionId String?
+  objectETag String?
+  checksumSha256 String?
+  checksumEvidence SharedFileChecksumEvidence @default(UNKNOWN)
+  applicationSealed Boolean @default(false)
+  observedAt DateTime?
+  finalizedAt DateTime?
+  createdAt DateTime @default(now())
+  references SharedFileReference[]
+  provenance SharedFileProvenance[]
+  @@unique([fileId, number])
+  @@index([bucket, storageKey])
+  @@index([uploadedById])
+}
+
+model SharedFileReference {
+  id String @id @default(cuid())
+  versionId String
+  version SharedFileVersion @relation(fields: [versionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  role SharedFileReferenceRole
+  projectAttachmentId String? @unique
+  projectAttachment ProjectAttachment? @relation(fields: [projectAttachmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  flexibleAttachmentId String? @unique
+  flexibleAttachment FlexibleProjectAttachment? @relation(fields: [flexibleAttachmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  archivedProjectFileId String? @unique
+  archivedProjectFile ArchivedProjectFile? @relation(fields: [archivedProjectFileId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  manualArchiveFileId String? @unique
+  manualArchiveFile ManualArchiveFile? @relation(fields: [manualArchiveFileId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  manualLibraryAssetId String? @unique
+  manualLibraryAsset ManualLibraryAsset? @relation(fields: [manualLibraryAssetId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  completionSubmissionId String? @unique
+  completionSubmission CompletionDocumentSubmission? @relation(fields: [completionSubmissionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  completionDocumentId String? @unique
+  completionDocument ProjectCompletionDocument? @relation(fields: [completionDocumentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdAt DateTime @default(now())
+  @@index([versionId])
+}
+
+// Observations of an existing native workflow decision, not a new approval engine.
+model SharedFileProvenance {
+  id String @id @default(cuid())
+  versionId String
+  version SharedFileVersion @relation(fields: [versionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  completionEventId String @unique
+  completionEvent CompletionDocumentEvent @relation(fields: [completionEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdAt DateTime @default(now())
+  @@index([versionId])
 }

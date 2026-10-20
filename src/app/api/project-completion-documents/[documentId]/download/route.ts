@@ -4,7 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { getProjectCompletionDocumentDownloadUrlForUser } from "@/lib/project-completion";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ documentId: string }> },
 ) {
   const user = await getCurrentUser();
@@ -20,7 +20,7 @@ export async function GET(
       user,
       documentId,
     );
-    return NextResponse.redirect(downloadUrl);
+    return NextResponse.redirect(new URL(downloadUrl, request.url), { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     const message =
       error instanceof Error

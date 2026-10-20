@@ -68,6 +68,7 @@
     "library:browser-check": "node scripts/library-browser-check.mjs",
     "authorization:foundation-check": "tsc --project scripts/tsconfig.authorization-foundation.json && node .tmp/authorization-foundation/scripts/authorization-foundation-check.js",
     "authorization:persistence-check": "tsc --project scripts/tsconfig.authorization-persistence.json && node .tmp/authorization-persistence/scripts/authorization-persistence-check.js",
+    "files:check": "node scripts/run-authorization-isolated-integration.mjs --file-identity",
     "completion-documents:check": "node scripts/run-authorization-isolated-integration.mjs --completion-documents",
     "authorization:project-governance-check": "node scripts/run-authorization-isolated-integration.mjs --project-governance",
     "authorization:project-write-check": "node scripts/run-authorization-isolated-integration.mjs --project-write",

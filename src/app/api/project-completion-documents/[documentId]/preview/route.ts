@@ -4,7 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { getProjectCompletionDocumentPreviewUrlForUser } from "@/lib/project-completion";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ documentId: string }> },
 ) {
   const user = await getCurrentUser();
@@ -17,7 +17,7 @@ export async function GET(
 
   try {
     const previewUrl = await getProjectCompletionDocumentPreviewUrlForUser(user, documentId);
-    return NextResponse.redirect(previewUrl);
+    return NextResponse.redirect(new URL(previewUrl, request.url), { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     const message =
       error instanceof Error

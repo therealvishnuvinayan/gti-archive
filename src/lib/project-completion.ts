@@ -2,6 +2,7 @@ import { runProjectMutation } from "@/lib/authorization/project-write";
 import { refreshProjectReader, requireProjectResourceRead } from "@/lib/authorization/project-read";
 import { canReadFullProject, projectReadActor } from "@/lib/authorization/project-read-rules";
 import { completionDocumentEvent, prepareCompletionUpload, finishCompletionUpload } from "@/lib/completion-documents/service";
+import { getSharedFileDownloadPath } from "@/lib/files/access";
 
 import {
   ArchiveRecordStatus,
@@ -1476,6 +1477,8 @@ export async function getProjectCompletionDocumentDownloadUrlForUser(
   documentId: string,
 ) {
   const document = await ensureProjectCompletionDocumentAccess(user, documentId);
+  const versionPath = await getSharedFileDownloadPath({ kind: "completion-document", id: documentId });
+  if (versionPath) return versionPath;
 
   return createPresignedDownloadUrl({
     bucket: document.bucket,
@@ -1490,6 +1493,8 @@ export async function getProjectCompletionDocumentPreviewUrlForUser(
   documentId: string,
 ) {
   const document = await ensureProjectCompletionDocumentAccess(user, documentId);
+  const versionPath = await getSharedFileDownloadPath({ kind: "completion-document", id: documentId }, true);
+  if (versionPath) return versionPath;
 
   return createPresignedPreviewUrl({
     bucket: document.bucket,

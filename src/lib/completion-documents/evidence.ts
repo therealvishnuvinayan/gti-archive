@@ -2,6 +2,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import type { Prisma, ProjectCompletionDocumentType, ProjectCompletionWorkflow } from "@prisma/client";
 import { getObjectMetadata } from "@/lib/storage/s3";
+import { assertCompletionFileObservation } from "@/lib/files/completion-adapter";
 
 export const completionStep = {
   AUTHORITY_APPROVAL_PROOF: "approval", COPYRIGHT_TRANSFER: "copyright", INVOICE: "invoice",
@@ -50,6 +51,7 @@ export async function assertCompletionDocumentEvidence(tx: Prisma.TransactionCli
         s.projectId !== document.projectId || s.workflowId !== document.workflowId || s.type !== type || s.storageKey !== document.storageKey ||
         s.evidenceHash !== await completionDocumentEvidenceHash(tx, workflow, type)) throw new Error("Accepted completion evidence is invalid or stale; a reviewed revision is required.");
       if (metadata.ETag !== s.objectETag || metadata.ContentLength !== s.fileSize || metadata.ContentType !== s.mimeType) throw new Error("Accepted completion object is missing or has changed.");
+      await assertCompletionFileObservation(tx, s.id, metadata);
     }
     verified.push({ documentId: document.id, etag: metadata.ETag, fileSize: document.fileSize, mimeType: document.mimeType });
   }
