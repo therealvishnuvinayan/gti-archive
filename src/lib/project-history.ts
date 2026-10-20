@@ -1,5 +1,7 @@
-import { randomUUID } from "node:crypto";
-import { unstable_cache } from "next/cache";
+import { inAuthorizedProjectMutation, activeProjectMutation } from "@/lib/authorization/project-transaction";
+import { runProjectMutation } from "@/lib/authorization/project-write";
+import { refreshProjectReader, requireProjectResourceRead } from "@/lib/authorization/project-read";
+import { isDirectorReader } from "@/lib/authorization/project-read-rules";
 import {
   ActivityLogAction,
   AttachmentAssetType,
@@ -8,62 +10,54 @@ import {
   ProjectExecutionType,
   ProjectFileChecklistRequestChannel,
   ProjectFileChecklistRequestWorkflowStatus,
-  ProjectInquiryAttachmentField,
   ProjectRevisionStatus,
   ProjectWorkflowStageKey,
   ProjectWorkflowStageStatus,
   StageStatus,
   SubmissionReviewStatus,
   UserRole,
-  type User,
+  type User
 } from "@prisma/client";
+import { randomUUID } from "node:crypto";
 
-import type { ProjectAttachmentRecord, ProjectChatEntry } from "@/lib/projects";
-import { getUserRoleLabel } from "@/lib/user-role-compatibility";
-import { projectCollaboratorPermissionSelect } from "@/lib/project-collaborator-permissions";
-import type { PermissionKey } from "@/lib/permissions/definitions";
-import {
-  canUseProjects,
-  hasPermission,
-  hasProjectPermission,
-  isGlobalProjectAdministrator,
-  isProjectExecutor,
-  type PermissionUser,
-  type ProjectPermissionContext,
-} from "@/lib/permissions/resolver";
+import { validateActiveAssetTagIds } from "@/lib/asset-tags";
+import { getFavoriteAttachmentIdSetForUser } from "@/lib/file-favorite-queries";
+import type { LibraryUploadMetadata } from "@/lib/library-shared";
 import {
   notifyFileUploaded,
   notifyInvoiceUploaded,
   runNotificationTaskAfterResponse,
 } from "@/lib/notification-center";
-import { getFavoriteAttachmentIdSetForUser } from "@/lib/file-favorite-queries";
-import { sanitizeRichText } from "@/lib/rich-text";
 import { getVisibleStageEventRecipientUserIds } from "@/lib/notification-center/recipients";
+import type { PermissionKey } from "@/lib/permissions/definitions";
 import {
-  assertProjectTimestampVisibleForUser,
+  hasPermission,
+  hasProjectPermission,
+  isProjectExecutor,
+  type PermissionUser,
+  type ProjectPermissionContext
+} from "@/lib/permissions/resolver";
+import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { projectCollaboratorPermissionSelect } from "@/lib/project-collaborator-permissions";
+import {
   canBypassCollaboratorVisibility,
   getProjectCollaboratorVisibilityState,
   isTimestampHiddenByPauseWindows,
-  type ProjectCollaboratorVisibilityPauseRecord,
+  type ProjectCollaboratorVisibilityPauseRecord
 } from "@/lib/project-collaborator-visibility";
-import { PROJECTS_CACHE_TAG } from "@/lib/projects";
+import {
+  assertConceptTaskerAccessIfNeeded
+} from "@/lib/project-concept-access";
+import { assertProjectPrivateAttachmentAccess } from "@/lib/project-private-folders";
 import {
   assertProjectResearchFileAccess,
   assertResearchFolderUploadAccess,
 } from "@/lib/project-research-access";
-import { assertProjectPrivateAttachmentAccess } from "@/lib/project-private-folders";
-import {
-  assertConceptTaskerAccessIfNeeded,
-  canViewProjectConcept,
-  getProjectConceptAccessContext,
-  isProjectConceptWorkflowAccessible,
-} from "@/lib/project-concept-access";
-import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { isProjectStatusCompleted } from "@/lib/project-statuses";
+import type { ProjectAttachmentRecord, ProjectChatEntry } from "@/lib/projects";
+import { sanitizeRichText } from "@/lib/rich-text";
 import { logChatSendFastTiming, logStageChatTiming } from "@/lib/stage-chat-timing";
 import { getLockedStageInfo } from "@/lib/stage-locking";
-import { canOpenProjectStageChatContainer } from "@/lib/workflow-stage-access";
-import type { LibraryUploadMetadata } from "@/lib/library-shared";
 import {
   buildProjectAssetKey,
   createPresignedDownloadUrl,
@@ -89,7 +83,8 @@ import {
   isAllowedStageSevenEvidenceFile,
   type UploadFileTypeErrorPayload,
 } from "@/lib/upload-validation";
-import { validateActiveAssetTagIds } from "@/lib/asset-tags";
+import { getUserRoleLabel } from "@/lib/user-role-compatibility";
+import { canOpenProjectStageChatContainer } from "@/lib/workflow-stage-access";
 
 const STAGE_CHAT_MESSAGE_DELETE_WINDOW_MS = 5 * 60 * 1000;
 const DELETED_STAGE_CHAT_MESSAGE_TEXT = "This message was deleted";
@@ -1050,7 +1045,7 @@ async function getStageChatAccessRecord(
   }
 
   if (
-    !canOpenProjectStageChatContainer({
+    !isDirectorReader(user) && !canOpenProjectStageChatContainer({
       isTasker: stage.isTasker,
       conceptFolder: stage.conceptFolder,
       workflowStages: stage.project.workflowStages,
@@ -1113,6 +1108,9 @@ export async function assertProjectAccess(
   projectId: string,
   selectedStageId?: string,
 ) {
+  user = await refreshProjectReader(user);
+  if (!inAuthorizedProjectMutation(user, projectId)) await requireProjectResourceRead('structured', projectId, 'project.view', user);
+
   const project = await getProjectAccessRecord(projectId, user.id, selectedStageId);
 
   if (!project) {
@@ -1124,7 +1122,7 @@ export async function assertProjectAccess(
     : null;
 
   if (
-    selectedStage &&
+    selectedStage && !isDirectorReader(user) &&
     !canOpenProjectStageChatContainer({
       isTasker: selectedStage.isTasker,
       conceptFolder: selectedStage.conceptFolder,
@@ -1142,7 +1140,7 @@ export async function assertProjectAccess(
     });
   }
 
-  if (hasProjectPermission(user, project, "project.view")) {
+  if (inAuthorizedProjectMutation(user, projectId) || hasProjectPermission(user, project, "project.view")) {
     return project;
   }
 
@@ -1152,13 +1150,8 @@ export async function assertProjectAccess(
 function assertProjectAccessFromContext(
   user: AccessUser,
   project: ProjectPermissionContext,
-) {
-  if (hasProjectPermission(user, project, "project.view")) {
-    return project;
-  }
-
-  throw new Error("You do not have access to this project.");
-}
+) { if (activeProjectMutation()?.actorId === user.id || hasProjectPermission(user, project, "project.view")) return project;
+  throw new Error("You do not have access to this project."); }
 
 function assertProjectWorkflowPermission(
   user: AccessUser,
@@ -1500,77 +1493,11 @@ export async function assertProjectAttachmentVisibilityForUser(
     };
   },
 ) {
-  if (attachment.stageId) {
-    const sourceConcept = await getProjectConceptAccessContext({
-      projectId: attachment.projectId,
-      taskerStageId: attachment.stageId,
-    });
-
-    if (sourceConcept && !isProjectConceptWorkflowAccessible(sourceConcept)) {
-      throw new Error("This workflow stage is locked.");
-    }
-
-    if (sourceConcept && !canViewProjectConcept(user, sourceConcept)) {
-      const startingReferenceConcept = attachment.id
-        ? await withPrismaRetry(() =>
-            prisma.projectConceptFolder.findFirst({
-              where: {
-                projectId: attachment.projectId,
-                workflowStageKey:
-                  ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
-                sourceStage3ApprovedAttachmentId: attachment.id,
-              },
-              select: {
-                id: true,
-                projectId: true,
-                taskerStageId: true,
-                workflowStageKey: true,
-                assignedExecutorId: true,
-                project: {
-                  select: {
-                    ownerId: true,
-                    coOwners: { select: { userId: true } },
-                  },
-                },
-              },
-            }),
-          )
-        : null;
-      const startingReferenceContext = startingReferenceConcept
-        ? {
-            folderId: startingReferenceConcept.id,
-            projectId: startingReferenceConcept.projectId,
-            taskerStageId: startingReferenceConcept.taskerStageId,
-            workflowStageKey: startingReferenceConcept.workflowStageKey,
-            assignedExecutorId: startingReferenceConcept.assignedExecutorId,
-            ownerId: startingReferenceConcept.project.ownerId,
-            coOwnerIds: startingReferenceConcept.project.coOwners.map(
-              (coOwner) => coOwner.userId,
-            ),
-          }
-        : null;
-
-      if (
-        !startingReferenceContext ||
-        !canViewProjectConcept(user, startingReferenceContext)
-      ) {
-        throw new Error("You do not have access to this concept.");
-      }
-
-      return;
-    }
-  }
-
-  if (hasProjectPermission(user, attachment.project, "collaborator.pauseVisibility")) {
-    return;
-  }
-
-  await assertProjectTimestampVisibleForUser(user, {
-    projectId: attachment.projectId,
-    projectOwnerId: attachment.project.ownerId ?? "",
-    timestamp: attachment.createdAt,
-    message: "You do not have permission to access this file.",
-  });
+ user = await refreshProjectReader(user);
+ if (!attachment.id) throw new Error("PROJECT_READ_DENIED");
+  await requireProjectResourceRead("file", attachment.id, "project.viewFile", user);
+ const record = await prisma.projectAttachment.findUnique({where:{id:attachment.id},select:{projectId:true}});
+ if(record?.projectId !== attachment.projectId) throw new Error("PROJECT_READ_DENIED");
 }
 
 async function isConceptWorkflowCompleted(input: {
@@ -1617,10 +1544,12 @@ export async function getProjectStageChatMessages(
     includeWorkflowCards?: "auto" | "always" | "never";
   } = {},
 ): Promise<StageHistoryRecord> {
+  user = await refreshProjectReader(user);
+  await requireProjectResourceRead('structured', projectId, 'project.view', user);
+
   const totalStartedAt = performance.now();
   const projectLookupStartedAt = performance.now();
   const project =
-    options.projectAccessRecord ??
     (preferredStageId
       ? await getStageChatAccessRecord(projectId, preferredStageId, user)
       : await getProjectAccessRecord(projectId, user.id));
@@ -1673,7 +1602,7 @@ export async function getProjectStageChatMessages(
     activeStageId,
   );
 
-  if (lockedStageInfo) {
+  if (lockedStageInfo && !isDirectorReader(user)) {
     throw new Error(lockedStageInfo.message);
   }
 
@@ -2181,6 +2110,9 @@ async function assertStageChatRealtimeAccess(
   projectId: string,
   stageId: string,
 ) {
+  user = await refreshProjectReader(user);
+  await requireProjectResourceRead('structured', projectId, 'project.view', user);
+
   const project = await getStageChatAccessRecord(projectId, stageId, user);
 
   if (!project) {
@@ -2199,7 +2131,7 @@ async function assertStageChatRealtimeAccess(
   );
   const lockedStageInfo = getLockedStageInfo(project.stages, stageId);
 
-  if (lockedStageInfo) {
+  if (lockedStageInfo && !isDirectorReader(user)) {
     throw new Error(lockedStageInfo.message);
   }
 
@@ -2295,6 +2227,9 @@ export async function getStageChatCommentEntryForUser(
     commentId: string;
   },
 ): Promise<StageChatCommentEntryRecord | null> {
+  user = await refreshProjectReader(user);
+  await requireProjectResourceRead('structured', input.projectId, 'project.view', user);
+
   const project = await assertStageChatRealtimeAccess(
     user,
     input.projectId,
@@ -2334,6 +2269,9 @@ export async function getStageChatUpdatesForUser(
     limit?: number;
   },
 ): Promise<StageChatUpdatesRecord> {
+  user = await refreshProjectReader(user);
+  await requireProjectResourceRead('structured', input.projectId, 'project.view', user);
+
   const project = await assertStageChatRealtimeAccess(
     user,
     input.projectId,
@@ -2667,6 +2605,9 @@ export async function getProjectStageHistory(
   preferredStageId?: string | null,
   requiredPermissionKey: PermissionKey = "chat.view",
 ): Promise<StageHistoryRecord> {
+  user = await refreshProjectReader(user);
+  await requireProjectResourceRead('structured', projectId, 'project.view', user);
+
   const project = preferredStageId
     ? await getStageChatAccessRecord(projectId, preferredStageId, user)
     : await assertProjectAccess(user, projectId);
@@ -2710,7 +2651,7 @@ export async function getProjectStageHistory(
     activeStageId,
   );
 
-  if (lockedStageInfo) {
+  if (lockedStageInfo && !isDirectorReader(user)) {
     throw new Error(lockedStageInfo.message);
   }
 
@@ -2722,8 +2663,7 @@ export async function getProjectStageHistory(
     };
   }
 
-  const getCachedHistory = unstable_cache(
-    async () =>
+  const getCachedHistory = (async () =>
       withPrismaRetry(() =>
         Promise.all([
           prisma.projectRevision.findMany({
@@ -2900,10 +2840,7 @@ export async function getProjectStageHistory(
             },
           }),
         ]),
-      ),
-    ["project-stage-history", projectId, activeStageId],
-    { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
-  );
+      ));
 
   const [allRevisions, allComments, allComparisons] = await getCachedHistory();
   const submissionNumbers = buildStageSubmissionNumberMap(allRevisions, allComments);
@@ -2954,7 +2891,7 @@ export async function getProjectStageHistory(
   };
 }
 
-export async function createStageRevision(
+async function createStageRevisionImplementation(
   user: AccessUser,
   input: {
     projectId: string;
@@ -2978,7 +2915,7 @@ export async function createStageRevision(
     "Only a project executor can submit work for review.",
   );
 
-  if (!isProjectExecutorUser(project, user.id)) {
+  if (!isDirectorReader(user) && !isProjectExecutorUser(project, user.id)) {
     throw new Error("Only a project executor can submit work for review.");
   }
 
@@ -3159,7 +3096,7 @@ export async function createStageRevision(
   return revision;
 }
 
-export async function createStageComment(
+async function createStageCommentImplementation(
   user: AccessUser,
   input: {
     projectId: string;
@@ -3344,7 +3281,7 @@ export async function createStageComment(
   return comment;
 }
 
-export async function createStageTextCommentFast(
+async function createStageTextCommentFastImplementation(
   user: AccessUser,
   input: {
     projectId: string;
@@ -3680,7 +3617,7 @@ export async function createStageTextCommentFast(
   };
 }
 
-export async function deleteStageComment(
+async function deleteStageCommentImplementation(
   user: AccessUser,
   input: {
     projectId: string;
@@ -3791,7 +3728,7 @@ export async function deleteStageComment(
   };
 }
 
-export async function prepareStageCommentUploads(
+async function prepareStageCommentUploadsImplementation(
   user: AccessUser,
   input: PrepareStageCommentUploadsInput,
 ): Promise<PrepareStageCommentUploadsResult> {
@@ -4069,7 +4006,7 @@ export async function prepareStageCommentUploads(
   };
 }
 
-export async function cancelPreparedStageCommentUploads(
+async function cancelPreparedStageCommentUploadsImplementation(
   user: AccessUser,
   input: {
     projectId: string;
@@ -4117,7 +4054,7 @@ export async function cancelPreparedStageCommentUploads(
   );
 }
 
-export async function finalizePreparedStageCommentUploads(
+async function finalizePreparedStageCommentUploadsImplementation(
   user: AccessUser,
   input: {
     projectId: string;
@@ -4225,7 +4162,7 @@ export async function finalizePreparedStageCommentUploads(
   };
 }
 
-export async function cancelStageRevisionSubmission(
+async function cancelStageRevisionSubmissionImplementation(
   user: AccessUser,
   input: {
     projectId: string;
@@ -4311,7 +4248,7 @@ export async function cancelStageRevisionSubmission(
   );
 }
 
-export async function cancelStagedConceptRevisionAttachments(
+async function cancelStagedConceptRevisionAttachmentsImplementation(
   user: AccessUser,
   input: {
     projectId: string;
@@ -4365,7 +4302,7 @@ export async function cancelStagedConceptRevisionAttachments(
   );
 }
 
-export async function startProjectStageWork(
+async function startProjectStageWorkImplementation(
   user: AccessUser,
   input: {
     projectId: string;
@@ -4392,7 +4329,7 @@ export async function startProjectStageWork(
     "Only a project executor can accept the brief for this stage.",
   );
 
-  if (!isProjectExecutorUser(project, user.id)) {
+  if (!isDirectorReader(user) && !isProjectExecutorUser(project, user.id)) {
     throw new Error("Only a project executor can accept the brief for this stage.");
   }
 
@@ -4454,7 +4391,7 @@ export async function startProjectStageWork(
   );
 }
 
-export async function completeProjectStage(
+async function completeProjectStageImplementation(
   user: AccessUser,
   input: {
     projectId: string;
@@ -4616,7 +4553,7 @@ export async function completeProjectStage(
   };
 }
 
-export async function reviewStageSubmission(
+async function reviewStageSubmissionImplementation(
   user: AccessUser,
   input: {
     attachmentId: string;
@@ -4718,7 +4655,7 @@ export async function reviewStageSubmission(
   );
 }
 
-export async function reviewProjectRevision(
+async function reviewProjectRevisionImplementation(
   user: AccessUser,
   input: {
     projectId: string;
@@ -4999,7 +4936,7 @@ export async function reviewProjectRevision(
   );
 }
 
-export async function requestStageInvoice(
+async function requestStageInvoiceImplementation(
   user: AccessUser,
   input: {
     projectId: string;
@@ -5226,7 +5163,7 @@ async function hasChecklistResponseUploadAccess(
         projectId: input.projectId,
         channel: ProjectFileChecklistRequestChannel.IN_APP,
         workflowStatus: ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
-        ...(user.role === UserRole.SUPER_ADMIN ? {} : { recipientUserId: user.id }),
+        ...({ recipientUserId: user.id }),
       },
       select: { id: true },
     }),
@@ -5259,7 +5196,7 @@ async function hasStageSevenEvidenceUploadAccess(
   );
   return Boolean(
     project &&
-      (isGlobalProjectAdministrator(user) ||
+      (isDirectorReader(user) ||
         project.ownerId === user.id ||
         project.coOwners.length),
   );
@@ -5277,7 +5214,7 @@ function getDirectStageFiveSourceAccessError(
   },
 ) {
   if (
-    !isGlobalProjectAdministrator(user) ||
+    !hasProjectPermission(user, project, "project.update") ||
     !hasProjectPermission(user, project, "file.uploadAttachment")
   ) {
     return "You do not have permission to upload a Stage 5 final file.";
@@ -5305,7 +5242,7 @@ function getDirectStageFiveSourceAccessError(
   return null;
 }
 
-export async function requestAttachmentUpload(
+async function requestAttachmentUploadImplementation(
   user: AccessUser,
   input: RequestUploadInput,
 ): Promise<RequestUploadResult> {
@@ -6309,7 +6246,7 @@ async function completeDirectStageFiveSourceUpload(
   return result;
 }
 
-export async function completeAttachmentUpload(
+async function completeAttachmentUploadImplementation(
   user: AccessUser,
   attachmentId: string,
   failed = false,
@@ -6510,7 +6447,7 @@ export async function completeAttachmentUpload(
     ) {
       throw new Error("The direct Stage 5 upload is invalid.");
     }
-    if (!isGlobalProjectAdministrator(user)) {
+    if (!hasProjectPermission(user, project, "project.update")) {
       throw new Error(
         "You do not have permission to upload a Stage 5 final file.",
       );
@@ -6738,7 +6675,7 @@ export async function completeAttachmentUpload(
   };
 }
 
-export async function completePreparedChatAttachmentUpload(
+async function completePreparedChatAttachmentUploadImplementation(
   user: AccessUser,
   input: {
     attachmentId: string;
@@ -6907,186 +6844,27 @@ export async function completePreparedChatAttachmentUpload(
   );
 }
 
-// Project workspace users can download the main brief without granting inquiry
-// editing or downloads of other workflow files. Verify project membership first.
-async function canDownloadMainProjectBriefAttachment(
-  user: AccessUser,
-  attachment: { id: string; projectId: string; stageId: string | null; assetType: AttachmentAssetType },
-) {
-  if (
-    user.role !== UserRole.USER ||
-    !canUseProjects(user) ||
-    attachment.stageId ||
-    attachment.assetType !== AttachmentAssetType.GENERAL_PROJECT_ASSET
-  ) {
-    return false;
-  }
-
-  const association = await withPrismaRetry(() =>
-    prisma.projectInquiryAttachment.findFirst({
-      where: {
-        attachmentId: attachment.id,
-        field: ProjectInquiryAttachmentField.INITIAL_BRIEF,
-        inquiry: { projectId: attachment.projectId },
-      },
-      select: { attachmentId: true },
-    }),
-  );
-
-  return Boolean(association);
-}
-
 export async function getAttachmentDownloadUrlForUser(
   user: AccessUser,
   attachmentId: string,
 ) {
-  const attachment = await withPrismaRetry(() =>
-    prisma.projectAttachment.findUnique({
-      where: {
-        id: attachmentId,
-      },
-      select: {
-        id: true,
-        projectId: true,
-        stageId: true,
-        bucket: true,
-        storageKey: true,
-        originalFileName: true,
-        mimeType: true,
-        status: true,
-        assetType: true,
-        createdAt: true,
-        project: {
-          select: {
-            ownerId: true,
-            coOwners: { select: { userId: true } },
-          },
-        },
-      },
-    }),
-  );
-
-  if (!attachment || attachment.status !== AttachmentStatus.READY) {
-    throw new Error("Attachment not found.");
-  }
-
-  if (attachment.assetType === AttachmentAssetType.PROJECT_RESEARCH_FILE) {
-    await assertProjectResearchFileAccess(user, attachment.id, "read");
-
-    return createPresignedDownloadUrl({
-      bucket: attachment.bucket,
-      storageKey: attachment.storageKey,
-      fileName: attachment.originalFileName,
-      mimeType: attachment.mimeType,
-    });
-  }
-
-  if (attachment.assetType === AttachmentAssetType.PROJECT_PRIVATE_FILE) {
-    await assertProjectPrivateAttachmentAccess(user, attachment.id);
-
-    return createPresignedDownloadUrl({
-      bucket: attachment.bucket,
-      storageKey: attachment.storageKey,
-      fileName: attachment.originalFileName,
-      mimeType: attachment.mimeType,
-    });
-  }
-
-  const project = await assertProjectAccess(user, attachment.projectId);
-  if (!(await canDownloadMainProjectBriefAttachment(user, attachment))) {
-    assertProjectWorkflowPermission(
-      user,
-      project,
-      "file.download",
-      "You do not have permission to download this file.",
-    );
-  }
-  await assertProjectAttachmentVisibilityForUser(user, attachment);
-
-  return createPresignedDownloadUrl({
-    bucket: attachment.bucket,
-    storageKey: attachment.storageKey,
-    fileName: attachment.originalFileName,
-    mimeType: attachment.mimeType,
-  });
+ user = await refreshProjectReader(user);
+  await requireProjectResourceRead('file', attachmentId, 'project.viewFile', user);
+ const attachment = await prisma.projectAttachment.findUniqueOrThrow({where:{id:attachmentId},select:{bucket:true,storageKey:true,originalFileName:true,mimeType:true}});
+ return createPresignedDownloadUrl({bucket:attachment.bucket,storageKey:attachment.storageKey,fileName:attachment.originalFileName,mimeType:attachment.mimeType});
 }
 
 export async function getAttachmentPreviewUrlForUser(
   user: AccessUser,
   attachmentId: string,
 ) {
-  const attachment = await withPrismaRetry(() =>
-    prisma.projectAttachment.findUnique({
-      where: {
-        id: attachmentId,
-      },
-      select: {
-        id: true,
-        projectId: true,
-        stageId: true,
-        revisionId: true,
-        commentId: true,
-        bucket: true,
-        storageKey: true,
-        originalFileName: true,
-        mimeType: true,
-        status: true,
-        assetType: true,
-        createdAt: true,
-        project: {
-          select: {
-            ownerId: true,
-            coOwners: { select: { userId: true } },
-          },
-        },
-      },
-    }),
-  );
-
-  if (!attachment || attachment.status !== AttachmentStatus.READY) {
-    throw new Error("Attachment not found.");
-  }
-
-  if (attachment.assetType === AttachmentAssetType.PROJECT_RESEARCH_FILE) {
-    await assertProjectResearchFileAccess(user, attachment.id, "read");
-
-    return createPresignedPreviewUrl({
-      bucket: attachment.bucket,
-      storageKey: attachment.storageKey,
-      fileName: attachment.originalFileName,
-      mimeType: attachment.mimeType,
-    });
-  }
-
-  if (attachment.assetType === AttachmentAssetType.PROJECT_PRIVATE_FILE) {
-    await assertProjectPrivateAttachmentAccess(user, attachment.id);
-
-    return createPresignedPreviewUrl({
-      bucket: attachment.bucket,
-      storageKey: attachment.storageKey,
-      fileName: attachment.originalFileName,
-      mimeType: attachment.mimeType,
-    });
-  }
-
-  const project = await assertProjectAccess(user, attachment.projectId);
-  assertProjectWorkflowPermission(
-    user,
-    project,
-    "file.view",
-    "You do not have permission to preview this file.",
-  );
-  await assertProjectAttachmentVisibilityForUser(user, attachment);
-
-  return createPresignedPreviewUrl({
-    bucket: attachment.bucket,
-    storageKey: attachment.storageKey,
-    fileName: attachment.originalFileName,
-    mimeType: attachment.mimeType,
-  });
+ user = await refreshProjectReader(user);
+  await requireProjectResourceRead('file', attachmentId, 'project.viewFile', user);
+ const attachment = await prisma.projectAttachment.findUniqueOrThrow({where:{id:attachmentId},select:{bucket:true,storageKey:true,originalFileName:true,mimeType:true}});
+ return createPresignedPreviewUrl({bucket:attachment.bucket,storageKey:attachment.storageKey,fileName:attachment.originalFileName,mimeType:attachment.mimeType});
 }
 
-export async function deleteAttachmentForUser(
+async function deleteAttachmentForUserImplementation(
   user: AccessUser,
   attachmentId: string,
 ) {
@@ -7264,4 +7042,218 @@ export async function deleteAttachmentForUser(
       },
     }),
   );
+}
+
+export async function createStageRevision(
+  user: AccessUser,
+  input: {
+    projectId: string;
+    stageId: string;
+    summary?: string;
+    attachmentIds?: string[];
+  },
+) {
+  return runProjectMutation(user, "createStageRevision", { kind: "stage", id: input.stageId }, async (trustedUser) =>
+    createStageRevisionImplementation(trustedUser, input), input);
+}
+
+export async function startProjectStageWork(
+  user: AccessUser,
+  input: {
+    projectId: string;
+    stageId: string;
+  },
+) {
+  return runProjectMutation(user, "startProjectStageWork", { kind: "stage", id: input.stageId }, async (trustedUser) =>
+    startProjectStageWorkImplementation(trustedUser, input), input);
+}
+
+export async function cancelStageRevisionSubmission(
+  user: AccessUser,
+  input: {
+    projectId: string;
+    stageId: string;
+    revisionId: string;
+  },
+) {
+  return runProjectMutation(user, "cancelStageRevisionSubmission", { kind: "stage", id: input.stageId }, async (trustedUser) =>
+    cancelStageRevisionSubmissionImplementation(trustedUser, input), input);
+}
+
+export async function cancelStagedConceptRevisionAttachments(
+  user: AccessUser,
+  input: {
+    projectId: string;
+    stageId: string;
+    attachmentIds: string[];
+  },
+) {
+  return runProjectMutation(user, "cancelStagedConceptRevisionAttachments", { kind: "stage", id: input.stageId }, async (trustedUser) =>
+    cancelStagedConceptRevisionAttachmentsImplementation(trustedUser, input), input);
+}
+
+export async function createStageComment(
+  user: AccessUser,
+  input: {
+    projectId: string;
+    stageId: string;
+    revisionId?: string | null;
+    body: string;
+    allowEmptyBody?: boolean;
+    mentionedUserIds?: string[];
+  },
+) {
+  return runProjectMutation(user, "createStageComment", { kind: "stage", id: input.stageId }, async (trustedUser) =>
+    createStageCommentImplementation(trustedUser, input), input);
+}
+
+export async function createStageTextCommentFast(
+  user: AccessUser,
+  input: {
+    projectId: string;
+    stageId: string;
+    revisionId?: string | null;
+    body: string;
+    mentionedUserIds?: string[];
+  },
+): Promise<StageTextCommentFastResult> {
+  return runProjectMutation(user, "createStageTextCommentFast", { kind: "stage", id: input.stageId }, async (trustedUser) =>
+    createStageTextCommentFastImplementation(trustedUser, input), input);
+}
+
+export async function deleteStageComment(
+  user: AccessUser,
+  input: {
+    projectId: string;
+    stageId: string;
+    commentId: string;
+  },
+) {
+  return runProjectMutation(user, "deleteStageComment", { kind: "stage", id: input.stageId }, async (trustedUser) =>
+    deleteStageCommentImplementation(trustedUser, input), input);
+}
+
+export async function prepareStageCommentUploads(
+  user: AccessUser,
+  input: PrepareStageCommentUploadsInput,
+): Promise<PrepareStageCommentUploadsResult> {
+  return runProjectMutation(user, "prepareStageCommentUploads", { kind: "stage", id: input.stageId }, async (trustedUser) =>
+    prepareStageCommentUploadsImplementation(trustedUser, input), input);
+}
+
+export async function finalizePreparedStageCommentUploads(
+  user: AccessUser,
+  input: {
+    projectId: string;
+    commentId: string;
+  },
+): Promise<FinalizePreparedStageCommentUploadsResult> {
+  return runProjectMutation(user, "finalizePreparedStageCommentUploads", { kind: "comment", id: input.commentId }, async (trustedUser) =>
+    finalizePreparedStageCommentUploadsImplementation(trustedUser, input), input);
+}
+
+export async function cancelPreparedStageCommentUploads(
+  user: AccessUser,
+  input: {
+    projectId: string;
+    commentId: string;
+  },
+) {
+  return runProjectMutation(user, "cancelPreparedStageCommentUploads", { kind: "comment", id: input.commentId }, async (trustedUser) =>
+    cancelPreparedStageCommentUploadsImplementation(trustedUser, input), input);
+}
+
+export async function completeProjectStage(
+  user: AccessUser,
+  input: {
+    projectId: string;
+    stageId: string;
+  },
+) {
+  return runProjectMutation(user, "completeProjectStage", { kind: "stage", id: input.stageId }, async (trustedUser) =>
+    completeProjectStageImplementation(trustedUser, input), input);
+}
+
+export async function reviewStageSubmission(
+  user: AccessUser,
+  input: {
+    attachmentId: string;
+    status: "APPROVED" | "REJECTED";
+    note?: string;
+  },
+) {
+  return runProjectMutation(user, "reviewStageSubmission", { kind: "file", id: input.attachmentId }, async (trustedUser) =>
+    reviewStageSubmissionImplementation(trustedUser, input), input);
+}
+
+export async function reviewProjectRevision(
+  user: AccessUser,
+  input: {
+    projectId: string;
+    stageId: string;
+    revisionId: string;
+    status: "APPROVED" | "REJECTED";
+    reason?: string;
+  },
+) {
+  return runProjectMutation(user, "reviewProjectRevision", { kind: "stage", id: input.stageId }, async (trustedUser) =>
+    reviewProjectRevisionImplementation(trustedUser, input), input);
+}
+
+export async function requestStageInvoice(
+  user: AccessUser,
+  input: {
+    projectId: string;
+    stageId: string;
+    requestedFromId: string;
+    note?: string;
+  },
+) {
+  return runProjectMutation(user, "requestStageInvoice", { kind: "stage", id: input.stageId }, async (trustedUser) =>
+    requestStageInvoiceImplementation(trustedUser, input), input);
+}
+
+export async function requestAttachmentUpload(
+  user: AccessUser,
+  input: RequestUploadInput,
+): Promise<RequestUploadResult> {
+  return runProjectMutation(user, "requestAttachmentUpload", { kind: (input.researchFolderId ? "research-folder" : input.stageId ? "stage" : "structured"), id: input.researchFolderId ?? input.stageId ?? input.projectId }, async (trustedUser) =>
+    requestAttachmentUploadImplementation(trustedUser, input), input);
+}
+
+export async function completeAttachmentUpload(
+  user: AccessUser,
+  attachmentId: string,
+  failed = false,
+  uploadMetadata?: LibraryUploadMetadata,
+  options?: {
+    researchFolderId?: string;
+    checklistRequestId?: string;
+    stageFiveDirectSource?: boolean;
+    /** Integration-only escape hatch for service calls outside a Next request. */
+    suppressUploadNotification?: boolean;
+  },
+) {
+  return runProjectMutation(user, "completeAttachmentUpload", { kind: "file", id: attachmentId }, async (trustedUser) =>
+    completeAttachmentUploadImplementation(trustedUser, attachmentId, failed, uploadMetadata, options), undefined);
+}
+
+export async function completePreparedChatAttachmentUpload(
+  user: AccessUser,
+  input: {
+    attachmentId: string;
+    projectId: string;
+    failed?: boolean;
+  },
+) {
+  return runProjectMutation(user, "completePreparedChatAttachmentUpload", { kind: "file", id: input.attachmentId }, async (trustedUser) =>
+    completePreparedChatAttachmentUploadImplementation(trustedUser, input), input);
+}
+
+export async function deleteAttachmentForUser(
+  user: AccessUser,
+  attachmentId: string,
+) {
+  return runProjectMutation(user, "deleteAttachmentForUser", { kind: "file", id: attachmentId }, async (trustedUser) =>
+    deleteAttachmentForUserImplementation(trustedUser, attachmentId), undefined);
 }

@@ -1,3 +1,8 @@
+import { canReadFullProject } from "@/lib/authorization/project-read-rules";
+import { activeProjectMutation } from "@/lib/authorization/project-transaction";
+import { runProjectMutation } from "@/lib/authorization/project-write";
+import { refreshProjectReader } from "@/lib/authorization/project-read";
+import { flexibleProjectReadWhere, projectReadActor } from "@/lib/authorization/project-read-rules";
 import { randomUUID } from "node:crypto";
 
 import {
@@ -279,14 +284,7 @@ function buildSlug(name: string) {
 }
 
 export function getFlexibleProjectAccessWhere(user: PermissionUser): Prisma.FlexibleProjectWhereInput {
-  if (!canUseProjects(user)) return { id: "__permission_denied__" };
-  if (isGlobalProjectAdministrator(user)) return {};
-  return {
-    OR: [
-      { ownerId: user.id },
-      { collaborators: { some: { userId: user.id } } },
-    ],
-  };
+  return flexibleProjectReadWhere(projectReadActor(user), true);
 }
 
 export function hasFlexibleProjectAccess(
@@ -304,34 +302,17 @@ export function hasFlexibleProjectAccess(
 export function canManageFlexibleProject(
   user: PermissionUser,
   project: FlexibleProjectAccessContext,
-) {
-  if (!hasFlexibleProjectAccess(user, project)) return false;
-  if (isGlobalProjectAdministrator(user)) return hasPermission(user, "project.update");
-  return project.ownerId === user.id && (hasPermission(user, "project.update") || canCreateProjects(user));
-}
+) { return canReadFullProject(user, { ownerId: project.ownerId }); }
 
 export function canManageFlexibleMilestones(
   user: PermissionUser,
   project: FlexibleProjectAccessContext,
-) {
-  return (
-    hasFlexibleProjectAccess(user, project) &&
-    (hasPermission(user, "stage.submitWork") ||
-      hasPermission(user, "stage.updateTimeline") ||
-      hasPermission(user, "project.update"))
-  );
-}
+) { return canManageFlexibleProject(user, project) || (activeProjectMutation()?.actorId === user.id && ["createFlexibleMilestoneNote", "deleteFlexibleMilestoneNote", "setFlexibleMilestoneCompleted"].includes(activeProjectMutation()?.operation ?? "")); }
 
 export function canUploadFlexibleMilestoneAttachments(
   user: PermissionUser,
   project: FlexibleProjectAccessContext,
-) {
-  return (
-    hasFlexibleProjectAccess(user, project) &&
-    (hasPermission(user, "file.uploadAttachment") ||
-      canManageFlexibleProject(user, project))
-  );
-}
+) { return canManageFlexibleProject(user, project) || (activeProjectMutation()?.actorId === user.id && ["requestFlexibleMilestoneAttachmentUpload", "completeFlexibleMilestoneAttachmentUpload"].includes(activeProjectMutation()?.operation ?? "")); }
 
 export function calculateFlexibleProjectProgress(completed: number, total: number) {
   if (total <= 0) return 0;
@@ -389,6 +370,8 @@ export async function getFlexibleProjectUserOptions(): Promise<FlexibleProjectUs
 }
 
 export async function getFlexibleProjectsList(user: PermissionUser) {
+  user = await refreshProjectReader(user);
+
   const projects = await withPrismaRetry(() =>
     prisma.flexibleProject.findMany({
       where: getFlexibleProjectAccessWhere(user),
@@ -431,6 +414,8 @@ export async function getFlexibleProjectsList(user: PermissionUser) {
 }
 
 export async function getFlexibleProjectsPage(user: PermissionUser, requestedPage = 1) {
+  user = await refreshProjectReader(user);
+
   const accessibleWhere = getFlexibleProjectAccessWhere(user);
   return withPrismaRetry(() => prisma.$transaction(async (tx) => {
     // Sort lightweight records first; only load milestone summaries for this page.
@@ -470,6 +455,8 @@ export async function getFlexibleProjectsPage(user: PermissionUser, requestedPag
 }
 
 export async function getFlexibleProjectDetail(slug: string, user: PermissionUser) {
+  user = await refreshProjectReader(user);
+
   const project = await withPrismaRetry(() =>
     prisma.flexibleProject.findFirst({
       where: { slug, AND: getFlexibleProjectAccessWhere(user) },
@@ -618,7 +605,7 @@ async function validateProjectUsers(ownerId: string, collaboratorIds: string[]) 
   return fieldErrors;
 }
 
-export async function createFlexibleProject(
+async function createFlexibleProjectImplementation(
   actor: PermissionUser,
   input: FlexibleProjectInput,
 ): Promise<FlexibleProjectMutationResult> {
@@ -658,40 +645,18 @@ async function loadProjectAccessContext(projectId: string) {
   );
 }
 
-export async function updateFlexibleProject(
+async function updateFlexibleProjectImplementation(
   actor: PermissionUser,
   projectId: string,
   input: FlexibleProjectInput,
 ): Promise<FlexibleProjectMutationResult> {
   const project = await loadProjectAccessContext(projectId);
-  if (!project) return { error: "Private Project not found." };
-  if (!canManageFlexibleProject(actor, project)) return { error: "You are not allowed to edit this Private Project." };
+  if (!project || !canManageFlexibleProject(actor, project)) return { error: "Project access denied." };
   const parsed = parseProjectInput(input);
   if (!parsed.data) return { error: "Review the highlighted fields.", fieldErrors: parsed.fieldErrors };
-  const fieldErrors = await validateProjectUsers(parsed.data.ownerId, parsed.data.collaboratorIds);
-  if (Object.keys(fieldErrors).length) return { error: "One or more selected users are no longer available.", fieldErrors };
-
-  await withPrismaRetry(() =>
-    prisma.$transaction(async (tx) => {
-      await tx.flexibleProject.update({
-        where: { id: project.id },
-        data: {
-          name: parsed.data!.name,
-          description: parsed.data!.description,
-          priority: parsed.data!.priority,
-          scope: parsed.data!.scope,
-          deadline: parsed.data!.deadline,
-          ownerId: parsed.data!.ownerId,
-        },
-      });
-      await tx.flexibleProjectCollaborator.deleteMany({ where: { projectId: project.id } });
-      if (parsed.data!.collaboratorIds.length) {
-        await tx.flexibleProjectCollaborator.createMany({
-          data: parsed.data!.collaboratorIds.map((userId) => ({ projectId: project.id, userId, addedById: actor.id })),
-        });
-      }
-    }),
-  );
+  if (parsed.data.ownerId !== project.ownerId) return { error: "Ownership transfer requires a separate audited workflow." };
+  if (JSON.stringify([...parsed.data.collaboratorIds].sort()) !== JSON.stringify(project.collaborators.map(row => row.userId).sort())) return { error: "New Collaborator relationships are disabled." };
+  await prisma.flexibleProject.update({ where: { id: project.id }, data: { name: parsed.data.name, description: parsed.data.description, priority: parsed.data.priority, scope: parsed.data.scope, deadline: parsed.data.deadline } });
   return { projectId: project.id, slug: project.slug };
 }
 
@@ -702,19 +667,9 @@ async function lockFlexibleProject(tx: Prisma.TransactionClient, projectId: stri
   if (!rows.length) throw new Error("FLEXIBLE_PROJECT_NOT_FOUND");
 }
 
-async function syncFlexibleProjectStatus(tx: Prisma.TransactionClient, projectId: string) {
-  const [total, completed] = await Promise.all([
-    tx.flexibleMilestone.count({ where: { projectId } }),
-    tx.flexibleMilestone.count({ where: { projectId, status: FlexibleMilestoneStatus.COMPLETED } }),
-  ]);
-  const isCompleted = total > 0 && completed === total;
-  await tx.flexibleProject.update({
-    where: { id: projectId },
-    data: {
-      status: isCompleted ? FlexibleProjectStatus.COMPLETED : FlexibleProjectStatus.ACTIVE,
-      completedAt: isCompleted ? new Date() : null,
-    },
-  });
+async function syncFlexibleProjectStatus(tx: Prisma.TransactionClient, projectId: string) { // Milestone execution cannot approve final project completion. A project
+  // remains ACTIVE until the separate Director governance service finalizes it.
+  await tx.flexibleProject.update({ where: { id: projectId }, data: { status: FlexibleProjectStatus.ACTIVE, completedAt: null } });
 }
 
 async function orderingTransaction<T>(operation: (tx: Prisma.TransactionClient) => Promise<T>, attempts = 3): Promise<T> {
@@ -734,16 +689,10 @@ async function validateResponsibleUser(
   tx: Prisma.TransactionClient,
   projectId: string,
   responsibleUserId: string | null,
-) {
-  if (!responsibleUserId) return true;
-  const project = await tx.flexibleProject.findUnique({
-    where: { id: projectId },
-    select: { ownerId: true, collaborators: { where: { userId: responsibleUserId }, select: { userId: true } } },
-  });
-  return Boolean(project && (project.ownerId === responsibleUserId || project.collaborators.length));
-}
+) { if (!responsibleUserId) return true;
+  return !!await tx.userAuthorization.findFirst({ where: { userId: responsibleUserId, accountStatus: "ACTIVE", businessRole: { not: null } }, select: { userId: true } }); }
 
-export async function createFlexibleMilestone(
+async function createFlexibleMilestoneImplementation(
   actor: PermissionUser,
   projectId: string,
   input: FlexibleMilestoneInput,
@@ -769,7 +718,7 @@ export async function createFlexibleMilestone(
   });
 }
 
-export async function updateFlexibleMilestone(
+async function updateFlexibleMilestoneImplementation(
   actor: PermissionUser,
   projectId: string,
   milestoneId: string,
@@ -783,8 +732,9 @@ export async function updateFlexibleMilestone(
 
   return orderingTransaction(async (tx) => {
     await lockFlexibleProject(tx, projectId);
-    const milestone = await tx.flexibleMilestone.findFirst({ where: { id: milestoneId, projectId }, select: { id: true } });
+    const milestone = await tx.flexibleMilestone.findFirst({ where: { id: milestoneId, projectId }, select: { id: true, status: true } });
     if (!milestone) return { error: "Milestone not found." };
+    if (milestone.status === "COMPLETED") return { error: "Completed milestone changes require an audited intervention workflow." };
     if (!(await validateResponsibleUser(tx, projectId, parsed.data!.responsibleUserId))) {
       return { error: "The responsible user must be the owner or a project collaborator.", fieldErrors: { responsibleUserId: "Select a user associated with this project." } };
     }
@@ -793,7 +743,7 @@ export async function updateFlexibleMilestone(
   });
 }
 
-export async function createFlexibleMilestoneNote(
+async function createFlexibleMilestoneNoteImplementation(
   actor: PermissionUser,
   projectId: string,
   milestoneId: string,
@@ -833,7 +783,7 @@ export async function createFlexibleMilestoneNote(
   return { noteId: note.id };
 }
 
-export async function deleteFlexibleMilestoneNote(
+async function deleteFlexibleMilestoneNoteImplementation(
   actor: PermissionUser,
   projectId: string,
   milestoneId: string,
@@ -862,7 +812,7 @@ export async function deleteFlexibleMilestoneNote(
   return { noteId: note.id };
 }
 
-export async function setFlexibleMilestoneCompleted(
+async function setFlexibleMilestoneCompletedImplementation(
   actor: PermissionUser,
   projectId: string,
   milestoneId: string,
@@ -887,7 +837,7 @@ export async function setFlexibleMilestoneCompleted(
   });
 }
 
-export async function moveFlexibleMilestone(
+async function moveFlexibleMilestoneImplementation(
   actor: PermissionUser,
   projectId: string,
   milestoneId: string,
@@ -913,7 +863,7 @@ export async function moveFlexibleMilestone(
   });
 }
 
-export async function duplicateFlexibleMilestone(
+async function duplicateFlexibleMilestoneImplementation(
   actor: PermissionUser,
   projectId: string,
   milestoneId: string,
@@ -949,7 +899,7 @@ export async function duplicateFlexibleMilestone(
   });
 }
 
-export async function deleteFlexibleMilestone(
+async function deleteFlexibleMilestoneImplementation(
   actor: PermissionUser,
   projectId: string,
   milestoneId: string,
@@ -959,11 +909,106 @@ export async function deleteFlexibleMilestone(
   if (!canManageFlexibleMilestones(actor, project)) return { error: "You are not allowed to manage this project's milestones." };
   return orderingTransaction(async (tx) => {
     await lockFlexibleProject(tx, projectId);
-    const milestone = await tx.flexibleMilestone.findFirst({ where: { id: milestoneId, projectId }, select: { id: true, sortOrder: true } });
+    const milestone = await tx.flexibleMilestone.findFirst({ where: { id: milestoneId, projectId }, select: { id: true, sortOrder: true, status: true, _count: { select: { attachments: true, notes: true } } } });
     if (!milestone) return { error: "Milestone not found." };
+    if (milestone.status === "COMPLETED" || milestone._count.attachments || milestone._count.notes) return { error: "Milestones with completion, notes or files must retain their history." };
     await tx.flexibleMilestone.delete({ where: { id: milestone.id } });
     await tx.flexibleMilestone.updateMany({ where: { projectId, sortOrder: { gt: milestone.sortOrder } }, data: { sortOrder: { decrement: 1 } } });
     await syncFlexibleProjectStatus(tx, projectId);
     return { milestoneId };
   });
+}
+
+export async function updateFlexibleProject(
+  actor: PermissionUser,
+  projectId: string,
+  input: FlexibleProjectInput,
+): Promise<FlexibleProjectMutationResult> {
+  return runProjectMutation(actor, "updateFlexibleProject", { kind: "flexible", id: projectId }, async (trustedUser) =>
+    updateFlexibleProjectImplementation(trustedUser, projectId, input), input);
+}
+
+export async function createFlexibleMilestone(
+  actor: PermissionUser,
+  projectId: string,
+  input: FlexibleMilestoneInput,
+): Promise<FlexibleMilestoneMutationResult> {
+  return runProjectMutation(actor, "createFlexibleMilestone", { kind: "flexible", id: projectId }, async (trustedUser) =>
+    createFlexibleMilestoneImplementation(trustedUser, projectId, input), input);
+}
+
+export async function updateFlexibleMilestone(
+  actor: PermissionUser,
+  projectId: string,
+  milestoneId: string,
+  input: FlexibleMilestoneInput,
+): Promise<FlexibleMilestoneMutationResult> {
+  return runProjectMutation(actor, "updateFlexibleMilestone", { kind: "flexible", id: projectId }, async (trustedUser) =>
+    updateFlexibleMilestoneImplementation(trustedUser, projectId, milestoneId, input), input);
+}
+
+export async function moveFlexibleMilestone(
+  actor: PermissionUser,
+  projectId: string,
+  milestoneId: string,
+  direction: "up" | "down",
+): Promise<FlexibleMilestoneMutationResult> {
+  return runProjectMutation(actor, "moveFlexibleMilestone", { kind: "flexible", id: projectId }, async (trustedUser) =>
+    moveFlexibleMilestoneImplementation(trustedUser, projectId, milestoneId, direction), { projectId });
+}
+
+export async function duplicateFlexibleMilestone(
+  actor: PermissionUser,
+  projectId: string,
+  milestoneId: string,
+): Promise<FlexibleMilestoneMutationResult> {
+  return runProjectMutation(actor, "duplicateFlexibleMilestone", { kind: "flexible", id: projectId }, async (trustedUser) =>
+    duplicateFlexibleMilestoneImplementation(trustedUser, projectId, milestoneId), { projectId });
+}
+
+export async function deleteFlexibleMilestone(
+  actor: PermissionUser,
+  projectId: string,
+  milestoneId: string,
+): Promise<FlexibleMilestoneMutationResult> {
+  return runProjectMutation(actor, "deleteFlexibleMilestone", { kind: "flexible", id: projectId }, async (trustedUser) =>
+    deleteFlexibleMilestoneImplementation(trustedUser, projectId, milestoneId), { projectId });
+}
+
+export async function createFlexibleMilestoneNote(
+  actor: PermissionUser,
+  projectId: string,
+  milestoneId: string,
+  input: FlexibleMilestoneNoteInput,
+): Promise<FlexibleMilestoneNoteMutationResult> {
+  return runProjectMutation(actor, "createFlexibleMilestoneNote", { kind: "milestone", id: milestoneId }, async (trustedUser) =>
+    createFlexibleMilestoneNoteImplementation(trustedUser, projectId, milestoneId, input), input);
+}
+
+export async function deleteFlexibleMilestoneNote(
+  actor: PermissionUser,
+  projectId: string,
+  milestoneId: string,
+  noteId: string,
+): Promise<FlexibleMilestoneNoteMutationResult> {
+  return runProjectMutation(actor, "deleteFlexibleMilestoneNote", { kind: "milestone", id: milestoneId }, async (trustedUser) =>
+    deleteFlexibleMilestoneNoteImplementation(trustedUser, projectId, milestoneId, noteId), { projectId });
+}
+
+export async function setFlexibleMilestoneCompleted(
+  actor: PermissionUser,
+  projectId: string,
+  milestoneId: string,
+  completed: boolean,
+): Promise<FlexibleMilestoneMutationResult> {
+  return runProjectMutation(actor, "setFlexibleMilestoneCompleted", { kind: "milestone", id: milestoneId }, async (trustedUser) =>
+    setFlexibleMilestoneCompletedImplementation(trustedUser, projectId, milestoneId, completed), { projectId });
+}
+
+export async function createFlexibleProject(
+  actor: PermissionUser,
+  input: FlexibleProjectInput,
+): Promise<FlexibleProjectMutationResult> {
+  return runProjectMutation(actor, "createFlexibleProject", { kind: "flexible", id: "creation" }, async (trustedUser) =>
+    createFlexibleProjectImplementation(trustedUser, input), input);
 }

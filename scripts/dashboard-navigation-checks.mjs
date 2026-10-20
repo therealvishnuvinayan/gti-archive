@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 
-import { getDashboardBackNavigation } from "../src/lib/dashboard-navigation.ts";
+import { getDashboardBackNavigation } from "../.tmp/dashboard-navigation/src/lib/dashboard-navigation.js";
 
 function navigation(pathname, query = "") {
   return getDashboardBackNavigation(pathname, new URLSearchParams(query));
@@ -57,8 +57,8 @@ expectNavigation("/projects/project-1/edit", {
 expectNavigation("/projects/flexible/flexible-project-1", {
   owner: "topbar",
   href: "/projects?view=flexible",
-  label: "Flexible Projects",
-  ariaLabel: "Back to Flexible Projects",
+  label: "Private Projects",
+  ariaLabel: "Back to Private Projects",
 });
 expectNavigation("/projects/flexible/flexible-project-1", {
   owner: "topbar",

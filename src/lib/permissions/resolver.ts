@@ -1,3 +1,5 @@
+import { canLibrary } from "@/lib/authorization/library-rules";
+import { canArchive, archiveAccessLevel } from "@/lib/authorization/archive-rules";
 import {
   Prisma,
   type Project,
@@ -7,16 +9,17 @@ import {
   type User,
 } from "@prisma/client";
 
+import { canReadFullProject, hasProjectBusinessIdentity, projectReadActor, structuredProjectReadWhere } from "@/lib/authorization/project-read-rules";
 import {
-  defaultRolePermissions,
+  allPermissionKeys,
   type PermissionKey,
 } from "@/lib/permissions/definitions";
+import type { PermissionProfileSnapshot } from "@/lib/permissions/profiles";
 import type {
   ProjectCollaboratorPermissionKey,
   ProjectCollaboratorPermissions,
 } from "@/lib/project-collaborator-permissions";
-import type { PermissionProfileSnapshot } from "@/lib/permissions/profiles";
-import { isBusinessAdministratorRole } from "@/lib/user-role-compatibility";
+
 
 export type PermissionUser = Pick<User, "id" | "role"> &
   Partial<Pick<User, "projectCreationAccessGranted">> & {
@@ -40,6 +43,8 @@ export type SidebarVisibility = {
   fluxAi: boolean;
   projects: boolean;
   projectTracker: boolean;
+  projectApprovals: boolean;
+  archiveCategories: boolean;
   tasks: boolean;
   projectCounts: boolean;
   calendar: boolean;
@@ -53,18 +58,6 @@ export type SidebarVisibility = {
   settings: boolean;
   help: boolean;
 };
-
-const deniedProjectScope: Prisma.ProjectWhereInput = {
-  id: "__permission_denied__",
-};
-
-function getBasePermissionSet(user: PermissionUser) {
-  if (user.permissionProfileSnapshot) {
-    return new Set(user.permissionProfileSnapshot.effectivePermissions);
-  }
-
-  return new Set(defaultRolePermissions[user.role]);
-}
 
 function isProjectMember(
   user: PermissionUser,
@@ -99,13 +92,6 @@ function hasProjectCollaboratorGrant(
   return getProjectCollaboratorGrant(user, project)?.[grantKey] === true;
 }
 
-function hasProjectArchiveAccessGrant(
-  user: PermissionUser,
-  project: ProjectPermissionContext,
-) {
-  return hasProjectCollaboratorGrant(user, project, "canAccessProjectArchives");
-}
-
 export function isProjectAdmin(user: Pick<PermissionUser, "role">) {
   return isGlobalProjectAdministrator(user);
 }
@@ -113,7 +99,7 @@ export function isProjectAdmin(user: Pick<PermissionUser, "role">) {
 export function isGlobalProjectAdministrator(
   user: Pick<PermissionUser, "role">,
 ) {
-  return isBusinessAdministratorRole(user.role);
+  return projectReadActor(user)?.businessRole === "DIRECTOR";
 }
 
 export function isProjectOwner(
@@ -149,21 +135,52 @@ export function isProjectExecutor(
 }
 
 export function hasPermission(user: PermissionUser, permissionKey: PermissionKey) {
-  // Archives are shared by every authenticated account, independent of role profiles.
-  if (permissionKey.startsWith("archive.")) return Boolean(user.id);
-  return getBasePermissionSet(user).has(permissionKey);
+  if (["project.list", "project.view", "stage.view", "project.viewBudget", "project.viewParticipants"].includes(permissionKey)) {
+    return hasProjectBusinessIdentity(user);
+  }
+  if (permissionKey === "project.create") return false;
+  if (/^(project|stage)\./.test(permissionKey)) {
+    const role = projectReadActor(user)?.businessRole;
+    return role === "DIRECTOR" || role === "SENIOR_PROJECT_MANAGER" || role === "JUNIOR_PROJECT_MANAGER";
+  }
+  if (permissionKey.startsWith("archive.")) {
+    if (permissionKey === "archive.view") return canArchive(user, "archive.view");
+    if (permissionKey === "archive.download") return canArchive(user, "archive.download");
+    if (permissionKey === "archive.uploadFile") return canArchive(user, "archive.upload");
+    return false;
+  }
+  if (permissionKey.startsWith("library.")) {
+    if (permissionKey === "library.view" || permissionKey === "library.filter") return canLibrary(user, "library.view");
+    if (permissionKey === "library.uploadAsset") return canLibrary(user, "library.upload");
+    if (permissionKey === "library.deleteFile") return canLibrary(user, "library.delete");
+    return false;
+  }
+  const actor = projectReadActor(user);
+  if (!actor) return false;
+  if (["settings.viewOwnProfile", "settings.updateOwnProfile", "settings.changeOwnPassword", "help.view"].includes(permissionKey)) return true;
+  const role = actor.businessRole;
+  if (!role) return false;
+  const director = role === "DIRECTOR";
+  const manager = director || role === "SENIOR_PROJECT_MANAGER" || role === "JUNIOR_PROJECT_MANAGER";
+  if (["dashboard.view", "dashboard.viewRecentProjects"].includes(permissionKey)) return manager;
+  if (permissionKey === "dashboard.viewProjectCounts") return true;
+  if (permissionKey === "fluxAi.view") return canArchive(user, "archive.view");
+  if (["users.view", "settings.viewMasterData", "settings.manageMasterData", "settings.deleteMasterData"].includes(permissionKey)) return director;
+  if (["calendar.view", "calendar.create", "calendar.delete", "notification.view", "notification.markRead"].includes(permissionKey)) return true;
+  // These compatibility flags only render native project controls; actual
+  // operations still require their project/task transaction policy.
+  if (/^(chat|file|compare)\./.test(permissionKey)) return true;
+  // Legacy account/profile editing, invitations and calendar sharing are closed.
+  return false;
 }
 
 export function canCreateProjects(user: PermissionUser) {
-  if (isBusinessAdministratorRole(user.role)) {
-    return hasPermission(user, "project.create");
-  }
-
-  return user.projectCreationAccessGranted === true;
+  const role = projectReadActor(user)?.businessRole;
+  return role === "DIRECTOR" || role === "SENIOR_PROJECT_MANAGER" || role === "JUNIOR_PROJECT_MANAGER";
 }
 
 export function getArchiveAccessLevel(user: PermissionUser): "NONE" | "FULL" | "PARTIAL" {
-  return user.id ? "FULL" as const : "NONE" as const;
+  return archiveAccessLevel(user);
 }
 
 export function canUseArchives(user: PermissionUser) {
@@ -211,7 +228,7 @@ export function assertCanUseArchives(
 }
 
 export function getUserPermissionSet(user: PermissionUser) {
-  return getBasePermissionSet(user);
+  return new Set(allPermissionKeys.filter(key => hasPermission(user, key)));
 }
 
 function hasProjectPermissionGrant(
@@ -255,7 +272,7 @@ function isProjectOwnerManagePermission(permissionKey: PermissionKey) {
 }
 
 export function canManageContactDirectories(user: PermissionUser) {
-  return isBusinessAdministratorRole(user.role) && hasPermission(user, "project.update");
+  return projectReadActor(user)?.businessRole === "DIRECTOR";
 }
 
 export function getSidebarVisibility(user: PermissionUser): SidebarVisibility {
@@ -264,8 +281,10 @@ export function getSidebarVisibility(user: PermissionUser): SidebarVisibility {
   return {
     dashboard: hasPermission(user, "dashboard.view"),
     fluxAi: canUseFluxAi(user),
-    projects,
-    projectTracker: projects && hasPermission(user, "project.update"),
+    projects: projects && canCreateProjects(user),
+    projectTracker: false,
+    projectApprovals: canCreateProjects(user),
+    archiveCategories: canArchive(user, "archive.category.create") || canArchive(user, "archive.category.update"),
     tasks: canUseTasks(user),
     projectCounts:
       projects && hasPermission(user, "dashboard.viewProjectCounts"),
@@ -273,7 +292,7 @@ export function getSidebarVisibility(user: PermissionUser): SidebarVisibility {
     collaboration: hasPermission(user, "collaboration.viewDirectory"),
     clients: canManageContactDirectories(user),
     finalBeneficiaries: canManageContactDirectories(user),
-    users: isBusinessAdministratorRole(user.role) && hasPermission(user, "users.view"),
+    users: hasPermission(user, "users.view"),
     notifications: hasPermission(user, "notification.view"),
     library: hasPermission(user, "library.view"),
     archives: canUseArchives(user),
@@ -283,43 +302,7 @@ export function getSidebarVisibility(user: PermissionUser): SidebarVisibility {
 }
 
 export function getAccessibleProjectsWhere(user: PermissionUser): Prisma.ProjectWhereInput {
-  const canListProjects =
-    hasPermission(user, "project.list") || hasPermission(user, "project.view");
-
-  if (!canListProjects) {
-    return deniedProjectScope;
-  }
-
-  if (isProjectAdmin(user)) {
-    return {};
-  }
-
-  return {
-    OR: [
-      { ownerId: user.id },
-      {
-        coOwners: {
-          some: {
-            userId: user.id,
-          },
-        },
-      },
-      {
-        executors: {
-          some: {
-            userId: user.id,
-          },
-        },
-      },
-      {
-        collaborators: {
-          some: {
-            userId: user.id,
-          },
-        },
-      },
-    ],
-  };
+  return structuredProjectReadWhere(projectReadActor(user));
 }
 
 export function hasProjectPermission(
@@ -327,6 +310,22 @@ export function hasProjectPermission(
   project: ProjectPermissionContext,
   permissionKey: PermissionKey,
 ) {
+  if (permissionKey.startsWith("archive.") || permissionKey.startsWith("library.")) return hasPermission(user, permissionKey);
+  // Compatibility flags never constitute a mutation grant. Domain services
+  // resolve current identity/resource authority inside their V2 transaction.
+  if (["project.view", "stage.view", "project.viewBudget", "project.viewParticipants", "chat.view", "compare.view", "file.view", "file.download"].includes(permissionKey)) {
+    return canReadFullProject(user, project);
+  }
+  if (/^(project|stage|chat|file|compare|collaborator|completion)\./.test(permissionKey)) {
+    const actor = projectReadActor(user);
+    if (!actor?.businessRole) return false;
+    if (["project.create", "project.delete", "project.completeArchive"].includes(permissionKey) || permissionKey.startsWith("completion.") || permissionKey.startsWith("collaborator.")) return false;
+    const manager = canReadFullProject(user, project);
+    if (["stage.acceptBrief", "stage.submitWork", "file.uploadSubmission", "file.uploadAttachment", "chat.createComment", "chat.uploadAttachment", "chat.mentionUser", "compare.createComment"].includes(permissionKey)) {
+      return manager || isProjectExecutor(user, project);
+    }
+    return manager;
+  }
   if (!hasProjectPermissionGrant(user, permissionKey)) {
     return false;
   }
@@ -369,26 +368,11 @@ export function hasProjectPermission(
       );
     case "compare.createComment":
       return canAddProjectCaptions(user, project);
-    case "archive.view":
-      return (
-        isProjectAdmin(user) ||
-        isProjectOwnerOrCoOwner(user, project) ||
-        hasProjectArchiveAccessGrant(user, project)
-      );
-    case "archive.download":
-      return (
-        isProjectAdmin(user) ||
-        isProjectOwnerOrCoOwner(user, project) ||
-        (hasProjectArchiveAccessGrant(user, project) &&
-          hasProjectCollaboratorGrant(user, project, "canDownloadFiles"))
-      );
-    case "archive.uploadFile":
-      return isProjectAdmin(user) || isProjectOwnerOrCoOwner(user, project);
     case "compare.view":
       return (
         isProjectAdmin(user) ||
         isProjectOwnerOrCoOwner(user, project) ||
-        hasProjectArchiveAccessGrant(user, project)
+        hasProjectCollaboratorGrant(user, project, "canAccessProjectArchives")
       );
   }
 

@@ -1,7 +1,6 @@
-import {
-  ActivityLogAction, AttachmentAssetType, AttachmentStatus, Prisma,
-  ProjectFileChecklistItemStatus, ProjectWorkflowStageKey, ProjectWorkflowStageStatus, StageStatus, UserRole,
-} from "@prisma/client";
+import { isDirectorReader } from "@/lib/authorization/project-read-rules";
+import { runProjectMutation } from "@/lib/authorization/project-write";
+import { ActivityLogAction, AttachmentAssetType, AttachmentStatus, Prisma, ProjectFileChecklistItemStatus, ProjectWorkflowStageKey, ProjectWorkflowStageStatus, StageStatus } from "@prisma/client";
 
 import { canCompleteProjectConceptStage } from "@/lib/project-concept-access";
 import type { PermissionUser } from "@/lib/permissions/resolver";
@@ -11,7 +10,7 @@ import { isProjectStatusCompleted } from "@/lib/project-statuses";
 import { getProjectWorkflowSequenceState, PROJECT_WORKFLOW_STAGE_DEFINITIONS } from "@/lib/project-workflow";
 
 type ConceptStageKey = "CONCEPT_CREATION" | "PROJECT_DEVELOPMENT";
-type Input = { projectId: string; stageKey: ConceptStageKey };
+type Input = { projectId: string; stageKey: ConceptStageKey; reason?: string };
 type TaskInput = Input & { folderId: string; executorId?: string };
 type ReopeningInput = Input & ({ kind: "skip" } | { kind: "task"; folderId: string; executorId?: string });
 
@@ -39,6 +38,7 @@ async function resolveConceptReopening(tx: Prisma.TransactionClient, user: Permi
     resetStageIds: [] as string[], handoffIds: [] as string[], targetStageId: "",
     taskerStageId: "", assignedExecutorId: null as string | null, assignmentChanged: false,
   });
+  if (!isDirectorReader(user)) return deny("Only the Director may intervene to reopen completed work.");
   if (input.stageKey !== "CONCEPT_CREATION" && input.stageKey !== "PROJECT_DEVELOPMENT") {
     return deny("Only Stage 3 or Stage 4 can be reopened.");
   }
@@ -49,7 +49,7 @@ async function resolveConceptReopening(tx: Prisma.TransactionClient, user: Permi
     where: { id: input.projectId },
     select: {
       ...projectStageAccessSelect,
-      executors: { select: { userId: true, user: { select: { role: true, name: true, email: true } } } },
+      executors: { select: { userId: true, user: { select: { role: true, name: true, email: true, authorization: { select: { businessRole: true, accountStatus: true } } } } } },
       conceptFolders: { select: { workflowStageKey: true, approvedAttachmentId: true } },
       _count: { select: { productionUnits: true, productionSupervisions: true, productionSampleRounds: true, archivedFiles: true, fileChecklists: true } },
       archive: { select: { id: true } },
@@ -170,7 +170,7 @@ async function resolveConceptReopening(tx: Prisma.TransactionClient, user: Permi
   });
   if (drafts) return deny("Later stages have saved drafts. Finish or discard those drafts before reopening this work.");
   eligibility.emptyChecklistCount = handoffs.length;
-  const executors = project.executors.filter((executor) => executor.user.role === UserRole.USER);
+  const executors = project.executors.filter((executor) => executor.user.authorization?.accountStatus === "ACTIVE" && !!executor.user.authorization.businessRole);
   let assignedExecutorId = task?.assignedExecutorId ?? null;
   let assignmentChanged = false;
   if (input.kind === "task" && task) {
@@ -200,7 +200,7 @@ export async function getStageSkipRevocationEligibility(user: PermissionUser, in
   { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead }));
 }
 
-export async function revokeSkippedConceptStage(
+async function revokeSkippedConceptStageImplementation(
   user: PermissionUser, input: Input,
 ): Promise<{ changed: true } | { error: string }> {
   return reopenConceptWork(user, { ...input, kind: "skip" });
@@ -212,7 +212,7 @@ export async function getTaskCompletionRevocationEligibility(user: PermissionUse
   { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead }));
 }
 
-export async function revokeConceptTaskCompletion(user: PermissionUser, input: TaskInput) {
+async function revokeConceptTaskCompletionImplementation(user: PermissionUser, input: TaskInput) {
   return reopenConceptWork(user, { ...input, kind: "task" });
 }
 
@@ -249,11 +249,11 @@ async function reopenConceptWork(
         } });
         await tx.projectComment.create({ data: {
           projectId: input.projectId, stageId: resolution.taskerStageId, authorId: user.id,
-          body: `Task completion revoked. The task is open for further work.${resolution.eligibility.reopensStage ? " The workflow stage was reopened and later stages were locked." : ""}`,
+          body: `Director intervention: ${input.reason}. Task completion revoked. The task is open for further work.${resolution.eligibility.reopensStage ? " The workflow stage was reopened and later stages were locked." : ""}`,
         } });
       } else await tx.projectActivityLog.create({ data: {
         projectId: input.projectId, actorId: user.id, action: ActivityLogAction.STAGE_SKIP_REVOKED,
-        metadata: { workflowStageKey: input.stageKey, resetStageIds: resolution.resetStageIds, removedEmptyChecklistCount: resolution.handoffIds.length },
+        metadata: { reason: input.reason, workflowStageKey: input.stageKey, resetStageIds: resolution.resetStageIds, removedEmptyChecklistCount: resolution.handoffIds.length },
       } });
       return { changed: true, taskerStageId: resolution.taskerStageId, reopensStage: resolution.eligibility.reopensStage } as const;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5_000, timeout: 15_000 }));
@@ -264,4 +264,16 @@ async function reopenConceptWork(
     }
     throw error;
   }
+}
+
+export async function revokeSkippedConceptStage(
+  user: PermissionUser, input: Input,
+): Promise<{ changed: true } | { error: string }> {
+  return runProjectMutation(user, "revokeSkippedConceptStage", { kind: "workflow", id: input.projectId + "~" + input.stageKey }, async (trustedUser) =>
+    revokeSkippedConceptStageImplementation(trustedUser, input), input);
+}
+
+export async function revokeConceptTaskCompletion(user: PermissionUser, input: TaskInput) {
+  return runProjectMutation(user, "revokeConceptTaskCompletion", { kind: "workflow", id: input.projectId + "~" + input.stageKey }, async (trustedUser) =>
+    revokeConceptTaskCompletionImplementation(trustedUser, input), input);
 }

@@ -1,3 +1,4 @@
+import { runLibraryOperation } from "@/lib/authorization/library";
 import { AttachmentStatus, type User } from "@prisma/client";
 
 import {
@@ -6,8 +7,7 @@ import {
   logDevTiming,
   timeDevAsync,
 } from "@/lib/dev-timing";
-import { canViewLibrary } from "@/lib/library-access";
-import { hasPermission, type PermissionUser } from "@/lib/permissions/resolver";
+import { type PermissionUser } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 type ManualLibraryAssetFavoriteUser = Pick<
@@ -42,10 +42,6 @@ async function assertManualLibraryAssetFavoriteAccess(
     throw new Error("Library asset not found.");
   }
 
-  if (!canViewLibrary(user) || !hasPermission(user, "file.favorite")) {
-    throw new Error("You do not have permission to favorite this file.");
-  }
-
   return asset;
 }
 
@@ -74,7 +70,7 @@ export async function getFavoriteManualLibraryAssetIdSetForUser(
   return new Set(records.map((record) => record.manualLibraryAssetId));
 }
 
-export async function addManualLibraryAssetFavorite(
+async function addManualLibraryAssetFavoriteImplementation(
   user: ManualLibraryAssetFavoriteUser,
   assetId: string,
 ) {
@@ -113,7 +109,7 @@ export async function addManualLibraryAssetFavorite(
   return { attachmentId: assetId, isFavoritedByCurrentUser: true };
 }
 
-export async function removeManualLibraryAssetFavorite(
+async function removeManualLibraryAssetFavoriteImplementation(
   user: ManualLibraryAssetFavoriteUser,
   assetId: string,
 ) {
@@ -145,7 +141,7 @@ export async function removeManualLibraryAssetFavorite(
   return { attachmentId: assetId, isFavoritedByCurrentUser: false };
 }
 
-export async function toggleManualLibraryAssetFavorite(
+async function toggleManualLibraryAssetFavoriteImplementation(
   user: ManualLibraryAssetFavoriteUser,
   assetId: string,
 ) {
@@ -190,4 +186,16 @@ export async function toggleManualLibraryAssetFavorite(
   );
 
   return { attachmentId: assetId, isFavoritedByCurrentUser: true };
+}
+
+export async function addManualLibraryAssetFavorite(user: ManualLibraryAssetFavoriteUser, assetId: string) {
+  return runLibraryOperation(user, "library.favorite", `manual:${assetId}`, trusted => addManualLibraryAssetFavoriteImplementation(trusted, assetId));
+}
+
+export async function removeManualLibraryAssetFavorite(user: ManualLibraryAssetFavoriteUser, assetId: string) {
+  return runLibraryOperation(user, "library.favorite", `manual:${assetId}`, trusted => removeManualLibraryAssetFavoriteImplementation(trusted, assetId));
+}
+
+export async function toggleManualLibraryAssetFavorite(user: ManualLibraryAssetFavoriteUser, assetId: string) {
+  return runLibraryOperation(user, "library.favorite", `manual:${assetId}`, trusted => toggleManualLibraryAssetFavoriteImplementation(trusted, assetId));
 }

@@ -28,8 +28,6 @@ import { showSuccessToast } from "@/lib/toast";
 
 const NOTIFICATION_REFRESH_INTERVAL_MS = 10_000;
 const NOTIFICATION_FOCUS_REFRESH_STALE_MS = 10_000;
-const NOTIFICATION_RECENT_CACHE_KEY = "gti:recent-notifications";
-const NOTIFICATION_RECENT_CACHE_TTL_MS = 30_000;
 
 type NotificationCenterContextValue = {
   recentNotifications: NotificationRecord[];
@@ -73,55 +71,6 @@ async function fetchRecentNotifications(signal?: AbortSignal) {
   }
 
   return payload as NotificationRecentResponse;
-}
-
-function readCachedRecentNotifications() {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  try {
-    const cachedValue = window.sessionStorage.getItem(NOTIFICATION_RECENT_CACHE_KEY);
-
-    if (!cachedValue) {
-      return null;
-    }
-
-    const payload = JSON.parse(cachedValue) as {
-      data?: NotificationRecentResponse;
-      cachedAt?: unknown;
-    };
-
-    if (
-      !payload.data ||
-      typeof payload.cachedAt !== "number" ||
-      Date.now() - payload.cachedAt > NOTIFICATION_RECENT_CACHE_TTL_MS
-    ) {
-      return null;
-    }
-
-    return payload.data;
-  } catch {
-    return null;
-  }
-}
-
-function cacheRecentNotifications(payload: NotificationRecentResponse) {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  try {
-    window.sessionStorage.setItem(
-      NOTIFICATION_RECENT_CACHE_KEY,
-      JSON.stringify({
-        data: payload,
-        cachedAt: Date.now(),
-      }),
-    );
-  } catch {
-    // Ignore storage failures; notifications can still load from the API.
-  }
 }
 
 async function updateNotificationReadState(notificationId: string, read: boolean) {
@@ -191,19 +140,22 @@ function isNotificationChangedPayload(
 export function NotificationCenterProvider({
   children,
   currentUserId,
+  enabled = true,
 }: {
   children: ReactNode;
   currentUserId: string;
+  enabled?: boolean;
 }) {
   const [recentNotifications, setRecentNotifications] = useState<NotificationRecord[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const refreshPromiseRef = useRef<Promise<void> | null>(null);
   const lastRefreshAtRef = useRef(0);
 
   const refreshRecent = useCallback(async () => {
+    if (!enabled) return;
     if (refreshPromiseRef.current) {
       return refreshPromiseRef.current;
     }
@@ -215,7 +167,6 @@ export function NotificationCenterProvider({
         setError(null);
         setIsLoading(false);
         lastRefreshAtRef.current = Date.now();
-        cacheRecentNotifications(payload);
       })
       .finally(() => {
         refreshPromiseRef.current = null;
@@ -224,7 +175,7 @@ export function NotificationCenterProvider({
     refreshPromiseRef.current = refreshPromise;
 
     return refreshPromise;
-  }, []);
+  }, [enabled]);
 
   const refreshRecentAfterChange = useCallback(async () => {
     const activeRefresh = refreshPromiseRef.current;
@@ -256,7 +207,7 @@ export function NotificationCenterProvider({
   }, [refreshRecent]);
 
   useEffect(() => {
-    if (!isStageChatRealtimeClientEnabled() || !currentUserId) {
+    if (!enabled || !isStageChatRealtimeClientEnabled() || !currentUserId) {
       return;
     }
 
@@ -321,7 +272,7 @@ export function NotificationCenterProvider({
       ).catch(() => undefined);
       client.close();
     };
-  }, [currentUserId, refreshRecentAfterChange]);
+  }, [enabled, currentUserId, refreshRecentAfterChange]);
 
   const markAllAsRead = useCallback(async (options?: { showToast?: boolean }) => {
     setRecentNotifications((current) =>
@@ -345,19 +296,8 @@ export function NotificationCenterProvider({
   }, [refreshRecent]);
 
   useEffect(() => {
+    if (!enabled) return;
     const controller = new AbortController();
-    const cachedNotifications = readCachedRecentNotifications();
-    let cacheTimeoutId: number | null = null;
-
-    if (cachedNotifications) {
-      lastRefreshAtRef.current = Date.now();
-      cacheTimeoutId = window.setTimeout(() => {
-        setRecentNotifications(cachedNotifications.notifications);
-        setUnreadCount(cachedNotifications.unreadCount);
-        setIsLoading(false);
-      }, 0);
-    }
-
     const initialRefreshTimeoutId = window.setTimeout(() => {
       refreshRecent()
         .catch((nextError) => {
@@ -372,7 +312,7 @@ export function NotificationCenterProvider({
           );
           setIsLoading(false);
         });
-    }, cachedNotifications ? 1_000 : 500);
+    }, 500);
 
     const interval = window.setInterval(() => {
       if (document.visibilityState === "hidden") {
@@ -414,16 +354,13 @@ export function NotificationCenterProvider({
 
     return () => {
       controller.abort();
-      if (cacheTimeoutId) {
-        window.clearTimeout(cacheTimeoutId);
-      }
       window.clearTimeout(initialRefreshTimeoutId);
       window.clearInterval(interval);
       window.removeEventListener("focus", handleFocus);
       window.removeEventListener("online", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [refreshRecent]);
+  }, [enabled, refreshRecent]);
 
   const value: NotificationCenterContextValue = {
     recentNotifications,

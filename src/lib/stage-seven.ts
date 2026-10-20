@@ -1,3 +1,7 @@
+import { finalizeProjectAsDirector } from "./project-governance/service";
+import { canReadFullProject } from "@/lib/authorization/project-read-rules";
+import { runProjectMutation } from "@/lib/authorization/project-write";
+import { refreshProjectReader, requireProjectResourceRead } from "@/lib/authorization/project-read";
 import {
   AttachmentStatus,
   NotificationEntityType,
@@ -19,23 +23,17 @@ import {
 import { sendResendEmail } from "@/lib/email/resend";
 import {
   hasProjectPermission,
-  isGlobalProjectAdministrator,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
-import { publishNotificationChanges } from "@/lib/realtime/server";
-import { richTextToPlainText, sanitizeRichText } from "@/lib/rich-text";
 import { normalizeInternationalPhone } from "@/lib/project-contact-validation";
 import {
   getProjectStageAccessRecordById,
   type ProjectStageAccessRecord,
 } from "@/lib/project-stage-data";
-import { getWorkflowStageCompletionMode } from "@/lib/project-workflow";
-import { createPresignedDownloadUrl } from "@/lib/storage/s3";
-import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
+import { publishNotificationChanges } from "@/lib/realtime/server";
 import {
   buildRequestReminderCreateData,
-  disableProjectRequestReminders,
   isRequestReminderInterval,
   mapRequestReminder,
   setRequestReminder,
@@ -43,6 +41,9 @@ import {
   type RequestReminderConfiguration,
   type RequestReminderIntervalHours,
 } from "@/lib/request-reminders";
+import { richTextToPlainText, sanitizeRichText } from "@/lib/rich-text";
+import { createPresignedDownloadUrl } from "@/lib/storage/s3";
+import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
 
 type StageProject = ProjectStageAccessRecord;
 type EmailSender = typeof sendResendEmail;
@@ -137,12 +138,7 @@ function stageStatus(project: StageProject) {
 export function canManageStageSeven(
   user: PermissionUser,
   project: StageProject,
-) {
-  return (
-    isGlobalProjectAdministrator(user) &&
-    hasProjectPermission(user, project, "stage.view")
-  );
-}
+) { return canReadFullProject(user, project); }
 
 function displayName(user: { name: string | null; email: string }) {
   return user.name?.trim() || user.email;
@@ -389,11 +385,14 @@ export async function getStageSevenWorkspaceData(
   selectedUnitId?: string | null,
   selectedRoundId?: string | null,
 ): Promise<StageSevenWorkspaceData | null> {
-  const project = await getAuthorizedStageSevenProject(user, projectId);
+  user = await refreshProjectReader(user);
+  await requireProjectResourceRead('structured', projectId, 'project.view', user);
+
+  const project = await getProjectStageAccessRecordById(projectId);
   if (!project) return null;
 
   const canManage = canManageStageSeven(user, project);
-  const assignedRecipientId = canManage ? null : user.id;
+  const assignedRecipientId: string | null = null;
 
   const [units, closure] = await withPrismaRetry(() =>
     prisma.$transaction([
@@ -461,7 +460,7 @@ export async function getStageSevenWorkspaceData(
     ]),
   );
 
-  if (!canManage && !units.length) return null;
+
 
   const currentDate = startOfUtcDate(new Date());
   const mappedUnits: StageSevenWorkspaceData["units"] = units.map((unit) => {
@@ -986,7 +985,7 @@ async function ensureInternalSampleRequestNotification(
   });
 }
 
-export async function createProductionSampleRound(
+async function createProductionSampleRoundImplementation(
   user: PermissionUser,
   input: {
     projectId: string;
@@ -1171,7 +1170,7 @@ export async function createProductionSampleRound(
   } as const;
 }
 
-export async function configureStageSevenSampleRequestReminder(
+async function configureStageSevenSampleRequestReminderImplementation(
   user: PermissionUser,
   input: {
     projectId: string;
@@ -1234,7 +1233,7 @@ export async function configureStageSevenSampleRequestReminder(
   return { reminder } as const;
 }
 
-export async function retryProductionSampleRequestEmail(
+async function retryProductionSampleRequestEmailImplementation(
   user: PermissionUser,
   input: { projectId: string; productionUnitId: string; sampleRoundId: string },
   options: { sendEmail?: EmailSender } = {},
@@ -1310,7 +1309,7 @@ export async function retryProductionSampleRequestEmail(
   } as const;
 }
 
-export async function deleteProductionSampleRound(
+async function deleteProductionSampleRoundImplementation(
   user: PermissionUser,
   input: { projectId: string; productionUnitId: string; sampleRoundId: string },
 ) {
@@ -1375,7 +1374,7 @@ export async function deleteProductionSampleRound(
   return { deleted: true } as const;
 }
 
-export async function decidePhysicalSampleRound(
+async function decidePhysicalSampleRoundImplementation(
   user: PermissionUser,
   input: {
     projectId: string;
@@ -1483,7 +1482,7 @@ export async function decidePhysicalSampleRound(
   });
 }
 
-export async function markPhysicalSampleRoundReceived(
+async function markPhysicalSampleRoundReceivedImplementation(
   user: PermissionUser,
   input: {
     projectId: string;
@@ -1562,91 +1561,6 @@ export async function markPhysicalSampleRoundReceived(
   });
 }
 
-export async function closeStageSevenProject(
-  user: PermissionUser,
-  input: { projectId: string },
-) {
-  const project = await getAuthorizedStageSevenProject(user, input.projectId);
-  if (
-    !project ||
-    !canManageStageSeven(user, project) ||
-    !hasProjectPermission(user, project, "project.completeArchive")
-  ) {
-    throw new StageSevenWorkflowError(
-      "Only a project owner, co-owner, or administrator can complete the project.",
-    );
-  }
-  if (project.archivedAt) throw new StageSevenWorkflowError("Archived projects are read-only.");
-
-  return serializable(async (tx) => {
-    const existing = await tx.projectClosure.findUnique({
-      where: { projectId: input.projectId },
-    });
-    if (existing) {
-      return { duplicate: true, closedAt: existing.closedAt.toISOString() } as const;
-    }
-    const workflowStages = await tx.projectWorkflowStage.findMany({
-      where: { projectId: input.projectId },
-    });
-    const stage = workflowStages.find(
-      (workflowStage) =>
-        workflowStage.stageKey ===
-        ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION,
-    );
-    if (
-      !stage ||
-      getWorkflowStageCompletionMode(
-        workflowStages,
-        ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION,
-      ) !== "TRANSITION"
-    ) {
-      throw new StageSevenWorkflowError("Stage 7 is not currently available.");
-    }
-    const units = await tx.projectProductionUnit.findMany({
-      where: {
-        projectId: input.projectId,
-        status: {
-          in: [
-            ProjectProductionUnitStatus.HANDOVER_READY,
-            ProjectProductionUnitStatus.HANDED_OVER,
-          ],
-        },
-      },
-      select: { id: true, supervision: { select: { status: true } } },
-    });
-    if (!units.length) {
-      throw new StageSevenWorkflowError("No approved Production Units are available.");
-    }
-    if (
-      units.some(
-        (unit) => unit.supervision?.status !== ProductionSupervisionStatus.SIGNED_OFF,
-      )
-    ) {
-      throw new StageSevenWorkflowError(
-        "All physical Production Unit samples must be accepted before the project can be completed.",
-      );
-    }
-    const now = new Date();
-    const closure = await tx.projectClosure.create({
-      data: { projectId: input.projectId, closedById: user.id, closedAt: now },
-    });
-    await tx.projectWorkflowStage.update({
-      where: { id: stage.id },
-      data: { status: ProjectWorkflowStageStatus.COMPLETED, completedAt: now },
-    });
-    await tx.project.update({
-      where: { id: input.projectId },
-      data: { completedAt: now },
-    });
-    await disableProjectRequestReminders(tx, {
-      projectId: input.projectId,
-      stage: "SEVEN",
-      now,
-    });
-    return { duplicate: false, closedAt: closure.closedAt.toISOString() } as const;
-  });
-}
-
 export async function processStageSevenOverdueDeadlines(now = new Date()) {
   const currentDate = startOfUtcDate(now);
   const rounds = await withPrismaRetry(() =>
@@ -1722,4 +1636,96 @@ export async function processStageSevenOverdueDeadlines(now = new Date()) {
     );
   }
   return { scannedRounds: rounds.length, attemptedNotifications: notifications.length };
+}
+
+export async function createProductionSampleRound(
+  user: PermissionUser,
+  input: {
+    projectId: string;
+    productionUnitId: string;
+    clientRequestId: string;
+    name: string;
+    type: ProductionSampleRoundType;
+    customTypeName?: string | null;
+    deadline: string | Date;
+    recipientRoute: ProductionHandoverRoute;
+    recipientType: ProductionApprovalRecipientType;
+    recipientUserId?: string | null;
+    recipientName?: string | null;
+    recipientEmail?: string | null;
+    recipientCompany?: string | null;
+    recipientPhone?: string | null;
+    requestNote?: string | null;
+    referenceFileIds?: string[];
+    reminderIntervalHours?: number | null;
+  },
+  options: { sendEmail?: EmailSender } = {},
+) {
+  return runProjectMutation(user, "createProductionSampleRound", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    createProductionSampleRoundImplementation(trustedUser, input, options), input);
+}
+
+export async function configureStageSevenSampleRequestReminder(
+  user: PermissionUser,
+  input: {
+    projectId: string;
+    productionUnitId: string;
+    sampleRoundId: string;
+    intervalHours: RequestReminderIntervalHours | null;
+  },
+) {
+  return runProjectMutation(user, "configureStageSevenSampleRequestReminder", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    configureStageSevenSampleRequestReminderImplementation(trustedUser, input), input);
+}
+
+export async function retryProductionSampleRequestEmail(
+  user: PermissionUser,
+  input: { projectId: string; productionUnitId: string; sampleRoundId: string },
+  options: { sendEmail?: EmailSender } = {},
+) {
+  return runProjectMutation(user, "retryProductionSampleRequestEmail", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    retryProductionSampleRequestEmailImplementation(trustedUser, input, options), input);
+}
+
+export async function deleteProductionSampleRound(
+  user: PermissionUser,
+  input: { projectId: string; productionUnitId: string; sampleRoundId: string },
+) {
+  return runProjectMutation(user, "deleteProductionSampleRound", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    deleteProductionSampleRoundImplementation(trustedUser, input), input);
+}
+
+export async function decidePhysicalSampleRound(
+  user: PermissionUser,
+  input: {
+    projectId: string;
+    productionUnitId: string;
+    sampleRoundId: string;
+    decision: PhysicalSampleDecision;
+    decisionNote?: string | null;
+  },
+) {
+  return runProjectMutation(user, "decidePhysicalSampleRound", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    decidePhysicalSampleRoundImplementation(trustedUser, input), input);
+}
+
+export async function markPhysicalSampleRoundReceived(
+  user: PermissionUser,
+  input: {
+    projectId: string;
+    productionUnitId: string;
+    sampleRoundId: string;
+  },
+) {
+  return runProjectMutation(user, "markPhysicalSampleRoundReceived", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    markPhysicalSampleRoundReceivedImplementation(trustedUser, input), input);
+}
+
+export async function closeStageSevenProject(
+  user: PermissionUser,
+  input: { projectId: string },
+) {
+  const result = await finalizeProjectAsDirector(user, { kind: "ARTWORK", projectId: input.projectId }, "Director finalization from Stage 7");
+  if (!result.closedAt) throw new StageSevenWorkflowError("Project finalization did not complete.");
+  return { duplicate: false, closedAt: result.closedAt } as const;
 }

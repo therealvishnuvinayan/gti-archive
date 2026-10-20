@@ -1,3 +1,6 @@
+import { hasProjectBusinessIdentity } from "@/lib/authorization/project-read-rules";
+import { getCurrentUser } from "@/lib/auth";
+import { canArchive, archiveCategoryWhere, archiveScopeForUser } from "@/lib/authorization/archive-rules";
 import { unstable_cache } from "next/cache";
 
 import { prisma, withPrismaRetry } from "@/lib/prisma";
@@ -284,6 +287,8 @@ function mapProjectStatusGroupItem(item: {
 }
 
 export async function getProjectMasterData(): Promise<ProjectMasterDataRecord> {
+  const user = await getCurrentUser();
+  if (!user || !hasProjectBusinessIdentity(user)) throw new Error("Business master-data access required.");
   const fetchMasterData = unstable_cache(
     async () =>
       withPrismaRetry(() =>
@@ -357,11 +362,19 @@ export async function getProjectMasterData(): Promise<ProjectMasterDataRecord> {
     projectStatuses,
     tags,
     assetTags,
-    archiveCategories,
-    archiveCategoryAccessUsers,
+    cachedArchiveCategories,
+    cachedArchiveCategoryAccessUsers,
   ] =
     await fetchMasterData();
-
+  const allowed = user && canArchive(user, "archive.category.create")
+    ? await prisma.archiveCategory.findMany({ where: archiveCategoryWhere(archiveScopeForUser(user), false), select: { id: true } }) : [];
+  const visibleIds = new Set(allowed.map(row => row.id));
+  const archiveCategories = cachedArchiveCategories.filter(row => visibleIds.has(row.id)).map(row => ({ ...row,
+    parent: row.parentId && visibleIds.has(row.parentId) ? row.parent : null,
+    children: row.children.filter(child => visibleIds.has(child.id)),
+    // Keep IDs for an unchanged ACL during category editing; user directory is management-only.
+  }));
+  const archiveCategoryAccessUsers = user && canArchive(user, "archive.manageAccess") ? cachedArchiveCategoryAccessUsers : [];
   return {
     categories: categories.map(mapMasterDataItem),
     projectStatusGroups: projectStatusGroups.map(mapProjectStatusGroupItem),

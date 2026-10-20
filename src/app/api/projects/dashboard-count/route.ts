@@ -22,7 +22,8 @@ export async function GET() {
     timer.end("dashboard count/sidebar request skipped", {
       reason: "Missing dashboard.viewProjectCounts permission.",
     });
-    return NextResponse.json({ total: 0 }, {
+    return NextResponse.json({ error: "Forbidden." }, {
+      status: 403,
       headers: {
         "Cache-Control": "no-store",
       },

@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.authorization-services.json",
+  "compilerOptions": { "outDir": "../.tmp/development-provisioning" },
+  "include": ["development-provisioning/cli.ts"]
+}

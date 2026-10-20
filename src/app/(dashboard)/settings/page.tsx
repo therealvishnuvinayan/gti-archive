@@ -1,10 +1,11 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { SettingsWorkspace } from "@/components/settings/settings-workspace";
 import { getUserDisplayName, requireUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions/resolver";
-import { isBusinessAdministratorRole } from "@/lib/user-role-compatibility";
+import { projectReadActor } from "@/lib/authorization/project-read-rules";
 
 function formatRole(role: string) {
   return role
@@ -64,15 +65,20 @@ export default async function SettingsPage() {
   const canUpdateProfile = hasPermission(user, "settings.updateOwnProfile");
   const canChangePassword = hasPermission(user, "settings.changeOwnPassword");
   const canViewUsers =
-    isBusinessAdministratorRole(user.role) && hasPermission(user, "users.view");
+    hasPermission(user, "users.view");
 
   return (
     <DashboardLayout>
+      {projectReadActor(user)?.technicalPrivileges.includes("TECHNICAL_ADMIN") && <section className="mx-6 mt-6 rounded-2xl border border-line bg-white p-5">
+        <h2 className="text-lg font-semibold">Technical Administration</h2>
+        <p className="my-2 text-sm text-muted-foreground">Manage technical privileges for existing accounts with recorded reasons and history.</p>
+        <Link className="text-sm font-medium underline" href="/settings/technical-administration">Manage technical privileges</Link>
+      </section>}
       <SettingsWorkspace
         user={{
           name: getUserDisplayName(user),
           email: user.email,
-          role: formatRole(user.role),
+          role: [projectReadActor(user)?.businessRole, ...(projectReadActor(user)?.technicalPrivileges ?? [])].filter(Boolean).map(value => formatRole(value!)).join(" · ") || "No assigned role",
           memberSince: formatMemberSince(user.createdAt),
           passwordChangedAt: formatPasswordChangedAt(user.passwordChangedAt),
           avatarSrc: user.avatarUrl

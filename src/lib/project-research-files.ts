@@ -1,3 +1,5 @@
+import { runProjectMutation } from "@/lib/authorization/project-write";
+import { requireProjectResourceRead } from "@/lib/authorization/project-read";
 import { AttachmentAssetType, Prisma } from "@prisma/client";
 
 import {
@@ -21,7 +23,7 @@ import { getFolderSubtree } from "@/lib/project-folder-tree";
 const TEXT_FILE_PREVIEW_MAX_BYTES = 1024 * 1024;
 const TEXT_FILE_EXCERPT_MAX_BYTES = 6 * 1024;
 
-export async function requestProjectResearchFileUpload(
+async function requestProjectResearchFileUploadImplementation(
   user: ProjectHistoryAccessUser,
   input: {
     projectId: string;
@@ -48,7 +50,7 @@ export async function requestProjectResearchFileUpload(
   });
 }
 
-export async function completeProjectResearchFileUpload(
+async function completeProjectResearchFileUploadImplementation(
   user: ProjectHistoryAccessUser,
   input: {
     projectId: string;
@@ -157,12 +159,14 @@ export async function getProjectResearchTextFileContent(
     prisma.projectResearchFolderFile.findFirst({
       where: {
         id: input.fileId,
+        attachment: { projectId: input.projectId, status: "READY" },
         folderId: input.folderId,
         folder: { workspace: { projectId: input.projectId } },
       },
       select: {
         attachment: {
           select: {
+            id: true,
             bucket: true,
             storageKey: true,
             originalFileName: true,
@@ -178,6 +182,7 @@ export async function getProjectResearchTextFileContent(
     throw new Error("Research file not found.");
   }
 
+  await requireProjectResourceRead("file", file.attachment.id, "project.viewFile", user);
   const extension = file.attachment.originalFileName
     .split(".")
     .pop()
@@ -219,7 +224,7 @@ export async function getProjectResearchFileDownloadUrl(
   return getAttachmentDownloadUrlForUser(user, file.attachmentId);
 }
 
-export async function deleteProjectResearchFile(
+async function deleteProjectResearchFileImplementation(
   user: ProjectHistoryAccessUser,
   input: { projectId: string; folderId: string; fileId: string },
 ) {
@@ -233,7 +238,7 @@ export async function deleteProjectResearchFile(
   await deleteAttachmentForUser(user, file.attachmentId);
 }
 
-export async function deleteProjectResearchFolder(
+async function deleteProjectResearchFolderImplementation(
   user: ProjectHistoryAccessUser,
   input: { projectId: string; folderId: string },
 ) {
@@ -288,4 +293,48 @@ export async function deleteProjectResearchFolder(
   });
 
   return { folder: { id: folder.id, name: folder.name } } as const;
+}
+
+export async function requestProjectResearchFileUpload(
+  user: ProjectHistoryAccessUser,
+  input: {
+    projectId: string;
+    folderId: string;
+    originalFileName: string;
+    mimeType: string;
+    fileSize: number;
+    uploadEndpointMode?: RequestUploadInput["uploadEndpointMode"];
+  },
+) {
+  return runProjectMutation(user, "requestProjectResearchFileUpload", { kind: "research-folder", id: input.folderId }, async (trustedUser) =>
+    requestProjectResearchFileUploadImplementation(trustedUser, input), input);
+}
+
+export async function completeProjectResearchFileUpload(
+  user: ProjectHistoryAccessUser,
+  input: {
+    projectId: string;
+    folderId: string;
+    attachmentId: string;
+    failed?: boolean;
+  },
+) {
+  return runProjectMutation(user, "completeProjectResearchFileUpload", { kind: "research-folder", id: input.folderId }, async (trustedUser) =>
+    completeProjectResearchFileUploadImplementation(trustedUser, input), input);
+}
+
+export async function deleteProjectResearchFile(
+  user: ProjectHistoryAccessUser,
+  input: { projectId: string; folderId: string; fileId: string },
+) {
+  return runProjectMutation(user, "deleteProjectResearchFile", { kind: "research-folder", id: input.folderId }, async (trustedUser) =>
+    deleteProjectResearchFileImplementation(trustedUser, input), input);
+}
+
+export async function deleteProjectResearchFolder(
+  user: ProjectHistoryAccessUser,
+  input: { projectId: string; folderId: string },
+) {
+  return runProjectMutation(user, "deleteProjectResearchFolder", { kind: "research-folder", id: input.folderId }, async (trustedUser) =>
+    deleteProjectResearchFolderImplementation(trustedUser, input), input);
 }

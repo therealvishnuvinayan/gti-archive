@@ -1,3 +1,5 @@
+import { getCurrentUser } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions/resolver";
 import * as Ably from "ably";
 
 import {
@@ -70,69 +72,24 @@ export async function createAblyStageChatTokenRequest(input: {
   stageId: string;
   clientId: string;
 }) {
-  const client = getAblyRestClient();
-  const channelName = getStageChatChannelName(input.projectId, input.stageId);
-
-  logAblyServer("token request create start", {
-    projectId: input.projectId,
-    stageId: input.stageId,
-    channelName,
-    clientId: input.clientId,
-    hasAblyApiKey: Boolean(getAblyApiKey()),
-  });
-
-  if (!client) {
-    logAblyServer("token request create failure", {
-      projectId: input.projectId,
-      stageId: input.stageId,
-      channelName,
-      reason: "ABLY_API_KEY missing",
-    });
-    return null;
-  }
-
-  const tokenRequest = await client.auth.createTokenRequest({
-    clientId: input.clientId,
-    ttl: STAGE_CHAT_TOKEN_TTL_MS,
-    capability: {
-      [channelName]: ["subscribe", "publish", "presence"],
-    },
-  });
-
-  logAblyServer("token request create success", {
-    projectId: input.projectId,
-    stageId: input.stageId,
-    channelName,
-    clientId: input.clientId,
-  });
-
-  return tokenRequest;
+  void input;
+  throw new Error("Project realtime subscriptions await V2 revocation integration.");
 }
 
 export async function createAblyProjectAccessTokenRequest(input: {
   projectId: string;
   clientId: string;
 }) {
-  const client = getAblyRestClient();
-  const channelName = getProjectAccessChannelName(input.projectId);
-
-  if (!client) {
-    return null;
-  }
-
-  return client.auth.createTokenRequest({
-    clientId: input.clientId,
-    ttl: STAGE_CHAT_TOKEN_TTL_MS,
-    capability: {
-      [channelName]: ["subscribe"],
-    },
-  });
+  void input;
+  throw new Error("Project realtime subscriptions await V2 revocation integration.");
 }
 
 export async function createAblyNotificationTokenRequest(input: {
   userId: string;
   clientId: string;
 }) {
+  const user = await getCurrentUser();
+  if (!user || user.id !== input.userId || !hasPermission(user, "notification.view")) throw new Error("Notification subscription denied.");
   const client = getAblyRestClient();
 
   if (!client) {

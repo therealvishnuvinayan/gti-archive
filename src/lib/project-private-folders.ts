@@ -1,3 +1,7 @@
+import { activeProjectMutation } from "@/lib/authorization/project-transaction";
+import { isDirectorReader } from "@/lib/authorization/project-read-rules";
+import { runProjectMutation } from "@/lib/authorization/project-write";
+import { refreshProjectReader, requireProjectResourceRead } from "@/lib/authorization/project-read";
 import { randomUUID } from "node:crypto";
 
 import {
@@ -8,9 +12,9 @@ import {
 } from "@prisma/client";
 
 import { prisma, withPrismaRetry } from "@/lib/prisma";
-import { getFolderAncestors, getFolderSubtree } from "@/lib/project-folder-tree";
-import type { FolderItemPinInput } from "@/lib/project-folder-pins-shared";
 import type { FolderItemColorInput } from "@/lib/project-folder-colors-shared";
+import type { FolderItemPinInput } from "@/lib/project-folder-pins-shared";
+import { getFolderAncestors, getFolderSubtree } from "@/lib/project-folder-tree";
 import { validatePreparedProjectResearchTextFile } from "@/lib/project-research-text-file";
 import {
   buildProjectAssetKey,
@@ -70,6 +74,7 @@ export async function ensureProjectPrivateFolder(
   projectId: string,
   ownerUserId: string,
 ) {
+  if (activeProjectMutation()?.projectId !== projectId) throw new Error("An authorized project mutation is required.");
   return withPrismaRetry(() =>
     prisma.$transaction((tx) =>
       ensureProjectPrivateFolderTx(tx, projectId, ownerUserId),
@@ -110,6 +115,7 @@ export async function ensureProjectPrivateFoldersForProjectTx(
 }
 
 export async function ensureProjectPrivateFoldersForProject(projectId: string) {
+  if (activeProjectMutation()?.projectId !== projectId) throw new Error("An authorized project mutation is required.");
   return withPrismaRetry(() =>
     prisma.$transaction(
       (tx) => ensureProjectPrivateFoldersForProjectTx(tx, projectId),
@@ -127,8 +133,7 @@ async function getOwnedPrivateFolder(
       where: {
         id: input.folderId,
         projectId: input.projectId,
-        ownerUserId: user.id,
-        project: activeParticipantWhere(user.id),
+        ...(isDirectorReader(user) ? {} : { ownerUserId: user.id, project: activeParticipantWhere(user.id) }),
       },
       select: {
         id: true,
@@ -160,8 +165,7 @@ export async function assertProjectPrivateAttachmentAccess(
         id: attachmentId,
         assetType: AttachmentAssetType.PROJECT_PRIVATE_FILE,
         privateFolder: {
-          ownerUserId: user.id,
-          project: activeParticipantWhere(user.id),
+          ...(isDirectorReader(user) ? {} : { ownerUserId: user.id, project: activeParticipantWhere(user.id) }),
         },
       },
       select: {
@@ -214,9 +218,12 @@ export async function getProjectPrivateFolderPageData(
   user: PrivateFolderUser,
   input: { projectId: string; folderId: string },
 ) {
-  const folder = await getOwnedPrivateFolder(user, input);
+  user = await refreshProjectReader(user);
+  await requireProjectResourceRead('private-folder', input.folderId, 'project.viewFolder', user);
+
+  const folder = await prisma.projectPrivateFolder.findFirstOrThrow({where:{id:input.folderId,projectId:input.projectId},include:{owner:{select:{name:true,email:true}},project:{select:{id:true,name:true}}}});
   const hierarchy = await prisma.projectPrivateFolder.findMany({
-    where: { projectId: input.projectId, ownerUserId: user.id },
+    where: { projectId: input.projectId, ownerUserId: folder.ownerUserId },
     select: {
       id: true, name: true, parentFolderId: true, createdAt: true, pinnedAt: true, colorLabel: true,
       _count: { select: { children: true, files: { where: { status: AttachmentStatus.READY } } } },
@@ -266,22 +273,22 @@ export async function getProjectPrivateFolderPageData(
       colorLabel: child.colorLabel,
       fileCount: child._count.files, folderCount: child._count.children,
     })),
-    canWrite: true,
-    canUpload: true,
+    canWrite: folder.ownerUserId === user.id,
+    canUpload: folder.ownerUserId === user.id,
     files: files.map(mapPrivateFile),
   };
 }
 
-export async function createProjectPrivateSubfolder(
+async function createProjectPrivateSubfolderImplementation(
   user: PrivateFolderUser,
   input: { projectId: string; parentFolderId: string; name: string },
 ) {
-  await getOwnedPrivateFolder(user, { projectId: input.projectId, folderId: input.parentFolderId });
+  const parent = await getOwnedPrivateFolder(user, { projectId: input.projectId, folderId: input.parentFolderId });
   const name = input.name.trim().replace(/\s+/g, " ");
   if (!name || name.length > 120) return { error: "Enter a folder name of up to 120 characters." } as const;
   try {
     const folder = await prisma.projectPrivateFolder.create({
-      data: { projectId: input.projectId, ownerUserId: user.id, parentFolderId: input.parentFolderId, name, normalizedName: name.toLocaleLowerCase("en-US") },
+      data: { projectId: input.projectId, ownerUserId: parent.ownerUserId, parentFolderId: input.parentFolderId, name, normalizedName: name.toLocaleLowerCase("en-US") },
       select: { id: true, name: true },
     });
     return { folder } as const;
@@ -293,7 +300,7 @@ export async function createProjectPrivateSubfolder(
   }
 }
 
-export async function setProjectPrivateItemPin(user: PrivateFolderUser, input: FolderItemPinInput) {
+async function setProjectPrivateItemPinImplementation(user: PrivateFolderUser, input: FolderItemPinInput) {
   const folder = await getOwnedPrivateFolder(user, input);
   if (input.kind === "folder") {
     if (!folder.parentFolderId) throw new Error("The main private folder is already shown in the workspace.");
@@ -310,7 +317,7 @@ export async function setProjectPrivateItemPin(user: PrivateFolderUser, input: F
   return { pinnedAt: pinnedAt?.toISOString() ?? null, parentFolderId: folder.id };
 }
 
-export async function setProjectPrivateItemColor(user: PrivateFolderUser, input: FolderItemColorInput) {
+async function setProjectPrivateItemColorImplementation(user: PrivateFolderUser, input: FolderItemColorInput) {
   const folder = await getOwnedPrivateFolder(user, input);
   if (input.kind === "folder") {
     return prisma.projectPrivateFolder.update({
@@ -326,11 +333,11 @@ export async function setProjectPrivateItemColor(user: PrivateFolderUser, input:
   return { colorLabel: input.colorLabel, parentFolderId: folder.id };
 }
 
-export async function deleteProjectPrivateSubfolder(user: PrivateFolderUser, input: { projectId: string; folderId: string }) {
+async function deleteProjectPrivateSubfolderImplementation(user: PrivateFolderUser, input: { projectId: string; folderId: string }) {
   const folder = await getOwnedPrivateFolder(user, input);
   if (!folder.parentFolderId) return { error: "The main private folder cannot be deleted." } as const;
   const hierarchy = await prisma.projectPrivateFolder.findMany({
-    where: { projectId: input.projectId, ownerUserId: user.id },
+    where: { projectId: input.projectId, ownerUserId: folder.ownerUserId },
     select: { id: true, name: true, parentFolderId: true },
   });
   const subtree = getFolderSubtree(hierarchy, folder.id);
@@ -354,7 +361,7 @@ export async function deleteProjectPrivateSubfolder(user: PrivateFolderUser, inp
   return { folder: { id: folder.id, name: folder.name } } as const;
 }
 
-export async function requestProjectPrivateFileUpload(
+async function requestProjectPrivateFileUploadImplementation(
   user: PrivateFolderUser,
   input: {
     projectId: string;
@@ -443,7 +450,7 @@ export async function requestProjectPrivateFileUpload(
   } as const;
 }
 
-export async function completeProjectPrivateFileUpload(
+async function completeProjectPrivateFileUploadImplementation(
   user: PrivateFolderUser,
   input: {
     projectId: string;
@@ -533,7 +540,10 @@ export async function getProjectPrivateFilePreviewUrl(
   user: PrivateFolderUser,
   input: { projectId: string; folderId: string; fileId: string },
 ) {
-  const attachment = await getExactPrivateFile(user, input);
+  user = await refreshProjectReader(user);
+  await requireProjectResourceRead('file', input.fileId, 'project.viewFile', user);
+
+  const attachment = await prisma.projectAttachment.findFirstOrThrow({where:{id:input.fileId,projectId:input.projectId,privateFolderId:input.folderId,status:"READY"}});
   return createPresignedPreviewUrl({
     bucket: attachment.bucket,
     storageKey: attachment.storageKey,
@@ -546,7 +556,10 @@ export async function getProjectPrivateFileDownloadUrl(
   user: PrivateFolderUser,
   input: { projectId: string; folderId: string; fileId: string },
 ) {
-  const attachment = await getExactPrivateFile(user, input);
+  user = await refreshProjectReader(user);
+  await requireProjectResourceRead('file', input.fileId, 'project.viewFile', user);
+
+  const attachment = await prisma.projectAttachment.findFirstOrThrow({where:{id:input.fileId,projectId:input.projectId,privateFolderId:input.folderId,status:"READY"}});
   return createPresignedDownloadUrl({
     bucket: attachment.bucket,
     storageKey: attachment.storageKey,
@@ -564,7 +577,10 @@ export async function getProjectPrivateTextFileContent(
     excerpt?: boolean;
   },
 ) {
-  const attachment = await getExactPrivateFile(user, input);
+  user = await refreshProjectReader(user);
+  await requireProjectResourceRead('file', input.fileId, 'project.viewFile', user);
+
+  const attachment = await prisma.projectAttachment.findFirstOrThrow({where:{id:input.fileId,projectId:input.projectId,privateFolderId:input.folderId,status:"READY"}});
   const extension = attachment.originalFileName
     .split(".")
     .pop()
@@ -587,7 +603,7 @@ export async function getProjectPrivateTextFileContent(
   return { content, truncated: attachment.fileSize > maxBytes };
 }
 
-export async function deleteProjectPrivateFile(
+async function deleteProjectPrivateFileImplementation(
   user: PrivateFolderUser,
   input: { projectId: string; folderId: string; fileId: string },
 ) {
@@ -601,4 +617,64 @@ export async function deleteProjectPrivateFile(
       data: { status: AttachmentStatus.DELETED },
     }),
   );
+}
+
+export async function createProjectPrivateSubfolder(
+  user: PrivateFolderUser,
+  input: { projectId: string; parentFolderId: string; name: string },
+) {
+  return runProjectMutation(user, "createProjectPrivateSubfolder", { kind: "private-folder", id: input.parentFolderId }, async (trustedUser) =>
+    createProjectPrivateSubfolderImplementation(trustedUser, input), input);
+}
+
+export async function setProjectPrivateItemPin(user: PrivateFolderUser, input: FolderItemPinInput) {
+  return runProjectMutation(user, "setProjectPrivateItemPin", { kind: "private-folder", id: input.folderId }, async (trustedUser) =>
+    setProjectPrivateItemPinImplementation(trustedUser, input), input);
+}
+
+export async function setProjectPrivateItemColor(user: PrivateFolderUser, input: FolderItemColorInput) {
+  return runProjectMutation(user, "setProjectPrivateItemColor", { kind: "private-folder", id: input.folderId }, async (trustedUser) =>
+    setProjectPrivateItemColorImplementation(trustedUser, input), input);
+}
+
+export async function deleteProjectPrivateSubfolder(user: PrivateFolderUser, input: { projectId: string; folderId: string }) {
+  return runProjectMutation(user, "deleteProjectPrivateSubfolder", { kind: "private-folder", id: input.folderId }, async (trustedUser) =>
+    deleteProjectPrivateSubfolderImplementation(trustedUser, input), input);
+}
+
+export async function requestProjectPrivateFileUpload(
+  user: PrivateFolderUser,
+  input: {
+    projectId: string;
+    folderId: string;
+    originalFileName: string;
+    mimeType: string;
+    fileSize: number;
+    createdTextFile?: boolean;
+    uploadEndpointMode?: S3UploadEndpointMode;
+  },
+) {
+  return runProjectMutation(user, "requestProjectPrivateFileUpload", { kind: "private-folder", id: input.folderId }, async (trustedUser) =>
+    requestProjectPrivateFileUploadImplementation(trustedUser, input), input);
+}
+
+export async function completeProjectPrivateFileUpload(
+  user: PrivateFolderUser,
+  input: {
+    projectId: string;
+    folderId: string;
+    attachmentId: string;
+    failed?: boolean;
+  },
+) {
+  return runProjectMutation(user, "completeProjectPrivateFileUpload", { kind: "private-folder", id: input.folderId }, async (trustedUser) =>
+    completeProjectPrivateFileUploadImplementation(trustedUser, input), input);
+}
+
+export async function deleteProjectPrivateFile(
+  user: PrivateFolderUser,
+  input: { projectId: string; folderId: string; fileId: string },
+) {
+  return runProjectMutation(user, "deleteProjectPrivateFile", { kind: "private-folder", id: input.folderId }, async (trustedUser) =>
+    deleteProjectPrivateFileImplementation(trustedUser, input), input);
 }

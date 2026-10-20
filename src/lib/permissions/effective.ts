@@ -16,9 +16,6 @@ export function resolveEffectivePermissionSet(input: {
     allPermissionKeys.filter((permissionKey) => rolePermissions.has(permissionKey)),
   );
 
-  for (const key of ["archive.view", "archive.uploadFile", "archive.download"] as const) {
-    effectivePermissions.add(key);
-  }
 
   if (user.role === UserRole.SUPER_ADMIN) {
     for (const permissionKey of criticalSuperAdminPermissionKeys) {
@@ -26,5 +23,7 @@ export function resolveEffectivePermissionSet(input: {
     }
   }
 
+  // Archive capabilities are projected from a trusted V2 principal by the resolver.
+  for (const key of ["archive.view", "archive.uploadFile", "archive.download", "library.view", "library.filter", "library.uploadAsset", "library.deleteFile"] as const) effectivePermissions.delete(key);
   return effectivePermissions;
 }

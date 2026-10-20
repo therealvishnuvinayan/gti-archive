@@ -1,8 +1,9 @@
+import { refreshProjectReader } from "@/lib/authorization/project-read";
+import { isDirectorReader } from "@/lib/authorization/project-read-rules";
 import {
   ProjectWorkflowStageKey,
   type Prisma,
 } from "@prisma/client";
-import { unstable_cache } from "next/cache";
 
 import {
   getNeedsAttentionItems,
@@ -13,19 +14,17 @@ import {
   getAccessibleProjectsWhere,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
-import { isBusinessAdministratorRole } from "@/lib/user-role-compatibility";
+import { prisma, withPrismaRetry } from "@/lib/prisma";
 import {
   compareProjectsByPriority,
   normalizeProjectPriority,
   type ProjectPriorityValue,
 } from "@/lib/project-priority";
-import { prisma, withPrismaRetry } from "@/lib/prisma";
 import {
   deriveUserTaskDisplayState,
   type UserTaskDisplayState,
 } from "@/lib/user-projects";
 
-const USER_TASKS_CACHE_TAG = "projects";
 const conceptTaskStageKeys = [
   ProjectWorkflowStageKey.CONCEPT_CREATION,
   ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
@@ -83,28 +82,26 @@ function getTaskListWhere(user: PermissionUser): Prisma.ProjectConceptFolderWher
   return {
     workflowStageKey: { in: [...conceptTaskStageKeys] },
     project: { is: getAccessibleProjectsWhere(user) },
-    ...(isBusinessAdministratorRole(user.role)
-      ? { assignedById: user.id, assignedExecutorId: { not: null } }
-      : { assignedExecutorId: user.id }),
+    ...(isDirectorReader(user) ? {} : { assignedExecutorId: user.id }),
   };
 }
 
 export async function getUserTaskSidebarCount(user: PermissionUser) {
+  user = await refreshProjectReader(user);
+
   if (!canUseTasks(user)) return 0;
 
-  return unstable_cache(
-    () => withPrismaRetry(() => prisma.projectConceptFolder.count({
-      where: getTaskListWhere(user),
-    })),
-    ["task-sidebar-count-v2", user.id, user.role, JSON.stringify(getAccessibleProjectsWhere(user))],
-    { revalidate: 20, tags: [USER_TASKS_CACHE_TAG] },
-  )();
+  return (() => withPrismaRetry(() => prisma.projectConceptFolder.findMany({
+      where: getTaskListWhere(user), select: { projectId: true, taskerStage: { select: { projectId: true } } },
+    }).then(rows => rows.filter(row => row.projectId === row.taskerStage.projectId).length)))();
 }
 
 export async function getUserTasksPageData(
   user: PermissionUser,
 ): Promise<UserTasksPageData> {
-  const view = isBusinessAdministratorRole(user.role) ? "GIVEN" : "RECEIVED";
+  user = await refreshProjectReader(user);
+
+  const view = isDirectorReader(user) ? "GIVEN" : "RECEIVED";
   if (!canUseTasks(user)) {
     return {
       view,
@@ -145,6 +142,7 @@ export async function getUserTasksPageData(
           },
           taskerStage: {
             select: {
+              projectId: true,
               status: true,
               actualStartedAt: true,
               completedAt: true,
@@ -173,6 +171,7 @@ export async function getUserTasksPageData(
   const now = Date.now();
 
   for (const record of records) {
+    if (record.taskerStage.projectId !== record.project.id) continue;
     const display = deriveUserTaskDisplayState(record);
     const stageNumber =
       record.workflowStageKey === ProjectWorkflowStageKey.CONCEPT_CREATION
@@ -193,7 +192,7 @@ export async function getUserTasksPageData(
       assignedByName: record.assignedBy ? displayName(record.assignedBy) : null,
       stageNumber,
       stageLabel: stageNumber === 3 ? "Initial Concept" : "Final Concept",
-      href: `/projects/${encodeURIComponent(record.project.id)}/stages/${stageNumber}/concepts/${encodeURIComponent(record.id)}?returnTo=%2Ftasks`,
+      href: isDirectorReader(user) ? `/projects/${encodeURIComponent(record.project.id)}/stages/${stageNumber}/concepts/${encodeURIComponent(record.id)}?returnTo=%2Ftasks` : `/projects/${encodeURIComponent(record.project.id)}`,
       dueAt:
         display.status === "COMPLETED"
           ? null
@@ -220,7 +219,7 @@ export async function getUserTasksPageData(
     projectGroupById.set(record.project.id, {
       id: record.project.id,
       name: record.project.name,
-      priority: normalizeProjectPriority(record.project.priority),
+      priority: isDirectorReader(user) ? normalizeProjectPriority(record.project.priority) : "MEDIUM",
       ownerName: record.project.owner ? displayName(record.project.owner) : null,
       openTaskCount: Number(display.status !== "COMPLETED"),
       tasks: [task],

@@ -1,3 +1,4 @@
+import { libraryErrorResponse } from "@/lib/library-http";
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
@@ -50,14 +51,6 @@ export async function GET(request: Request) {
           ? error.message
           : "Unable to load library files right now.",
     });
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unable to load library files right now.",
-      },
-      { status: 400 },
-    );
+    return libraryErrorResponse(error);
   }
 }

@@ -1,6 +1,7 @@
-import { Suspense } from "react";
+import { canReadProjectResource } from "@/lib/authorization/project-read";
+import { isDirectorReader } from "@/lib/authorization/project-read-rules";
 import { ProjectWorkflowStageKey } from "@prisma/client";
-import { redirect } from "next/navigation";
+import { Suspense } from "react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { ProjectBackButton } from "@/components/projects/project-back-button";
@@ -16,9 +17,8 @@ import {
 import { requireUser } from "@/lib/auth";
 import { getProjectRouteAvailability, getProjectStageShellById } from "@/lib/projects";
 import { decodeRouteParam } from "@/lib/route-params";
-import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
 import { getStageSixWorkspaceData } from "@/lib/stage-six";
-import { isBusinessAdministratorRole } from "@/lib/user-role-compatibility";
+import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
 
 type StageSixUser = Awaited<ReturnType<typeof requireUser>>;
 
@@ -49,10 +49,9 @@ async function StageSixContent({
 }) {
   const user = await userPromise;
 
-  if (!isBusinessAdministratorRole(user.role)) {
-    redirect(`/projects/${slug}`);
-  }
 
+
+  if (!await canReadProjectResource("structured", slug, "project.view", user)) return <ProjectAccessUnavailableState />;
   const project = await getProjectStageShellById(slug, user);
 
   if (!project) {
@@ -65,7 +64,7 @@ async function StageSixContent({
   );
 
   if (
-    !canOpenImplementedWorkflowStage({
+    !isDirectorReader(user) && !canOpenImplementedWorkflowStage({
       stageKey: ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER,
       status: workflowStage?.status,
     })

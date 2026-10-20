@@ -1,10 +1,10 @@
+import { canReadProjectResource, refreshProjectReader } from "@/lib/authorization/project-read";
 import {
-  hasPermission,
   hasProjectPermission,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
-import { projectCollaboratorPermissionSelect } from "@/lib/project-collaborator-permissions";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { projectCollaboratorPermissionSelect } from "@/lib/project-collaborator-permissions";
 import { isProjectStatusCompleted } from "@/lib/project-statuses";
 
 export const AI_PERMISSION_ERROR =
@@ -17,10 +17,13 @@ export async function canUseChatAiTools(
     stageId?: string | null;
   },
 ) {
+  user = await refreshProjectReader(user);
+ if (input.projectId && !await canReadProjectResource("structured", input.projectId, "project.view", user)) return false;
+
   const projectId = input.projectId?.trim();
 
   if (!projectId) {
-    return hasPermission(user, "chat.createComment");
+    return false;
   }
 
   const stageId = input.stageId?.trim();

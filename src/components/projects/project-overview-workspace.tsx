@@ -1,4 +1,3 @@
-import Link from "next/link";
 import {
   ArrowRight,
   CircleCheck,
@@ -6,6 +5,7 @@ import {
   FolderKanban,
   Lock,
 } from "lucide-react";
+import Link from "next/link";
 
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
 import { ProjectFlowSummaryStrip } from "@/components/projects/project-summary-strip";
@@ -13,12 +13,13 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { RichTextContent } from "@/components/ui/rich-text-editor";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { ProjectStageShellRecord } from "@/lib/projects";
 import { PROJECT_WORKFLOW_STAGE_DEFINITIONS } from "@/lib/project-workflow";
+import type { ProjectStageShellRecord } from "@/lib/projects";
 
 type ProjectOverviewWorkspaceProps = {
   project: ProjectStageShellRecord;
   currentUserId: string;
+  allowLockedReads?: boolean;
 };
 
 type ProjectOverviewStage = (typeof PROJECT_WORKFLOW_STAGE_DEFINITIONS)[number];
@@ -45,16 +46,18 @@ export function StageOverviewCard({
   stage,
   projectId,
   workflowStage,
+  allowLockedReads = false,
 }: {
   stage: ProjectOverviewStage;
   projectId: string;
   workflowStage: ProjectStageShellRecord["workflowStages"][number] | null;
+  allowLockedReads?: boolean;
 }) {
   const status = workflowStage?.status ?? "LOCKED";
   const available = status === "AVAILABLE";
   const completed = status === "COMPLETED";
   const locked = status === "LOCKED";
-  const stageOpenable = !locked;
+  const stageOpenable = !locked || allowLockedReads;
   const statusLabel = completed ? "Completed" : available ? "Available" : "Locked";
 
   return (
@@ -110,7 +113,7 @@ export function StageOverviewCard({
         <RichTextContent value={stage.description} />
       </div>
 
-      {locked ? (
+      {locked && !allowLockedReads ? (
         <p className="mt-3 text-[11px] font-[650] leading-4 text-[#727d75]">
           {stage.number === 1
             ? "This stage is not available."
@@ -148,8 +151,10 @@ export function StageOverviewCard({
 
 export function ProjectStageGrid({
   project,
+  allowLockedReads = false,
 }: {
   project: ProjectStageShellRecord;
+  allowLockedReads?: boolean;
 }) {
   return (
     <section className="mt-6" aria-labelledby="project-stages-heading">
@@ -171,6 +176,7 @@ export function ProjectStageGrid({
             key={stage.key}
             stage={stage}
             projectId={project.id}
+            allowLockedReads={allowLockedReads}
             workflowStage={
               project.workflowStages.find(
                 (workflowStage) => workflowStage.stageKey === stage.key,
@@ -186,13 +192,14 @@ export function ProjectStageGrid({
 export function ProjectOverviewWorkspace({
   project,
   currentUserId,
+  allowLockedReads = false,
 }: ProjectOverviewWorkspaceProps) {
   return (
     <section className="mx-auto w-full max-w-[1420px] pb-6">
       <ProjectAccessRealtimeGuard projectId={project.id} currentUserId={currentUserId} />
       <ProjectOverviewHeader projectName={project.title} />
       <ProjectSummaryCard project={project} />
-      <ProjectStageGrid project={project} />
+      <ProjectStageGrid project={project} allowLockedReads={allowLockedReads} />
     </section>
   );
 }

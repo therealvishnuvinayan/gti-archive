@@ -995,7 +995,7 @@ function ManagePermissionsModal({
                                 <div className="mt-3 flex flex-wrap gap-2">
                                   {isSharedArchivePermission ? (
                                     <StatusBadge className="border-[#d5e7d6] bg-[#eef8ef] text-[#2f7f53]">
-                                      Enabled for everyone
+                                      Controlled by V2 role and file grants
                                     </StatusBadge>
                                   ) : null}
                                   {item.hardRule && !isSharedArchivePermission ? (
@@ -1068,7 +1068,7 @@ function ManagePermissionsModal({
               />
               <FilterBadge
                 icon={<Archive className="h-4 w-4 text-brand" />}
-                text="Full Archive access for everyone"
+                text="Archive access follows V2 permissions"
               />
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
@@ -1361,7 +1361,7 @@ export function UsersWorkspace({
                 />
                 <FilterBadge
                   icon={<Archive className="h-4 w-4 text-brand" />}
-                  text="Full Archive access for everyone"
+                  text="Archive access follows V2 permissions"
                 />
               </div>
             </div>

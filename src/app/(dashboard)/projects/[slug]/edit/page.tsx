@@ -3,8 +3,8 @@ import { redirect } from "next/navigation";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { CreateProjectForm } from "@/components/projects/create-project-form";
 import { getUserDisplayName, requireUser } from "@/lib/auth";
-import { getCollaborators } from "@/lib/collaboration";
-import { hasPermission, hasProjectPermission } from "@/lib/permissions/resolver";
+import { getProjectExecutorCandidates } from "@/lib/project-owner-candidates";
+import { hasProjectPermission } from "@/lib/permissions/resolver";
 import { getEligibleProjectOwnerCandidates } from "@/lib/project-owner-candidates";
 import { getProjectStageAccessRecordById } from "@/lib/project-stage-data";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
@@ -31,7 +31,7 @@ export default async function EditProjectPage({
   if (!canEdit) redirect(`/projects/${slug}`);
 
   const [collaborators, eligibleOwnerCandidates, assignments] = await Promise.all([
-    getCollaborators(),
+    getProjectExecutorCandidates(),
     getEligibleProjectOwnerCandidates(),
     withPrismaRetry(() => prisma.projectTagAssignment.findMany({
       where: { projectId: project.id },
@@ -76,7 +76,7 @@ export default async function EditProjectPage({
         }}
         eligibleOwnerCandidates={eligibleOwnerCandidates}
         availableCollaborators={collaborators}
-        canInviteCollaborator={hasPermission(user, "collaboration.createUser")}
+        canInviteCollaborator={false}
       />
     </DashboardLayout>
   );

@@ -1188,8 +1188,8 @@ export function SettingsWorkspace({
 
           {canViewUsers ? (
             <SettingsCard
-              title="Users & Permissions"
-              description="Review accounts, assign roles, and configure global permission profiles."
+              title="Business Users"
+              description="Review accounts, manage business roles and permitted account status, and view change history."
               action={
                 <Button
                   asChild
@@ -1199,17 +1199,17 @@ export function SettingsWorkspace({
                 >
                   <Link href="/users">
                     <UsersRound className="h-4 w-4" />
-                    Open Users & Permissions
+                    Open Business Users
                   </Link>
                 </Button>
               }
             >
               <div className="rounded-[22px] bg-[#fbfcfa] p-4">
                 <p className="text-[15px] font-semibold text-[#1e261f]">
-                  Role and permission profiles
+                  Audited business administration
                 </p>
                 <p className="mt-1 text-[14px] text-[#748074]">
-                  Manage global permission profiles. Archive module access can also be granted per user from Users & Permissions.
+                  Changes require a reason and confirmation. Director transfer uses a separate protected workflow. Technical privileges are managed independently.
                 </p>
               </div>
             </SettingsCard>

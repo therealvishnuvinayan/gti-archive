@@ -1,4 +1,4 @@
-import { UserRole } from "@prisma/client";
+import { hasProjectBusinessIdentity } from "@/lib/authorization/project-read-rules";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { ProjectBackButton } from "@/components/projects/project-back-button";
@@ -18,7 +18,7 @@ export default async function UserSharedFolderPage({
   const user = await requireUser();
   let data = null;
 
-  if (user.role === UserRole.USER) {
+  if (hasProjectBusinessIdentity(user)) {
     try {
       data = await getProjectResearchFolderPageData(user, {
         projectId: slug,

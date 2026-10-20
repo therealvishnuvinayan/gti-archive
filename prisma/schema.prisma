@@ -14,6 +14,24 @@ enum UserRole {
   USER
 }
 
+// V2 assignments are independent of legacy User.role and remain inactive.
+enum BusinessRole {
+  DIRECTOR
+  SENIOR_PROJECT_MANAGER
+  JUNIOR_PROJECT_MANAGER
+  DESIGNER
+  DIGITAL_LEAD
+}
+
+enum TechnicalPrivilege {
+  TECHNICAL_ADMIN
+}
+
+enum AuthorizationAccountStatus {
+  ACTIVE
+  SUSPENDED
+}
+
 enum ProjectItemColor {
   RED
   ORANGE
@@ -445,6 +463,9 @@ model User {
   passwordHash                        String
   passwordChangedAt                   DateTime?
   role                                UserRole                             @default(USER)
+  authorization                       UserAuthorization?
+  authorizationHistory                UserAuthorizationChange[]            @relation("AuthorizationChangeSubject")
+  performedAuthorizationChanges       UserAuthorizationChange[]            @relation("AuthorizationChangeActor")
   projectCreationAccessGranted        Boolean                              @default(false)
   inviteToken                         String?                              @unique
   inviteExpiresAt                     DateTime?
@@ -471,6 +492,10 @@ model User {
   copyrightContactWorkflows           ProjectCompletionWorkflow[]          @relation("ProjectCompletionCopyrightContact")
   invoiceContactWorkflows             ProjectCompletionWorkflow[]          @relation("ProjectCompletionInvoiceContact")
   uploadedCompletionDocuments         ProjectCompletionDocument[]          @relation("ProjectCompletionDocumentUploadedBy")
+  completionAccessIssued              CompletionDocumentAccess[]
+  completionSubmissions               CompletionDocumentSubmission[] @relation("CompletionSubmitter")
+  completionReviews                   CompletionDocumentSubmission[] @relation("CompletionReviewer")
+  completionDocumentEvents            CompletionDocumentEvent[]
   manualArchiveFiles                  ManualArchiveFile[]                  @relation("ManualArchiveFileUploadedBy")
   createdArchiveFileShareLinks        ArchiveFileShareLink[]               @relation("ArchiveFileShareLinkCreatedBy")
   archiveAccess                       UserArchiveAccess?                   @relation("UserArchiveAccessUser")
@@ -547,6 +572,46 @@ model User {
   projectTrackerActivities            ProjectTrackerActivity[]             @relation("ProjectTrackerActivityActor")
   createdAt                           DateTime                             @default(now())
   updatedAt                           DateTime                             @updatedAt
+  creationRequests        ProjectCreationRequest[]        @relation("GovernanceRequester")
+  creationDecisions       ProjectCreationRequest[]        @relation("GovernanceDecider")
+  completionRequests      ProjectFinalCompletionRequest[] @relation("CompletionRequester")
+  completionDecisions     ProjectFinalCompletionRequest[] @relation("CompletionDecider")
+  legacyPresetApprovals   LegacyProjectPresetApproval[]   @relation("PresetApprover")
+  legacyPresetRevocations LegacyProjectPresetApproval[]   @relation("PresetRevoker")
+  projectGovernanceEvents ProjectGovernanceEvent[]
+  templateProposals ProjectTemplateProposal[] @relation("TemplateProposer")
+  templateProposalDecisions ProjectTemplateProposal[] @relation("TemplateProposalDecider")
+}
+
+// Optional record: absence means not mapped to V2, never infer legacy privileges.
+// SQL adds active-Director uniqueness, last-Director protection and audit triggers.
+model UserAuthorization {
+  userId               String                     @id
+  user                 User                       @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  businessRole         BusinessRole?
+  technicalPrivileges  TechnicalPrivilege[]       @default([])
+  accountStatus        AuthorizationAccountStatus  @default(ACTIVE)
+  authorizationVersion Int                        @default(1)
+  createdAt            DateTime                   @default(now())
+  updatedAt            DateTime                   @updatedAt
+}
+
+// Inserted by SQL triggers, never edited/deleted. Snapshots contain V2 fields only.
+model UserAuthorizationChange {
+  userId               String
+  user                 User     @relation("AuthorizationChangeSubject", fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  authorizationVersion Int
+  actorUserId          String
+  actor                User     @relation("AuthorizationChangeActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  changeId             String
+  reason               String
+  before               Json?
+  after                Json
+  createdAt            DateTime @default(now())
+
+  @@id([userId, authorizationVersion])
+  @@index([actorUserId, createdAt])
+  @@index([changeId])
 }
 
 model UserArchiveAccess {
@@ -684,6 +749,8 @@ model Project {
   @@index([isPinned])
   @@index([createdAt])
   @@index([createdById])
+  creationRequest         ProjectCreationRequest?
+  finalCompletionRequests ProjectFinalCompletionRequest[]
 }
 
 model FlexibleProject {
@@ -710,6 +777,8 @@ model FlexibleProject {
   @@index([ownerId, updatedAt])
   @@index([createdById])
   @@index([status, updatedAt])
+  creationRequest         ProjectCreationRequest?
+  finalCompletionRequests ProjectFinalCompletionRequest[]
 }
 
 model FlexibleProjectCollaborator {
@@ -1123,7 +1192,7 @@ model ProjectPrivateFolder {
   colorLabel  ProjectItemColor?
   files       ProjectAttachment[]
   createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
+  updatedAt   DateTime            @default(now()) @updatedAt
 
   @@unique([projectId, ownerUserId, id])
   @@unique([parentFolderId, normalizedName])
@@ -2343,6 +2412,9 @@ model ProjectCompletionWorkflow {
   invoiceCompletedAt              DateTime?
   completedAt                     DateTime?
   documents                       ProjectCompletionDocument[]
+  accesses                        CompletionDocumentAccess[]
+  submissions                     CompletionDocumentSubmission[]
+  events                          CompletionDocumentEvent[]
   createdAt                       DateTime                    @default(now())
   updatedAt                       DateTime                    @updatedAt
 
@@ -2352,6 +2424,7 @@ model ProjectCompletionWorkflow {
   @@index([approvalContactUserId])
   @@index([copyrightContactUserId])
   @@index([invoiceContactUserId])
+  @@unique([id, projectId])
 }
 
 model ProjectCompletionDocument {
@@ -2367,15 +2440,96 @@ model ProjectCompletionDocument {
   fileSize         Int
   bucket           String
   storageKey       String                        @unique
-  uploadedById     String
-  uploadedBy       User                          @relation("ProjectCompletionDocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+  uploadedById     String?
+  uploadedBy       User?                         @relation("ProjectCompletionDocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+  externalSubmitterEmail String?
+  submissionId     String? @unique
+  submission       CompletionDocumentSubmission? @relation(fields: [submissionId], references: [id], onDelete: Restrict)
   uploadedAt       DateTime
   createdAt        DateTime                      @default(now())
   updatedAt        DateTime                      @updatedAt
 
-  @@unique([workflowId, type])
+  @@index([workflowId, type])
   @@index([projectId, type, uploadedAt])
   @@index([uploadedById])
+}
+
+enum CompletionSubmissionStatus {
+  UPLOADING
+  SUBMITTED
+  ACCEPTED
+  REJECTED
+  FAILED
+}
+
+model CompletionDocumentAccess {
+  id String @id @default(cuid())
+  projectId String
+  workflowId String
+  workflow ProjectCompletionWorkflow @relation(fields: [workflowId, projectId], references: [id, projectId], onDelete: Restrict)
+  type ProjectCompletionDocumentType
+  requestTime DateTime
+  recipientEmail String
+  tokenHash String @unique
+  issuedById String
+  issuedBy User @relation(fields: [issuedById], references: [id], onDelete: Restrict)
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  submissions CompletionDocumentSubmission[]
+  events CompletionDocumentEvent[]
+  @@index([workflowId, type])
+}
+
+model CompletionDocumentSubmission {
+  id String @id @default(cuid())
+  projectId String
+  workflowId String
+  workflow ProjectCompletionWorkflow @relation(fields: [workflowId, projectId], references: [id, projectId], onDelete: Restrict)
+  type ProjectCompletionDocumentType
+  requestTime DateTime
+  evidenceHash String
+  accessId String?
+  access CompletionDocumentAccess? @relation(fields: [accessId], references: [id], onDelete: Restrict)
+  submittedById String?
+  submittedBy User? @relation("CompletionSubmitter", fields: [submittedById], references: [id], onDelete: Restrict)
+  externalSubmitterEmail String?
+  originalFileName String
+  mimeType String
+  fileSize Int
+  bucket String
+  uploadKey String @unique
+  storageKey String @unique
+  expiresAt DateTime
+  status CompletionSubmissionStatus @default(UPLOADING)
+  uploadedAt DateTime?
+  objectETag String?
+  reviewedById String?
+  reviewedBy User? @relation("CompletionReviewer", fields: [reviewedById], references: [id], onDelete: Restrict)
+  reviewedAt DateTime?
+  reviewReason String?
+  createdAt DateTime @default(now())
+  document ProjectCompletionDocument?
+  events CompletionDocumentEvent[]
+  @@index([workflowId, type, createdAt])
+}
+
+model CompletionDocumentEvent {
+  id String @id @default(cuid())
+  projectId String
+  workflowId String
+  workflow ProjectCompletionWorkflow @relation(fields: [workflowId, projectId], references: [id, projectId], onDelete: Restrict)
+  submissionId String?
+  submission CompletionDocumentSubmission? @relation(fields: [submissionId], references: [id], onDelete: Restrict)
+  accessId String?
+  access CompletionDocumentAccess? @relation(fields: [accessId], references: [id], onDelete: Restrict)
+  actorId String?
+  actor User? @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  externalActorEmail String?
+  action String
+  details Json
+  createdAt DateTime @default(now())
+  @@index([projectId, createdAt])
 }
 
 model ManualArchiveFile {
@@ -2511,4 +2665,137 @@ model CalendarEvent {
   @@index([startAt])
   @@index([endAt])
   @@index([createdById])
+}
+
+enum GovernedProjectKind {
+  ARTWORK
+  FLEXIBLE
+}
+
+enum ProjectGovernanceStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  ACTIVATED
+}
+
+model LegacyProjectPresetApproval {
+  id               String                   @id @default(cuid())
+  presetKey        String
+  definitionHash   String
+  definition       Json
+  approvedById     String
+  approvedBy       User                     @relation("PresetApprover", fields: [approvedById], references: [id], onDelete: Restrict)
+  approvedAt       DateTime                 @default(now())
+  reason           String
+  revokedAt        DateTime?
+  revokedById      String?
+  revokedBy        User?                    @relation("PresetRevoker", fields: [revokedById], references: [id], onDelete: Restrict)
+  revocationReason String?
+  requests         ProjectCreationRequest[]
+  events           ProjectGovernanceEvent[]
+
+  @@index([presetKey, definitionHash])
+}
+
+model ProjectCreationRequest {
+  id                String                       @id @default(cuid())
+  clientRequestId   String
+  requesterId       String
+  requester         User                         @relation("GovernanceRequester", fields: [requesterId], references: [id], onDelete: Restrict)
+  requesterVersion  Int
+  kind              GovernedProjectKind
+  configuration     Json
+  configurationHash String
+  presetApprovalId  String?
+  presetApproval    LegacyProjectPresetApproval? @relation(fields: [presetApprovalId], references: [id], onDelete: Restrict)
+  status            ProjectGovernanceStatus      @default(SUBMITTED)
+  submittedAt       DateTime                     @default(now())
+  expiresAt         DateTime
+  decidedById       String?
+  decidedBy         User?                        @relation("GovernanceDecider", fields: [decidedById], references: [id], onDelete: Restrict)
+  decidedAt         DateTime?
+  decisionReason    String?
+  activatedAt       DateTime?
+  projectId         String?                      @unique
+  project           Project?                     @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  flexibleProjectId String?                      @unique
+  flexibleProject   FlexibleProject?             @relation(fields: [flexibleProjectId], references: [id], onDelete: Restrict)
+  events            ProjectGovernanceEvent[]
+
+  @@unique([requesterId, clientRequestId])
+  @@index([status, submittedAt])
+}
+
+model ProjectFinalCompletionRequest {
+  id                String                   @id @default(cuid())
+  projectId         String?
+  project           Project?                 @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  flexibleProjectId String?
+  flexibleProject   FlexibleProject?         @relation(fields: [flexibleProjectId], references: [id], onDelete: Restrict)
+  requesterId       String
+  requester         User                     @relation("CompletionRequester", fields: [requesterId], references: [id], onDelete: Restrict)
+  requesterVersion  Int
+  snapshot          Json
+  snapshotHash      String
+  reason            String
+  status            ProjectGovernanceStatus  @default(SUBMITTED)
+  submittedAt       DateTime                 @default(now())
+  expiresAt         DateTime
+  decidedById       String?
+  decidedBy         User?                    @relation("CompletionDecider", fields: [decidedById], references: [id], onDelete: Restrict)
+  decidedAt         DateTime?
+  decisionReason    String?
+  completedAt       DateTime?
+  events            ProjectGovernanceEvent[]
+
+  @@index([projectId, submittedAt])
+  @@index([flexibleProjectId, submittedAt])
+  @@index([status, submittedAt])
+}
+
+model ProjectGovernanceEvent {
+  id                  String                         @id @default(cuid())
+  actorId             String
+  actor               User                           @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  action              String
+  reason              String
+  details             Json
+  createdAt           DateTime                       @default(now())
+  creationRequestId   String?
+  creationRequest     ProjectCreationRequest?        @relation(fields: [creationRequestId], references: [id], onDelete: Restrict)
+  completionRequestId String?
+  completionRequest   ProjectFinalCompletionRequest? @relation(fields: [completionRequestId], references: [id], onDelete: Restrict)
+  presetApprovalId    String?
+  presetApproval      LegacyProjectPresetApproval?   @relation(fields: [presetApprovalId], references: [id], onDelete: Restrict)
+  templateProposalId String?
+  templateProposal ProjectTemplateProposal? @relation(fields: [templateProposalId], references: [id], onDelete: Restrict)
+
+  @@index([creationRequestId, createdAt])
+  @@index([completionRequestId, createdAt])
+  @@index([presetApprovalId, createdAt])
+  @@index([templateProposalId, createdAt])
+}
+
+// Proposal endorsement only. No published template or creation grant is produced.
+model ProjectTemplateProposal {
+  id String @id @default(cuid())
+  clientRequestId String
+  requesterId String
+  requester User @relation("TemplateProposer", fields: [requesterId], references: [id], onDelete: Restrict)
+  requesterVersion Int
+  proposal Json
+  proposalHash String
+  status ProjectGovernanceStatus @default(SUBMITTED)
+  submittedAt DateTime @default(now())
+  expiresAt DateTime
+  decidedById String?
+  decidedBy User? @relation("TemplateProposalDecider", fields: [decidedById], references: [id], onDelete: Restrict)
+  decidedAt DateTime?
+  decisionReason String?
+  events ProjectGovernanceEvent[]
+
+  @@unique([requesterId, clientRequestId])
+  @@index([status, submittedAt])
 }

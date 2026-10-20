@@ -1,98 +1,26 @@
-import { readFileSync } from "node:fs";
+import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-
-import {
-  AttachmentStatus,
-  PrismaClient,
-  UserRole,
-} from "@prisma/client";
-
-import {
-  searchArchivesForUser,
-  type ArchiveAccessUser,
-} from "../src/lib/archives";
-import {
-  allPermissionKeys,
-  type PermissionKey,
-} from "../src/lib/permissions/definitions";
-import type { PermissionProfileSnapshot } from "../src/lib/permissions/profiles";
-import {
-  clearRecentFluxAiSearches,
-  deleteRecentFluxAiSearch,
-  getRecentFluxAiSearches,
-  recordFluxAiSearch,
-} from "../src/lib/flux-ai-search-history";
-
-function loadLocalEnvironment() {
-  const contents = readFileSync(".env", "utf8");
-
-  for (const line of contents.split(/\r?\n/)) {
-    const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
-
-    if (!match || process.env[match[1]]) {
-      continue;
-    }
-
-    let value = match[2];
-
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-
-    process.env[match[1]] = value;
-  }
-}
-
-loadLocalEnvironment();
-
-const prisma = new PrismaClient();
-const fixtureIds: {
-  categoryId?: string;
-  manualArchiveId?: string;
-  searchCategoryId?: string;
-  searchManualArchiveId?: string;
-  searchAssetTagId?: string;
-  searchHistoryUserIds?: string[];
-} = {};
-
-function check(condition: unknown, message: string): asserts condition {
-  if (!condition) {
-    throw new Error(`Flux AI archive search integration check failed: ${message}`);
-  }
-}
-
-function buildPermissionSnapshot(input: {
-  permissions: Iterable<PermissionKey>;
-  archiveAccessLevel: "NONE" | "FULL" | "PARTIAL";
-}): PermissionProfileSnapshot {
-  const permissions = new Set(input.permissions);
-
-  return {
-    effectivePermissions: permissions,
-    rolePermissions: permissions,
-    archiveAccessGranted: input.archiveAccessLevel !== "NONE",
-    archiveAccessLevel: input.archiveAccessLevel,
-  };
-}
-
-function buildArchiveUser(input: {
-  id: string;
-  role: UserRole;
-  permissions: Iterable<PermissionKey>;
-  archiveAccessLevel: "NONE" | "FULL" | "PARTIAL";
-}): ArchiveAccessUser {
-  return {
-    id: input.id,
-    role: input.role,
-    name: "Archive search test user",
-    email: "archive-search@example.test",
-    permissionProfileSnapshot: buildPermissionSnapshot(input),
-  };
-}
-
+import { workspaceFixture } from "./workspace-test-fixture";
+function check(value: unknown, message: string): asserts value { assert.ok(value, message); }
+async function main() {
+ const fixture = await workspaceFixture("flux_v2_search_test"), prisma = fixture.db;
+ try {
+  const { searchArchivesForUser } = fixture.load("src/lib/archives.js") as typeof import("../src/lib/archives");
+  const history = fixture.load("src/lib/flux-ai-search-history.js") as typeof import("../src/lib/flux-ai-search-history");
+  const superAdmin = await fixture.user("director"); // V2 Director, legacy ADMIN.
+  await history.recordFluxAiSearch("director", "First history query");
+  await history.recordFluxAiSearch("director", "Second history query");
+  await fixture.user("spm"); await history.recordFluxAiSearch("spm", "First history query");
+  await assert.rejects(() => history.clearRecentFluxAiSearches("director"));
+  await fixture.user("director");
+  assert.deepEqual(await history.deleteRecentFluxAiSearch("director", "  FIRST   HISTORY QUERY  "), ["Second history query"]);
+  await history.clearRecentFluxAiSearches("director");
+  assert.deepEqual(await history.getRecentFluxAiSearches("director"), []);
+  await fixture.user("spm"); assert.deepEqual(await history.getRecentFluxAiSearches("spm"), ["First history query"]);
+  for (let i = 0; i < 23; i++) await history.recordFluxAiSearch("spm", `query ${i}`);
+  assert.equal(await prisma.fluxAiSearchHistory.count({ where: { userId: "spm" } }), 20);
+  assert.equal((await history.getRecentFluxAiSearches("spm")).length, 5);
+  await fixture.user("director");
 async function getBusinessWriteCounts() {
   const [
     projects,
@@ -141,57 +69,6 @@ async function getBusinessWriteCounts() {
   };
 }
 
-async function main() {
-  const superAdmin = await prisma.user.findFirst({
-    where: {
-      role: UserRole.SUPER_ADMIN,
-    },
-    select: {
-      id: true,
-      role: true,
-      name: true,
-      email: true,
-    },
-  });
-
-  check(superAdmin, "a SUPER_ADMIN user is required for the real-data check");
-
-  const historyRunId = randomUUID();
-  const historyUserOneId = `flux-history-one-${historyRunId}`;
-  const historyUserTwoId = `flux-history-two-${historyRunId}`;
-  fixtureIds.searchHistoryUserIds = [historyUserOneId, historyUserTwoId];
-  await prisma.user.createMany({
-    data: [historyUserOneId, historyUserTwoId].map((id) => ({
-      id,
-      email: `${id}@example.test`,
-      name: id,
-      passwordHash: "flux-history-integration-only",
-      role: UserRole.USER,
-    })),
-  });
-  await recordFluxAiSearch(historyUserOneId, "First history query");
-  await recordFluxAiSearch(historyUserOneId, "Second history query");
-  await recordFluxAiSearch(historyUserTwoId, "First history query");
-  const afterIndividualDelete = await deleteRecentFluxAiSearch(
-    historyUserOneId,
-    "  FIRST   HISTORY QUERY  ",
-  );
-  check(
-    afterIndividualDelete.length === 1 &&
-      afterIndividualDelete[0] === "Second history query",
-    "individual deletion must normalize the query and remove only the signed-in user's matching search",
-  );
-  check(
-    (await getRecentFluxAiSearches(historyUserTwoId))[0] === "First history query",
-    "individual deletion must not affect another user's search history",
-  );
-  await clearRecentFluxAiSearches(historyUserOneId);
-  check(
-    (await getRecentFluxAiSearches(historyUserOneId)).length === 0 &&
-      (await getRecentFluxAiSearches(historyUserTwoId)).length === 1,
-    "Clear All must remove only the requesting user's search history",
-  );
-
   const projectArchive = await prisma.projectArchive.findFirst({
     where: {
       archiveCategoryId: {
@@ -239,7 +116,7 @@ async function main() {
   });
   let manualArchive = await prisma.manualArchiveFile.findFirst({
     where: {
-      status: AttachmentStatus.READY,
+      status: "READY",
       archiveCategoryId: {
         not: null,
       },
@@ -293,7 +170,7 @@ async function main() {
         fileSize: 128,
         bucket: "flux-search-integration",
         storageKey: `flux-search-integration/${runId}.pdf`,
-        status: AttachmentStatus.READY,
+        status: "READY",
         uploadedById: superAdmin.id,
       },
       select: {
@@ -305,8 +182,6 @@ async function main() {
         assetTags: { select: { tag: { select: { name: true } } } },
       },
     });
-    fixtureIds.categoryId = category.id;
-    fixtureIds.manualArchiveId = archive.id;
     manualArchive = archive;
   }
 
@@ -337,13 +212,7 @@ async function main() {
         categorySlug: manualArchive!.archiveCategory!.slug,
         recordType: "MANUAL_ARCHIVE_FILE" as const,
       };
-  const authorizedUser: ArchiveAccessUser = {
-    ...superAdmin,
-    permissionProfileSnapshot: buildPermissionSnapshot({
-      permissions: allPermissionKeys,
-      archiveAccessLevel: "FULL",
-    }),
-  };
+  const authorizedUser = await fixture.user("director");
   const searchFixtureRunId = randomUUID();
   const searchFixtureCategory = await prisma.archiveCategory.create({
     data: {
@@ -353,14 +222,12 @@ async function main() {
       isActive: true,
     },
   });
-  fixtureIds.searchCategoryId = searchFixtureCategory.id;
   const searchFixtureAssetTag = await prisma.assetTag.create({
     data: {
       name: `FluxAssetTag-${searchFixtureRunId}`,
       description: `Flux asset tag description ${searchFixtureRunId}`,
     },
   });
-  fixtureIds.searchAssetTagId = searchFixtureAssetTag.id;
   const searchFixtureArtworkId = `FLUX-ART-${searchFixtureRunId}`;
   const searchFixtureArchive = await prisma.manualArchiveFile.create({
     data: {
@@ -374,7 +241,7 @@ async function main() {
       fileSize: 1_677_722,
       bucket: "flux-search-integration",
       storageKey: `flux-search-integration/metadata-${searchFixtureRunId}.pdf`,
-      status: AttachmentStatus.READY,
+      status: "READY",
       uploadedById: superAdmin.id,
       uploadedAt: new Date("2042-02-03T12:00:00.000Z"),
       assetTags: {
@@ -426,13 +293,8 @@ async function main() {
       },
     },
   });
-  fixtureIds.searchManualArchiveId = searchFixtureArchive.id;
-  const unauthorizedPartialUser = buildArchiveUser({
-    id: "__flux_ai_archive_search_no_grants__",
-    role: UserRole.USER,
-    permissions: ["archive.view"],
-    archiveAccessLevel: "PARTIAL",
-  });
+  const unauthorizedPartialUser = await fixture.user("designer");
+  await fixture.user("director");
   const countsBefore = await getBusinessWriteCounts();
 
   const exact = await searchArchivesForUser({
@@ -775,6 +637,7 @@ async function main() {
     });
   }
 
+  await fixture.user("designer");
   for (const restrictedQuery of [source.name, partialTerm, source.filename].filter(
     (value): value is string => Boolean(value),
   )) {
@@ -783,11 +646,18 @@ async function main() {
       query: restrictedQuery,
     });
     check(
-      restricted.results.some((result) => result.id === source.id),
-      `every signed-in user must be able to search shared Archives for ${restrictedQuery}`,
+      restricted.results.length === 0,
+      `ungranted Designer must not find Archives for ${restrictedQuery}`,
     );
   }
 
+  for (const id of ["jpm", "tech"]) {
+    const denied = await fixture.user(id);
+    await assert.rejects(() => searchArchivesForUser({ user: denied, query: source.name }));
+  }
+  const spm = await fixture.user("spm");
+  check((await searchArchivesForUser({ user: spm, query: source.name })).results.some(row => row.id === source.id), "SPM global Archive search");
+  await fixture.user("director");
   const resultIds = new Set(
     [exact, caseInsensitive, partial, naturalLanguage, multiple, recent].flatMap(
       (response) => response.results.map((result) => `${result.recordType}:${result.id}`),
@@ -842,43 +712,6 @@ async function main() {
       2,
     ),
   );
+ } finally { await fixture.close(); }
 }
-
-main()
-  .catch((error) => {
-    console.error(error);
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    if (fixtureIds.searchHistoryUserIds?.length) {
-      await prisma.user.deleteMany({
-        where: { id: { in: fixtureIds.searchHistoryUserIds } },
-      });
-    }
-    if (fixtureIds.searchManualArchiveId) {
-      await prisma.manualArchiveFile.deleteMany({
-        where: { id: fixtureIds.searchManualArchiveId },
-      });
-    }
-    if (fixtureIds.searchAssetTagId) {
-      await prisma.assetTag.deleteMany({
-        where: { id: fixtureIds.searchAssetTagId },
-      });
-    }
-    if (fixtureIds.searchCategoryId) {
-      await prisma.archiveCategory.deleteMany({
-        where: { id: fixtureIds.searchCategoryId },
-      });
-    }
-    if (fixtureIds.manualArchiveId) {
-      await prisma.manualArchiveFile.deleteMany({
-        where: { id: fixtureIds.manualArchiveId },
-      });
-    }
-    if (fixtureIds.categoryId) {
-      await prisma.archiveCategory.deleteMany({
-        where: { id: fixtureIds.categoryId },
-      });
-    }
-    await prisma.$disconnect();
-  });
+main().catch(error => { console.error(error); process.exitCode = 1; });

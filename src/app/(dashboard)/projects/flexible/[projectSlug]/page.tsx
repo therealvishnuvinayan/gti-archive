@@ -1,3 +1,6 @@
+import { ProjectCompletionGovernance } from "@/components/projects/project-completion-governance";
+import { RestrictedProjectContextView } from "@/components/projects/restricted-project-context";
+import { getFlexibleContextBySlug } from "@/lib/authorization/project-context";
 import { notFound, redirect } from "next/navigation";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
@@ -21,7 +24,11 @@ export default async function FlexibleProjectPage({
   }
 
   const project = await getFlexibleProjectDetail(projectSlug, user);
-  if (!project) notFound();
+  if (!project) {
+    const context = await getFlexibleContextBySlug(projectSlug, user);
+    if (!context) notFound();
+    return <DashboardLayout><RestrictedProjectContextView data={context} /></DashboardLayout>;
+  }
   const userOptions = project.canManageProject
     ? await getFlexibleProjectUserOptions()
     : project.participantOptions;
@@ -33,6 +40,7 @@ export default async function FlexibleProjectPage({
         userOptions={userOptions}
         currentUserId={user.id}
       />
+      <ProjectCompletionGovernance user={user} target={{ kind: "FLEXIBLE", projectId: project.id }} />
     </DashboardLayout>
   );
 }

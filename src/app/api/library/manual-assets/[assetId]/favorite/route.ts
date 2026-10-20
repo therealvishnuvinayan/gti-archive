@@ -1,3 +1,4 @@
+import { libraryErrorResponse } from "@/lib/library-http";
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
@@ -41,21 +42,7 @@ export async function POST(
           ? error.message
           : "Unable to update favourites right now.",
     });
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unable to update favourites right now.",
-      },
-      {
-        status:
-          error instanceof Error &&
-          /access|permission|unauthorized/i.test(error.message)
-            ? 403
-            : 400,
-      },
-    );
+    return libraryErrorResponse(error);
   }
 }
 
@@ -93,20 +80,6 @@ export async function DELETE(
           ? error.message
           : "Unable to update favourites right now.",
     });
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unable to update favourites right now.",
-      },
-      {
-        status:
-          error instanceof Error &&
-          /access|permission|unauthorized/i.test(error.message)
-            ? 403
-            : 400,
-      },
-    );
+    return libraryErrorResponse(error);
   }
 }

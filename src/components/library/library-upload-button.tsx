@@ -742,6 +742,7 @@ export function LibraryUploadButton({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          assetId: completedUploadPayload.assetId,
           storageKey: completedUploadPayload.storageKey,
           assetName,
           originalFileName: selectedFile.name,

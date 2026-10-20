@@ -1,3 +1,4 @@
+import { runProjectMutation } from "@/lib/authorization/project-write";
 import {
   AttachmentAssetType,
   AttachmentStatus,
@@ -660,7 +661,7 @@ export async function getSubmissionCaptionsForAttachment(
   };
 }
 
-export async function createSubmissionCaption(
+async function createSubmissionCaptionImplementation(
   user: AccessUser,
   input: {
     attachmentId: string;
@@ -710,7 +711,7 @@ export async function createSubmissionCaption(
   };
 }
 
-export async function createComparisonComment(
+async function createComparisonCommentImplementation(
   user: AccessUser,
   input: {
     projectId: string;
@@ -804,4 +805,34 @@ export async function createComparisonComment(
   );
 
   return mapComparisonCommentRecord(comment);
+}
+
+export async function createSubmissionCaption(
+  user: AccessUser,
+  input: {
+    attachmentId: string;
+    xPercent: number;
+    yPercent: number;
+    body: string;
+  },
+) {
+  return runProjectMutation(user, "createSubmissionCaption", { kind: "file", id: input.attachmentId }, async (trustedUser) =>
+    createSubmissionCaptionImplementation(trustedUser, input), input);
+}
+
+export async function createComparisonComment(
+  user: AccessUser,
+  input: {
+    projectId: string;
+    stageId: string;
+    baseAttachmentId: string;
+    compareAttachmentId: string;
+    xPercent: number;
+    yPercent: number;
+    body: string;
+    opacity?: number | null;
+  },
+) {
+  return runProjectMutation(user, "createComparisonComment", { kind: "stage", id: input.stageId }, async (trustedUser) =>
+    createComparisonCommentImplementation(trustedUser, input), input);
 }

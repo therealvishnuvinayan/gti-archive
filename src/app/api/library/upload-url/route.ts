@@ -1,3 +1,4 @@
+import { libraryErrorResponse } from "@/lib/library-http";
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
@@ -44,6 +45,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing required upload fields." }, { status: 400 });
   }
 
+  try {
   const result = await requestManualLibraryAssetUpload(user, {
     assetName: payload.assetName,
     originalFileName: payload.originalFileName,
@@ -73,4 +75,5 @@ export async function POST(request: Request) {
     assetTagCount: Array.isArray(payload.assetTagIds) ? payload.assetTagIds.length : 0,
   });
   return NextResponse.json(result);
+  } catch (error) { return libraryErrorResponse(error); }
 }

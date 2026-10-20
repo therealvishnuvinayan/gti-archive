@@ -1,4 +1,9 @@
 "use server";
+import { runWorkspaceOperation } from "@/lib/authorization/workspace";
+
+import { runLibraryOperation } from "@/lib/authorization/library";
+import { runArchiveOperation } from "@/lib/authorization/archive";
+import { canArchive, archiveCategoryWhere, archiveScopeForUser } from "@/lib/authorization/archive-rules";
 
 import { revalidatePath, revalidateTag } from "next/cache";
 
@@ -198,7 +203,7 @@ async function validateArchiveCategoryParent(input: {
   return null;
 }
 
-export async function saveProjectCategoryAction(input: SaveMasterDataInput) {
+async function saveProjectCategoryActionImplementation(input: SaveMasterDataInput) {
   await requireAdminUser();
 
   const parsed = normalizeMasterDataInput(input);
@@ -275,7 +280,7 @@ export async function saveProjectCategoryAction(input: SaveMasterDataInput) {
   };
 }
 
-export async function saveProjectTagAction(input: SaveMasterDataInput) {
+async function saveProjectTagActionImplementation(input: SaveMasterDataInput) {
   await requireAdminUser();
 
   const parsed = normalizeMasterDataInput(input);
@@ -349,7 +354,7 @@ export async function saveProjectTagAction(input: SaveMasterDataInput) {
   };
 }
 
-export async function saveProjectStatusGroupAction(input: SaveMasterDataInput) {
+async function saveProjectStatusGroupActionImplementation(input: SaveMasterDataInput) {
   await requireAdminUser();
 
   const parsed = normalizeProjectStatusGroupInput(input);
@@ -437,7 +442,7 @@ export async function saveProjectStatusGroupAction(input: SaveMasterDataInput) {
   };
 }
 
-export async function saveProjectStatusAction(input: SaveMasterDataInput) {
+async function saveProjectStatusActionImplementation(input: SaveMasterDataInput) {
   await requireAdminUser();
 
   const parsed = normalizeProjectStatusInput(input);
@@ -548,8 +553,7 @@ export async function saveProjectStatusAction(input: SaveMasterDataInput) {
   };
 }
 
-export async function saveAssetTagAction(input: SaveMasterDataInput) {
-  await requireAdminUser();
+async function saveAssetTagActionImplementation(input: SaveMasterDataInput) {
 
   const parsed = normalizeMasterDataInput(input);
 
@@ -626,7 +630,8 @@ export async function saveAssetTagAction(input: SaveMasterDataInput) {
 }
 
 export async function saveArchiveCategoryAction(input: SaveMasterDataInput) {
-  const user = await requireUser();
+  const actor = await requireUser();
+  return runArchiveOperation(actor, input.id ? "archive.category.update" : "archive.category.create", input.id ? `category:${input.id}` : "root", async user => {
 
   const parsed = normalizeMasterDataInput(input);
 
@@ -638,8 +643,20 @@ export async function saveArchiveCategoryAction(input: SaveMasterDataInput) {
     return { error: "Archive category slug is required." };
   }
 
-  // Archive categories are always shared; legacy restrictions are cleared when saved.
-  parsed.allowedUserIds = [];
+  const current = parsed.id ? await prisma.archiveCategory.findUnique({ where: { id: parsed.id }, include: { allowedUsers: true } }) : null;
+  const currentGrants = current?.allowedUsers.map(row => row.userId).sort() ?? [];
+  if (input.allowedUserIds === undefined) parsed.allowedUserIds = currentGrants;
+  if (!canArchive(user, "archive.manageAccess")) {
+    if (JSON.stringify([...parsed.allowedUserIds].sort()) !== JSON.stringify(currentGrants)) {
+      return { error: "Category editing does not authorize access changes." };
+    }
+  }
+  if (parsed.parentId && !await prisma.archiveCategory.findFirst({ where: { AND: [{ id: parsed.parentId }, archiveCategoryWhere(archiveScopeForUser(user), false)] } })) {
+    return { error: "Parent archive category is not authorized." };
+  }
+  if (parsed.iconUrl?.startsWith(buildArchiveCategoryIconPrefix()) && parsed.iconUrl !== current?.iconUrl && !parsed.iconUrl.startsWith(`${buildArchiveCategoryIconPrefix()}${user.id}/`)) {
+    return { error: "Archive category icon is not owned by this session." };
+  }
 
   const descriptionError = validateMasterDataDescription(
     parsed.description,
@@ -737,6 +754,8 @@ export async function saveArchiveCategoryAction(input: SaveMasterDataInput) {
             },
           });
 
+      if (JSON.stringify([...parsed.allowedUserIds].sort()) !== JSON.stringify(currentGrants)) {
+      await runArchiveOperation(user, "archive.manageAccess", `category:${savedCategory.id}`, async () => {
       await tx.archiveCategoryAccess.deleteMany({
         where: {
           archiveCategoryId: savedCategory.id,
@@ -754,6 +773,8 @@ export async function saveArchiveCategoryAction(input: SaveMasterDataInput) {
         });
       }
 
+      });
+      }
       return savedCategory;
     }),
   );
@@ -770,9 +791,10 @@ export async function saveArchiveCategoryAction(input: SaveMasterDataInput) {
       name: category.name,
     },
   };
+  });
 }
 
-export async function setProjectCategoryStatusAction(input: ToggleMasterDataInput) {
+async function setProjectCategoryStatusActionImplementation(input: ToggleMasterDataInput) {
   await requireAdminUser();
 
   await withPrismaRetry(() =>
@@ -791,7 +813,7 @@ export async function setProjectCategoryStatusAction(input: ToggleMasterDataInpu
   return { success: true };
 }
 
-export async function setProjectTagStatusAction(input: ToggleMasterDataInput) {
+async function setProjectTagStatusActionImplementation(input: ToggleMasterDataInput) {
   await requireAdminUser();
 
   await withPrismaRetry(() =>
@@ -810,7 +832,7 @@ export async function setProjectTagStatusAction(input: ToggleMasterDataInput) {
   return { success: true };
 }
 
-export async function setProjectStatusGroupAction(input: ToggleMasterDataInput) {
+async function setProjectStatusGroupActionImplementation(input: ToggleMasterDataInput) {
   await requireAdminUser();
 
   await withPrismaRetry(() =>
@@ -832,7 +854,7 @@ export async function setProjectStatusGroupAction(input: ToggleMasterDataInput) 
   return { success: true };
 }
 
-export async function setProjectStatusAction(input: ToggleMasterDataInput) {
+async function setProjectStatusActionImplementation(input: ToggleMasterDataInput) {
   await requireAdminUser();
 
   await withPrismaRetry(() =>
@@ -854,8 +876,7 @@ export async function setProjectStatusAction(input: ToggleMasterDataInput) {
   return { success: true };
 }
 
-export async function setAssetTagStatusAction(input: ToggleMasterDataInput) {
-  await requireAdminUser();
+async function setAssetTagStatusActionImplementation(input: ToggleMasterDataInput) {
 
   await withPrismaRetry(() =>
     prisma.assetTag.update({
@@ -874,7 +895,8 @@ export async function setAssetTagStatusAction(input: ToggleMasterDataInput) {
 }
 
 export async function setArchiveCategoryStatusAction(input: ToggleMasterDataInput) {
-  await requireUser();
+  const actor = await requireUser();
+  return runArchiveOperation(actor, "archive.category.update", `category:${input.id}`, async () => {
 
   const category = await withPrismaRetry(() =>
     prisma.archiveCategory.update({
@@ -896,9 +918,10 @@ export async function setArchiveCategoryStatusAction(input: ToggleMasterDataInpu
   revalidatePath(`/archives/${category.slug}`);
 
   return { success: true };
+  });
 }
 
-export async function deleteProjectCategoryAction(id: string) {
+async function deleteProjectCategoryActionImplementation(id: string) {
   await requireMasterDataDeletePermission();
 
   const category = await withPrismaRetry(() =>
@@ -938,7 +961,7 @@ export async function deleteProjectCategoryAction(id: string) {
   return { success: true };
 }
 
-export async function deleteProjectTagAction(id: string) {
+async function deleteProjectTagActionImplementation(id: string) {
   await requireMasterDataDeletePermission();
 
   const tag = await withPrismaRetry(() =>
@@ -979,7 +1002,7 @@ export async function deleteProjectTagAction(id: string) {
   return { success: true };
 }
 
-export async function deleteProjectStatusGroupAction(id: string) {
+async function deleteProjectStatusGroupActionImplementation(id: string) {
   await requireMasterDataDeletePermission();
 
   const group = await withPrismaRetry(() =>
@@ -1019,7 +1042,7 @@ export async function deleteProjectStatusGroupAction(id: string) {
   return { success: true };
 }
 
-export async function deleteProjectStatusAction(id: string) {
+async function deleteProjectStatusActionImplementation(id: string) {
   await requireMasterDataDeletePermission();
 
   const status = await withPrismaRetry(() =>
@@ -1059,8 +1082,7 @@ export async function deleteProjectStatusAction(id: string) {
   return { success: true };
 }
 
-export async function deleteAssetTagAction(id: string) {
-  await requireMasterDataDeletePermission();
+async function deleteAssetTagActionImplementation(id: string) {
 
   const tag = await withPrismaRetry(() =>
     prisma.assetTag.findUnique({
@@ -1109,7 +1131,8 @@ export async function deleteAssetTagAction(id: string) {
 }
 
 export async function deleteArchiveCategoryAction(id: string) {
-  await requireUser();
+  const actor = await requireUser();
+  return runArchiveOperation(actor, "archive.category.delete", `category:${id}`, async () => {
 
   const category = await withPrismaRetry(() =>
     prisma.archiveCategory.findUnique({
@@ -1167,4 +1190,80 @@ export async function deleteArchiveCategoryAction(id: string) {
   revalidatePath(`/archives/${category.slug}`);
 
   return { success: true };
+  });
+}
+
+export async function saveAssetTagAction(input: SaveMasterDataInput) {
+  const user = await requireUser();
+  return runLibraryOperation(user, "library.manageTags", "root", () => saveAssetTagActionImplementation(input));
+}
+
+export async function setAssetTagStatusAction(input: ToggleMasterDataInput) {
+  const user = await requireUser();
+  return runLibraryOperation(user, "library.manageTags", "root", () => setAssetTagStatusActionImplementation(input));
+}
+
+export async function deleteAssetTagAction(id: string) {
+  const user = await requireUser();
+  return runLibraryOperation(user, "library.manageTags", "root", () => deleteAssetTagActionImplementation(id));
+}
+
+export async function saveProjectCategoryAction(...args: Parameters<typeof saveProjectCategoryActionImplementation>): ReturnType<typeof saveProjectCategoryActionImplementation> {
+  const user = await requireUser();
+  return runWorkspaceOperation(user, "workspace.masterData", "root", () => saveProjectCategoryActionImplementation(...args));
+}
+
+export async function saveProjectTagAction(...args: Parameters<typeof saveProjectTagActionImplementation>): ReturnType<typeof saveProjectTagActionImplementation> {
+  const user = await requireUser();
+  return runWorkspaceOperation(user, "workspace.masterData", "root", () => saveProjectTagActionImplementation(...args));
+}
+
+export async function saveProjectStatusGroupAction(...args: Parameters<typeof saveProjectStatusGroupActionImplementation>): ReturnType<typeof saveProjectStatusGroupActionImplementation> {
+  const user = await requireUser();
+  return runWorkspaceOperation(user, "workspace.masterData", "root", () => saveProjectStatusGroupActionImplementation(...args));
+}
+
+export async function saveProjectStatusAction(...args: Parameters<typeof saveProjectStatusActionImplementation>): ReturnType<typeof saveProjectStatusActionImplementation> {
+  const user = await requireUser();
+  return runWorkspaceOperation(user, "workspace.masterData", "root", () => saveProjectStatusActionImplementation(...args));
+}
+
+export async function setProjectCategoryStatusAction(...args: Parameters<typeof setProjectCategoryStatusActionImplementation>): ReturnType<typeof setProjectCategoryStatusActionImplementation> {
+  const user = await requireUser();
+  return runWorkspaceOperation(user, "workspace.masterData", "root", () => setProjectCategoryStatusActionImplementation(...args));
+}
+
+export async function setProjectTagStatusAction(...args: Parameters<typeof setProjectTagStatusActionImplementation>): ReturnType<typeof setProjectTagStatusActionImplementation> {
+  const user = await requireUser();
+  return runWorkspaceOperation(user, "workspace.masterData", "root", () => setProjectTagStatusActionImplementation(...args));
+}
+
+export async function setProjectStatusGroupAction(...args: Parameters<typeof setProjectStatusGroupActionImplementation>): ReturnType<typeof setProjectStatusGroupActionImplementation> {
+  const user = await requireUser();
+  return runWorkspaceOperation(user, "workspace.masterData", "root", () => setProjectStatusGroupActionImplementation(...args));
+}
+
+export async function setProjectStatusAction(...args: Parameters<typeof setProjectStatusActionImplementation>): ReturnType<typeof setProjectStatusActionImplementation> {
+  const user = await requireUser();
+  return runWorkspaceOperation(user, "workspace.masterData", "root", () => setProjectStatusActionImplementation(...args));
+}
+
+export async function deleteProjectCategoryAction(...args: Parameters<typeof deleteProjectCategoryActionImplementation>): ReturnType<typeof deleteProjectCategoryActionImplementation> {
+  const user = await requireUser();
+  return runWorkspaceOperation(user, "workspace.masterData", "root", () => deleteProjectCategoryActionImplementation(...args));
+}
+
+export async function deleteProjectTagAction(...args: Parameters<typeof deleteProjectTagActionImplementation>): ReturnType<typeof deleteProjectTagActionImplementation> {
+  const user = await requireUser();
+  return runWorkspaceOperation(user, "workspace.masterData", "root", () => deleteProjectTagActionImplementation(...args));
+}
+
+export async function deleteProjectStatusGroupAction(...args: Parameters<typeof deleteProjectStatusGroupActionImplementation>): ReturnType<typeof deleteProjectStatusGroupActionImplementation> {
+  const user = await requireUser();
+  return runWorkspaceOperation(user, "workspace.masterData", "root", () => deleteProjectStatusGroupActionImplementation(...args));
+}
+
+export async function deleteProjectStatusAction(...args: Parameters<typeof deleteProjectStatusActionImplementation>): ReturnType<typeof deleteProjectStatusActionImplementation> {
+  const user = await requireUser();
+  return runWorkspaceOperation(user, "workspace.masterData", "root", () => deleteProjectStatusActionImplementation(...args));
 }

@@ -1,10 +1,12 @@
-import { createHash, randomUUID } from "node:crypto";
+import { runProjectMutation } from "@/lib/authorization/project-write";
+import { refreshProjectReader, requireProjectResourceRead } from "@/lib/authorization/project-read";
 import { ActivityLogAction, AttachmentAssetType, AttachmentStatus, type Prisma } from "@prisma/client";
+import { createHash, randomUUID } from "node:crypto";
 
 import { prisma } from "@/lib/prisma";
+import { getFolderAncestors } from "@/lib/project-folder-tree";
 import { assertResearchFolderWriteAccess } from "@/lib/project-research-access";
 import { richTextToPlainText } from "@/lib/rich-text";
-import { getFolderAncestors } from "@/lib/project-folder-tree";
 import {
   buildProjectAssetKey,
   copyStoredObject,
@@ -109,6 +111,9 @@ async function getImportSources(projectId: string): Promise<ImportSource[]> {
 }
 
 export async function getProjectResearchImportFolders(user: ImportUser, input: ImportTarget) {
+  user = await refreshProjectReader(user);
+  await requireProjectResourceRead('structured', input.projectId, 'project.view', user);
+
   const { access } = await assertResearchFolderWriteAccess(user, input);
   const folders = await prisma.projectResearchFolder.findMany({
     where: { workspaceId: access.workspaceId },
@@ -121,6 +126,9 @@ export async function getProjectResearchImportFolders(user: ImportUser, input: I
 }
 
 export async function getProjectResearchImportOptions(user: ImportUser, input: ImportTarget) {
+  user = await refreshProjectReader(user);
+  await requireProjectResourceRead('structured', input.projectId, 'project.view', user);
+
   await assertResearchFolderWriteAccess(user, input);
   const [sources, imported] = await Promise.all([
     getImportSources(input.projectId),
@@ -164,7 +172,7 @@ const defaultStorage = {
   bucket: getS3BucketName, copy: copyStoredObject, write: writeTextObject, remove: deleteObjectIfNeeded,
 };
 
-export async function importProjectInquiryContent(
+async function importProjectInquiryContentImplementation(
   user: ImportUser,
   input: ImportTarget & { itemIds: string[] },
   storage = defaultStorage,
@@ -244,4 +252,13 @@ export async function importProjectInquiryContent(
     select: importedFileSelect,
   });
   return { files, skipped, failures, folderFiles: folderFiles.map(fileRecord) };
+}
+
+export async function importProjectInquiryContent(
+  user: ImportUser,
+  input: ImportTarget & { itemIds: string[] },
+  storage = defaultStorage,
+) {
+  return runProjectMutation(user, "importProjectInquiryContent", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    importProjectInquiryContentImplementation(trustedUser, input, storage), input);
 }

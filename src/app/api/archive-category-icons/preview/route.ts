@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
-import {
-  canUseArchives,
-  hasPermission,
-} from "@/lib/permissions/resolver";
+import { canArchive, archiveCategoryWhere, archiveScopeForUser } from "@/lib/authorization/archive-rules";
+import { runArchiveOperation } from "@/lib/authorization/archive";
+import { prisma } from "@/lib/prisma";
 import {
   buildArchiveCategoryIconPrefix,
   createPresignedPreviewUrl,
@@ -17,7 +16,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  if (!canUseArchives(user) && !hasPermission(user, "settings.viewMasterData")) {
+  if (!canArchive(user, "archive.view")) {
     return NextResponse.json(
       { error: "You do not have permission to view archive category icons." },
       { status: 403 },
@@ -31,6 +30,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Archive category icon not found." }, { status: 404 });
   }
 
+  return runArchiveOperation(user, "archive.view", "root", async user => {
+  const stored = await prisma.archiveCategory.findFirst({ where: { AND: [{ iconUrl: storageKey }, archiveCategoryWhere(archiveScopeForUser(user), false)] }, select: { id: true } });
+  const ownDraft = canArchive(user, "archive.category.create") && storageKey.startsWith(`${buildArchiveCategoryIconPrefix()}${user.id}/`);
+  if (!stored && !ownDraft) return NextResponse.json({ error: "Archive category icon not found." }, { status: 404 });
   const fileName = storageKey.split("/").pop() || "archive-category-icon";
   const previewUrl = await createPresignedPreviewUrl({
     storageKey,
@@ -38,4 +41,5 @@ export async function GET(request: Request) {
   });
 
   return NextResponse.redirect(previewUrl);
+  });
 }

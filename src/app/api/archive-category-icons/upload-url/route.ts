@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
-import { canUseArchives } from "@/lib/permissions/resolver";
+import { canArchive } from "@/lib/authorization/archive-rules";
+import { runArchiveOperation } from "@/lib/authorization/archive";
 import {
   buildArchiveCategoryIconKey,
   createPresignedUploadUrl,
@@ -26,7 +27,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  if (!canUseArchives(user)) {
+  if (!canArchive(user, "archive.category.create")) {
     return NextResponse.json(
       { error: "You do not have permission to manage archive category icons." },
       { status: 403 },
@@ -73,14 +74,17 @@ export async function POST(request: Request) {
     );
   }
 
-  const storageKey = buildArchiveCategoryIconKey(user.id, payload.fileName);
+  const { fileName, mimeType } = payload;
+  return runArchiveOperation(user, "archive.category.create", "root", async user => {
+  const storageKey = buildArchiveCategoryIconKey(user.id, fileName);
   const uploadUrl = await createPresignedUploadUrl({
     storageKey,
-    mimeType: payload.mimeType,
+    mimeType,
   });
 
   return NextResponse.json({
     uploadUrl,
     storageKey,
+  });
   });
 }

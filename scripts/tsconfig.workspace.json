@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.authorization-services.json",
+  "compilerOptions": { "outDir": "../.tmp/workspace" },
+  "include": ["workspace-authorization-integration-check.ts"]
+}

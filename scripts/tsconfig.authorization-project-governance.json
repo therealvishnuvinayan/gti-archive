@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.authorization-services.json",
+  "compilerOptions": {
+    "outDir": "../.tmp/authorization-project-governance"
+  },
+  "include": [
+    "authorization-project-governance-integration-check.ts"
+  ]
+}

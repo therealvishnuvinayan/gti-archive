@@ -1,3 +1,7 @@
+import { canReadFullProject } from "@/lib/authorization/project-read-rules";
+import { canArchive } from "@/lib/authorization/archive-rules";
+import { runProjectMutation } from "@/lib/authorization/project-write";
+import { refreshProjectReader, requireProjectResourceRead } from "@/lib/authorization/project-read";
 import {
   ArchiveRecordStatus,
   AttachmentAssetType,
@@ -22,14 +26,9 @@ import {
 import { sendResendEmail } from "@/lib/email/resend";
 import {
   hasProjectPermission,
-  isGlobalProjectAdministrator,
-  isProjectCoOwner,
-  isProjectOwner,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
-import { normalizeInternationalPhone } from "@/lib/project-contact-validation";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
-import { richTextToPlainText, sanitizeRichText } from "@/lib/rich-text";
 import {
   buildExternalProductionApprovalUrl,
   buildExternalProductionHandoverUrl,
@@ -37,12 +36,16 @@ import {
   createProductionHandoverToken,
   hashProductionExternalToken,
 } from "@/lib/production-external-token";
+import { normalizeInternationalPhone } from "@/lib/project-contact-validation";
 import {
   getProjectStageAccessRecordById,
   projectStageAccessSelect,
   type ProjectStageAccessRecord,
 } from "@/lib/project-stage-data";
+import { isProjectStatusCompleted } from "@/lib/project-statuses";
 import { getWorkflowStageCompletionMode } from "@/lib/project-workflow";
+import { disableProjectRequestReminders } from "@/lib/request-reminders";
+import { richTextToPlainText, sanitizeRichText } from "@/lib/rich-text";
 import {
   STAGE_FIVE_FIELD_KEYS,
   STAGE_FIVE_FIELD_LABELS,
@@ -59,9 +62,6 @@ import {
   ACCESSIBLE_WORKFLOW_STAGE_STATUSES,
   canOpenImplementedWorkflowStage,
 } from "@/lib/workflow-stage-access";
-import { isSuperAdminRole } from "@/lib/user-role-compatibility";
-import { disableProjectRequestReminders } from "@/lib/request-reminders";
-import { isProjectStatusCompleted } from "@/lib/project-statuses";
 
 type EmailSender = typeof sendResendEmail;
 type StageProject = ProjectStageAccessRecord;
@@ -268,12 +268,7 @@ function stageStatus(project: StageProject, key: ProjectWorkflowStageKey) {
   return project.workflowStages.find((stage) => stage.stageKey === key)?.status;
 }
 
-export function canManageStageSix(user: PermissionUser, project: StageProject) {
-  return (
-    isGlobalProjectAdministrator(user) &&
-    hasProjectPermission(user, project, "stage.view")
-  );
-}
+export function canManageStageSix(user: PermissionUser, project: StageProject) { return canReadFullProject(user, project); }
 
 function isProjectParticipant(project: StageProject, userId: string) {
   return (
@@ -627,8 +622,11 @@ export async function getStageSixWorkspaceData(
   user: PermissionUser,
   projectId: string,
 ): Promise<StageSixWorkspaceData | null> {
-  const project = await getAuthorizedStageSixProject(user, projectId);
-  if (!project || !canManageStageSix(user, project)) return null;
+  user = await refreshProjectReader(user);
+  await requireProjectResourceRead('structured', projectId, 'project.view', user);
+
+  const project = await getProjectStageAccessRecordById(projectId);
+  if (!project) return null;
   const [records, savedArchive] = await withPrismaRetry(() =>
     Promise.all([
       prisma.projectProductionUnit.findMany({
@@ -735,11 +733,7 @@ export async function getStageSixWorkspaceData(
     participants: getParticipants(project),
     handoverRecipients: getHandoverRecipients(project),
     canManage: canManageStageSix(user, project),
-    canSaveArchive:
-      (isSuperAdminRole(user.role) ||
-        isProjectOwner(user, project) ||
-        isProjectCoOwner(user, project)) &&
-      hasProjectPermission(user, project, "project.completeArchive"),
+    canSaveArchive: canArchive(user, "archive.publishFromProject") && canReadFullProject(user, project),
     stageCompleted:
       stageStatus(project, ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER) ===
       ProjectWorkflowStageStatus.COMPLETED,
@@ -773,6 +767,9 @@ export async function getStageFiveCompletionState(
   user: PermissionUser,
   projectId: string,
 ) {
+  user = await refreshProjectReader(user);
+  await requireProjectResourceRead('structured', projectId, 'project.view', user);
+
   const project = await getProjectStageAccessRecordById(projectId);
   if (!project || !hasProjectPermission(user, project, "project.view")) return null;
   const [handoffCount, pendingRequestCount] = await withPrismaRetry(() =>
@@ -811,7 +808,7 @@ export async function getStageFiveCompletionState(
   };
 }
 
-export async function completeStageFive(
+async function completeStageFiveImplementation(
   user: PermissionUser,
   input: { projectId: string },
   conflictRetryCount = 0,
@@ -883,7 +880,7 @@ export async function completeStageFive(
           });
           if (!project) return { error: "Project not found." } as const;
           const manager =
-            isGlobalProjectAdministrator(user) &&
+            canReadFullProject(user, project) &&
             hasProjectPermission(user, project, "stage.markStageComplete");
           if (!manager) {
             return { error: "You do not have permission to complete Stage 5." } as const;
@@ -1077,7 +1074,7 @@ export async function completeStageFive(
       (error.code === "P2002" || error.code === "P2034") &&
       conflictRetryCount < 1
     ) {
-      return completeStageFive(user, input, conflictRetryCount + 1);
+      return completeStageFiveImplementation(user, input, conflictRetryCount + 1);
     }
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -1237,7 +1234,7 @@ async function sendExternalApproval(
   return { sent: true } as const;
 }
 
-export async function configureMarketingDirector(
+async function configureMarketingDirectorImplementation(
   user: PermissionUser,
   input: {
     clientRequestId: string;
@@ -1364,7 +1361,7 @@ export async function configureMarketingDirector(
   return prepared;
 }
 
-export async function addProductionApprover(
+async function addProductionApproverImplementation(
   user: PermissionUser,
   input: {
     clientRequestId: string;
@@ -1515,7 +1512,7 @@ export async function addProductionApprover(
         return { step: existing, duplicate: true } as const;
       }
       if (conflictRetryCount < 1) {
-        return addProductionApprover(user, input, options, conflictRetryCount + 1);
+        return addProductionApproverImplementation(user, input, options, conflictRetryCount + 1);
       }
       return { error: "The approval chain changed at the same time. Please try again." } as const;
     }
@@ -1524,7 +1521,7 @@ export async function addProductionApprover(
   return outcome;
 }
 
-export async function removeProductionApprover(
+async function removeProductionApproverImplementation(
   user: PermissionUser,
   input: { projectId: string; productionUnitId: string; stepId: string },
   options: { sendEmail?: EmailSender } = {},
@@ -1713,7 +1710,7 @@ export async function removeProductionApprover(
       (error.code === "P2002" || error.code === "P2034") &&
       conflictRetryCount < 1
     ) {
-      return removeProductionApprover(user, input, options, conflictRetryCount + 1);
+      return removeProductionApproverImplementation(user, input, options, conflictRetryCount + 1);
     }
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -1726,7 +1723,7 @@ export async function removeProductionApprover(
   return outcome;
 }
 
-export async function reorderProductionApprover(
+async function reorderProductionApproverImplementation(
   user: PermissionUser,
   input: {
     projectId: string;
@@ -1821,7 +1818,7 @@ export async function reorderProductionApprover(
       (error.code === "P2002" || error.code === "P2034")
     ) {
       if (conflictRetryCount < 1) {
-        return reorderProductionApprover(user, input, conflictRetryCount + 1);
+        return reorderProductionApproverImplementation(user, input, conflictRetryCount + 1);
       }
       return { error: "The approval order changed at the same time. Please try again." } as const;
     }
@@ -1829,7 +1826,7 @@ export async function reorderProductionApprover(
   }
 }
 
-export async function sendProductionApprovalRequest(
+async function sendProductionApprovalRequestImplementation(
   user: PermissionUser,
   input: { projectId: string; productionUnitId: string; stepId: string },
   options: { sendEmail?: EmailSender } = {},
@@ -1910,7 +1907,7 @@ export async function sendProductionApprovalRequest(
   } catch (error) {
     if (error instanceof StageSixWorkflowError) return { error: error.message };
     if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === "P2002" || error.code === "P2034")) {
-      if (conflictRetryCount < 2) return sendProductionApprovalRequest(user, input, options, conflictRetryCount + 1);
+      if (conflictRetryCount < 2) return sendProductionApprovalRequestImplementation(user, input, options, conflictRetryCount + 1);
       return { error: "The approval chain changed at the same time. Please try again." };
     }
     throw error;
@@ -1943,7 +1940,7 @@ export type ResendProductionApprovalInput = {
   message?: string;
 };
 
-export async function resendRejectedProductionApproval(
+async function resendRejectedProductionApprovalImplementation(
   user: PermissionUser,
   input: ResendProductionApprovalInput,
   options: { sendEmail?: EmailSender } = {},
@@ -2028,7 +2025,7 @@ export async function resendRejectedProductionApproval(
   } catch (error) {
     if (error instanceof StageSixWorkflowError) return { error: error.message };
     if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === "P2034" || error.code === "P2002")) {
-      if (conflictRetryCount < 2) return resendRejectedProductionApproval(user, input, options, conflictRetryCount + 1);
+      if (conflictRetryCount < 2) return resendRejectedProductionApprovalImplementation(user, input, options, conflictRetryCount + 1);
       return { error: "The approval chain changed at the same time. Refresh and try again." };
     }
     throw error;
@@ -2042,7 +2039,7 @@ export async function resendRejectedProductionApproval(
   return { sent: true, stepId: prepared.stepId };
 }
 
-export async function retryProductionApprovalDispatch(
+async function retryProductionApprovalDispatchImplementation(
   user: PermissionUser,
   input: { projectId: string; stepId: string },
   options: { sendEmail?: EmailSender } = {},
@@ -2175,7 +2172,7 @@ type ApprovalDecisionScope =
   | { kind: "authenticated"; user: PermissionUser; stepId: string }
   | { kind: "external"; token: string };
 
-export async function decideProductionApproval(
+async function decideProductionApprovalImplementation(
   scope: ApprovalDecisionScope,
   input: {
     decision: "APPROVE" | "REJECT";
@@ -2482,6 +2479,10 @@ export async function getAuthenticatedProductionApprovalData(
   user: PermissionUser,
   stepId: string,
 ) {
+  user = await refreshProjectReader(user);
+ const linked = await prisma.productionApprovalStep.findUniqueOrThrow({where:{id:stepId},select:{productionUnit:{select:{projectId:true}}}});
+  await requireProjectResourceRead("structured", linked.productionUnit.projectId, "project.view", user);
+
   const step = await withPrismaRetry(() =>
     prisma.productionApprovalStep.findFirst({
       where: {
@@ -2600,6 +2601,7 @@ export async function getProductionApprovalFileUrl(
   ) {
     throw new Error("Approval file not found.");
   }
+  if (scope.kind === "authenticated") await requireProjectResourceRead("file", attachmentId, "project.viewFile", scope.user);
   const snapshot = parseSnapshot(step.sharedSnapshot);
   const allowedIds = new Set([
     ...(snapshot?.files.map((file) => file.id) ?? []),
@@ -2628,7 +2630,7 @@ export async function getProductionApprovalFileUrl(
     : createPresignedPreviewUrl(fileInput);
 }
 
-export async function addProductionUnitFile(
+async function addProductionUnitFileImplementation(
   user: PermissionUser,
   input: { projectId: string; productionUnitId: string; attachmentId: string },
 ) {
@@ -2687,7 +2689,7 @@ export async function addProductionUnitFile(
   }
 }
 
-export async function removeProductionUnitFile(
+async function removeProductionUnitFileImplementation(
   user: PermissionUser,
   input: { projectId: string; productionUnitId: string; attachmentId: string },
 ) {
@@ -2724,7 +2726,7 @@ export async function removeProductionUnitFile(
     : ({ error: "This production file cannot be removed." } as const);
 }
 
-export async function handoverProductionUnit(
+async function handoverProductionUnitImplementation(
   user: PermissionUser,
   input: {
     clientRequestId: string;
@@ -3157,6 +3159,10 @@ export async function getAuthenticatedProductionHandoverData(
   user: PermissionUser,
   handoverId: string,
 ): Promise<ProductionHandoverData> {
+  user = await refreshProjectReader(user);
+ const linked = await prisma.projectProductionHandover.findUniqueOrThrow({where:{id:handoverId},select:{productionUnit:{select:{projectId:true}}}});
+  await requireProjectResourceRead("structured", linked.productionUnit.projectId, "project.view", user);
+
   const handover = await withPrismaRetry(() =>
     prisma.projectProductionHandover.findUnique({
       where: { id: handoverId },
@@ -3296,6 +3302,10 @@ export async function getAuthenticatedProductionHandoverFileUrl(
   attachmentId: string,
   mode: "preview" | "download",
 ) {
+  user = await refreshProjectReader(user);
+ const linked = await prisma.projectProductionHandover.findUniqueOrThrow({where:{id:handoverId},select:{productionUnit:{select:{projectId:true}}}});
+  await requireProjectResourceRead("structured", linked.productionUnit.projectId, "project.view", user);
+
   const handover = await withPrismaRetry(() =>
     prisma.projectProductionHandover.findUnique({
       where: { id: handoverId },
@@ -3336,7 +3346,7 @@ export async function getAuthenticatedProductionHandoverFileUrl(
   );
 }
 
-export async function completeStageSix(
+async function completeStageSixImplementation(
   user: PermissionUser,
   input: { projectId: string },
   conflictRetryCount = 0,
@@ -3490,7 +3500,7 @@ export async function completeStageSix(
       (error.code === "P2002" || error.code === "P2034") &&
       conflictRetryCount < 1
     ) {
-      return completeStageSix(user, input, conflictRetryCount + 1);
+      return completeStageSixImplementation(user, input, conflictRetryCount + 1);
     }
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -3500,4 +3510,170 @@ export async function completeStageSix(
     }
     throw error;
   }
+}
+
+export async function completeStageFive(
+  user: PermissionUser,
+  input: { projectId: string },
+  conflictRetryCount = 0,
+) {
+  return runProjectMutation(user, "completeStageFive", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    completeStageFiveImplementation(trustedUser, input, conflictRetryCount), input);
+}
+
+export async function configureMarketingDirector(
+  user: PermissionUser,
+  input: {
+    clientRequestId: string;
+    projectId: string;
+    productionUnitId: string;
+    recipientType: ProductionApprovalRecipientType;
+    recipientUserId?: string;
+    recipientName?: string;
+    recipientEmail?: string;
+    sharedFieldKeys: ProjectFileChecklistField[];
+    selectedFileIds: string[];
+    message?: string;
+  },
+  options: { sendEmail?: EmailSender } = {},
+) {
+  return runProjectMutation(user, "configureMarketingDirector", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    configureMarketingDirectorImplementation(trustedUser, input, options), input);
+}
+
+export async function addProductionApprover(
+  user: PermissionUser,
+  input: {
+    clientRequestId: string;
+    projectId: string;
+    productionUnitId: string;
+    recipientType: ProductionApprovalRecipientType;
+    recipientUserId?: string;
+    recipientName?: string;
+    recipientEmail?: string;
+    sharedFieldKeys: ProjectFileChecklistField[];
+    selectedFileIds: string[];
+    message?: string;
+  },
+  options: { sendEmail?: EmailSender } = {},
+  conflictRetryCount = 0,
+) {
+  return runProjectMutation(user, "addProductionApprover", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    addProductionApproverImplementation(trustedUser, input, options, conflictRetryCount), input);
+}
+
+export async function removeProductionApprover(
+  user: PermissionUser,
+  input: { projectId: string; productionUnitId: string; stepId: string },
+  options: { sendEmail?: EmailSender } = {},
+  conflictRetryCount = 0,
+) {
+  return runProjectMutation(user, "removeProductionApprover", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    removeProductionApproverImplementation(trustedUser, input, options, conflictRetryCount), input);
+}
+
+export async function reorderProductionApprover(
+  user: PermissionUser,
+  input: {
+    projectId: string;
+    productionUnitId: string;
+    stepId: string;
+    direction: "UP" | "DOWN";
+  },
+  conflictRetryCount = 0,
+) {
+  return runProjectMutation(user, "reorderProductionApprover", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    reorderProductionApproverImplementation(trustedUser, input, conflictRetryCount), input);
+}
+
+export async function sendProductionApprovalRequest(
+  user: PermissionUser,
+  input: { projectId: string; productionUnitId: string; stepId: string },
+  options: { sendEmail?: EmailSender } = {},
+  conflictRetryCount = 0,
+): Promise<{ sent: boolean; stepId: string } | { error: string }> {
+  return runProjectMutation(user, "sendProductionApprovalRequest", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    sendProductionApprovalRequestImplementation(trustedUser, input, options, conflictRetryCount), input);
+}
+
+export async function resendRejectedProductionApproval(
+  user: PermissionUser,
+  input: ResendProductionApprovalInput,
+  options: { sendEmail?: EmailSender } = {},
+  conflictRetryCount = 0,
+): Promise<{ sent: boolean; stepId: string } | { error: string }> {
+  return runProjectMutation(user, "resendRejectedProductionApproval", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    resendRejectedProductionApprovalImplementation(trustedUser, input, options, conflictRetryCount), input);
+}
+
+export async function retryProductionApprovalDispatch(
+  user: PermissionUser,
+  input: { projectId: string; stepId: string },
+  options: { sendEmail?: EmailSender } = {},
+) {
+  return runProjectMutation(user, "retryProductionApprovalDispatch", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    retryProductionApprovalDispatchImplementation(trustedUser, input, options), input);
+}
+
+export async function addProductionUnitFile(
+  user: PermissionUser,
+  input: { projectId: string; productionUnitId: string; attachmentId: string },
+) {
+  return runProjectMutation(user, "addProductionUnitFile", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    addProductionUnitFileImplementation(trustedUser, input), input);
+}
+
+export async function removeProductionUnitFile(
+  user: PermissionUser,
+  input: { projectId: string; productionUnitId: string; attachmentId: string },
+) {
+  return runProjectMutation(user, "removeProductionUnitFile", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    removeProductionUnitFileImplementation(trustedUser, input), input);
+}
+
+export async function handoverProductionUnit(
+  user: PermissionUser,
+  input: {
+    clientRequestId: string;
+    projectId: string;
+    productionUnitId: string;
+    route: ProductionHandoverRoute;
+    recipientType: ProductionApprovalRecipientType;
+    recipientUserId?: string;
+    recipientName?: string;
+    recipientEmail?: string;
+    recipientCompany?: string;
+    recipientPhone?: string;
+    sharedFieldKeys: ProjectFileChecklistField[];
+    selectedFileIds: string[];
+    note?: string;
+  },
+  options: { sendEmail?: EmailSender } = {},
+) {
+  return runProjectMutation(user, "handoverProductionUnit", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    handoverProductionUnitImplementation(trustedUser, input, options), input);
+}
+
+export async function completeStageSix(
+  user: PermissionUser,
+  input: { projectId: string },
+  conflictRetryCount = 0,
+) {
+  return runProjectMutation(user, "completeStageSix", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    completeStageSixImplementation(trustedUser, input, conflictRetryCount), input);
+}
+
+
+export async function decideProductionApproval(
+  scope: ApprovalDecisionScope,
+  input: {
+    decision: "APPROVE" | "REJECT";
+    comment?: string;
+    confirmed?: boolean;
+    requestVersion?: string;
+  },
+  options: { sendEmail?: EmailSender } = {},
+) {
+  if (scope.kind === "external") return decideProductionApprovalImplementation(scope, input, options);
+  return runProjectMutation(scope.user, "decideProductionApproval", { kind: "approval", id: scope.stepId }, async user => decideProductionApprovalImplementation({ ...scope, user }, input, options));
 }

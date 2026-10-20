@@ -1,15 +1,6 @@
-import { unstable_cache } from "next/cache";
-import { cache } from "react";
-import {
-  AttachmentStatus,
-  AttachmentAssetType,
-  Prisma,
-  ProjectExecutionType,
-  ProjectRevisionStatus,
-  StageStatus,
-  SubmissionReviewStatus,
-  UserRole,
-} from "@prisma/client";
+import { runProjectMutation } from "@/lib/authorization/project-write";
+import { canReadProjectResource, refreshProjectReader } from "@/lib/authorization/project-read";
+import { canReadFullProject, isDirectorReader, projectReadActor, structuredProjectReadWhere } from "@/lib/authorization/project-read-rules";
 import type {
   Project,
   ProjectCollaborator,
@@ -19,40 +10,44 @@ import type {
   ProjectStage,
   User,
 } from "@prisma/client";
+import {
+  AttachmentStatus,
+  AttachmentAssetType,
+  Prisma,
+  ProjectExecutionType,
+  ProjectRevisionStatus,
+  StageStatus,
+  SubmissionReviewStatus,
+} from "@prisma/client";
 
+import { getFavoriteAttachmentIdSetForUser } from "@/lib/file-favorite-queries";
+import type { PermissionKey } from "@/lib/permissions/definitions";
 import {
-  compareProjectsByPriority,
-  DEFAULT_PROJECT_PRIORITY,
-  formatProjectPriority,
-} from "@/lib/project-priority";
-import {
-  DEFAULT_PROJECT_CURRENCY,
-  resolveProjectCurrency,
-} from "@/lib/project-currencies";
-import {
-  canBypassCollaboratorVisibility,
-  getProjectCollaboratorVisibilityState,
-  isTimestampHiddenByPauseWindows,
-} from "@/lib/project-collaborator-visibility";
+  canUseProjects,
+  getAccessibleProjectsWhere,
+  hasPermission,
+  hasProjectPermission,
+  isProjectExecutor,
+  type PermissionUser,
+  type ProjectPermissionContext
+} from "@/lib/permissions/resolver";
+import { prisma, withPrismaRetry } from "@/lib/prisma";
 import {
   normalizeProjectCollaboratorPermissions,
   pickProjectCollaboratorPermissions,
   projectCollaboratorPermissionSelect,
   type ProjectCollaboratorPermissions,
 } from "@/lib/project-collaborator-permissions";
-import { getFavoriteAttachmentIdSetForUser } from "@/lib/file-favorite-queries";
 import {
-  canUseProjects,
-  canViewProjectTypeSwitcher,
-  getAccessibleProjectsWhere,
-  hasPermission,
-  hasProjectPermission,
-  isProjectAdmin,
-  isProjectExecutor,
-  isProjectOwner,
-  type ProjectPermissionContext,
-  type PermissionUser,
-} from "@/lib/permissions/resolver";
+  canBypassCollaboratorVisibility,
+  getProjectCollaboratorVisibilityState,
+  isTimestampHiddenByPauseWindows,
+} from "@/lib/project-collaborator-visibility";
+import { canViewProjectConcept } from "@/lib/project-concept-access";
+import {
+  DEFAULT_PROJECT_CURRENCY,
+  resolveProjectCurrency,
+} from "@/lib/project-currencies";
 import {
   buildProjectListStageWhere,
   buildProjectListStatusWhere,
@@ -60,14 +55,16 @@ import {
   type ProjectListRole,
   type ProjectListStatus,
 } from "@/lib/project-list-workflow";
-import type { PermissionKey } from "@/lib/permissions/definitions";
-import { prisma, withPrismaRetry } from "@/lib/prisma";
+import {
+  compareProjectsByPriority,
+  DEFAULT_PROJECT_PRIORITY,
+  formatProjectPriority,
+} from "@/lib/project-priority";
+import { ensureProjectPrivateFolder } from "@/lib/project-private-folders";
 import {
   getProjectStageAccessRecordById,
   type ProjectStageAccessRecord,
 } from "@/lib/project-stage-data";
-import { ensureProjectPrivateFolder } from "@/lib/project-private-folders";
-import { canViewProjectConcept } from "@/lib/project-concept-access";
 import {
   defaultProjectStatusGroupSlugs,
   getProjectStatusDisplay,
@@ -543,10 +540,7 @@ export function canViewProjectBudget(
   project: ProjectPermissionContext,
   currentUser: ProjectAccessUser,
 ) {
-  return (
-    hasProjectPermission(currentUser, project, "project.viewBudget") ||
-    hasProjectPermission(currentUser, project, "project.updateBudget")
-  );
+  return canReadFullProject(currentUser, project);
 }
 
 function getCreatorName(creator: Pick<User, "name" | "email">) {
@@ -811,12 +805,7 @@ function canViewBriefContent(
   },
   currentUser: ProjectAccessUser,
 ) {
-  return (
-    isProjectAdmin(currentUser) ||
-    isProjectOwner(currentUser, project) ||
-    hasProjectPermission(currentUser, project, "project.update") ||
-    isProjectExecutor(currentUser, project)
-  );
+  return canReadFullProject(currentUser, project);
 }
 
 function isStageBriefAttachment(
@@ -849,6 +838,7 @@ async function getProjectAttachmentsVisibleToUser(
   currentUser: ProjectAccessUser,
   project: Pick<ProjectWithCreator, "id" | "ownerId" | "coOwners" | "executors" | "attachments">,
 ) {
+  if (isDirectorReader(currentUser)) return project.attachments;
   const taskerStageIds = Array.from(
     new Set(
       project.attachments
@@ -1088,35 +1078,39 @@ function mapProjectToCard(
   project: ProjectCardProject,
   currentUser: ProjectAccessUser,
 ): ProjectCardRecord {
-  const workflowState = deriveProjectListWorkflowState(project);
+  const fullRead = canReadFullProject(currentUser, project);
+  const workflowState = fullRead ? deriveProjectListWorkflowState(project) : {
+    businessStatus: null, statusLabel: null, workflowHealth: "VALID" as const,
+    workflowDiagnosticLabel: null, currentStageNumber: null, currentStageName: null, stageStatuses: [],
+  };
   const updatedAt = toProjectDate(project.updatedAt);
 
   return {
     id: project.id,
     title: project.name,
-    tags: project.tags.map(({ tag }) => tag.name),
+    tags: fullRead ? project.tags.map(({ tag }) => tag.name) : [],
     ...workflowState,
-    showWorkflowDiagnostic: currentUser.role === UserRole.SUPER_ADMIN,
+    showWorkflowDiagnostic: isDirectorReader(currentUser),
     owner: project.owner
       ? {
           id: project.owner.id,
           name: getCreatorName(project.owner),
-          email: project.owner.email,
+          email: fullRead ? project.owner.email : "",
         }
       : null,
-    executors: project.executors.map(({ user }) => ({
+    executors: (fullRead ? project.executors : []).map(({ user }) => ({
       id: user.id,
       name: getCreatorName(user),
       email: user.email,
     })),
-    updatedLabel: formatProjectListRelativeTime(updatedAt),
-    updatedAt: Number.isNaN(updatedAt.getTime()) ? "" : updatedAt.toISOString(),
-    isPinned: project.isPinned,
-    canPin: hasProjectPermission(currentUser, project, "project.update"),
-    canDelete:
+    updatedLabel: fullRead ? formatProjectListRelativeTime(updatedAt) : "Project context",
+    updatedAt: !fullRead || Number.isNaN(updatedAt.getTime()) ? "" : updatedAt.toISOString(),
+    isPinned: fullRead && project.isPinned,
+    canPin: fullRead && hasProjectPermission(currentUser, project, "project.update"),
+    canDelete: fullRead &&
       workflowState.businessStatus !== "COMPLETED" &&
       hasProjectPermission(currentUser, project, "project.delete"),
-    canEdit:
+    canEdit: fullRead &&
       workflowState.businessStatus !== "COMPLETED" &&
       hasProjectPermission(currentUser, project, "project.update") &&
       hasProjectPermission(currentUser, project, "project.manageCollaborators"),
@@ -1388,7 +1382,7 @@ function mapProjectToFlow(
   };
 }
 
-export async function updateProjectCollaborators(
+async function updateProjectCollaboratorsImplementation(
   projectId: string,
   collaborators: Array<{
     id?: string;
@@ -1691,7 +1685,7 @@ export async function requireProjectExecutor(projectId: string, userId: string) 
   return project;
 }
 
-export async function removeProjectCollaborator(
+async function removeProjectCollaboratorImplementation(
   actor: ProjectAccessUser,
   projectId: string,
   collaboratorId: string,
@@ -1732,7 +1726,7 @@ export async function removeProjectCollaborator(
   return getProjectCollaboratorAssignments(projectId);
 }
 
-export async function setProjectCollaboratorChatVisibility(
+async function setProjectCollaboratorChatVisibilityImplementation(
   actor: ProjectAccessUser,
   input: {
     projectId: string;
@@ -1789,12 +1783,12 @@ export async function setProjectCollaboratorChatVisibility(
         },
         select: {
           id: true,
-          role: true,
+          authorization: { select: { businessRole: true, accountStatus: true } },
         },
       }),
     );
 
-    if (!targetUser || targetUser.role !== UserRole.USER) {
+    if (!targetUser?.authorization?.businessRole || targetUser.authorization.accountStatus !== "ACTIVE") {
       throw new Error("Collaborator not found.");
     }
 
@@ -1986,6 +1980,8 @@ function buildProjectsWhere(
 export async function getProjectListFilterOptions(
   currentUser: ProjectAccessUser,
 ): Promise<ProjectListFilterOptions> {
+  currentUser = await refreshProjectReader(currentUser);
+
   if (!canUseProjects(currentUser)) {
     return {
       owners: [],
@@ -1995,11 +1991,10 @@ export async function getProjectListFilterOptions(
 
   const startedAt = performance.now();
   const accessibleWhereStartedAt = performance.now();
-  const accessibleWhere = buildAccessibleProjectsWhere(currentUser);
+  const accessibleWhere = structuredProjectReadWhere(projectReadActor(currentUser), true);
   logProjectTiming("filter accessible where", accessibleWhereStartedAt);
   const queryStartedAt = performance.now();
-  const projects = await unstable_cache(
-    async () =>
+  const projects = await (async () =>
       withPrismaRetry(() =>
         prisma.project.findMany({
           where: accessibleWhere,
@@ -2024,10 +2019,7 @@ export async function getProjectListFilterOptions(
             },
           },
         }),
-      ),
-    ["project-list-v2-filter-options", currentUser.id, currentUser.role],
-    { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
-  )();
+      ))();
   logProjectTiming("filter options query", queryStartedAt, {
     projects: projects.length,
   });
@@ -2067,47 +2059,9 @@ export async function getProjectListFilterOptions(
   return options;
 }
 
-export async function getProjectTypeSwitcherVisibility(
-  currentUser: ProjectAccessUser,
-) {
-  const noProjectAuthority = {
-    isProjectOwner: false,
-    isProjectCoOwner: false,
-  };
-
-  if (canViewProjectTypeSwitcher(currentUser, noProjectAuthority)) {
-    return true;
-  }
-
-  const [artworkProject, flexibleProject] = await withPrismaRetry(() =>
-    Promise.all([
-      prisma.project.findFirst({
-        where: {
-          OR: [
-            { ownerId: currentUser.id },
-            { coOwners: { some: { userId: currentUser.id } } },
-          ],
-        },
-        select: {
-          ownerId: true,
-          coOwners: {
-            where: { userId: currentUser.id },
-            select: { userId: true },
-          },
-        },
-      }),
-      prisma.flexibleProject.findFirst({
-        where: { ownerId: currentUser.id },
-        select: { id: true },
-      }),
-    ]),
-  );
-
-  return canViewProjectTypeSwitcher(currentUser, {
-    isProjectOwner:
-      artworkProject?.ownerId === currentUser.id || Boolean(flexibleProject),
-    isProjectCoOwner: Boolean(artworkProject?.coOwners.length),
-  });
+export async function getProjectTypeSwitcherVisibility(currentUser: ProjectAccessUser) {
+  currentUser = await refreshProjectReader(currentUser);
+  return !!projectReadActor(currentUser)?.businessRole;
 }
 
 function sortProjectListUserFilterOptions(
@@ -2131,12 +2085,14 @@ function sortProjectListUserFilterOptions(
 export async function getDashboardProjectCounts(
   currentUser?: ProjectAccessUser,
 ): Promise<DashboardProjectCounts> {
+  currentUser = await refreshProjectReader(currentUser);
+
   const startedAt = performance.now();
   const accessibleWhereStartedAt = performance.now();
-  const accessibleWhere = buildAccessibleProjectsWhere(currentUser);
+  const accessibleWhere = structuredProjectReadWhere(projectReadActor(currentUser), true);
+  const visibleTotal = await prisma.project.count({where: buildAccessibleProjectsWhere(currentUser)});
   logProjectTiming("sidebar count accessible where", accessibleWhereStartedAt);
-  const getCachedCounts = unstable_cache(
-    async () =>
+  const getCachedCounts = (async () =>
       withPrismaRetry(() =>
         prisma.project.findMany({
           where: accessibleWhere,
@@ -2150,14 +2106,7 @@ export async function getDashboardProjectCounts(
             },
           },
         }),
-      ),
-    [
-      "dashboard-project-counts",
-      currentUser?.id ?? "all",
-      currentUser?.role ?? "all",
-    ],
-    { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
-  );
+      ));
 
   const queryStartedAt = performance.now();
   const projects = await getCachedCounts();
@@ -2194,7 +2143,7 @@ export async function getDashboardProjectCounts(
   );
 
   const result = {
-    total: projects.length,
+    total: visibleTotal,
     ongoing: counts.ongoing,
     onHold: counts.onHold,
     pending: counts.pending,
@@ -2206,9 +2155,10 @@ export async function getDashboardProjectCounts(
 }
 
 export async function getRecentProjects(limit = 5, currentUser?: ProjectAccessUser) {
+  currentUser = await refreshProjectReader(currentUser);
+
   const accessibleWhere = buildAccessibleProjectsWhere(currentUser);
-  const projects = await unstable_cache(
-    async () =>
+  const projects = await (async () =>
       withPrismaRetry(() =>
         prisma.project.findMany({
           where: accessibleWhere,
@@ -2217,6 +2167,7 @@ export async function getRecentProjects(limit = 5, currentUser?: ProjectAccessUs
           },
           take: limit,
           select: {
+            ownerId: true, coOwners: {select: {userId: true}},
             id: true,
             name: true,
             status: {
@@ -2239,25 +2190,18 @@ export async function getRecentProjects(limit = 5, currentUser?: ProjectAccessUs
             createdAt: true,
           },
         }),
-      ),
-    [
-      "recent-projects",
-      String(limit),
-      currentUser?.id ?? "all",
-      currentUser?.role ?? "all",
-    ],
-    { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
-  )();
+      ))();
 
   return projects.map((project, index) => {
-    const tags = getProjectTagNames(project);
+    const fullRead = canReadFullProject(currentUser!, project);
+    const tags = fullRead ? getProjectTagNames(project) : [];
     const tagLabel = formatProjectTagsLabel(tags);
 
     return {
       id: project.id,
       name: project.name,
-      statusLabel: getProjectStatusDisplay(project.status).name,
-      meta: [
+      statusLabel: fullRead ? getProjectStatusDisplay(project.status).name : "Project context",
+      meta: !fullRead ? "" : [
         project.category,
         tagLabel === "—" ? null : tagLabel,
         `Created ${formatProjectDate(project.createdAt)}`,
@@ -2279,6 +2223,8 @@ export async function getProjectsList(
   filter: ProjectsListFilter,
   currentUser: ProjectAccessUser,
 ) {
+  currentUser = await refreshProjectReader(currentUser);
+
   if (!canUseProjects(currentUser)) {
     return { projects: [], total: 0 };
   }
@@ -2289,15 +2235,20 @@ export async function getProjectsList(
   logProjectTiming("accessible where", accessibleWhereStartedAt);
 
   const filterWhereStartedAt = performance.now();
-  const filterWhere = buildProjectsWhere(filter, currentUser.id);
+  const filterWhere: Prisma.ProjectWhereInput = { OR: [
+    { AND: [structuredProjectReadWhere(projectReadActor(currentUser), true), buildProjectsWhere(filter, currentUser.id)] },
+    { AND: [{ NOT: structuredProjectReadWhere(projectReadActor(currentUser), true) },
+      filter.query?.trim() ? { name: { contains: filter.query.trim(), mode: "insensitive" } } : {}] },
+  ] };
   logProjectTiming("filter where", filterWhereStartedAt);
 
   const page = Math.max(1, Math.floor(filter.page ?? 1));
   const skip = (page - 1) * PROJECT_LIST_PAGE_SIZE;
-  const activeSort = filter.sort ?? "priority";
+  const hasRestrictedProjects = !isDirectorReader(currentUser) && await prisma.project.count({where:{AND:[accessibleWhere,{NOT:structuredProjectReadWhere(projectReadActor(currentUser),true)}]}}) > 0;
+  const activeSort = hasRestrictedProjects ? "name-asc" : filter.sort ?? "priority";
   const isPrioritySort = activeSort === "priority";
   const orderBy: Prisma.ProjectOrderByWithRelationInput[] = [
-    { isPinned: "desc" },
+    ...(hasRestrictedProjects ? [] : [{ isPinned: "desc" as const }]),
     ...(activeSort === "oldest"
       ? [{ createdAt: "asc" as const }]
       : activeSort === "newest"
@@ -2354,8 +2305,7 @@ export async function getProjectsList(
       select: { userId: true },
     },
   } satisfies Prisma.ProjectSelect;
-  const { projects, total } = await unstable_cache(
-    async () =>
+  const { projects, total } = await (async () =>
       withPrismaRetry(async () => {
         if (!isPrioritySort) {
           const [projects, total] = await Promise.all([
@@ -2423,7 +2373,7 @@ export async function getProjectsList(
         }
 
         const pageRecords = await prisma.project.findMany({
-          where: { id: { in: pageIds } },
+          where: { AND: [where, { id: { in: pageIds } }] },
           select: projectCardSelect,
         });
         const pageRecordById = new Map(
@@ -2437,23 +2387,7 @@ export async function getProjectsList(
           }),
           total: candidates.length,
         };
-      }),
-    [
-      "projects-list-v4-tags-dashboard",
-      filter.status ?? "all",
-      filter.query?.trim().toLowerCase() ?? "",
-      String(filter.stage ?? "all"),
-      filter.ownerId?.trim() ?? "",
-      filter.executorId?.trim() ?? "",
-      filter.myRole ?? "all",
-      activeSort,
-      String(page),
-      String(PROJECT_LIST_PAGE_SIZE),
-      currentUser.id,
-      currentUser.role,
-    ],
-    { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
-  )();
+      }))();
   logProjectTiming("project query", queryStartedAt, {
     projects: projects.length,
     total,
@@ -2477,8 +2411,10 @@ export async function getProjectById(
   id: string,
   currentUser: ProjectAccessUser,
 ) {
-  const project = await unstable_cache(
-    async () =>
+  currentUser = await refreshProjectReader(currentUser);
+  if (!await canReadProjectResource("structured", id, "project.view", currentUser)) return null;
+
+  const project = await (async () =>
       withPrismaRetry(() =>
         prisma.project.findUnique({
           where: { id },
@@ -2607,10 +2543,7 @@ export async function getProjectById(
             },
           },
         }),
-      ),
-    ["project-by-id", id, currentUser.id, currentUser.role],
-    { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
-  )();
+      ))();
 
   if (!project) {
     return null;
@@ -2643,8 +2576,10 @@ export async function getProjectShellById(
   id: string,
   currentUser: ProjectAccessUser,
 ) {
-  const project = await unstable_cache(
-    async () =>
+  currentUser = await refreshProjectReader(currentUser);
+  if (!await canReadProjectResource("structured", id, "project.view", currentUser)) return null;
+
+  const project = await (async () =>
       withPrismaRetry(() =>
         prisma.project.findUnique({
           where: { id },
@@ -2747,10 +2682,7 @@ export async function getProjectShellById(
             },
           },
         }),
-      ),
-    ["project-shell-by-id", id, currentUser.id, currentUser.role],
-    { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
-  )();
+      ))();
 
   if (!project) {
     return null;
@@ -2839,8 +2771,9 @@ function mapProjectToStageShell(
   };
 }
 
-export const getProjectStageShellById = cache(
-  async (id: string, currentUser: ProjectAccessUser) => {
+export const getProjectStageShellById = (async (id: string, currentUser: ProjectAccessUser) => {
+    currentUser = await refreshProjectReader(currentUser);
+    if (!await canReadProjectResource("structured", id, "project.view", currentUser)) return null;
     const project = await getProjectStageAccessRecordById(id);
 
     if (!project || !canAccessProjectRecord(project, currentUser)) {
@@ -2848,20 +2781,21 @@ export const getProjectStageShellById = cache(
     }
 
     return mapProjectToStageShell(project, currentUser);
-  },
-);
+  });
 
 export async function getProjectChatShellById(
   id: string,
   currentUser: ProjectAccessUser,
   options: ProjectStageSelection = {},
 ) {
+  currentUser = await refreshProjectReader(currentUser);
+  if (!await canReadProjectResource("structured", id, "project.view", currentUser)) return null;
+
   const taskerStageIds = [...(options.taskerStageIds ?? [])].sort();
   const participantUserIds = [...(options.participantUserIds ?? [])].sort();
   const limitParticipants = options.participantUserIds !== undefined;
   const includeStageInvoiceData = options.includeStageInvoiceData !== false;
-  const project = await unstable_cache(
-    async () =>
+  const project = await (async () =>
       withPrismaRetry(() =>
         prisma.project.findUnique({
           where: { id },
@@ -3016,18 +2950,7 @@ export async function getProjectChatShellById(
             },
           },
         }),
-      ),
-    [
-      "project-chat-shell-by-id-v3",
-      id,
-      currentUser.id,
-      currentUser.role,
-      taskerStageIds.join(",") || "workflow-stages",
-      participantUserIds.join(",") || "all-participants",
-      includeStageInvoiceData ? "with-stage-invoices" : "without-stage-invoices",
-    ],
-    { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
-  )();
+      ))();
 
   if (!project) {
     return null;
@@ -3062,31 +2985,40 @@ export async function getProjectRouteAvailability(
   id: string,
   currentUser: ProjectAccessUser,
 ): Promise<"available" | "not-found" | "access-unavailable"> {
-  const project = await withPrismaRetry(() =>
-    prisma.project.findUnique({
-      where: { id },
-      select: {
-        ownerId: true,
-        coOwners: {
-          select: { userId: true },
-        },
-        executors: {
-          select: {
-            userId: true,
-          },
-        },
-        collaborators: {
-          select: projectCollaboratorPermissionSelect,
-        },
-      },
-    }),
-  );
+  currentUser = await refreshProjectReader(currentUser);
+  if (!await canReadProjectResource("structured", id, "project.viewContext", currentUser)) return "not-found";
+  return await canReadProjectResource("structured", id, "project.view", currentUser) ? "available" : "access-unavailable";
+}
 
-  if (!project) {
-    return "not-found";
-  }
+export async function updateProjectCollaborators(
+  projectId: string,
+  collaborators: Array<{
+    id?: string;
+    userId?: string;
+  } & Partial<ProjectCollaboratorPermissions>>,
+  actor: ProjectAccessUser,
+) {
+  return runProjectMutation(actor, "updateProjectCollaborators", { kind: "structured", id: projectId }, async (trustedUser) =>
+    updateProjectCollaboratorsImplementation(projectId, collaborators, trustedUser), { projectId });
+}
 
-  return canAccessProjectRecord(project, currentUser)
-    ? "available"
-    : "access-unavailable";
+export async function removeProjectCollaborator(
+  actor: ProjectAccessUser,
+  projectId: string,
+  collaboratorId: string,
+) {
+  return runProjectMutation(actor, "removeProjectCollaborator", { kind: "structured", id: projectId }, async (trustedUser) =>
+    removeProjectCollaboratorImplementation(trustedUser, projectId, collaboratorId), { projectId });
+}
+
+export async function setProjectCollaboratorChatVisibility(
+  actor: ProjectAccessUser,
+  input: {
+    projectId: string;
+    collaboratorId: string;
+    paused: boolean;
+  },
+) {
+  return runProjectMutation(actor, "setProjectCollaboratorChatVisibility", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    setProjectCollaboratorChatVisibilityImplementation(trustedUser, input), input);
 }

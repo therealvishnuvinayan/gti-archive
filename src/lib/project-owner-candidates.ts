@@ -1,3 +1,5 @@
+import { getCurrentUser } from "@/lib/auth";
+import { isProjectManagerReader } from "@/lib/authorization/project-read-rules";
 import { UserRole } from "@prisma/client";
 
 import { prisma, withPrismaRetry } from "@/lib/prisma";
@@ -22,10 +24,12 @@ function getFallbackName(email: string) {
 export async function getEligibleProjectOwnerCandidates(): Promise<
   ProjectOwnerCandidate[]
 > {
+  const actor = await getCurrentUser();
+  if (!actor || !isProjectManagerReader(actor)) throw new Error("Project management permission required.");
   const users = await withPrismaRetry(() =>
     prisma.user.findMany({
       where: {
-        role: UserRole.ADMIN,
+        authorization: { is: { accountStatus: "ACTIVE", businessRole: { in: ["SENIOR_PROJECT_MANAGER", "JUNIOR_PROJECT_MANAGER"] } } },
       },
       orderBy: [{ name: "asc" }, { email: "asc" }],
       select: {
@@ -43,4 +47,11 @@ export async function getEligibleProjectOwnerCandidates(): Promise<
     email: user.email,
     role: user.role,
   }));
+}
+
+export async function getProjectExecutorCandidates() {
+  const actor = await getCurrentUser();
+  if (!actor || !isProjectManagerReader(actor)) throw new Error("Project management permission required.");
+  const users = await prisma.user.findMany({ where: { authorization: { is: { accountStatus: "ACTIVE", businessRole: { not: null } } } }, select: { id: true, name: true, email: true }, orderBy: { name: "asc" } });
+  return users.map(user => ({ ...user, name: user.name?.trim() || getFallbackName(user.email) }));
 }

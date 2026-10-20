@@ -1,3 +1,4 @@
+import { AuthorizationDeniedError } from "@/lib/authorization/policy";
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
@@ -37,6 +38,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing required upload fields." }, { status: 400 });
   }
 
+  try {
   const result = await requestArchiveFileUpload(user, {
     fileName: payload.fileName,
     originalFileName: payload.originalFileName,
@@ -54,4 +56,7 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json(result);
+  } catch (error) {
+    return NextResponse.json({ error: "Archive upload denied." }, { status: error instanceof AuthorizationDeniedError ? 403 : 400 });
+  }
 }

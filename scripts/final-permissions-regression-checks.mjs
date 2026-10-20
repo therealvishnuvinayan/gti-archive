@@ -27,18 +27,18 @@ const userProjects = read("src/lib/user-projects.ts");
 const userProjectWorkspace = read("src/lib/user-project-workspace.ts");
 includes(
   resolver,
-  "if (!hasProjectPermissionGrant(user, permissionKey))",
-  "effective profiles must gate project-scoped permissions before relationship scope",
+  "const actor = projectReadActor(user)",
+  "Phase 1.5C project mutation compatibility must use the authenticated V2 identity",
 );
 includes(
   resolver,
-  'return hasPermission(user, "project.create")',
-  "administrator project creation must honor the saved role permission",
+  'if (permissionKey === "project.create") return false;',
+  "Legacy creation flags cannot grant direct project creation",
 );
 includes(
   resolver,
-  "user.projectCreationAccessGranted === true",
-  "USER project creation must require an explicit per-user grant",
+  "export function canCreateProjects(user: PermissionUser)",
+  "legacy per-user creation flags must not bypass V2 governance",
 );
 includes(
   resolver,
@@ -47,8 +47,8 @@ includes(
 );
 includes(
   resolver,
-  'if (permissionKey.startsWith("archive.")) return Boolean(user.id);',
-  "Archive permissions must be available to every signed-in account",
+  'if (permissionKey === "archive.view") return canArchive(user, "archive.view");',
+  "Archive permissions must use trusted V2 role eligibility",
 );
 includes(
   resolver,
@@ -84,8 +84,8 @@ includes(
 includes(userProjects, "!canUseProjects(currentUser)", "USER project list data gate");
 includes(
   userProjectWorkspace,
-  "!canUseProjects(currentUser)",
-  "USER project detail data gate",
+  '"project.viewContext"',
+  "restricted project detail must use the V2 context capability",
 );
 includes(
   dashboard,
@@ -94,7 +94,7 @@ includes(
 );
 includes(
   dashboard,
-  "const recentProjects = canViewRecentProjects",
+  "const fullRecentProjects = canViewRecentProjects",
   "dashboard snapshot must omit denied recent-project data",
 );
 includes(
@@ -103,19 +103,23 @@ includes(
   "dashboard UI must hide the denied Recent Projects panel",
 );
 
+// Phase 1.5B: the pre-existing Stage 7 check failed on HEAD because the
+// USER gate was missing. A USER blanket ban would also exclude the V2 Director.
+// Replace it explicitly with the same central V2 read gate on every route;
+// isolated project-read tests exercise Director/Designer/technical service access.
 for (const stageNumber of [1, 2, 5, 6, 7]) {
   const page = read(
     `src/app/(dashboard)/projects/[slug]/stages/${stageNumber}/page.tsx`,
   );
   includes(
     page,
-    "!isBusinessAdministratorRole(user.role)",
-    `Stage ${stageNumber} USER route gate`,
+    'canReadProjectResource("structured", slug, "project.view", user)',
+    `Stage ${stageNumber} V2 full-project route gate (including legacy USER Director)`,
   );
   includes(
     page,
-    "redirect(`/projects/${slug}`)",
-    `Stage ${stageNumber} USER workspace redirect`,
+    "return <ProjectAccessUnavailableState />",
+    `Stage ${stageNumber} denies restricted and unrelated readers`,
   );
 }
 
@@ -123,8 +127,8 @@ const stageFive = read("src/lib/stage-five.ts");
 includes(stageFive, "canManageStageFive(user, project)", "Stage 5 manager service gate");
 includes(
   stageFive,
-  "isGlobalProjectAdministrator(user)",
-  "Stage 5 must not infer management from USER project membership",
+  "return canReadFullProject(user, project)",
+  "Stage 5 manager flags must require V2 Director or scoped SPM/JPM",
 );
 
 for (const [stage, helper] of [
@@ -135,10 +139,17 @@ for (const [stage, helper] of [
   includes(source, helper, `Stage ${stage} manager service gate`);
   includes(
     source,
-    'hasProjectPermission(user, project, "stage.view")',
-    `Stage ${stage} effective stage permission gate`,
+    'return canReadFullProject(user, project)',
+    `Stage ${stage} V2 manager relationship gate`,
   );
 }
+
+const governance = read("src/lib/project-governance/service.ts");
+includes(governance, '"project.requestCreation"', "Creation enters trusted V2 governance");
+includes(governance, '"project.activateCreation"', "Activation has a separate central authorization check");
+const governancePolicy = read("src/lib/authorization/project-governance-policies.ts");
+includes(governancePolicy, "validateStoredCreation", "Activation revalidates immutable configuration and participants");
+includes(governancePolicy, "validPreset", "SPM creation requires explicit preset approval");
 
 const calendarPage = read("src/app/(dashboard)/calendar/page.tsx");
 includes(
@@ -155,7 +166,7 @@ const library = read("src/lib/library.ts");
 includes(library, "input.assetTagId", "asset-tag filtering permission enforcement");
 includes(
   library,
-  '!hasPermission(user, "file.download")',
+  'runLibraryOperation(user, "library.download", `manual:${assetId}`',
   "manual Library download permission enforcement",
 );
 const libraryWorkspace = read("src/components/library/library-workspace.tsx");

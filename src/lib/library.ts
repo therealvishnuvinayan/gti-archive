@@ -1,46 +1,28 @@
+import { runLibraryOperation } from "@/lib/authorization/library";
+import { canLibrary, manualLibraryWhere, libraryAssetTypes } from "@/lib/authorization/library-rules";
+import { deletableLibraryAttachmentWhere, readableLibraryAttachment } from "@/lib/authorization/library-policies";
+import { refreshProjectReader } from "@/lib/authorization/project-read";
+import { canReadFullProject, projectReadActor, structuredProjectReadWhere } from "@/lib/authorization/project-read-rules";
 import {
   AttachmentAssetType,
   AttachmentStatus,
-  UserRole,
   type ProjectWorkflowStageKey,
   type User,
 } from "@prisma/client";
 
 import {
-  canBypassCollaboratorVisibility,
-  isTimestampHiddenByPauseWindows,
-} from "@/lib/project-collaborator-visibility";
-import { getFavoriteAttachmentIdSetForUser } from "@/lib/file-favorite-queries";
-import { getFavoriteManualLibraryAssetIdSetForUser } from "@/lib/manual-library-asset-favorites";
+  mapAssetTagAssignments,
+  validateActiveAssetTagIds,
+  type AssetTagAssignmentRecord,
+} from "@/lib/asset-tags";
 import {
   getDevTimingDurationMs,
   getDevTimingNow,
   logDevTiming,
   timeDevAsync,
 } from "@/lib/dev-timing";
-import {
-  hasPermission,
-  hasProjectPermission,
-  type PermissionUser,
-} from "@/lib/permissions/resolver";
-import { prisma, withPrismaRetry } from "@/lib/prisma";
-import { sanitizeRichText } from "@/lib/rich-text";
-import {
-  buildManualLibraryAssetKey,
-  createPresignedDownloadUrl,
-  createPresignedPreviewUrl,
-  createPresignedUploadTarget,
-  deleteObjectIfNeeded,
-  getFileExtension,
-  getMaxAssetUploadBytes,
-  getDefaultS3UploadEndpointMode,
-  getObjectMetadata,
-  getS3BucketName,
-  getS3Region,
-  type S3UploadEndpointMode,
-} from "@/lib/storage/s3";
-import { canUploadLibraryAssets, canViewLibrary } from "@/lib/library-access";
-import { canViewProjectConcept } from "@/lib/project-concept-access";
+import { getFavoriteAttachmentIdSetForUser } from "@/lib/file-favorite-queries";
+import { canUploadLibraryAssets } from "@/lib/library-access";
 import {
   type LibraryDateFilter,
   type LibraryItemRecord,
@@ -50,24 +32,32 @@ import {
   type LibraryQuickMenuCounts,
   libraryUploadCategoryOptions,
 } from "@/lib/library-shared";
+import { getFavoriteManualLibraryAssetIdSetForUser } from "@/lib/manual-library-asset-favorites";
+import {
+  hasPermission,
+  type PermissionUser,
+} from "@/lib/permissions/resolver";
+import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { sanitizeRichText } from "@/lib/rich-text";
+import {
+  buildManualLibraryAssetKey,
+  createPresignedDownloadUrl,
+  createPresignedPreviewUrl,
+  createPresignedUploadTarget,
+  copyStoredObject,
+  getFileExtension,
+  getMaxAssetUploadBytes,
+  getDefaultS3UploadEndpointMode,
+  getObjectMetadata,
+  getS3BucketName,
+  getS3Region,
+  type S3UploadEndpointMode,
+} from "@/lib/storage/s3";
 import {
   PROJECT_ASSET_ALLOWED_EXTENSIONS,
   buildFileTypeNotAllowedPayload,
   isAllowedAssetFile,
 } from "@/lib/upload-validation";
-import {
-  mapAssetTagAssignments,
-  validateActiveAssetTagIds,
-  type AssetTagAssignmentRecord,
-} from "@/lib/asset-tags";
-
-const libraryAssetTypes = [
-  AttachmentAssetType.GENERAL_PROJECT_ASSET,
-  AttachmentAssetType.COMMENT_ATTACHMENT,
-  AttachmentAssetType.STAGE_SUBMISSION,
-  AttachmentAssetType.REVISION_ORIGINAL,
-  AttachmentAssetType.STAGE_INVOICE,
-] as const;
 
 const financeFilePattern = /\b(invoice|quotation|quote|inv)\b/i;
 const spreadsheetExtensions = new Set(["csv", "xls", "xlsx", "numbers"]);
@@ -375,81 +365,9 @@ function isFinanceLibraryFile(fileName: string) {
   return financeFilePattern.test(fileName);
 }
 
-function canDeleteLibraryAttachment(
-  user: LibraryUser,
-  project: { ownerId: string | null; coOwners?: Array<{ userId: string }> },
-) {
-  return (
-    hasPermission(user, "library.deleteFile") &&
-    Boolean(
-      user.role === UserRole.SUPER_ADMIN ||
-        user.role === UserRole.ADMIN ||
-        project.ownerId === user.id ||
-        project.coOwners?.some((coOwner) => coOwner.userId === user.id),
-    )
-  );
-}
-
-function canDeleteManualLibraryAsset(user: LibraryUser, uploadedById: string) {
-  return (
-    hasPermission(user, "library.deleteFile") &&
-    (user.role === UserRole.SUPER_ADMIN ||
-      user.role === UserRole.ADMIN ||
-      uploadedById === user.id)
-  );
-}
-
-function isAttachmentVisibleToUser(
-  user: LibraryUser,
-  attachment: RawLibraryAttachment,
-) {
-  const concept = attachment.stage?.conceptFolder;
-  if (
-    concept &&
-    !canViewProjectConcept(user, {
-      folderId: concept.id,
-      projectId: concept.projectId,
-      taskerStageId: concept.taskerStageId,
-      workflowStageKey: concept.workflowStageKey,
-      assignedExecutorId: concept.assignedExecutorId,
-      ownerId: attachment.project.ownerId,
-      coOwnerIds: attachment.project.coOwners.map((coOwner) => coOwner.userId),
-    })
-  ) {
-    return false;
-  }
-
-  if (
-    canBypassCollaboratorVisibility(user, attachment.project.ownerId ?? "") ||
-    attachment.project.coOwners.some((coOwner) => coOwner.userId === user.id)
-  ) {
-    return true;
-  }
-
-  const isExecutor = attachment.project.executors.some(
-    (executor) => executor.userId === user.id,
-  );
-  const collaborator = attachment.project.collaborators.find(
-    (item) => item.userId === user.id,
-  );
-
-  if (!collaborator) {
-    return isExecutor;
-  }
-
-  if (collaborator.chatVisibilityPaused && collaborator.visibilityPauses.length === 0) {
-    return false;
-  }
-
-  return !isTimestampHiddenByPauseWindows(
-    attachment.createdAt,
-    collaborator.visibilityPauses,
-  );
-}
-
 function mapAttachmentToLibraryItem(
   user: LibraryUser,
-  attachment: RawLibraryAttachment,
+  attachment: RawLibraryAttachment & { deletable?: boolean },
   favoritedAttachmentIds?: ReadonlySet<string>,
 ): LibraryItemRecord {
   const isStageInvoice = attachment.assetType === AttachmentAssetType.STAGE_INVOICE;
@@ -457,7 +375,7 @@ function mapAttachmentToLibraryItem(
     ? "Invoice/Quotation"
     : getLibraryTypeLabel(attachment.originalFileName, attachment.mimeType);
   const isFinance = isStageInvoice || isFinanceLibraryFile(attachment.originalFileName);
-  const projectTags = getLibraryProjectTagNames(attachment.project);
+  const projectTags = canReadFullProject(user, attachment.project) ? getLibraryProjectTagNames(attachment.project) : [];
   const assetTags = mapAssetTagAssignments(attachment.assetTags);
 
   return {
@@ -477,11 +395,11 @@ function mapAttachmentToLibraryItem(
     type,
     quickCategory: isFinance ? "Quotations/Invoices" : "Project Assets",
     mimeType: attachment.mimeType,
-    previewPath: `/api/project-assets/${attachment.id}/preview`,
-    downloadPath: `/api/project-assets/${attachment.id}/download`,
-    canDownload: hasProjectPermission(user, attachment.project, "file.download"),
-    canFavorite: hasProjectPermission(user, attachment.project, "file.favorite"),
-    canDelete: canDeleteLibraryAttachment(user, attachment.project),
+    previewPath: `/api/library/attachments/${attachment.id}/preview`,
+    downloadPath: `/api/library/attachments/${attachment.id}/download`,
+    canDownload: canLibrary(user, "library.download"),
+    canFavorite: canLibrary(user, "library.favorite"),
+    canDelete: canLibrary(user, "library.delete") && attachment.deletable === true,
     isFavoritedByCurrentUser: favoritedAttachmentIds?.has(attachment.id) ?? false,
   };
 }
@@ -516,9 +434,9 @@ function mapManualAssetToLibraryItem(
     mimeType: asset.mimeType,
     previewPath: `/api/library/manual-assets/${asset.id}/preview`,
     downloadPath: `/api/library/manual-assets/${asset.id}/download`,
-    canDownload: hasPermission(user, "file.download"),
-    canFavorite: hasPermission(user, "file.favorite"),
-    canDelete: canDeleteManualLibraryAsset(user, asset.uploadedById),
+    canDownload: canLibrary(user, "library.download"),
+    canFavorite: canLibrary(user, "library.favorite"),
+    canDelete: canLibrary(user, "library.delete"),
     isFavoritedByCurrentUser: favoritedAssetIds?.has(asset.id) ?? false,
   };
 }
@@ -626,8 +544,8 @@ function applyLibraryFilters(
 }
 
 async function getAccessibleLibraryAttachments(user: LibraryUser) {
-  const isAdminUser =
-    user.role === UserRole.SUPER_ADMIN || user.role === UserRole.ADMIN;
+  user = await refreshProjectReader(user);
+
 
   const attachments = await withPrismaRetry(() =>
     prisma.projectAttachment.findMany({
@@ -639,35 +557,7 @@ async function getAccessibleLibraryAttachments(user: LibraryUser) {
         archivedFiles: {
           none: {},
         },
-        ...(isAdminUser
-          ? {}
-          : {
-              OR: [
-                {
-                  project: {
-                    createdById: user.id,
-                  },
-                },
-                {
-                  project: {
-                    executors: {
-                      some: {
-                        userId: user.id,
-                      },
-                    },
-                  },
-                },
-                {
-                  project: {
-                    collaborators: {
-                      some: {
-                        userId: user.id,
-                      },
-                    },
-                  },
-                },
-              ],
-            }),
+        project: { is: structuredProjectReadWhere(projectReadActor(user)) },
       },
       orderBy: {
         createdAt: "desc",
@@ -757,15 +647,20 @@ async function getAccessibleLibraryAttachments(user: LibraryUser) {
     }),
   );
 
-  return attachments.filter((attachment) => isAttachmentVisibleToUser(user, attachment));
+  const actor = projectReadActor(user);
+  if (!actor) return [];
+  const deletable = canLibrary(user, "library.delete") ? await prisma.projectAttachment.findMany({
+    where: { AND: [{ id: { in: attachments.map(row => row.id) } }, deletableLibraryAttachmentWhere] }, select: { id: true },
+  }) : [];
+  const deletableIds = new Set(deletable.map(row => row.id));
+  return (await Promise.all(attachments.map(async attachment => await readableLibraryAttachment(prisma, actor, attachment.id)
+    ? { ...attachment, deletable: deletableIds.has(attachment.id) } : null))).filter(attachment => attachment !== null);
 }
 
-async function getAccessibleManualLibraryAssets() {
+async function getAccessibleManualLibraryAssets(user: LibraryUser) {
   return withPrismaRetry(() =>
     prisma.manualLibraryAsset.findMany({
-      where: {
-        status: AttachmentStatus.READY,
-      },
+      where: manualLibraryWhere(projectReadActor(user)),
       orderBy: {
         uploadedAt: "desc",
       },
@@ -774,10 +669,12 @@ async function getAccessibleManualLibraryAssets() {
   );
 }
 
-export async function getLibraryPageDataForUser(
+async function getLibraryPageDataForUserImplementation(
   user: LibraryUser,
   input: LibraryQueryInput = {},
 ): Promise<LibraryPageData> {
+  user = await refreshProjectReader(user);
+
   const totalStartedAt = getDevTimingNow();
 
   if (!hasPermission(user, "library.view")) {
@@ -803,7 +700,7 @@ export async function getLibraryPageDataForUser(
       getAccessibleLibraryAttachments(user),
     ),
     timeDevAsync("[library:list]", "manual library asset query", () =>
-      getAccessibleManualLibraryAssets(),
+      getAccessibleManualLibraryAssets(user),
     ),
   ]);
   logDevTiming("[library:list]", "library list candidates", {
@@ -951,7 +848,7 @@ export async function getLibraryPageDataForUser(
   };
 }
 
-export async function requestManualLibraryAssetUpload(
+async function requestManualLibraryAssetUploadImplementation(
   user: LibraryUser,
   input: RequestManualLibraryAssetUploadInput,
 ) {
@@ -1014,6 +911,16 @@ export async function requestManualLibraryAssetUpload(
   const storageKey = buildManualLibraryAssetKey(user.id, input.originalFileName);
   const endpointMode =
     input.uploadEndpointMode ?? getDefaultS3UploadEndpointMode();
+  await runLibraryOperation(user, "library.editMetadata", "root", async () => undefined);
+  await runLibraryOperation(user, "library.manageTags", "root", async () => undefined);
+  const intent = await prisma.manualLibraryAsset.create({ data: {
+    assetName, originalFileName: input.originalFileName.trim(),
+    createdByName: normalizeOptionalLibraryText(input.createdByName),
+    description: sanitizeRichText(input.description) || null, category,
+    mimeType: input.mimeType, fileSize: input.fileSize, bucket, storageKey,
+    status: AttachmentStatus.UPLOADING, uploadedById: user.id,
+    assetTags: { create: tagSelection.tagIds.map(tagId => ({ tagId })) },
+  }, select: { id: true } });
   const uploadTarget = await timeDevAsync(
     "[library:upload-url]",
     "signed URL time",
@@ -1053,6 +960,7 @@ export async function requestManualLibraryAssetUpload(
   });
 
   return {
+    assetId: intent.id,
     storageKey,
     assetName,
     originalFileName: input.originalFileName.trim(),
@@ -1069,424 +977,106 @@ export async function requestManualLibraryAssetUpload(
 }
 
 export async function createCompletedManualLibraryAssetFromUpload(
-  user: LibraryUser,
-  input: CompleteManualLibraryAssetUploadInput,
+  user: LibraryUser, input: CompleteManualLibraryAssetUploadInput,
 ): Promise<LibraryItemRecord> {
-  const totalStartedAt = getDevTimingNow();
-
-  if (!canUploadLibraryAssets(user)) {
-    throw new Error("You do not have permission to upload library assets.");
-  }
-
-  if (!input.storageKey.startsWith(`library/manual/${user.id}/`)) {
-    throw new Error("Library upload storage key is invalid.");
-  }
-
-  if (!input.originalFileName.trim()) {
-    throw new Error("Choose a file to upload.");
-  }
-
-  if (!input.assetName.trim()) {
-    throw new Error("Asset name is required.");
-  }
-
-  if (!isAllowedAssetFile(input.originalFileName)) {
-    throw new Error("This file type is not allowed for Library uploads.");
-  }
-
-  if (!Number.isFinite(input.fileSize) || input.fileSize <= 0) {
-    throw new Error("File size is invalid.");
-  }
-
-  if (input.fileSize > getMaxAssetUploadBytes()) {
-    throw new Error("This file exceeds the allowed size limit.");
-  }
-
-  const assetName = resolveManualLibraryAssetName(
-    input.assetName,
-    input.originalFileName,
-  );
-  const tagSelection = await timeDevAsync(
-    "[library:upload-complete]",
-    "tag validation query",
-    () => validateActiveAssetTagIds(input.assetTagIds ?? []),
-    { requestedTagCount: input.assetTagIds?.length ?? 0 },
-  );
-
-  if (tagSelection.error) {
-    throw new Error(tagSelection.error);
-  }
-
-  const bucket = getS3BucketName();
-  const headStartedAt = getDevTimingNow();
-  const objectMetadata = await getObjectMetadata(input.storageKey, bucket);
-  logDevTiming("[library:upload-complete]", "S3 head object time", {
-    durationMs: getDevTimingDurationMs(headStartedAt),
-    contentLength: objectMetadata.ContentLength,
-    contentType: objectMetadata.ContentType,
+  return runLibraryOperation(user, "library.upload", "root", async trusted => {
+    const intent = await prisma.manualLibraryAsset.findFirst({ where: { uploadedById: trusted.id,
+      storageKey: { in: [input.storageKey, `${input.storageKey}.sealed`] } }, include: { assetTags: true } });
+    if (!intent || intent.assetName !== resolveManualLibraryAssetName(input.assetName, input.originalFileName) ||
+      intent.originalFileName !== input.originalFileName.trim() || intent.fileSize !== input.fileSize || intent.mimeType !== input.mimeType ||
+      intent.category !== parseManualLibraryCategory(input.category) ||
+      intent.createdByName !== normalizeOptionalLibraryText(input.createdByName) ||
+      intent.description !== (sanitizeRichText(input.description) || null) ||
+      JSON.stringify(intent.assetTags.map(row => row.tagId).sort()) !== JSON.stringify([...new Set(input.assetTagIds ?? [])].sort())) {
+      throw new Error("Library upload intent or metadata does not match.");
+    }
+    const asset = await completeManualLibraryAssetUpload(trusted, intent.id);
+    if (!asset) throw new Error("Library upload did not complete.");
+    return asset;
   });
-
-  if (
-    typeof objectMetadata.ContentLength === "number" &&
-    objectMetadata.ContentLength !== input.fileSize
-  ) {
-    throw new Error("Uploaded file size does not match the requested upload.");
-  }
-
-  const category = parseManualLibraryCategory(input.category);
-
-  try {
-    return await withPrismaRetry(() =>
-      prisma.$transaction(async (tx) => {
-        const existingStartedAt = getDevTimingNow();
-        const existingAsset = await tx.manualLibraryAsset.findUnique({
-          where: {
-            storageKey: input.storageKey,
-          },
-          select: manualLibraryAssetLibraryItemSelect,
-        });
-        logDevTiming("[library:upload-complete]", "existing asset lookup time", {
-          durationMs: getDevTimingDurationMs(existingStartedAt),
-        });
-
-        if (existingAsset) {
-          if (existingAsset.uploadedById !== user.id) {
-            throw new Error("Library upload storage key is already in use.");
-          }
-
-          return mapManualAssetToLibraryItem(user, existingAsset, new Set());
-        }
-
-        const assetInsertStartedAt = getDevTimingNow();
-        const createdAsset = await tx.manualLibraryAsset.create({
-          data: {
-            assetName,
-            originalFileName: input.originalFileName.trim(),
-            createdByName: normalizeOptionalLibraryText(input.createdByName),
-            description: sanitizeRichText(input.description) || null,
-            category,
-            mimeType: input.mimeType,
-            fileSize: input.fileSize,
-            bucket,
-            storageKey: input.storageKey,
-            status: AttachmentStatus.READY,
-            uploadedById: user.id,
-            uploadedAt: new Date(),
-          },
-          select: manualLibraryAssetLibraryItemSelect,
-        });
-        logDevTiming("[library:upload-complete]", "DB insert time", {
-          durationMs: getDevTimingDurationMs(assetInsertStartedAt),
-        });
-
-        const tagInsertStartedAt = getDevTimingNow();
-        if (tagSelection.tagIds.length > 0) {
-          await tx.manualLibraryAssetTagAssignment.createMany({
-            data: tagSelection.tagIds.map((tagId) => ({
-              assetId: createdAsset.id,
-              tagId,
-            })),
-          });
-        }
-        logDevTiming("[library:upload-complete]", "tag relation insert time", {
-          durationMs: getDevTimingDurationMs(tagInsertStartedAt),
-          tagCount: tagSelection.tagIds.length,
-        });
-
-        const createdAssetWithTags = await tx.manualLibraryAsset.findUniqueOrThrow({
-          where: {
-            id: createdAsset.id,
-          },
-          select: manualLibraryAssetLibraryItemSelect,
-        });
-
-        return mapManualAssetToLibraryItem(user, createdAssetWithTags, new Set());
-      }),
-    );
-  } finally {
-    logDevTiming("[library:upload-complete]", "create completed asset total", {
-      durationMs: getDevTimingDurationMs(totalStartedAt),
-      fileSize: input.fileSize,
-      assetTagCount: tagSelection.tagIds.length,
-    });
-  }
 }
 
 export async function completeManualLibraryAssetUpload(
-  user: LibraryUser,
-  assetId: string,
-  failed = false,
+  user: LibraryUser, assetId: string, failed = false,
 ): Promise<LibraryItemRecord | null> {
-  const totalStartedAt = getDevTimingNow();
-
-  if (!canUploadLibraryAssets(user)) {
-    throw new Error("You do not have permission to upload library assets.");
-  }
-
-  try {
-    return await withPrismaRetry(() =>
-      prisma.$transaction(async (tx) => {
-        const lookupStartedAt = getDevTimingNow();
-        const asset = await tx.manualLibraryAsset.findUnique({
-          where: {
-            id: assetId,
-          },
-          select: {
-            id: true,
-            uploadedById: true,
-            status: true,
-          },
-        });
-        logDevTiming("[library:upload-complete]", "DB lookup time", {
-          durationMs: getDevTimingDurationMs(lookupStartedAt),
-        });
-
-        if (!asset) {
-          throw new Error("Library asset upload not found.");
-        }
-
-        if (asset.uploadedById !== user.id) {
-          throw new Error("Only the uploader can complete this library upload.");
-        }
-
-        if (asset.status === AttachmentStatus.READY) {
-          logDevTiming("[library:upload-complete]", "DB update skipped", {
-            reason: "Asset is already ready.",
-          });
-          if (failed) {
-            return null;
-          }
-
-          const readyAsset = await tx.manualLibraryAsset.findUnique({
-            where: {
-              id: asset.id,
-            },
-            select: manualLibraryAssetLibraryItemSelect,
-          });
-
-          return readyAsset
-            ? mapManualAssetToLibraryItem(user, readyAsset, new Set())
-            : null;
-        }
-
-        if (asset.status !== AttachmentStatus.UPLOADING) {
-          throw new Error("Library asset upload is not active.");
-        }
-
-        const updateStartedAt = getDevTimingNow();
-        if (failed) {
-          await tx.manualLibraryAsset.update({
-            where: {
-              id: asset.id,
-            },
-            data: {
-              status: AttachmentStatus.FAILED,
-            },
-            select: {
-              id: true,
-            },
-          });
-          logDevTiming("[library:upload-complete]", "DB update time", {
-            durationMs: getDevTimingDurationMs(updateStartedAt),
-            failed,
-          });
-          return null;
-        }
-
-        const updatedAsset = await tx.manualLibraryAsset.update({
-          where: {
-            id: asset.id,
-          },
-          data: {
-            status: AttachmentStatus.READY,
-            uploadedAt: new Date(),
-          },
-          select: manualLibraryAssetLibraryItemSelect,
-        });
-        logDevTiming("[library:upload-complete]", "DB update time", {
-          durationMs: getDevTimingDurationMs(updateStartedAt),
-          failed,
-        });
-
-        return mapManualAssetToLibraryItem(user, updatedAsset, new Set());
-      }),
-    );
-  } finally {
-    logDevTiming("[library:upload-complete]", "DB complete total", {
-      durationMs: getDevTimingDurationMs(totalStartedAt),
-      failed,
-    });
-  }
-}
-
-export async function deleteLibraryAttachmentForUser(
-  user: LibraryUser,
-  attachmentId: string,
-) {
-  const attachment = await withPrismaRetry(() =>
-    prisma.projectAttachment.findUnique({
-      where: {
-        id: attachmentId,
-      },
-      select: {
-        id: true,
-        projectId: true,
-        bucket: true,
-        storageKey: true,
-        status: true,
-        archivedFiles: {
-          select: {
-            id: true,
-          },
-          take: 1,
-        },
-        project: {
-          select: {
-            ownerId: true,
-            coOwners: { select: { userId: true } },
-          },
-        },
-      },
-    }),
-  );
-
-  if (!attachment || attachment.status === AttachmentStatus.DELETED) {
-    throw new Error("File not found.");
-  }
-
-  if (attachment.archivedFiles.length > 0) {
-    throw new Error("Archived files cannot be deleted from the library.");
-  }
-
-  if (!canDeleteLibraryAttachment(user, attachment.project)) {
-    throw new Error("You do not have permission to delete this file.");
-  }
-
-  await deleteObjectIfNeeded(attachment.storageKey, attachment.bucket).catch(() => undefined);
-
-  await withPrismaRetry(() =>
-    prisma.projectAttachment.update({
-      where: {
-        id: attachment.id,
-      },
-      data: {
-        status: AttachmentStatus.DELETED,
-      },
-    }),
-  );
-
-  return {
-    projectId: attachment.projectId,
-  };
-}
-
-export async function getManualLibraryAssetDownloadUrlForUser(
-  user: LibraryUser,
-  assetId: string,
-) {
-  if (!canViewLibrary(user) || !hasPermission(user, "file.download")) {
-    throw new Error("You do not have permission to download library files.");
-  }
-
-  const asset = await withPrismaRetry(() =>
-    prisma.manualLibraryAsset.findUnique({
-      where: {
-        id: assetId,
-      },
-      select: {
-        assetName: true,
-        mimeType: true,
-        bucket: true,
-        storageKey: true,
-        status: true,
-      },
-    }),
-  );
-
-  if (!asset || asset.status !== AttachmentStatus.READY) {
-    throw new Error("Library asset not found.");
-  }
-
-  return createPresignedDownloadUrl({
-    bucket: asset.bucket,
-    storageKey: asset.storageKey,
-    fileName: asset.assetName,
-    mimeType: asset.mimeType,
+  return runLibraryOperation(user, "library.upload", `upload:${assetId}`, async trusted => {
+    const intent = await prisma.manualLibraryAsset.findUniqueOrThrow({ where: { id: assetId } });
+    if (intent.status === AttachmentStatus.READY) {
+      const asset = await prisma.manualLibraryAsset.findUniqueOrThrow({ where: { id: assetId }, select: manualLibraryAssetLibraryItemSelect });
+      return mapManualAssetToLibraryItem(trusted, asset, new Set());
+    }
+    if (failed) {
+      await prisma.manualLibraryAsset.update({ where: { id: assetId }, data: { status: AttachmentStatus.FAILED } });
+      return null;
+    }
+    if (Date.now() - intent.createdAt.getTime() > 30 * 60_000 ||
+      !intent.storageKey.startsWith(`library/manual/${trusted.id}/`) || intent.storageKey.endsWith(".sealed")) {
+      throw new Error("Library upload intent has expired or is invalid.");
+    }
+    const metadata = await getObjectMetadata(intent.storageKey, intent.bucket);
+    if (metadata.ContentLength !== intent.fileSize || metadata.ContentType !== intent.mimeType || !metadata.ETag) {
+      throw new Error("Uploaded object does not match the issued upload intent.");
+    }
+    // A still-valid PUT URL must never be able to overwrite a finalized asset.
+    const sealedKey = `${intent.storageKey}.sealed`;
+    await copyStoredObject({ sourceBucket: intent.bucket, sourceKey: intent.storageKey,
+      bucket: intent.bucket, storageKey: sealedKey, sourceETag: metadata.ETag });
+    const asset = await prisma.manualLibraryAsset.update({ where: { id: assetId },
+      data: { storageKey: sealedKey, status: AttachmentStatus.READY, uploadedAt: new Date() }, select: manualLibraryAssetLibraryItemSelect });
+    return mapManualAssetToLibraryItem(trusted, asset, new Set());
   });
 }
 
-export async function getManualLibraryAssetPreviewUrlForUser(
-  user: LibraryUser,
-  assetId: string,
-) {
-  if (!canViewLibrary(user)) {
-    throw new Error("You do not have permission to preview library files.");
-  }
-
-  const asset = await withPrismaRetry(() =>
-    prisma.manualLibraryAsset.findUnique({
-      where: {
-        id: assetId,
-      },
-      select: {
-        assetName: true,
-        mimeType: true,
-        bucket: true,
-        storageKey: true,
-        status: true,
-      },
-    }),
-  );
-
-  if (!asset || asset.status !== AttachmentStatus.READY) {
-    throw new Error("Library asset not found.");
-  }
-
-  return createPresignedPreviewUrl({
-    bucket: asset.bucket,
-    storageKey: asset.storageKey,
-    fileName: asset.assetName,
-    mimeType: asset.mimeType,
+export async function deleteLibraryAttachmentForUser(user: LibraryUser, attachmentId: string) {
+  return runLibraryOperation(user, "library.delete", `attachment:${attachmentId}`, async () => {
+    const file = await prisma.projectAttachment.update({ where: { id: attachmentId }, data: { status: AttachmentStatus.DELETED }, select: { projectId: true } });
+    // Retain the object and reference/history rows. Library removal is a soft delete.
+    return file;
   });
 }
 
-export async function deleteManualLibraryAssetForUser(
-  user: LibraryUser,
-  assetId: string,
-) {
-  const asset = await withPrismaRetry(() =>
-    prisma.manualLibraryAsset.findUnique({
-      where: {
-        id: assetId,
-      },
-      select: {
-        id: true,
-        bucket: true,
-        storageKey: true,
-        status: true,
-        uploadedById: true,
-      },
-    }),
-  );
+export async function getManualLibraryAssetDownloadUrlForUser(user: LibraryUser, assetId: string) {
+  return runLibraryOperation(user, "library.download", `manual:${assetId}`, async () => {
+    const asset = await prisma.manualLibraryAsset.findUniqueOrThrow({ where: { id: assetId } });
+    return createPresignedDownloadUrl({ bucket: asset.bucket, storageKey: asset.storageKey, fileName: asset.assetName, mimeType: asset.mimeType });
+  });
+}
 
-  if (!asset || asset.status === AttachmentStatus.DELETED) {
-    throw new Error("Library asset not found.");
-  }
+export async function getManualLibraryAssetPreviewUrlForUser(user: LibraryUser, assetId: string) {
+  return runLibraryOperation(user, "library.view", `manual:${assetId}`, async () => {
+    const asset = await prisma.manualLibraryAsset.findUniqueOrThrow({ where: { id: assetId } });
+    return createPresignedPreviewUrl({ bucket: asset.bucket, storageKey: asset.storageKey, fileName: asset.assetName, mimeType: asset.mimeType });
+  });
+}
 
-  if (!canDeleteManualLibraryAsset(user, asset.uploadedById)) {
-    throw new Error("You do not have permission to delete this file.");
-  }
+export async function deleteManualLibraryAssetForUser(user: LibraryUser, assetId: string) {
+  return runLibraryOperation(user, "library.delete", `manual:${assetId}`, async () => {
+    await prisma.manualLibraryAsset.update({ where: { id: assetId }, data: { status: AttachmentStatus.DELETED } });
+  });
+}
 
-  await deleteObjectIfNeeded(asset.storageKey, asset.bucket).catch(() => undefined);
+export async function getLibraryAttachmentUrlForUser(user: LibraryUser, attachmentId: string, preview = false) {
+  return runLibraryOperation(user, preview ? "library.view" : "library.download", `attachment:${attachmentId}`, async trusted =>
+    runLibraryOperation(trusted, "library.accessProjectFile", `attachment:${attachmentId}`, async () => {
+      const file = await prisma.projectAttachment.findUniqueOrThrow({ where: { id: attachmentId } });
+      return (preview ? createPresignedPreviewUrl : createPresignedDownloadUrl)({ bucket: file.bucket,
+        storageKey: file.storageKey, fileName: file.originalFileName, mimeType: file.mimeType });
+    }));
+}
 
-  await withPrismaRetry(() =>
-    prisma.manualLibraryAsset.update({
-      where: {
-        id: asset.id,
-      },
-      data: {
-        status: AttachmentStatus.DELETED,
-      },
-    }),
-  );
+export async function setLibraryAttachmentFavorite(user: LibraryUser, attachmentId: string, favorite: boolean) {
+  return runLibraryOperation(user, "library.favorite", `attachment:${attachmentId}`, async trusted => {
+    if (favorite) await prisma.fileFavorite.upsert({ where: { userId_attachmentId: { userId: trusted.id, attachmentId } },
+      create: { userId: trusted.id, attachmentId }, update: {} });
+    else await prisma.fileFavorite.deleteMany({ where: { userId: trusted.id, attachmentId } });
+    return { attachmentId, isFavoritedByCurrentUser: favorite };
+  });
+}
+
+export async function getLibraryPageDataForUser(user: LibraryUser, input: LibraryQueryInput = {}) {
+  return runLibraryOperation(user, "library.view", "root", trusted => getLibraryPageDataForUserImplementation(trusted, input));
+}
+
+export async function requestManualLibraryAssetUpload(user: LibraryUser, input: RequestManualLibraryAssetUploadInput) {
+  return runLibraryOperation(user, "library.upload", "root", trusted => requestManualLibraryAssetUploadImplementation(trusted, input));
 }

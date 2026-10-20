@@ -1,3 +1,4 @@
+import { runProjectMutation } from "@/lib/authorization/project-write";
 import { UserRole, type User } from "@prisma/client";
 
 import { resolveProjectTagIdsTx } from "./project-tag-assignments";
@@ -63,7 +64,7 @@ function isValidIdList(values: unknown): values is string[] {
   return !hasMalformedIds(values);
 }
 
-export async function createProjectV2(
+async function createProjectV2Implementation(
   creator: ProjectCreator,
   input: CreateProjectV2Input,
 ): Promise<CreateProjectV2Result> {
@@ -340,241 +341,59 @@ export async function createProjectV2(
   };
 }
 
+async function updateProjectV2Implementation(
+  actor: ProjectCreator,
+  projectId: string,
+  input: UpdateProjectV2Input,
+): Promise<UpdateProjectV2Result> {
+  const project = await prisma.project.findUniqueOrThrow({ where: { id: projectId }, select: {
+    ownerId: true, coOwners: { select: { userId: true } }, executors: { select: { userId: true } }, collaborators: { select: { userId: true } },
+  } });
+  if (!project.ownerId || input.ownerId !== project.ownerId) return { error: "Ownership transfer requires a separate audited workflow." };
+  if (!input.name?.trim() || !isValidIdList(input.coOwnerIds) || !isValidIdList(input.executorIds)) return { error: "Enter a name and valid participant IDs." };
+  const coOwnerIds = normalizeIdList(input.coOwnerIds), executorIds = normalizeIdList(input.executorIds);
+  if (hasDuplicates(coOwnerIds) || hasDuplicates(executorIds) || coOwnerIds.includes(project.ownerId)) return { error: "Participants must be unique and the owner cannot also be a co-owner." };
+  const oldExecutors = new Set(project.executors.map(row => row.userId));
+  const oldOwners = new Set([project.ownerId, ...project.coOwners.map(row => row.userId)]);
+  const compatibilityIds = project.collaborators.filter(row => !oldExecutors.has(row.userId) && !oldOwners.has(row.userId)).map(row => row.userId).sort();
+  if (input.collaboratorIds && JSON.stringify([...new Set(input.collaboratorIds)].sort()) !== JSON.stringify(compatibilityIds)) return { error: "Collaborator changes are disabled. Use Co-owners and Executors." };
+  const roles = await prisma.userAuthorization.findMany({ where: { userId: { in: [...new Set([project.ownerId, ...coOwnerIds, ...executorIds])] } }, select: { userId: true, businessRole: true, accountStatus: true } });
+  const byId = new Map(roles.map(row => [row.userId, row]));
+  if (coOwnerIds.some(id => byId.get(id)?.accountStatus !== "ACTIVE" || !["SENIOR_PROJECT_MANAGER", "JUNIOR_PROJECT_MANAGER"].includes(byId.get(id)?.businessRole ?? ""))) return { error: "Co-owners must be active Senior or Junior Project Managers." };
+  if (executorIds.some(id => byId.get(id)?.accountStatus !== "ACTIVE" || !byId.get(id)?.businessRole)) return { error: "Executors must have an active business role." };
+  if (byId.get(project.ownerId)?.businessRole === "JUNIOR_PROJECT_MANAGER" && !coOwnerIds.some(id => byId.get(id)?.businessRole === "SENIOR_PROJECT_MANAGER")) return { error: "A Junior Project Manager's project must retain a Senior Project Manager co-owner." };
+  const tags = input.tags === undefined ? undefined : validateProjectTags(input.tags);
+  if (tags?.error) return { error: tags.error };
+  return prisma.$transaction(async tx => {
+    const removed = project.executors.filter(row => !executorIds.includes(row.userId)).map(row => row.userId);
+    if (removed.length) await tx.projectConceptFolder.updateMany({ where: { projectId, assignedExecutorId: { in: removed } }, data: { assignedExecutorId: null } });
+    const tagIds = tags?.tags ? await resolveProjectTagIdsTx(tx, tags.tags) : undefined;
+    await tx.project.update({ where: { id: projectId }, data: { name: input.name.trim(), ...(tagIds ? { tags: { deleteMany: {}, create: tagIds.map(tagId => ({ tagId })) } } : {}) } });
+    await tx.projectCoOwner.deleteMany({ where: { projectId, userId: { notIn: coOwnerIds } } });
+    await tx.projectCoOwner.createMany({ data: coOwnerIds.map(userId => ({ projectId, userId, addedById: actor.id })), skipDuplicates: true });
+    await tx.projectExecutor.deleteMany({ where: { projectId, userId: { notIn: executorIds } } });
+    await tx.projectExecutor.createMany({ data: executorIds.map(userId => ({ projectId, userId, addedById: actor.id })), skipDuplicates: true });
+    // Remove mirrored legacy executor grants when execution is revoked. Existing
+    // non-executor compatibility relationships are retained without new grants.
+    if (removed.length) await tx.projectCollaborator.deleteMany({ where: { projectId, userId: { in: removed } } });
+    for (const userId of [project.ownerId!, ...coOwnerIds, ...executorIds]) await ensureProjectPrivateFolderTx(tx, projectId, userId);
+    return { projectId };
+  });
+}
+
 export async function updateProjectV2(
   actor: ProjectCreator,
   projectId: string,
   input: UpdateProjectV2Input,
 ): Promise<UpdateProjectV2Result> {
-  const name = input.name.trim();
+  return runProjectMutation(actor, "updateProjectV2", { kind: "structured", id: projectId }, async (trustedUser) =>
+    updateProjectV2Implementation(trustedUser, projectId, input), input);
+}
 
-  if (!projectId.trim()) {
-    return { error: "Project not found." };
-  }
-
-  const existingProject = await withPrismaRetry(() =>
-    prisma.project.findUnique({
-      where: { id: projectId },
-      select: { ownerId: true },
-    }),
-  );
-
-  if (!existingProject) {
-    return { error: "Project not found." };
-  }
-
-  const ownerId = existingProject.ownerId;
-
-  if (!ownerId) {
-    return {
-      error: "This project has no owner and cannot be edited until its ownership is repaired.",
-      fieldErrors: { ownerId: "Project owner is missing." },
-    };
-  }
-
-  const coOwnerIds = normalizeIdList(input.coOwnerIds);
-  const executorIds = normalizeIdList(input.executorIds);
-  const rawCollaboratorIds: unknown = input.collaboratorIds ?? [];
-  const collaboratorIds = isValidIdList(rawCollaboratorIds)
-    ? [...new Set(normalizeIdList(rawCollaboratorIds))]
-    : [];
-  const fieldErrors: CreateProjectV2FieldErrors = {};
-
-  const tagValidation = input.tags === undefined
-    ? undefined
-    : validateProjectTags(input.tags);
-  if (tagValidation?.error) fieldErrors.tags = tagValidation.error;
-
-  if (!name) fieldErrors.name = "Project name is required.";
-  if (hasDuplicates(coOwnerIds)) {
-    fieldErrors.coOwnerIds = "A co-owner can only be selected once.";
-  } else if (ownerId && coOwnerIds.includes(ownerId)) {
-    fieldErrors.coOwnerIds = "The project owner cannot also be a co-owner.";
-  }
-
-  if (hasDuplicates(executorIds)) {
-    fieldErrors.executorIds = "An executor can only be selected once.";
-  }
-
-  if (hasMalformedIds(rawCollaboratorIds)) {
-    fieldErrors.collaboratorIds =
-      "Every collaborator selection must contain a valid user ID.";
-  }
-
-  if (Object.keys(fieldErrors).length > 0) {
-    return { error: "Review the highlighted fields.", fieldErrors };
-  }
-
-  const participantIds = [
-    ...new Set([ownerId, ...coOwnerIds, ...executorIds, ...collaboratorIds]),
-  ];
-  const users = await withPrismaRetry(() =>
-    prisma.user.findMany({
-      where: { id: { in: participantIds } },
-      select: { id: true, role: true },
-    }),
-  );
-  const userById = new Map(users.map((user) => [user.id, user] as const));
-  const owner = userById.get(ownerId);
-
-  if (!owner) {
-    fieldErrors.ownerId = "The selected project owner no longer exists.";
-  }
-
-  if (
-    coOwnerIds.some((userId) => {
-      const user = userById.get(userId);
-      return !user || user.role !== UserRole.ADMIN;
-    })
-  ) {
-    fieldErrors.coOwnerIds =
-      "Every co-owner must be an existing Admin user.";
-  }
-
-  if (
-    executorIds.some(
-      (userId) => userById.get(userId)?.role !== UserRole.USER,
-    )
-  ) {
-    fieldErrors.executorIds =
-      "Every executor must be an existing User account.";
-  }
-
-  if (
-    collaboratorIds.some(
-      (userId) => userById.get(userId)?.role !== UserRole.USER,
-    )
-  ) {
-    fieldErrors.collaboratorIds =
-      "Every project collaborator must be an existing eligible collaborator.";
-  }
-
-  if (Object.keys(fieldErrors).length > 0) {
-    return {
-      error: "One or more selected users are no longer eligible.",
-      fieldErrors,
-    };
-  }
-
-  const additionalCollaboratorIds = collaboratorIds.filter(
-    (userId) => userId !== ownerId && !coOwnerIds.includes(userId),
-  );
-  const executorIdSet = new Set(executorIds);
-  const membershipIds = [
-    ...new Set([...executorIds, ...additionalCollaboratorIds]),
-  ];
-
-  await withPrismaRetry(() =>
-    prisma.$transaction(async (tx) => {
-      const project = await tx.project.findUnique({
-        where: { id: projectId },
-        select: {
-          id: true,
-          executors: { select: { userId: true } },
-          collaborators: {
-            select: {
-              userId: true,
-              canInteract: true,
-              canAddCaptions: true,
-              canDownloadFiles: true,
-              canViewBudget: true,
-              canViewVendorInfo: true,
-              canAccessProjectArchives: true,
-            },
-          },
-        },
-      });
-
-      if (!project) throw new Error("Project not found.");
-
-      const existingExecutorIds = new Set(
-        project.executors.map((executor) => executor.userId),
-      );
-      const existingCollaboratorById = new Map(
-        project.collaborators.map(
-          (collaborator) => [collaborator.userId, collaborator] as const,
-        ),
-      );
-      const removedExecutorIds = project.executors
-        .map((executor) => executor.userId)
-        .filter((userId) => !executorIdSet.has(userId));
-
-      if (removedExecutorIds.length > 0) {
-        await tx.projectConceptFolder.updateMany({
-          where: {
-            projectId,
-            assignedExecutorId: { in: removedExecutorIds },
-          },
-          data: { assignedExecutorId: null, assignedById: null },
-        });
-      }
-
-      const tagIds = tagValidation?.tags
-        ? await resolveProjectTagIdsTx(tx, tagValidation.tags)
-        : undefined;
-      await tx.project.update({
-        where: { id: projectId },
-        data: {
-          name,
-          ...(tagIds
-            ? {
-                tags: {
-                  deleteMany: {},
-                  create: tagIds.map((tagId) => ({ tagId })),
-                },
-              }
-            : {}),
-        },
-      });
-      await tx.projectCoOwner.deleteMany({
-        where: {
-          projectId,
-          ...(coOwnerIds.length > 0 ? { userId: { notIn: coOwnerIds } } : {}),
-        },
-      });
-      await tx.projectCoOwner.createMany({
-        data: coOwnerIds.map((userId) => ({ projectId, userId, addedById: actor.id })),
-        skipDuplicates: true,
-      });
-      await tx.projectExecutor.deleteMany({
-        where: {
-          projectId,
-          ...(executorIds.length > 0 ? { userId: { notIn: executorIds } } : {}),
-        },
-      });
-      await tx.projectExecutor.createMany({
-        data: executorIds
-          .filter((userId) => !existingExecutorIds.has(userId))
-          .map((userId) => ({ projectId, userId, addedById: actor.id })),
-        skipDuplicates: true,
-      });
-      await tx.projectCollaborator.deleteMany({
-        where: {
-          projectId,
-          ...(membershipIds.length > 0 ? { userId: { notIn: membershipIds } } : {}),
-        },
-      });
-
-      for (const userId of membershipIds) {
-        const existing = existingCollaboratorById.get(userId);
-        const data = {
-          ...normalizeProjectCollaboratorPermissions(existing, {
-            isExecutor: executorIdSet.has(userId),
-          }),
-        };
-
-        await tx.projectCollaborator.upsert({
-          where: { projectId_userId: { projectId, userId } },
-          create: { projectId, userId, addedById: actor.id, ...data },
-          update: data,
-        });
-      }
-
-      await ensureCanonicalProjectResearchWorkspaceTx(tx, projectId);
-      for (const participantId of participantIds) {
-        await ensureProjectPrivateFolderTx(tx, projectId, participantId);
-      }
-    }, { timeout: 30_000 }),
-  );
-
-  return { projectId };
+export async function createProjectV2(
+  creator: ProjectCreator,
+  input: CreateProjectV2Input,
+): Promise<CreateProjectV2Result> {
+  return runProjectMutation(creator, "createProjectV2", { kind: "structured", id: "creation" }, async (trustedUser) =>
+    createProjectV2Implementation(trustedUser, input), input);
 }

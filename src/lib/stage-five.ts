@@ -1,19 +1,9 @@
+import { canReadFullProject, isDirectorReader } from "@/lib/authorization/project-read-rules";
+import { runProjectMutation } from "@/lib/authorization/project-write";
+import { refreshProjectReader, requireProjectResourceRead } from "@/lib/authorization/project-read";
 import { randomUUID } from "node:crypto";
 
-import {
-  AttachmentAssetType,
-  AttachmentStatus,
-  Prisma,
-  ProjectFileChecklistField,
-  ProjectFileChecklistItemStatus,
-  ProjectFileChecklistRequestChannel,
-  ProjectFileChecklistRequestStatus,
-  ProjectFileChecklistRequestWorkflowStatus,
-  ProjectFileChecklistResponseSource,
-  ProjectWorkflowStageKey,
-  ProjectWorkflowStageStatus,
-  UserRole,
-} from "@prisma/client";
+import { AttachmentAssetType, AttachmentStatus, Prisma, ProjectFileChecklistField, ProjectFileChecklistItemStatus, ProjectFileChecklistRequestChannel, ProjectFileChecklistRequestStatus, ProjectFileChecklistRequestWorkflowStatus, ProjectFileChecklistResponseSource, ProjectWorkflowStageKey, ProjectWorkflowStageStatus } from "@prisma/client";
 
 import {
   buildExternalChecklistRequestUrl,
@@ -23,33 +13,14 @@ import { buildChecklistInformationRequestEmail } from "@/lib/email/checklist-inf
 import { sendResendEmail } from "@/lib/email/resend";
 import {
   hasProjectPermission,
-  isGlobalProjectAdministrator,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
-import { richTextToPlainText, sanitizeRichText } from "@/lib/rich-text";
-import { publishNotificationChanges } from "@/lib/realtime/server";
 import {
   getProjectStageAccessRecordById,
   type ProjectStageAccessRecord,
 } from "@/lib/project-stage-data";
-import {
-  ACCESSIBLE_WORKFLOW_STAGE_STATUSES,
-  canOpenImplementedWorkflowStage,
-} from "@/lib/workflow-stage-access";
-import {
-  getStageFiveFieldDefinition,
-  STAGE_FIVE_FIELD_KEYS,
-  STAGE_FIVE_FIELD_LABELS,
-  type StageFiveFieldDefinition,
-} from "@/lib/stage-five-fields";
-import {
-  createPresignedDownloadUrl,
-  createPresignedPreviewUrl,
-  deleteObjectIfNeeded,
-} from "@/lib/storage/s3";
-import { getStageFiveCompletionState } from "@/lib/stage-six";
-import { STAGE_FIVE_SOURCE_WORKFLOW_STAGE_KEYS } from "@/lib/stage-five-lineage";
+import { publishNotificationChanges } from "@/lib/realtime/server";
 import {
   buildRequestReminderCreateData,
   isRequestReminderInterval,
@@ -59,8 +30,26 @@ import {
   type RequestReminderConfiguration,
   type RequestReminderIntervalHours,
 } from "@/lib/request-reminders";
+import { richTextToPlainText, sanitizeRichText } from "@/lib/rich-text";
+import {
+  getStageFiveFieldDefinition,
+  STAGE_FIVE_FIELD_KEYS,
+  STAGE_FIVE_FIELD_LABELS,
+  type StageFiveFieldDefinition,
+} from "@/lib/stage-five-fields";
+import { STAGE_FIVE_SOURCE_WORKFLOW_STAGE_KEYS } from "@/lib/stage-five-lineage";
+import { getStageFiveCompletionState } from "@/lib/stage-six";
+import {
+  createPresignedDownloadUrl,
+  createPresignedPreviewUrl,
+  deleteObjectIfNeeded,
+} from "@/lib/storage/s3";
+import {
+  ACCESSIBLE_WORKFLOW_STAGE_STATUSES,
+  canOpenImplementedWorkflowStage,
+} from "@/lib/workflow-stage-access";
 
-export { STAGE_FIVE_FIELD_KEYS, STAGE_FIVE_FIELD_LABELS } from "@/lib/stage-five-fields";
+export { STAGE_FIVE_FIELD_KEYS,STAGE_FIVE_FIELD_LABELS } from "@/lib/stage-five-fields";
 export { completeStageFive } from "@/lib/stage-six";
 
 export type StageFiveChecklistValue = {
@@ -163,12 +152,7 @@ function stageStatus(project: StageFiveProject, stageKey: ProjectWorkflowStageKe
 export function canManageStageFive(
   user: PermissionUser,
   project: StageFiveProject,
-) {
-  return (
-    isGlobalProjectAdministrator(user) &&
-    hasProjectPermission(user, project, "file.uploadAttachment")
-  );
-}
+) { return canReadFullProject(user, project); }
 
 async function getAuthorizedProject(
   user: PermissionUser,
@@ -367,12 +351,11 @@ export async function getStageFiveWorkspaceData(
   projectId: string,
   selectedHandoffId?: string | null,
 ): Promise<StageFiveWorkspaceData | null> {
-  const project = await getAuthorizedProject(
-    user,
-    projectId,
-    ProjectWorkflowStageKey.FINAL_LAYOUT,
-  );
-  if (!project || !canManageStageFive(user, project)) return null;
+  user = await refreshProjectReader(user);
+  await requireProjectResourceRead('structured', projectId, 'project.view', user);
+
+  const project = await getProjectStageAccessRecordById(projectId);
+ if (!project) return null;
 
   const handoffs = await withPrismaRetry(() =>
     prisma.projectStageFileHandoff.findMany({
@@ -403,19 +386,7 @@ export async function getStageFiveWorkspaceData(
 
   if (selectedHandoff) {
     selectedChecklist = await loadStageFiveChecklist(selectedHandoff.id);
-    if (!selectedChecklist) {
-      const created = await withPrismaRetry(() =>
-        prisma.projectFileChecklist.create({
-          data: {
-            projectId,
-            handoffId: selectedHandoff.id,
-            sourceAttachmentId: selectedHandoff.sourceAttachment.id,
-          },
-          select: { id: true },
-        }),
-      );
-      selectedChecklist = { ...created, items: [] };
-    }
+    // Missing checklist is an empty read; creation belongs to a write operation.
   }
 
   const files: StageFiveFileRecord[] = handoffs.map((handoff) => {
@@ -490,7 +461,7 @@ export async function getStageFiveWorkspaceData(
   };
 }
 
-export async function deleteStageFiveSourceFile(
+async function deleteStageFiveSourceFileImplementation(
   user: PermissionUser,
   input: { projectId: string; handoffId: string },
 ) {
@@ -732,7 +703,7 @@ function valueIsFilled(value: StageFiveChecklistValue, attachmentIds: string[]) 
   );
 }
 
-export async function saveStageFiveChecklist(
+async function saveStageFiveChecklistImplementation(
   user: PermissionUser,
   input: {
     projectId: string;
@@ -799,6 +770,19 @@ export async function saveStageFiveChecklist(
   const savedItems = await withPrismaRetry(() =>
     prisma.$transaction(
       async (tx) => {
+        // Phase 1.5B stopped creating missing checklists during reads. Initialize
+        // only in this authorized write, after checking the handoff's project.
+        const source = await tx.projectStageFileHandoff.findFirst({
+          where: { id: input.handoffId, projectId: input.projectId,
+            targetWorkflowStageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
+            sourceAttachment: { projectId: input.projectId, status: AttachmentStatus.READY } },
+          select: { id: true, sourceAttachmentId: true },
+        });
+        if (!source) return null;
+        await tx.projectFileChecklist.upsert({
+          where: { handoffId: source.id }, update: {},
+          create: { projectId: input.projectId, handoffId: source.id, sourceAttachmentId: source.sourceAttachmentId },
+        });
         const [checklist] = await tx.$queryRaw<Array<{ id: string }>>(
           Prisma.sql`
             SELECT checklist."id"
@@ -948,7 +932,7 @@ function validateEmail(value: string) {
 
 type ChecklistEmailSender = typeof sendResendEmail;
 
-export async function requestStageFiveChecklistInformation(
+async function requestStageFiveChecklistInformationImplementation(
   user: PermissionUser,
   input: {
     clientRequestId: string;
@@ -1325,7 +1309,7 @@ export async function requestStageFiveChecklistInformation(
   return { request: sent, duplicate: false } as const;
 }
 
-export async function configureStageFiveChecklistRequestReminder(
+async function configureStageFiveChecklistRequestReminderImplementation(
   user: PermissionUser,
   input: {
     projectId: string;
@@ -1377,7 +1361,7 @@ export async function configureStageFiveChecklistRequestReminder(
   return { reminder } as const;
 }
 
-export async function resendStageFiveExternalChecklistRequest(
+async function resendStageFiveExternalChecklistRequestImplementation(
   user: PermissionUser,
   requestId: string,
   options: { sendEmail?: ChecklistEmailSender } = {},
@@ -1511,7 +1495,7 @@ export async function resendStageFiveExternalChecklistRequest(
   return { status: ProjectFileChecklistRequestStatus.SENT } as const;
 }
 
-export async function cancelStageFiveChecklistRequest(
+async function cancelStageFiveChecklistRequestImplementation(
   user: PermissionUser,
   requestId: string,
 ) {
@@ -1536,7 +1520,7 @@ export async function cancelStageFiveChecklistRequest(
   if (
     !project ||
     !canManageStageFive(user, project) ||
-    (!isGlobalProjectAdministrator(user) && request.requestedById !== user.id)
+    (!isDirectorReader(user) && request.requestedById !== user.id)
   ) {
     return { error: "You do not have permission to cancel this request." } as const;
   }
@@ -1645,7 +1629,7 @@ function canRespondToChecklistRequest(
   user: PermissionUser,
   request: { recipientUserId: string | null },
 ) {
-  return user.role === UserRole.SUPER_ADMIN || request.recipientUserId === user.id;
+  return request.recipientUserId === user.id;
 }
 
 function stageFiveOwnerUrl(input: {
@@ -1661,6 +1645,10 @@ export async function getStageFiveChecklistRequestData(
   user: PermissionUser,
   requestId: string,
 ): Promise<StageFiveChecklistRequestData | null> {
+  user = await refreshProjectReader(user);
+ const linked = await prisma.projectFileChecklistRequest.findUniqueOrThrow({where:{id:requestId},select:{projectId:true}});
+  await requireProjectResourceRead("structured", linked.projectId, "project.view", user);
+
   const request = await withPrismaRetry(() =>
     prisma.projectFileChecklistRequest.findFirst({
       where: {
@@ -1723,13 +1711,17 @@ export async function getStageFiveChecklistRequestSourceFileUrl(
   requestId: string,
   mode: "preview" | "download",
 ) {
+  user = await refreshProjectReader(user);
+ const linked = await prisma.projectFileChecklistRequest.findUniqueOrThrow({where:{id:requestId},select:{projectId:true}});
+  await requireProjectResourceRead("structured", linked.projectId, "project.view", user);
+
   const request = await withPrismaRetry(() =>
     prisma.projectFileChecklistRequest.findFirst({
       where: {
         id: requestId,
         channel: ProjectFileChecklistRequestChannel.IN_APP,
         project: accessibleStageFiveProjectWhere,
-        ...(user.role === UserRole.SUPER_ADMIN ? {} : { recipientUserId: user.id }),
+        recipientUserId: user.id,
       },
       select: {
         checklist: {
@@ -1784,7 +1776,7 @@ export async function getStageFiveChecklistRequestUploadContext(
   return { requestId: request.id, projectId: request.projectId };
 }
 
-export async function acceptStageFiveChecklistRequest(
+async function acceptStageFiveChecklistRequestImplementation(
   user: PermissionUser,
   requestId: string,
 ) {
@@ -1826,7 +1818,7 @@ export async function acceptStageFiveChecklistRequest(
   return { status: ProjectFileChecklistRequestWorkflowStatus.ACCEPTED } as const;
 }
 
-export async function declineStageFiveChecklistRequest(
+async function declineStageFiveChecklistRequestImplementation(
   user: PermissionUser,
   input: { requestId: string; reason: string },
 ) {
@@ -2013,7 +2005,7 @@ export function validateStageFiveChecklistResponse(
   return { value: normalizedValue } as const;
 }
 
-export async function submitStageFiveChecklistResponse(
+async function submitStageFiveChecklistResponseImplementation(
   user: PermissionUser,
   input: {
     requestId: string;
@@ -2176,4 +2168,105 @@ export async function submitStageFiveChecklistResponse(
     projectId: request.projectId,
     handoffId: request.checklist.handoffId,
   } as const;
+}
+
+export async function deleteStageFiveSourceFile(
+  user: PermissionUser,
+  input: { projectId: string; handoffId: string },
+) {
+  return runProjectMutation(user, "deleteStageFiveSourceFile", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    deleteStageFiveSourceFileImplementation(trustedUser, input), input);
+}
+
+export async function saveStageFiveChecklist(
+  user: PermissionUser,
+  input: {
+    projectId: string;
+    handoffId: string;
+    items: Array<{
+      fieldKey: ProjectFileChecklistField;
+      value: StageFiveChecklistValue;
+      attachmentIds: string[];
+    }>;
+  },
+) {
+  return runProjectMutation(user, "saveStageFiveChecklist", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    saveStageFiveChecklistImplementation(trustedUser, input), input);
+}
+
+export async function requestStageFiveChecklistInformation(
+  user: PermissionUser,
+  input: {
+    clientRequestId: string;
+    projectId: string;
+    handoffId: string;
+    fieldKey: ProjectFileChecklistField;
+    channel: ProjectFileChecklistRequestChannel;
+    recipientUserId?: string;
+    recipientName?: string;
+    recipientEmail?: string;
+    message?: string;
+    reminderIntervalHours?: number | null;
+  },
+  options: { sendEmail?: ChecklistEmailSender } = {},
+) {
+  return runProjectMutation(user, "requestStageFiveChecklistInformation", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    requestStageFiveChecklistInformationImplementation(trustedUser, input, options), input);
+}
+
+export async function configureStageFiveChecklistRequestReminder(
+  user: PermissionUser,
+  input: {
+    projectId: string;
+    requestId: string;
+    intervalHours: RequestReminderIntervalHours | null;
+  },
+) {
+  return runProjectMutation(user, "configureStageFiveChecklistRequestReminder", { kind: "structured", id: input.projectId }, async (trustedUser) =>
+    configureStageFiveChecklistRequestReminderImplementation(trustedUser, input), input);
+}
+
+export async function resendStageFiveExternalChecklistRequest(
+  user: PermissionUser,
+  requestId: string,
+  options: { sendEmail?: ChecklistEmailSender } = {},
+) {
+  return runProjectMutation(user, "resendStageFiveExternalChecklistRequest", { kind: "checklist-request", id: requestId }, async (trustedUser) =>
+    resendStageFiveExternalChecklistRequestImplementation(trustedUser, requestId, options), undefined);
+}
+
+export async function cancelStageFiveChecklistRequest(
+  user: PermissionUser,
+  requestId: string,
+) {
+  return runProjectMutation(user, "cancelStageFiveChecklistRequest", { kind: "checklist-request", id: requestId }, async (trustedUser) =>
+    cancelStageFiveChecklistRequestImplementation(trustedUser, requestId), undefined);
+}
+
+export async function acceptStageFiveChecklistRequest(
+  user: PermissionUser,
+  requestId: string,
+) {
+  return runProjectMutation(user, "acceptStageFiveChecklistRequest", { kind: "checklist-request", id: requestId }, async (trustedUser) =>
+    acceptStageFiveChecklistRequestImplementation(trustedUser, requestId), undefined);
+}
+
+export async function declineStageFiveChecklistRequest(
+  user: PermissionUser,
+  input: { requestId: string; reason: string },
+) {
+  return runProjectMutation(user, "declineStageFiveChecklistRequest", { kind: "checklist-request", id: input.requestId }, async (trustedUser) =>
+    declineStageFiveChecklistRequestImplementation(trustedUser, input), input);
+}
+
+export async function submitStageFiveChecklistResponse(
+  user: PermissionUser,
+  input: {
+    requestId: string;
+    value: StageFiveChecklistValue;
+    attachmentIds: string[];
+  },
+) {
+  return runProjectMutation(user, "submitStageFiveChecklistResponse", { kind: "checklist-request", id: input.requestId }, async (trustedUser) =>
+    submitStageFiveChecklistResponseImplementation(trustedUser, input), input);
 }

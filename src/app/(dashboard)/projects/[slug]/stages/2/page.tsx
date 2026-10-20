@@ -1,7 +1,8 @@
-import { Suspense } from "react";
+import { canReadProjectResource } from "@/lib/authorization/project-read";
+import { isDirectorReader } from "@/lib/authorization/project-read-rules";
 import { ProjectWorkflowStageKey } from "@prisma/client";
-import { redirect } from "next/navigation";
 import { FolderKanban } from "lucide-react";
+import { Suspense } from "react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { ProjectBackButton } from "@/components/projects/project-back-button";
@@ -11,22 +12,20 @@ import {
   StageLockedState,
 } from "@/components/projects/project-route-state";
 import {
-  StageTwoWorkspace,
-} from "@/components/projects/stage-two-workspace";
-import {
   StageRouteInitialShell,
   StageRouteShell,
   StageSectionLoadingShell,
 } from "@/components/projects/stage-route-shell";
+import {
+  StageTwoWorkspace,
+} from "@/components/projects/stage-two-workspace";
 import { requireUser } from "@/lib/auth";
+import { getProjectResearchPageData } from "@/lib/project-research";
 import {
   getProjectRouteAvailability,
   getProjectStageShellById,
 } from "@/lib/projects";
-import { getProjectResearchPageData } from "@/lib/project-research";
-import { isBusinessAdministratorRole } from "@/lib/user-role-compatibility";
 import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
-import { getProjectStageAccessRecordById } from "@/lib/project-stage-data";
 
 type StageTwoPageUser = Awaited<ReturnType<typeof requireUser>>;
 
@@ -54,6 +53,7 @@ async function StageTwoContent({
   userPromise: Promise<StageTwoPageUser>;
 }) {
   const user = await userPromise;
+  if (!await canReadProjectResource("structured", slug, "project.view", user)) return <ProjectAccessUnavailableState />;
   const project = await getProjectStageShellById(slug, user);
 
   if (!project) {
@@ -67,7 +67,7 @@ async function StageTwoContent({
   );
 
   if (
-    !canOpenImplementedWorkflowStage({
+    !isDirectorReader(user) && !canOpenImplementedWorkflowStage({
       stageKey: ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING,
       status: workflowStage?.status,
     })
@@ -135,10 +135,7 @@ export default async function StageTwoPage({
   const { slug } = await params;
   const user = await requireUser();
 
-  if (!isBusinessAdministratorRole(user.role)) {
-    const project = await getProjectStageAccessRecordById(slug);
-    if (project?.ownerId !== user.id && !project?.coOwners.some((record) => record.userId === user.id)) redirect(`/projects/${slug}`);
-  }
+
 
   const userPromise = Promise.resolve(user);
 

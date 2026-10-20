@@ -1,3 +1,5 @@
+import { runProjectMutation } from "@/lib/authorization/project-write";
+import { refreshProjectReader, requireProjectResourceRead } from "@/lib/authorization/project-read";
 import { randomUUID } from "node:crypto";
 
 import { AttachmentStatus } from "@prisma/client";
@@ -7,7 +9,7 @@ import {
   canUploadFlexibleMilestoneAttachments,
   hasFlexibleProjectAccess,
 } from "@/lib/flexible-projects";
-import { hasPermission, type PermissionUser } from "@/lib/permissions/resolver";
+import { hasProjectPermission, type PermissionUser } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import {
   createPresignedDownloadUrl,
@@ -65,7 +67,7 @@ async function getAttachmentMilestoneContext(projectId: string, milestoneId: str
   );
 }
 
-export async function requestFlexibleMilestoneAttachmentUpload(
+async function requestFlexibleMilestoneAttachmentUploadImplementation(
   user: PermissionUser,
   input: FlexibleAttachmentUploadInput,
 ): Promise<FlexibleAttachmentUploadResult> {
@@ -121,7 +123,7 @@ export async function requestFlexibleMilestoneAttachmentUpload(
   };
 }
 
-export async function completeFlexibleMilestoneAttachmentUpload(
+async function completeFlexibleMilestoneAttachmentUploadImplementation(
   user: PermissionUser,
   projectId: string,
   milestoneId: string,
@@ -212,9 +214,10 @@ export async function getFlexibleAttachmentUrl(
   attachmentId: string,
   mode: "preview" | "download",
 ) {
-  const attachment = await getReadyAttachment(user, attachmentId);
-  const permission = mode === "preview" ? "file.view" : "file.download";
-  if (!hasPermission(user, permission)) throw new Error(`You do not have permission to ${mode} this attachment.`);
+  user = await refreshProjectReader(user);
+  await requireProjectResourceRead('flexible-file', attachmentId, 'project.viewFile', user);
+
+  const attachment = await prisma.flexibleProjectAttachment.findUniqueOrThrow({where:{id:attachmentId}});
   const input = {
     bucket: attachment.bucket,
     storageKey: attachment.storageKey,
@@ -226,9 +229,10 @@ export async function getFlexibleAttachmentUrl(
     : createPresignedDownloadUrl(input);
 }
 
-export async function deleteFlexibleMilestoneAttachment(user: PermissionUser, attachmentId: string) {
+async function deleteFlexibleMilestoneAttachmentImplementation(user: PermissionUser, attachmentId: string) {
   const attachment = await getReadyAttachment(user, attachmentId);
-  if (!canManageFlexibleProject(user, attachment.project) || !hasPermission(user, "file.delete")) {
+  if (!canManageFlexibleProject(user, attachment.project) ||
+      !hasProjectPermission(user, attachment.project, "file.delete")) {
     throw new Error("You do not have permission to delete this attachment.");
   }
   await deleteObjectIfNeeded(attachment.storageKey, attachment.bucket).catch(() => undefined);
@@ -239,4 +243,28 @@ export async function deleteFlexibleMilestoneAttachment(user: PermissionUser, at
     }),
   );
   return attachment.projectId;
+}
+
+export async function requestFlexibleMilestoneAttachmentUpload(
+  user: PermissionUser,
+  input: FlexibleAttachmentUploadInput,
+): Promise<FlexibleAttachmentUploadResult> {
+  return runProjectMutation(user, "requestFlexibleMilestoneAttachmentUpload", { kind: "milestone", id: input.milestoneId }, async (trustedUser) =>
+    requestFlexibleMilestoneAttachmentUploadImplementation(trustedUser, input), input);
+}
+
+export async function completeFlexibleMilestoneAttachmentUpload(
+  user: PermissionUser,
+  projectId: string,
+  milestoneId: string,
+  attachmentId: string,
+  failed = false,
+) {
+  return runProjectMutation(user, "completeFlexibleMilestoneAttachmentUpload", { kind: "flexible-file", id: attachmentId }, async (trustedUser) =>
+    completeFlexibleMilestoneAttachmentUploadImplementation(trustedUser, projectId, milestoneId, attachmentId, failed), { projectId });
+}
+
+export async function deleteFlexibleMilestoneAttachment(user: PermissionUser, attachmentId: string) {
+  return runProjectMutation(user, "deleteFlexibleMilestoneAttachment", { kind: "flexible-file", id: attachmentId }, async (trustedUser) =>
+    deleteFlexibleMilestoneAttachmentImplementation(trustedUser, attachmentId), undefined);
 }

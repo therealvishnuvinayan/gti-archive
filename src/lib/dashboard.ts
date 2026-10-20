@@ -1,3 +1,7 @@
+import { runWorkspaceOperation } from "@/lib/authorization/workspace";
+import { getProjectContextIndex } from "@/lib/authorization/project-context";
+import { refreshProjectReader } from "@/lib/authorization/project-read";
+import { isDirectorReader, projectReadActor, structuredProjectReadWhere } from "@/lib/authorization/project-read-rules";
 import {
   FlexibleMilestoneStatus,
   FlexibleProjectStatus,
@@ -10,11 +14,10 @@ import {
   ProjectRevisionStatus,
   ProjectWorkflowStageKey,
   StageStatus,
-  UserRole,
   type Prisma,
   type ProjectExecutionType,
   type ProjectPriority,
-  type User,
+  type User
 } from "@prisma/client";
 
 import {
@@ -24,18 +27,17 @@ import {
   getFlexibleProjectAccessWhere,
 } from "@/lib/flexible-projects";
 import {
+  canUseProjects,
+  hasPermission,
+  hasProjectPermission,
+  type PermissionUser
+} from "@/lib/permissions/resolver";
+import { prisma, withPrismaRetry } from "@/lib/prisma";
+import {
   deriveProjectListWorkflowState,
   type ProjectListWorkflowState,
 } from "@/lib/project-list-workflow";
 import { PROJECT_WORKFLOW_STAGE_DEFINITIONS } from "@/lib/project-workflow";
-import {
-  canUseProjects,
-  hasPermission,
-  hasProjectPermission,
-  isGlobalProjectAdministrator,
-  type PermissionUser,
-} from "@/lib/permissions/resolver";
-import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { STAGE_FIVE_FIELD_LABELS } from "@/lib/stage-five-fields";
 
 type DashboardUser = Pick<User, "id" | "role"> &
@@ -240,20 +242,7 @@ const attentionRank: Record<DashboardAttentionItem["severity"], number> = {
 };
 
 function dashboardProjectWhere(user: DashboardUser): Prisma.ProjectWhereInput {
-  if (!hasPermission(user, "project.view")) {
-    return { id: "__dashboard_permission_denied__" };
-  }
-
-  if (isGlobalProjectAdministrator(user)) return {};
-
-  return {
-    OR: [
-      { ownerId: user.id },
-      { coOwners: { some: { userId: user.id } } },
-      { executors: { some: { userId: user.id } } },
-      { collaborators: { some: { userId: user.id } } },
-    ],
-  };
+  return structuredProjectReadWhere(projectReadActor(user), true);
 }
 
 function toDate(value: Date | string | number) {
@@ -432,7 +421,7 @@ function buildKpis(input: {
   ).length;
   const active = activeArtwork + activeFlexible;
   const completed = completedArtwork + completedFlexible;
-  const isGlobalAdministrator = isGlobalProjectAdministrator(user);
+  const isGlobalAdministrator = isDirectorReader(user);
   const isManager = summaries.some(
     ({ project }) =>
       project.ownerId === user.id ||
@@ -546,6 +535,10 @@ async function buildDashboardSnapshot(
   user: DashboardUser,
   now = new Date(),
 ) {
+  user = await refreshProjectReader(user);
+
+  const index = await getProjectContextIndex(user);
+  const limited = await getProjectContextIndex(user, true);
   const canViewRecentProjects = hasPermission(
     user,
     "dashboard.viewRecentProjects",
@@ -1323,13 +1316,13 @@ async function buildDashboardSnapshot(
     };
   });
 
-  const recentProjects = canViewRecentProjects
+  const fullRecentProjects = canViewRecentProjects
     ? summaries
         .filter(
           ({ project, workflow }) =>
             !project.archivedAt &&
             (workflow.businessStatus !== null ||
-              isGlobalProjectAdministrator(user)),
+              isDirectorReader(user)),
         )
         .slice(0, 6)
         .map(({ project, workflow }) => {
@@ -1342,7 +1335,7 @@ async function buildDashboardSnapshot(
             stageName: workflow.currentStageName,
             businessStatus: workflow.businessStatus,
             workflowDiagnosticLabel:
-              user.role === UserRole.SUPER_ADMIN
+              isDirectorReader(user)
                 ? workflow.workflowDiagnosticLabel
                 : null,
             ownerName,
@@ -1352,6 +1345,7 @@ async function buildDashboardSnapshot(
         })
     : [];
 
+  const recentProjects = [...fullRecentProjects, ...limited.artwork.map(project => ({...project, stageNumber:null, stageName:null, businessStatus:null, workflowDiagnosticLabel:null, ownerName:"", ownerInitials:"", updatedLabel:"Project context"}))].slice(0,6);
   return {
     snapshot: {
       kpis: buildKpis({
@@ -1362,7 +1356,7 @@ async function buildDashboardSnapshot(
         assignedConceptCount,
         openRequestCount,
         completedRequestCount,
-      }),
+      }).map((kpi, indexOfKpi) => indexOfKpi === 0 ? {...kpi, label: "Accessible Projects", value: index.total} : kpi),
       attention: attentionItems.slice(0, 6),
       attentionCount: attentionItems.length,
       deadlines,
@@ -1371,7 +1365,7 @@ async function buildDashboardSnapshot(
         .filter((item) => item.count > 0)
         .slice(0, 5),
       flexibleProjects: flexibleProjectCards,
-      flexibleProjectCount: flexibleProjects.length,
+      flexibleProjectCount: index.flexible.length,
       flexibleActiveCount: flexibleProjects.filter(
         (project) => project.status === FlexibleProjectStatus.ACTIVE,
       ).length,
@@ -1382,7 +1376,7 @@ async function buildDashboardSnapshot(
       recentProjects,
       canViewRecentProjects,
       scopeLabel:
-        isGlobalProjectAdministrator(user)
+        isDirectorReader(user)
           ? "Global portfolio"
           : "Projects connected to you",
     } satisfies DashboardSnapshot,
@@ -1394,7 +1388,7 @@ export async function getDashboardSnapshot(
   user: DashboardUser,
   now = new Date(),
 ): Promise<DashboardSnapshot> {
-  return (await buildDashboardSnapshot(user, now)).snapshot;
+  return runWorkspaceOperation(user, "workspace.dashboard", "root", async actor => (await buildDashboardSnapshot(actor, now)).snapshot);
 }
 
 export async function getNeedsAttentionItems(

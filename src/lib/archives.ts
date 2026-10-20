@@ -1,3 +1,10 @@
+import { withArchiveShare } from "@/lib/authorization/archive-share";
+import { runArchiveOperation } from "@/lib/authorization/archive";
+import { activeArchiveOperation } from "@/lib/authorization/archive-transaction";
+import { runtimeAuthorization } from "@/lib/authorization/runtime";
+import { canArchive, archiveScopeForUser, archiveCategoryWhere, archivedFileWhere, manualArchiveFileWhere } from "@/lib/authorization/archive-rules";
+import { refreshProjectReader, requireProjectResourceRead } from "@/lib/authorization/project-read";
+import { isDirectorReader } from "@/lib/authorization/project-read-rules";
 import {
   ActivityLogAction,
   ArchiveRecordStatus,
@@ -16,13 +23,32 @@ import {
 } from "@prisma/client";
 
 import {
+  formatArchiveMetadataDate,
+  getArchiveArtworkMetadataMissingGroups,
+  type ArchiveArtworkMetadataDraft,
+  type ArchiveArtworkMetadataMissingGroup,
+} from "@/lib/archive-artwork-metadata";
+import {
   getActiveArchiveCategoryOptions,
   type ArchiveCategoryOption,
   type ArchiveCategoryRecord,
   type ArchiveCategorySlug,
 } from "@/lib/archive-categories";
+import {
+  buildArchiveSearchPlan,
+  parseArchiveSearchQuery,
+  rankArchiveSearchCandidate,
+  type ArchiveSearchDateFilter,
+  type ArchiveSearchEntry,
+  type ArchiveSearchMatchKind,
+} from "@/lib/archive-search-query";
+import {
+  mapAssetTagAssignments,
+  validateActiveAssetTagIds,
+  type AssetTagAssignmentRecord,
+  type AssetTagRecord,
+} from "@/lib/asset-tags";
 import { getUserDisplayName } from "@/lib/auth";
-import { getFinalCompletionArchiveBlockers } from "@/lib/project-completion";
 import {
   assertCanUseArchives,
   canUseArchives,
@@ -33,23 +59,23 @@ import {
   isProjectOwner,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
+import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { projectCollaboratorPermissionSelect } from "@/lib/project-collaborator-permissions";
 import {
   canBypassCollaboratorVisibility,
   isTimestampHiddenByPauseWindows,
 } from "@/lib/project-collaborator-visibility";
+import { getFinalCompletionArchiveBlockers } from "@/lib/project-completion";
 import {
   assertProjectAccess,
 } from "@/lib/project-history";
-import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { defaultProjectStatusGroupSlugs } from "@/lib/project-statuses";
 import { sanitizeRichText } from "@/lib/rich-text";
 import {
   createSecureExternalToken,
   getApplicationUrl,
   hashSecureExternalToken,
 } from "@/lib/secure-external-token";
-import { defaultProjectStatusGroupSlugs } from "@/lib/project-statuses";
-import { isSuperAdminRole } from "@/lib/user-role-compatibility";
 import {
   createPresignedDownloadUrl,
   deleteObjectIfNeeded,
@@ -65,30 +91,10 @@ import {
   buildFileTypeNotAllowedPayload,
   isAllowedAssetFile,
 } from "@/lib/upload-validation";
-import {
-  mapAssetTagAssignments,
-  validateActiveAssetTagIds,
-  type AssetTagAssignmentRecord,
-  type AssetTagRecord,
-} from "@/lib/asset-tags";
-import {
-  formatArchiveMetadataDate,
-  getArchiveArtworkMetadataMissingGroups,
-  type ArchiveArtworkMetadataDraft,
-  type ArchiveArtworkMetadataMissingGroup,
-} from "@/lib/archive-artwork-metadata";
-import {
-  buildArchiveSearchPlan,
-  parseArchiveSearchQuery,
-  rankArchiveSearchCandidate,
-  type ArchiveSearchDateFilter,
-  type ArchiveSearchEntry,
-  type ArchiveSearchMatchKind,
-} from "@/lib/archive-search-query";
 
 export type {
-  ArchiveArtworkMetadataDraft,
-  ArchiveArtworkMetadataMissingGroup,
+ArchiveArtworkMetadataDraft,
+ArchiveArtworkMetadataMissingGroup
 } from "@/lib/archive-artwork-metadata";
 
 export type ArchiveAccessUser = Pick<
@@ -388,64 +394,16 @@ type ArchiveCategoryDisplay = {
   allowedUsers?: Array<{ userId: string }>;
 } | null;
 
-export function canUploadArchiveFiles(user: ArchiveAccessUser) {
-  return (
-    getArchiveAccessLevel(user) === "FULL" &&
-    canUseArchives(user) &&
-    hasPermission(user, "archive.uploadFile")
-  );
+export function canUploadArchiveFiles(user: ArchiveAccessUser) { return canArchive(user, "archive.upload"); }
+export function canManageArchiveCategoryAccess(user: ArchiveAccessUser) { return canArchive(user, "archive.manageAccess"); }
+export function canManageArchiveCategories(user: ArchiveAccessUser) { return canArchive(user, "archive.category.create"); }
+function hasPartialArchiveAccess(user: ArchiveAccessUser) { return getArchiveAccessLevel(user) === "PARTIAL"; }
+function hasExplicitArchiveAssetAccess(user: ArchiveAccessUser) { return canArchive(user, "archive.view"); }
+function getArchivedProjectFileAccessWhere(user: ArchiveAccessUser): Prisma.ArchivedProjectFileWhereInput {
+  return archivedFileWhere(archiveScopeForUser(user));
 }
-
-export function canManageArchiveCategoryAccess(user: ArchiveAccessUser) {
-  return canUseArchives(user);
-}
-
-function hasPartialArchiveAccess(user: ArchiveAccessUser) {
-  return getArchiveAccessLevel(user) === "PARTIAL";
-}
-
-function hasExplicitArchiveAssetAccess(user: ArchiveAccessUser) {
-  return getArchiveAccessLevel(user) !== "NONE";
-}
-
-function getArchivedProjectFileAccessWhere(
-  user: ArchiveAccessUser,
-): Prisma.ArchivedProjectFileWhereInput {
-  if (hasPartialArchiveAccess(user)) {
-    return {
-      userArchiveAccesses: {
-        some: {
-          userId: user.id,
-        },
-      },
-    };
-  }
-
-  return {
-    project: {
-      is: buildArchivedProjectFileProjectWhere(user),
-    },
-  };
-}
-
-function getManualArchiveFileAccessWhere(
-  user: ArchiveAccessUser,
-): Prisma.ManualArchiveFileWhereInput {
-  if (!hasExplicitArchiveAssetAccess(user)) {
-    return { id: "__no_access__" };
-  }
-
-  if (hasPartialArchiveAccess(user)) {
-    return {
-      userArchiveAccesses: {
-        some: {
-          userId: user.id,
-        },
-      },
-    };
-  }
-
-  return {};
+function getManualArchiveFileAccessWhere(user: ArchiveAccessUser): Prisma.ManualArchiveFileWhereInput {
+  return manualArchiveFileWhere(archiveScopeForUser(user));
 }
   
 function getArchiveCategoryAssetGrantWhere(
@@ -488,40 +446,8 @@ function getArchiveCategoryAssetGrantWhere(
   };
 }
 
-export function getAccessibleArchiveCategoryWhere(
-  user: ArchiveAccessUser,
-  options: { activeOnly?: boolean } = {},
-): Prisma.ArchiveCategoryWhereInput {
-  const activeWhere = options.activeOnly === false ? {} : { isActive: true };
-
-  if (canManageArchiveCategoryAccess(user)) {
-    return activeWhere;
-  }
-
-  if (!canUseArchives(user)) {
-    return {
-      ...activeWhere,
-      id: "__no_access__",
-    };
-  }
-
-  return {
-    ...activeWhere,
-    OR: [
-      {
-        allowedUsers: {
-          none: {},
-        },
-      },
-      {
-        allowedUsers: {
-          some: {
-            userId: user.id,
-          },
-        },
-      },
-    ],
-  };
+export function getAccessibleArchiveCategoryWhere(user: ArchiveAccessUser, options: { activeOnly?: boolean } = {}): Prisma.ArchiveCategoryWhereInput {
+  return archiveCategoryWhere(archiveScopeForUser(user), options.activeOnly !== false);
 }
 
 export function canAccessArchiveCategoryRecord(
@@ -539,12 +465,6 @@ export function canAccessArchiveCategoryRecord(
   const allowedUsers = category.allowedUsers ?? [];
 
   return allowedUsers.length === 0 || allowedUsers.some((access) => access.userId === user.id);
-}
-
-function buildArchivedProjectFileProjectWhere(
-  user: ArchiveAccessUser,
-): Prisma.ProjectWhereInput {
-  return canUseArchives(user) ? {} : { id: "__no_access__" };
 }
 
 function getArchivedProjectCategoryWhere(
@@ -566,7 +486,9 @@ export async function canAccessArchiveCategoryForUser(
   user: ArchiveAccessUser,
   category: { id: string; allowedUsers?: Array<{ userId: string }> },
 ) {
-  if (!canAccessArchiveCategoryRecord(user, category)) {
+  user = await refreshProjectReader(user);
+  const stored = await prisma.archiveCategory.findFirst({ where: { AND: [{ id: category.id }, getAccessibleArchiveCategoryWhere(user)] }, select: { id: true } });
+  if (!stored) {
     return false;
   }
 
@@ -631,10 +553,6 @@ export async function assertCanUploadToArchiveCategory(
   user: ArchiveAccessUser,
   archiveCategoryId: string,
 ) {
-  if (canManageArchiveCategoryAccess(user)) {
-    return assertCanAccessArchiveCategory(user, archiveCategoryId);
-  }
-
   if (!canUploadArchiveFiles(user)) {
     throw new Error("You do not have permission to upload to this archive category.");
   }
@@ -1297,8 +1215,8 @@ async function getStageSixArchivableAttachments(
     ];
 
     return attachments.flatMap(({ attachment, source }) => {
+      if (attachment.projectId !== projectId) throw new Error("Cross-project Archive source denied.");
       if (
-        attachment.projectId !== projectId ||
         attachment.status !== AttachmentStatus.READY ||
         seenAttachmentIds.has(attachment.id)
       ) {
@@ -1655,15 +1573,8 @@ function canSaveStageSixArchive(
     collaborators?: Array<{ userId: string }>;
   },
 ) {
-  const hasManagementRole =
-    isSuperAdminRole(user.role) ||
-    isProjectOwner(user, project) ||
-    isProjectCoOwner(user, project);
-
-  return (
-    hasManagementRole &&
-    hasProjectPermission(user, project, "project.completeArchive")
-  );
+  return canArchive(user, "archive.publishFromProject") &&
+    (isDirectorReader(user) || isProjectOwner(user, project) || isProjectCoOwner(user, project));
 }
 
 async function restoreSavedArchivePreparation(
@@ -2144,6 +2055,8 @@ function isArchiveTimestampVisibleToUser(
   },
   timestamp: Date,
 ) {
+if (isDirectorReader(user)) return true;
+
   if (canUseArchives(user)) return true;
 
   if (
@@ -2166,7 +2079,9 @@ function isArchiveTimestampVisibleToUser(
   return !isTimestampHiddenByPauseWindows(timestamp, collaborator.visibilityPauses);
 }
 
-export async function listArchiveCategorySummaries(user: ArchiveAccessUser) {
+async function listArchiveCategorySummariesNative(user: ArchiveAccessUser) {
+  user = await refreshProjectReader(user);
+
   if (!(await canAccessArchivesArea(user))) {
     throw new Error("You do not have permission to view archives.");
   }
@@ -2304,37 +2219,8 @@ function resolveArchiveSearchLimit(limit: number | null | undefined) {
   );
 }
 
-function buildProjectArchiveSearchBaseWhere(
-  user: ArchiveAccessUser,
-): Prisma.ProjectArchiveWhereInput {
-  const archiveAccessWhere: Prisma.ProjectArchiveWhereInput = hasPartialArchiveAccess(user)
-    ? {
-        files: {
-          some: {
-            userArchiveAccesses: {
-              some: {
-                userId: user.id,
-              },
-            },
-          },
-        },
-      }
-    : {
-        project: {
-          is: buildArchivedProjectFileProjectWhere(user),
-        },
-      };
-
-  return {
-    AND: [
-      archiveAccessWhere,
-      {
-        archiveCategory: {
-          is: getAccessibleArchiveCategoryWhere(user),
-        },
-      },
-    ],
-  };
+function buildProjectArchiveSearchBaseWhere(user: ArchiveAccessUser): Prisma.ProjectArchiveWhereInput {
+  return { archiveCategory: { is: getAccessibleArchiveCategoryWhere(user) }, files: { some: getArchivedProjectFileAccessWhere(user) } };
 }
 
 function buildManualArchiveSearchBaseWhere(
@@ -3242,7 +3128,7 @@ function mapProjectArchiveSearchResult(
       addArchiveSearchEntry(entries, { field: "Asset tag", value: assignment.tag.name, kind: "ASSET_TAG", matchedFileName });
       addArchiveSearchEntry(entries, { field: "Asset tag description", value: assignment.tag.description ?? "", kind: "ASSET_TAG", matchedFileName });
     }
-    entries.push(...buildArtworkMetadataSearchEntries(file.artworkMetadata, matchedFileName));
+    if (canArchive(user, "archive.editMetadata")) entries.push(...buildArtworkMetadataSearchEntries(file.artworkMetadata, matchedFileName));
   }
 
   const match = rankArchiveSearchCandidate(
@@ -3250,7 +3136,7 @@ function mapProjectArchiveSearchResult(
       archiveName: archive.projectName,
       projectName: archive.project.name,
       archiveCategory: archive.archiveCategory.name,
-      entries,
+      entries: canArchive(user, "archive.editMetadata") ? entries : entries.filter(entry => ["Archived filename", "Original filename", "MIME type", "File type", "File size", "Asset tag", "Archive category", "Archive category slug"].includes(entry.field)),
     },
     query,
   );
@@ -3280,6 +3166,7 @@ function mapProjectArchiveSearchResult(
 }
 
 function mapManualArchiveSearchResult(
+  user: ArchiveAccessUser,
   archive: ManualArchiveSearchRecord,
   query: string,
 ) {
@@ -3311,7 +3198,7 @@ function mapManualArchiveSearchResult(
       archiveName: archive.fileName,
       projectName: archive.projectName,
       archiveCategory: archive.archiveCategory.name,
-      entries,
+      entries: canArchive(user, "archive.editMetadata") ? entries : entries.filter(entry => ["Archived filename", "Original filename", "MIME type", "File type", "File size", "Asset tag", "Archive category", "Archive category slug"].includes(entry.field)),
     },
     query,
   );
@@ -3340,11 +3227,13 @@ function mapManualArchiveSearchResult(
   };
 }
 
-export async function searchArchivesForUser(input: {
+async function searchArchivesForUserNative(input: {
   user: ArchiveAccessUser;
   query: string;
   limit?: number | null;
 }): Promise<ArchiveSearchResponse> {
+input = { ...input, user: await refreshProjectReader(input.user) };
+
   const parsedQuery = parseArchiveSearchQuery(input.query);
   const resultLimit = resolveArchiveSearchLimit(input.limit);
 
@@ -3441,7 +3330,7 @@ export async function searchArchivesForUser(input: {
 
   for (const archive of manualArchives) {
     const rankedResult = mapManualArchiveSearchResult(
-      archive,
+      input.user, archive,
       parsedQuery.query,
     );
 
@@ -3488,7 +3377,7 @@ export function getDashboardArchiveUploadAccessState(user: ArchiveAccessUser) {
   };
 }
 
-export async function requestArchiveFileUpload(
+async function requestArchiveFileUploadNative(
   user: ArchiveAccessUser,
   input: RequestArchiveUploadInput,
 ) {
@@ -3617,7 +3506,7 @@ export async function requestArchiveFileUpload(
   };
 }
 
-export async function completeArchiveFileUpload(
+async function completeArchiveFileUploadNative(
   user: ArchiveAccessUser,
   archiveFileId: string,
   input: CompleteArchiveUploadInput = {},
@@ -3760,10 +3649,12 @@ export async function completeArchiveFileUpload(
   );
 }
 
-export async function listArchivedFilesByCategory(
+async function listArchivedFilesByCategoryNative(
   user: ArchiveAccessUser,
   category: ArchiveCategoryRecord,
 ) {
+  user = await refreshProjectReader(user);
+
   if (!(await canAccessArchivesArea(user))) {
     throw new Error("You do not have permission to view archives.");
   }
@@ -3959,7 +3850,7 @@ export async function listArchivedFilesByCategory(
         fileSize: file.fileSize,
         archivedAt: file.archivedAt,
         archivedBy: file.archivedBy,
-        artworkMetadata: file.artworkMetadata,
+        artworkMetadata: canArchive(user, "archive.editMetadata") ? file.artworkMetadata : null,
       }),
     })),
     ...manualArchiveFiles.map((file) => ({
@@ -3976,7 +3867,7 @@ export async function listArchivedFilesByCategory(
         fileSize: file.fileSize,
         uploadedAt: file.uploadedAt,
         uploadedBy: file.uploadedBy,
-        artworkMetadata: file.artworkMetadata,
+        artworkMetadata: canArchive(user, "archive.editMetadata") ? file.artworkMetadata : null,
       }),
     })),
   ]
@@ -3997,6 +3888,9 @@ export async function getProjectArchivePreparation(
     stageId: string;
   },
 ) {
+  user = await refreshProjectReader(user);
+  await requireProjectResourceRead('structured', input.projectId, 'project.view', user);
+
   const project = await getProjectArchiveBase(input.projectId);
 
   if (!project) {
@@ -4042,10 +3936,13 @@ export async function getProjectArchivePreparation(
   } satisfies ProjectArchivePreparation;
 }
 
-export async function getStageSixArchivePreparation(
+async function getStageSixArchivePreparationNative(
   user: ArchiveAccessUser,
   input: { projectId: string },
 ) {
+  user = await refreshProjectReader(user);
+  await requireProjectResourceRead('structured', input.projectId, 'project.view', user);
+
   const project = await getProjectArchiveBase(input.projectId);
 
   if (!project) {
@@ -4094,7 +3991,7 @@ export async function getStageSixArchivePreparation(
   } satisfies StageSixArchivePreparation;
 }
 
-export async function saveStageSixArchiveSnapshot(
+async function saveStageSixArchiveSnapshotNative(
   user: ArchiveAccessUser,
   input: {
     projectId: string;
@@ -4224,13 +4121,11 @@ export async function saveStageSixArchiveSnapshot(
               where: { id: latestProject.archive.id },
               data: {
                 finalStageId: stageSix.id,
-                archivedById: user.id,
                 projectName: latestProject.name,
                 projectCategory: latestProject.category ?? "Uncategorized",
                 projectTag: projectTagLabel === "—" ? null : projectTagLabel,
                 archiveCategoryId: archiveCategory.id,
                 status: ArchiveRecordStatus.SAVED,
-                archivedAt: savedAt,
               },
               select: { id: true },
             })
@@ -4249,23 +4144,19 @@ export async function saveStageSixArchiveSnapshot(
               select: { id: true },
             });
 
-        const incomingSourceIds = archiveFiles.map(
-          (file) => file.sourceAttachmentId,
-        );
-        await tx.archivedProjectFile.deleteMany({
-          where: {
-            archiveId: archive.id,
-            sourceAttachmentId: { notIn: incomingSourceIds },
-          },
-        });
-        await reserveExistingArchiveFileNames(
-          tx,
-          archive.id,
-          incomingSourceIds,
-          archiveFiles.map((file) => file.finalArchiveFileName),
-        );
-
+        const existingFiles = await tx.archivedProjectFile.findMany({ where: { archiveId: archive.id } });
+        if (existingFiles.some(existing => !archiveFiles.some(file => file.sourceAttachmentId === existing.sourceAttachmentId))) {
+          throw new Error("Publication cannot remove existing Archive history.");
+        }
         for (const file of archiveFiles) {
+          await runtimeAuthorization.runAuthorizedInTransaction(tx, { capability: "project.viewFile", targetId: `file:${file.sourceAttachmentId}` }, async () => undefined);
+          const existing = existingFiles.find(row => row.sourceAttachmentId === file.sourceAttachmentId);
+          if (existing) {
+            if (existing.projectId !== latestProject.id || existing.bucket !== file.bucket || existing.storageKey !== file.storageKey || existing.sourceRevisionId !== file.sourceRevisionId) {
+              throw new Error("Publication cannot replace an existing Archive source.");
+            }
+            continue; // Existing metadata and actual publisher attribution are immutable here.
+          }
           const archiveFile = await tx.archivedProjectFile.upsert({
             where: {
               archiveId_sourceAttachmentId: {
@@ -4360,6 +4251,9 @@ export async function getProjectCompletionSummary(
   projectId: string,
   selectedStageId?: string | null,
 ) {
+  user = await refreshProjectReader(user);
+  await requireProjectResourceRead('structured', projectId, 'project.view', user);
+
   await assertProjectAccess(user, projectId);
 
   const project = await getProjectArchiveBase(projectId);
@@ -4381,20 +4275,10 @@ export async function getProjectCompletionSummary(
   const canCompleteArchive = hasProjectPermission(user, project, "project.completeArchive");
   const isProjectOwner = hasProjectPermission(user, project, "project.completeArchive");
   const canViewArchivedFiles = hasProjectPermission(user, project, "archive.view");
-  const visibleArchivedFiles =
-    project.archive?.files.filter((file) =>
-      isArchiveTimestampVisibleToUser(
-        user,
-        {
-          ownerId: project.ownerId,
-          coOwners: project.coOwners,
-          collaborators: project.collaborators.filter(
-            (collaborator) => collaborator.userId === user.id,
-          ),
-        },
-        file.archivedAt,
-      ),
-    ) ?? [];
+  const authorizedIds = canViewArchivedFiles ? new Set((await prisma.archivedProjectFile.findMany({
+    where: { AND: [{ projectId: project.id }, getArchivedProjectFileAccessWhere(user)] }, select: { id: true },
+  })).map(row => row.id)) : new Set<string>();
+  const visibleArchivedFiles = project.archive?.files.filter(file => authorizedIds.has(file.id)) ?? [];
 
   const approvedFiles =
     finalStage && canCompleteArchive && !isCompleted
@@ -4437,8 +4321,8 @@ export async function getProjectCompletionSummary(
     isFinalCompletionPending,
     allStagesCompleted,
     incompleteStages,
-    archiveCategorySlug: project.archive?.archiveCategory?.slug ?? null,
-    archiveCategoryLabel: project.archive?.archiveCategory?.name ?? null,
+    archiveCategorySlug: visibleArchivedFiles.length ? project.archive?.archiveCategory?.slug ?? null : null,
+    archiveCategoryLabel: visibleArchivedFiles.length ? project.archive?.archiveCategory?.name ?? null : null,
     archivedFiles: canViewArchivedFiles
       ? (visibleArchivedFiles.map((file) =>
           mapArchivedFileRecord({
@@ -4460,7 +4344,7 @@ export async function getProjectCompletionSummary(
             fileSize: file.fileSize,
             archivedAt: file.archivedAt,
             archivedBy: file.archivedBy,
-            artworkMetadata: file.artworkMetadata,
+            artworkMetadata: canArchive(user, "archive.editMetadata") ? file.artworkMetadata : null,
           }),
         ) ?? [])
       : [],
@@ -4927,11 +4811,9 @@ type EditableArchiveFile =
   | { recordType: "MANUAL_ARCHIVE_FILE"; file: EditableManualArchiveFile };
 
 /**
- * Resolves an editable Archive item using the same item-level visibility rules as
- * the Archive listing. Editing intentionally adds no role, ownership, executor,
- * uploader, or collaborator requirement beyond the user's existing Archive access.
+ * Resolves metadata only inside the central archive.editMetadata operation.
  */
-export async function assertCanEditArchivedFileInformation(
+async function assertCanEditArchivedFileInformationNative(
   user: ArchiveAccessUser,
   archivedFileId: string,
 ): Promise<EditableArchiveFile> {
@@ -5056,7 +4938,7 @@ function getUpdatedArchiveArtworkMetadataData(input: {
   });
 }
 
-export async function updateArchivedFileInformation(
+async function updateArchivedFileInformationNative(
   user: ArchiveAccessUser,
   input: UpdateArchivedFileInformationInput,
 ): Promise<ArchivedFileInformationUpdate> {
@@ -5192,6 +5074,8 @@ async function getArchiveDownloadFileForUser(
   user: ArchiveAccessUser,
   archivedFileId: string,
 ): Promise<ArchiveDownloadFile> {
+  user = await refreshProjectReader(user);
+
   const archivedFile = await withPrismaRetry(() =>
     prisma.archivedProjectFile.findUnique({
       where: {
@@ -5277,7 +5161,7 @@ async function getArchiveDownloadFileForUser(
 }
 
 /** Removes only the archive entry; original project attachments remain intact. */
-export async function deleteArchivedFileForUser(
+async function deleteArchivedFileForUserNative(
   user: ArchiveAccessUser,
   archivedFileId: string,
 ) {
@@ -5291,9 +5175,12 @@ export async function deleteArchivedFileForUser(
     }
   });
 
+  const result = { archivedFileId: file.id, storageCleanupPending: false };
+  const context = activeArchiveOperation();
+  if (!context) throw new Error("Archive transaction required.");
+  context.afterCommit.push(async () => {
   // Archive entries can share their S3 object with the project's original file.
   const where = { bucket: file.bucket, storageKey: file.storageKey };
-  let storageCleanupPending = false;
   try {
     const references = await withPrismaRetry(() => Promise.all([
       prisma.projectAttachment.count({ where }),
@@ -5309,13 +5196,14 @@ export async function deleteArchivedFileForUser(
   } catch (error) {
     // The archive entry and its share links are already removed. Report a cleanup
     // failure separately so the UI does not misleadingly offer deletion again.
-    storageCleanupPending = true;
+    result.storageCleanupPending = true;
     console.error("Archive object cleanup failed", { archivedFileId, error });
   }
-  return { archivedFileId: file.id, storageCleanupPending };
+  });
+  return result;
 }
 
-export async function getArchivedFileDownloadUrlForUser(
+async function getArchivedFileDownloadUrlForUserNative(
   user: ArchiveAccessUser,
   archivedFileId: string,
 ) {
@@ -5330,7 +5218,7 @@ function isArchiveShareExpiryDays(value: number): value is ArchiveShareExpiryDay
   return archiveShareExpiryDayOptions.includes(value as ArchiveShareExpiryDays);
 }
 
-export async function createArchiveFileShareLink(
+async function createArchiveFileShareLinkNative(
   user: ArchiveAccessUser,
   input: { archivedFileId: string; expiryDays: number },
 ) {
@@ -5389,7 +5277,7 @@ export type SharedArchiveFilePageData =
       downloadPath: string;
     };
 
-export async function getSharedArchiveFilePageData(
+async function getSharedArchiveFilePageDataNative(
   token: string,
 ): Promise<SharedArchiveFilePageData> {
   const tokenHash = hashSecureExternalToken(token);
@@ -5485,7 +5373,7 @@ export async function getSharedArchiveFilePageData(
   };
 }
 
-export async function getSharedArchiveFilePreview(
+async function getSharedArchiveFilePreviewNative(
   token: string,
 ): Promise<SharedArchiveFilePreviewResult> {
   const tokenHash = hashSecureExternalToken(token);
@@ -5558,7 +5446,7 @@ export async function getSharedArchiveFilePreview(
   };
 }
 
-export async function getSharedArchiveFileDownload(
+async function getSharedArchiveFileDownloadNative(
   token: string,
 ): Promise<SharedArchiveFileDownloadResult> {
   const tokenHash = hashSecureExternalToken(token);
@@ -5658,10 +5546,12 @@ export async function getSharedArchiveFileDownload(
   };
 }
 
-export async function getArchivedFilePreviewUrlForUser(
+async function getArchivedFilePreviewUrlForUserNative(
   user: ArchiveAccessUser,
   archivedFileId: string,
 ) {
+  user = await refreshProjectReader(user);
+
   const archivedFile = await withPrismaRetry(() =>
     prisma.archivedProjectFile.findUnique({
       where: {
@@ -5736,4 +5626,68 @@ export async function getArchivedFilePreviewUrlForUser(
     fileName: archivedFile.finalArchiveFileName,
     mimeType: archivedFile.mimeType,
   });
+}
+
+export async function listArchiveCategorySummaries(user: ArchiveAccessUser) {
+  return runArchiveOperation(user, "archive.view", "root", fresh => listArchiveCategorySummariesNative(fresh));
+}
+
+export async function searchArchivesForUser(input: { user: ArchiveAccessUser; query: string; limit?: number | null }) {
+  return runArchiveOperation(input.user, "archive.view", "root", fresh => searchArchivesForUserNative({ ...input, user: fresh }));
+}
+
+export async function requestArchiveFileUpload(user: ArchiveAccessUser, input: RequestArchiveUploadInput) {
+  return runArchiveOperation(user, "archive.upload", `category:${input.archiveCategoryId}`, fresh => requestArchiveFileUploadNative(fresh, input));
+}
+
+export async function completeArchiveFileUpload(user: ArchiveAccessUser, archiveFileId: string, input: CompleteArchiveUploadInput = {}) {
+  return runArchiveOperation(user, "archive.upload", `upload:${archiveFileId}`, fresh => completeArchiveFileUploadNative(fresh, archiveFileId, input));
+}
+
+export async function listArchivedFilesByCategory(user: ArchiveAccessUser, category: ArchiveCategoryRecord) {
+  return runArchiveOperation(user, "archive.view", `category:${category.id}`, fresh => listArchivedFilesByCategoryNative(fresh, category));
+}
+
+export async function getStageSixArchivePreparation(user: ArchiveAccessUser, input: { projectId: string }) {
+  return runArchiveOperation(user, "archive.publishFromProject", `publish:${input.projectId}`, fresh => getStageSixArchivePreparationNative(fresh, input));
+}
+
+export async function saveStageSixArchiveSnapshot(user: ArchiveAccessUser, input: { projectId: string; archiveCategoryId?: string; files: SubmittedProjectArchiveFile[] }) {
+  return runArchiveOperation(user, "archive.publishFromProject", `publish:${input.projectId}`, fresh => saveStageSixArchiveSnapshotNative(fresh, input));
+}
+
+export async function assertCanEditArchivedFileInformation(user: ArchiveAccessUser, archivedFileId: string) {
+  return runArchiveOperation(user, "archive.editMetadata", `file:${archivedFileId}`, fresh => assertCanEditArchivedFileInformationNative(fresh, archivedFileId));
+}
+
+export async function updateArchivedFileInformation(user: ArchiveAccessUser, input: UpdateArchivedFileInformationInput) {
+  return runArchiveOperation(user, "archive.editMetadata", `file:${input.archivedFileId}`, fresh => updateArchivedFileInformationNative(fresh, input));
+}
+
+export async function deleteArchivedFileForUser(user: ArchiveAccessUser, archivedFileId: string) {
+  return runArchiveOperation(user, "archive.delete", `file:${archivedFileId}`, fresh => deleteArchivedFileForUserNative(fresh, archivedFileId));
+}
+
+export async function getArchivedFileDownloadUrlForUser(user: ArchiveAccessUser, archivedFileId: string) {
+  return runArchiveOperation(user, "archive.download", `file:${archivedFileId}`, fresh => getArchivedFileDownloadUrlForUserNative(fresh, archivedFileId));
+}
+
+export async function createArchiveFileShareLink(user: ArchiveAccessUser, input: { archivedFileId: string; expiryDays: number }) {
+  return runArchiveOperation(user, "archive.shareExternal", `file:${input.archivedFileId}`, fresh => createArchiveFileShareLinkNative(fresh, input));
+}
+
+export async function getArchivedFilePreviewUrlForUser(user: ArchiveAccessUser, archivedFileId: string) {
+  return runArchiveOperation(user, "archive.download", `file:${archivedFileId}`, fresh => getArchivedFilePreviewUrlForUserNative(fresh, archivedFileId));
+}
+
+export async function getSharedArchiveFilePageData(token: string): Promise<SharedArchiveFilePageData> {
+  return withArchiveShare(token, () => getSharedArchiveFilePageDataNative(token));
+}
+
+export async function getSharedArchiveFilePreview(token: string): Promise<SharedArchiveFilePreviewResult> {
+  return withArchiveShare(token, () => getSharedArchiveFilePreviewNative(token));
+}
+
+export async function getSharedArchiveFileDownload(token: string): Promise<SharedArchiveFileDownloadResult> {
+  return withArchiveShare(token, () => getSharedArchiveFileDownloadNative(token));
 }

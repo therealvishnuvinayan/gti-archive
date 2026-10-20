@@ -21,13 +21,15 @@ export function RevokeStageSkipButton({ projectId, stageKey, eligibility }: {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string>();
+  const [reason, setReason] = useState("");
   const stageNumber = stageKey === "CONCEPT_CREATION" ? 3 : 4;
   if (!eligibility.visible) return null;
 
   function revoke() {
+    if (!reason.trim()) { setError("Enter a reason for this Director intervention."); return; }
     startTransition(async () => {
       try {
-        const result = await revokeSkippedConceptStageAction({ projectId, stageKey });
+        const result = await revokeSkippedConceptStageAction({ projectId, stageKey, reason });
         if ("error" in result) {
           setError(result.error);
           return;
@@ -66,7 +68,8 @@ export function RevokeStageSkipButton({ projectId, stageKey, eligibility }: {
         error={error}
         onConfirm={revoke}
         onClose={() => { if (!pending) setOpen(false); }}
-      />
+        confirmDisabled={!reason.trim()}
+      ><label className="mb-5 block text-sm font-semibold">Intervention reason<textarea value={reason} onChange={event => setReason(event.target.value)} maxLength={2000} disabled={pending} className="mt-2 w-full rounded-xl border border-line p-3" required /></label></ConfirmationDialog>
     </div>
   );
 }

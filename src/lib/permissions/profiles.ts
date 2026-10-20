@@ -1,17 +1,13 @@
+import { denyLegacyAdministration } from "@/lib/authorization/deferred-administration";
 import { Prisma, type User } from "@prisma/client";
-import { revalidateTag, unstable_cache } from "next/cache";
+import { unstable_cache } from "next/cache";
 import { cache } from "react";
 
 import { prisma, withPrismaRetry } from "../prisma";
 import {
   allPermissionKeys,
-  criticalSuperAdminPermissionKeys,
   defaultRolePermissions,
-  editablePermissionRoleValues,
   permissionDefinitionMap,
-  permissionDefinitions,
-  permissionProfileTypeValues,
-  permissionRoleValues,
   type PermissionDefinitionRecord,
   type PermissionKey,
   type PermissionProfileType,
@@ -59,10 +55,6 @@ export function getPermissionProfileCacheTag(
 
 function isPermissionKey(value: string): value is PermissionKey {
   return allPermissionKeys.includes(value as PermissionKey);
-}
-
-function isPermissionProfileType(value: string): value is PermissionProfileType {
-  return permissionProfileTypeValues.includes(value as PermissionProfileType);
 }
 
 function buildPermissionState(enabledKeys: Iterable<PermissionKey>) {
@@ -139,33 +131,6 @@ function isPermissionStorageUnavailable(error: unknown) {
   );
 }
 
-function getProfileDefaultRowData(
-  profileType: PermissionProfileType,
-  profileKey: string,
-) {
-  const defaultState = getDefaultProfileState(profileType, profileKey);
-
-  return allPermissionKeys.map((permissionKey) => ({
-    permissionKey,
-    enabled: defaultState[permissionKey],
-  }));
-}
-
-async function ensurePermissionDefinitionsExist() {
-  await withPrismaRetry(() =>
-    prisma.permissionDefinition.createMany({
-      data: permissionDefinitions.map((definition) => ({
-        key: definition.key,
-        label: definition.label,
-        description: definition.description,
-        group: definition.group,
-        isSystem: definition.isSystem,
-      })),
-      skipDuplicates: true,
-    }),
-  );
-}
-
 const getCachedRoleProfile = cache(async (role: PermissionRole) => {
   const getCachedRows = unstable_cache(
     async () =>
@@ -204,186 +169,6 @@ const getCachedRoleProfile = cache(async (role: PermissionRole) => {
   }
 });
 
-export async function getPermissionProfile(
-  profileType: PermissionProfileType,
-  profileKey: string,
-) {
-  if (!isPermissionProfileType(profileType)) {
-    throw new Error("Invalid permission profile type.");
-  }
-
-  if (!permissionRoleValues.includes(profileKey as PermissionRole)) {
-    throw new Error("Invalid role profile.");
-  }
-
-  return getCachedRoleProfile(profileKey as PermissionRole);
-}
-
-export async function syncPermissionDefinitions(): Promise<PermissionSyncResult> {
-  try {
-    return withPrismaRetry(async () =>
-      prisma.$transaction(
-        async (tx) => {
-          for (const definition of permissionDefinitions) {
-            await tx.permissionDefinition.upsert({
-              where: {
-                key: definition.key,
-              },
-              create: {
-                key: definition.key,
-                label: definition.label,
-                description: definition.description,
-                group: definition.group,
-                isSystem: definition.isSystem,
-              },
-              update: {
-                label: definition.label,
-                description: definition.description,
-                group: definition.group,
-                isSystem: definition.isSystem,
-              },
-            });
-          }
-
-          const rolePermissionRows = editablePermissionRoleValues.flatMap((role) =>
-            getProfileDefaultRowData("role", role).map((row) => ({
-              role,
-              permissionKey: row.permissionKey,
-              enabled: row.enabled,
-            })),
-          );
-          const rolePermissionsResult = await tx.rolePermission.createMany({
-            data: rolePermissionRows,
-            skipDuplicates: true,
-          });
-
-          return {
-            definitionsSynced: permissionDefinitions.length,
-            rolePermissionsSeeded: rolePermissionsResult.count,
-          };
-        },
-        {
-          maxWait: 10_000,
-          timeout: 20_000,
-        },
-      ),
-    );
-  } catch (error) {
-    if (isPermissionStorageUnavailable(error)) {
-      throw new Error(
-        "Permission profile tables are not available yet. Run `pnpm prisma migrate deploy` first.",
-      );
-    }
-
-    throw error;
-  }
-}
-
-export async function savePermissionProfile(input: {
-  profileType: PermissionProfileType;
-  profileKey: string;
-  state: Record<string, boolean>;
-}) {
-  const { profileType, profileKey } = input;
-  const profile = await getPermissionProfile(profileType, profileKey);
-
-  await ensurePermissionDefinitionsExist();
-
-  const unknownKeys = Object.keys(input.state).filter((key) => !isPermissionKey(key));
-
-  if (unknownKeys.length > 0) {
-    throw new Error("Unknown permission keys were provided.");
-  }
-
-  const nextState = { ...profile.state } as PermissionProfileState;
-
-  for (const permissionKey of allPermissionKeys) {
-    const nextValue = input.state[permissionKey];
-
-    if (typeof nextValue === "boolean") {
-      nextState[permissionKey] = nextValue;
-    }
-  }
-
-  if (profileType === "role" && profileKey === "SUPER_ADMIN") {
-    const missingCriticalPermissions = criticalSuperAdminPermissionKeys.filter(
-      (permissionKey) => !nextState[permissionKey],
-    );
-
-    if (missingCriticalPermissions.length > 0) {
-      throw new Error(
-        "SUPER_ADMIN must retain critical user and permission management access.",
-      );
-    }
-  }
-
-  if (profileType === "role" && profileKey === "USER") {
-    nextState["project.create"] = false;
-  }
-
-  const rows = allPermissionKeys.map((permissionKey) => ({
-    permissionKey,
-    enabled: nextState[permissionKey],
-  }));
-  const enabledPermissionKeys = rows
-    .filter((row) => row.enabled)
-    .map((row) => row.permissionKey);
-  const disabledPermissionKeys = rows
-    .filter((row) => !row.enabled)
-    .map((row) => row.permissionKey);
-
-  await withPrismaRetry(() =>
-    prisma.$transaction(async (tx) => {
-      const role = profileKey as PermissionRole;
-
-      await tx.rolePermission.createMany({
-        data: rows.map((row) => ({
-          role,
-          permissionKey: row.permissionKey,
-          enabled: row.enabled,
-        })),
-        skipDuplicates: true,
-      });
-
-      if (enabledPermissionKeys.length > 0) {
-        await tx.rolePermission.updateMany({
-          where: { role, permissionKey: { in: enabledPermissionKeys } },
-          data: { enabled: true },
-        });
-      }
-
-      if (disabledPermissionKeys.length > 0) {
-        await tx.rolePermission.updateMany({
-          where: { role, permissionKey: { in: disabledPermissionKeys } },
-          data: { enabled: false },
-        });
-      }
-    }),
-  );
-  revalidateTag(PERMISSION_PROFILE_CACHE_TAG, "max");
-  revalidateTag(getPermissionProfileCacheTag(profileType, profileKey), "max");
-
-  return {
-    profileType,
-    profileKey,
-    state: nextState,
-    source: "db" as const,
-  };
-}
-
-export async function resetPermissionProfileToDefaults(
-  profileType: PermissionProfileType,
-  profileKey: string,
-) {
-  const defaultState = getDefaultProfileState(profileType, profileKey);
-
-  return savePermissionProfile({
-    profileType,
-    profileKey,
-    state: defaultState,
-  });
-}
-
 export async function getPermissionProfileSnapshotForUser(
   user: PermissionProfileUser,
 ): Promise<PermissionProfileSnapshot> {
@@ -398,8 +183,8 @@ export async function getPermissionProfileSnapshotForUser(
   return {
     effectivePermissions,
     rolePermissions,
-    archiveAccessGranted: true,
-    archiveAccessLevel: "FULL",
+    archiveAccessGranted: false,
+    archiveAccessLevel: "NONE",
   };
 }
 
@@ -407,4 +192,16 @@ export function getPermissionDefinition(
   permissionKey: PermissionKey,
 ): PermissionDefinitionRecord {
   return permissionDefinitionMap[permissionKey];
+}
+
+// Retained API contracts fail closed until the audited V2 editor is integrated.
+export async function getPermissionProfile(profileType: PermissionProfileType, profileKey: string): Promise<PermissionProfile> {
+  void profileType; void profileKey; return denyLegacyAdministration();
+}
+export async function syncPermissionDefinitions(): Promise<PermissionSyncResult> { return denyLegacyAdministration(); }
+export async function savePermissionProfile(input: { profileType: PermissionProfileType; profileKey: string; state: Record<string, boolean> }): Promise<PermissionProfile> {
+  void input; return denyLegacyAdministration();
+}
+export async function resetPermissionProfileToDefaults(profileType: PermissionProfileType, profileKey: string): Promise<PermissionProfile> {
+  void profileType; void profileKey; return denyLegacyAdministration();
 }
