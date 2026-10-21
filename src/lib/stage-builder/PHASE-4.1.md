@@ -1,5 +1,7 @@
 # FLUX V2 — Phase 4.1: reusable stage definitions and Custom Stage Builder
 
+Verification follow-up (2026-10-22): [verification closure and read-only activation preflight](./PHASE-4.1-PREFLIGHT.md) repairs the four legacy UI runners listed below, reruns the required regressions/browser acceptance, and independently verifies Neon. It supersedes the outstanding verification-debt status in this implementation-time report. Migration and feature activation still require separate approval.
+
 Implemented on 2026-10-21. The working draft editor is available at `/projects/workflow-drafts` when `FLUX_STAGE_BUILDER_DRAFTS=1` is deliberately set in an isolated or later approved environment. **The actual local flag remains unset/disabled.** No Neon migration, project activation, publication, account change, S3 operation, push or deployment was performed. Phase 4.2 has not begun.
 
 The Phase 3.4 activation/preflight reports were reviewed. They document `flux-v2-dev / develop / neondb`, PostgreSQL 18.6, 112 successful migrations and 122 public tables. This implementation did not reconnect to Neon; that remote state is the previously verified baseline, not a new live verification. All database mutation and browser testing below used fresh private PostgreSQL 14.19 clusters, synthetic accounts and fake storage/consumers. The 112 original migration files, `.env`, `.env.local`, `.env.example`, and both pre-existing staged Phase 3.4 reports retain their exact starting SHA-256 hashes. All seven existing local feature flags remain enabled.

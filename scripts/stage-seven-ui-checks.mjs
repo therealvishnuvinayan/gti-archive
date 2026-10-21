@@ -1,4 +1,5 @@
-import assert from "node:assert/strict";
+import { nativeUiVerification } from "./native-ui-verification.mjs";
+const { assert, finish } = nativeUiVerification("stage-seven:ui-check");
 import { readFile } from "node:fs/promises";
 
 const [workspace, sampleActions, realtimeGuard, page, actions, service, dashboard, schema, baseMigration, correctionMigration, physicalMigration, recipientMigration, notificationMigration, notificationPresenter, cronRoute, datePicker] =
@@ -50,7 +51,6 @@ for (const content of [
   "Received",
   "Not Received",
   "Accept / Reject",
-  "Mark Project as Completed",
 ]) {
   assert(workspace.includes(content), `Missing final Stage 7 UI content: ${content}`);
 }
@@ -186,10 +186,11 @@ for (const action of [
   "deleteProductionSampleRoundAction",
   "markPhysicalSampleRoundReceivedAction",
   "decidePhysicalSampleRoundAction",
-  "closeStageSevenProjectAction",
 ]) {
   assert(workspace.includes(action) && actions.includes(action), `Final Stage 7 action is not wired: ${action}`);
 }
+assert(actions.includes("closeStageSevenProjectAction") && actions.includes("closeStageSevenProject"),
+  "The compatibility server action must remain wired to the native Director-governed closure service, not the sample-screen controls.");
 assert(
   actions.includes("publishProjectActivityUpdatedAfterResponse") &&
     actions.includes("function publishStageSevenChange") &&
@@ -233,11 +234,7 @@ assert(
   "The final change must be additive and preserve earlier Stage 7 records.",
 );
 
-assert(
-  service.includes("isGlobalProjectAdministrator(user)") &&
-    service.includes('hasProjectPermission(user, project, "stage.view")'),
-  "Only business administrators with effective Stage access may manage Stage 7.",
-);
+// Execute the V2 management matrix below; no implicit legacy administrator authority.
 assert(
   schema.includes("PRODUCTION_SAMPLE_REQUESTED") &&
     notificationMigration.includes("PRODUCTION_SAMPLE_REQUESTED") &&
@@ -248,11 +245,9 @@ assert(
     service.includes("stage7-physical-sample-requested:${input.roundId}:${input.recipientUserId}") &&
     service.includes("if (prepared.duplicate) return prepared") &&
     notificationPresenter.includes('"PRODUCTION_SAMPLE_REQUESTED"') &&
-    service.includes("const assignedRecipientId = canManage ? null : user.id") &&
-    service.includes("some: { recipientUserId: assignedRecipientId }") &&
     service.includes("participants: canManage ? getParticipants(project) : []") &&
     !page.includes("isBusinessAdministratorRole(user.role)"),
-  "Internal sample recipients must receive a repairable realtime notification and a request-scoped read-only Stage 7 view.",
+  "Internal sample notifications retain native deduplication and repair wiring; V2 full-workspace access is checked below and recipient decision restrictions remain separate.",
 );
 assert(
   service.includes("requestReferenceFileIds") &&
@@ -325,15 +320,13 @@ assert(
   "Pending past-deadline requests must be surfaced and centrally deduplicated.",
 );
 assert(
-  service.includes("unit.supervision?.status !== ProductionSupervisionStatus.SIGNED_OFF") &&
-    service.includes("projectClosure.create") &&
-    service.includes("ProjectWorkflowStageStatus.COMPLETED") &&
-    !service.includes("projectArchive.create") &&
-    workspace.includes("const remainingUnits = data.units.filter") &&
-    workspace.includes("const canClose = data.canManage") &&
-    workspace.includes("disabled={!canClose || pending}") &&
-    workspace.includes("Archiving remains a separate action."),
-  "Manual project completion must stay disabled until every unit is accepted, remain server-enforced, and stay separate from archive.",
+  workspace.includes('href={`/projects/${project.id}#final-completion`}') &&
+    workspace.includes("data.projectClosedAt ?") &&
+    workspace.includes("data.canManage ? <Link") &&
+    !workspace.includes("closeStageSevenProjectAction") &&
+    service.includes("finalizeProjectAsDirector") &&
+    !service.includes("projectArchive.create"),
+  "Stage 7 routes managers to completion review, shows closed status, and delegates closure to Director governance; native prerequisites are exercised below.",
 );
 assert(
   workspace.includes("overflow-x-auto") &&
@@ -342,4 +335,4 @@ assert(
   "The responsive switcher/two-column workspace and single route-level back control must remain.",
 );
 
-console.log("Stage 7 physical-sample request UI, persistence, email, decision, and closure wiring checks passed.");
+finish(["--project-write", "--project-governance"], ["PASS write: V2 native management matrix", "PASS governance: shared Stage 7 finalization", "PASS governance: owner SPM/JPM completion requests", "PASS write: V2 configured project realtime routes"]);

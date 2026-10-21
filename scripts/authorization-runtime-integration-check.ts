@@ -305,6 +305,33 @@ async function checkFrameworkAuthentication() {
     assert.equal(auth.getExpiredSessionCookie().value, "");
     await assert.rejects(auth.requireUser("/projects"), /REDIRECT:.*sign-in/);
 
+    // Invoke the actual server action, real password verification and session
+    // resolver. Only the framework redirect/cookie transport is substituted.
+    const signIn = localRequire(join(compiledRoot, "src/app/sign-in/actions.js")) as typeof import("../src/app/sign-in/actions");
+    for (const [id, destination] of [
+      ["director", "/"], ["spm", "/"], ["jpm", "/"],
+      ["legacy-admin", "/tasks"], // Now a V2 Designer, despite its legacy ADMIN field.
+      ["digital", "/tasks"], ["tech", "/settings"], ["legacy-root", "/no-access"],
+    ]) {
+      for (const returnTo of ["", "https://example.invalid/escape", "//example.invalid/escape", "/\\escape", "/bad\npath"]) {
+        const form = new FormData();
+        form.set("email", `${id}@example.invalid`); form.set("password", password); form.set("returnTo", returnTo);
+        await assert.rejects(signIn.signInAction({}, form), (error: unknown) => error instanceof Error && error.message === `REDIRECT:${destination}`);
+        await auth.signOutCurrentSession();
+      }
+    }
+    const requestPath = "/requests/checklist/fixture-request?field=OUTPUT_NAME";
+    await assert.rejects(auth.requireUser(requestPath), (error: unknown) => error instanceof Error && error.message === `REDIRECT:/sign-in?returnTo=${encodeURIComponent(requestPath)}`);
+    const form = new FormData();
+    form.set("email", "spm@example.invalid"); form.set("password", password); form.set("returnTo", requestPath);
+    await assert.rejects(signIn.signInAction({}, form), (error: unknown) => error instanceof Error && error.message === `REDIRECT:${requestPath}`);
+    assert.equal((await auth.getCurrentUser())?.id, "spm");
+    await auth.signOutCurrentSession();
+    form.set("password", "incorrect");
+    assert.ok((await signIn.signInAction({}, form)).error);
+    assert.equal(await auth.getCurrentActor(), null);
+    console.log("PASS runtime: V2 sign-in action navigation; role landings, safe request return, hostile return denial and failed-password no-session.");
+
     await auth.signInUser({ email: "designer@example.invalid", password, rememberMe: true });
     const remembered = jar.get(auth.SESSION_COOKIE_NAME)!;
     const rememberedExpiry = (cookieWrites.at(-1)!.options.expires as Date).getTime() - Date.now();

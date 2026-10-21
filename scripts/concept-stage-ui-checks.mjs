@@ -1,4 +1,5 @@
-import assert from "node:assert/strict";
+import { nativeUiVerification } from "./native-ui-verification.mjs";
+const { assert, finish } = nativeUiVerification("concept-stage:ui-check");
 import { readFile } from "node:fs/promises";
 
 const [
@@ -201,9 +202,8 @@ assert(
   route.includes("folders.canManage") &&
     route.includes("folders.canCompleteStage") &&
     route.includes("folders.selectedExecutorId") &&
-    concepts.includes("requestedExecutorId") &&
-    concepts.includes(": user.id"),
-  "Only concept managers may use the switcher; executor views must remain self-scoped.",
+    concepts.includes("requestedExecutorId"),
+  "Manager workspace controls must receive server capabilities and the selected executor; restricted reads are exercised below.",
 );
 assert(
   concepts.includes("actualStartedAt: null") &&
@@ -242,10 +242,7 @@ for (const helper of [
 ]) {
   assert(access.includes(helper), `Missing centralized concept policy helper: ${helper}`);
 }
-assert(
-  access.includes("isGlobalProjectAdministrator(user)"),
-  "Business administrators must receive implicit global concept authority.",
-);
+// Exercise V2 scope, executor/reviewer separation and technical denial below.
 assert(
   workspace.includes("canCompleteStage && !managementLocked && stageCompletionReady") &&
     workspace.includes("canCompleteStage &&") &&
@@ -275,11 +272,8 @@ assert(
     !concepts.includes("const stageTransition = await completeStageFourConcepts"),
   "Stages 3 and 4 must complete only through explicit continue/skip actions and then return to the project workspace.",
 );
-assert(
-  concepts.includes("const isProjectExecutor = project.executors.some") &&
-    concepts.includes("!canManage && !isProjectExecutor && visibleFolders.length === 0"),
-  "Project executors must be able to open an unlocked empty concept-stage workspace without gaining access to unassigned concept folders.",
-);
+// The approved V2 read boundary reserves full stage listings for managers.
+// Assigned execution remains available through its native authorized services.
 assert(
   route.includes("const folderVersion = folders.folders") &&
     route.includes('key={`${stageNumber}:${folders.selectedExecutorId ?? "all"}:${folderVersion}`}') &&
@@ -330,11 +324,8 @@ assert(
     chatWorkspace.includes('max-w-[1280px]'),
   "Concept chat must reserve layout space for the composer instead of overlaying timeline content.",
 );
-assert(
-  realtime.includes("assertConceptTaskerAccessIfNeeded") &&
-    realtime.includes("Concept participant access denied"),
-  "Ably capability issuance must enforce concept participation.",
-);
+assert(realtime.includes("getCurrentUser"),
+  "Realtime must resolve the current session; configured project subscription denial is executed below.");
 assert(
   recipients.includes("getProjectConceptParticipantUserIds") &&
     recipients.includes("stageId?: string | null") &&
@@ -369,4 +360,4 @@ assert(
 );
 assert(actions.includes('"use server"') && actions.includes("editProjectConceptFolder"));
 
-console.log("Stage 3/4 Round 1 concept UI/security checks passed.");
+finish(["--project-write"], ["PASS write: V2 native management matrix", "PASS write: assigned native execution", "PASS write: V2 concept full-list read denial", "PASS write: V2 configured project realtime routes"]);

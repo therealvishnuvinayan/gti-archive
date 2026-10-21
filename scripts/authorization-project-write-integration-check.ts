@@ -66,12 +66,19 @@ async function main(){
  await seed();
  const moduleApi=localRequire("node:module") as {_load:(name:string,...args:unknown[])=>unknown};
  const original=moduleApi._load, compiledRoot=dirname(dirname(__filename));
+ let realtimeTokenAttempts = 0;
  moduleApi._load=function(name,...args){
   if(name==="@prisma/client")return localRequire(join(root,"client"));
   // This authorization suite uses plain synthetic strings; rich-text rendering
   // is not under test (the local sanitizer transitive dependency is unavailable).
   if(name==="@/lib/rich-text")return {sanitizeRichText:(value:string|null)=>value??"",richTextToPlainText:(value:string|null)=>value??"",isRichTextEmpty:(value:string|null)=>!value};
-  if(name==="@/lib/realtime/server")return new Proxy({}, {get:()=>async()=>false});
+  if(name==="@/lib/realtime/server")return new Proxy({}, {get:(_target,key)=> {
+    if (key === "getRealtimeProvider") return () => "ably";
+    if (key === "isStageChatRealtimeConfigured") return () => true;
+    if (key === "getProjectAccessChannelName" || key === "getStageChatChannelName") return () => "fixture-channel";
+    if (String(key).startsWith("create") && String(key).includes("Token")) return () => { realtimeTokenAttempts += 1; throw new Error("EXTERNAL_TOKEN_ISSUANCE_FORBIDDEN"); };
+    return async () => false;
+  }});
   if(name==="next/headers")return{cookies:async()=>({get:()=>token?{value:token}:undefined})};
   if(name==="next/cache")return{unstable_cache:(fn:unknown)=>fn,revalidatePath:()=>{},revalidateTag:()=>{}};
   if(name==="next/navigation")return{redirect:(url:string)=>{throw new Error(`REDIRECT:${url}`);}};
@@ -105,6 +112,62 @@ async function main(){
    try { const result=await fn(); assert.ok(result && typeof result==="object" && "error" in result,`Expected denial, got ${JSON.stringify(result)}`); }
    catch(error){ if(error instanceof assert.AssertionError)throw error; }
   }
+  const conceptAccess = localRequire(join(compiledRoot,"src/lib/project-concept-access.js")) as typeof import("../src/lib/project-concept-access");
+  // Real authenticated objects carry a server-bound V2 principal. Give every
+  // fixture legacy permissions (above) so these tests catch an admin bypass.
+  const relationships = { ownerId: "spm", coOwners: [{ userId: "jpm" }] };
+  const conceptContext = { folderId: "concept-designer", projectId: "executor", taskerStageId: "task-designer",
+    workflowStageKey: "CONCEPT_CREATION" as const, ownerId: "spm", coOwnerIds: ["jpm"], assignedExecutorId: "designer" };
+  for (const [id] of roles) {
+    const actor = await user(id), manages = ["director", "spm", "jpm"].includes(id);
+    assert.equal(five.canManageStageFive(actor, relationships as Parameters<typeof five.canManageStageFive>[1]), manages, `Stage 5 management: ${id}`);
+    assert.equal(six.canManageStageSix(actor, relationships as Parameters<typeof six.canManageStageSix>[1]), manages, `Stage 6 management: ${id}`);
+    assert.equal(seven.canManageStageSeven(actor, relationships as Parameters<typeof seven.canManageStageSeven>[1]), manages, `Stage 7 management: ${id}`);
+    assert.equal(conceptAccess.canManageProjectConcept(actor, conceptContext), manages, `Concept management: ${id}`);
+    assert.equal(conceptAccess.canCompleteProjectConceptStage(actor, conceptContext), manages, `Concept completion: ${id}`);
+    assert.equal(conceptAccess.canReviewProjectConcept(actor, conceptContext), manages, `Concept review: ${id}`);
+    assert.equal(conceptAccess.canWorkOnProjectConcept(actor, conceptContext), ["director", "designer"].includes(id), `Concept execution: ${id}`);
+    assert.equal(conceptAccess.canViewProjectConcept(actor, conceptContext), manages || id === "designer", `Concept visibility: ${id}`);
+    assert.equal(conceptAccess.canReviewProjectConcept(actor, { ...conceptContext, assignedExecutorId: id }), false, `No self-review: ${id}`);
+    if (id === "tech") {
+      const assigned = { ...conceptContext, ownerId: id, coOwnerIds: [id], assignedExecutorId: id };
+      assert.equal(conceptAccess.canManageProjectConcept(actor, assigned), false);
+      assert.equal(conceptAccess.canWorkOnProjectConcept(actor, assigned), false);
+      assert.equal(conceptAccess.canViewProjectConcept(actor, assigned), false);
+    }
+  }
+  const forged = { id: "director", role: "SUPER_ADMIN" as const };
+  assert.equal(six.canManageStageSix(forged, relationships as Parameters<typeof six.canManageStageSix>[1]), false);
+  assert.equal(conceptAccess.canManageProjectConcept(forged, conceptContext), false);
+  console.log("PASS write: V2 native management matrix; Director global, SPM owner/JPM co-owner, unrelated/restricted/technical/forged denial, assigned execution and no self-review.");
+  for (const id of ["designer", "digital", "tech", "spm"]) {
+    const actor = await user(id);
+    await assert.rejects(concepts.getProjectConceptFolders(actor, "executor", "CONCEPT_CREATION"), /PROJECT_READ_DENIED/);
+    await assert.rejects(seven.getStageSevenWorkspaceData(actor, "executor"), /PROJECT_READ_DENIED/);
+  }
+  for (const id of ["director", "outsider"]) {
+    const actor = await user(id);
+    const listing = await concepts.getProjectConceptFolders(actor, "executor", "CONCEPT_CREATION", { executorId: "designer" });
+    assert.ok(listing?.canManage);
+    assert.equal(listing.folders.length, 1);
+    assert.equal(listing.folders[0].id, "concept-designer");
+    assert.equal(listing.selectedExecutorId, "designer");
+    assert.equal((await seven.getStageSevenWorkspaceData(actor, "executor"))?.canManage, true);
+  }
+  console.log("PASS write: V2 concept full-list read denial for restricted/technical/non-manager executors; Director and owner filters preserve scoped results.");
+  const realtimeRoute = localRequire(join(compiledRoot,"src/app/api/realtime/ably/token/route.js")) as typeof import("../src/app/api/realtime/ably/token/route");
+  for (const [id] of roles) {
+    await user(id);
+    for (const query of ["projectId=executor&stageId=task-designer", "projectId=executor&scope=project-access"]) {
+      const response = await realtimeRoute.GET(new Request(`http://localhost/api/realtime/ably/token?${query}`));
+      assert.equal(response.status, 403, `Persistent project subscription: ${id}`);
+      assert.deepEqual(await response.json(), { error: "Project live updates are unavailable." });
+    }
+  }
+  token = null;
+  assert.equal((await realtimeRoute.GET(new Request("http://localhost/api/realtime/ably/token?projectId=executor&stageId=task-designer"))).status, 401);
+  assert.equal(realtimeTokenAttempts, 0);
+  console.log("PASS write: V2 configured project realtime routes deny all roles and signed-out requests without issuing provider tokens; Stage 7 full reads require management scope.");
   const editInput={tags:["Fixture"],name:"Edited project",ownerId:"spm",coOwnerIds:["jpm"],executorIds:[],collaboratorIds:[]};
   for(const id of ["director","spm","jpm"]) {
    const actor=await user(id); const result=await creation.updateProjectV2(actor,"owned",{...editInput,name:`Edited by ${id}`}); assert.ok("projectId" in result,JSON.stringify(result));
