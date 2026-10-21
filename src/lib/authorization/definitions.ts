@@ -50,7 +50,10 @@ export const businessCapabilityCatalog = {
     "template.configureCustomStages",
   ],
   task: [
+    "task.list",
     "task.view",
+    "task.message",
+    "task.download",
     "task.createGeneral",
     "task.createFileUpload",
     "task.createDataInput",

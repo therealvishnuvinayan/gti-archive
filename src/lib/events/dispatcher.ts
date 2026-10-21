@@ -1,11 +1,11 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import type { Prisma, PrismaClient, EventOutbox } from "@prisma/client";
-import { CONSUMER_KEY, MAX_ATTEMPTS, retryDelayMs, reviewEvent, type ReviewDecidedEvent } from "./contracts";
+import { CONSUMER_KEY, MAX_ATTEMPTS, retryDelayMs, decodeBusinessEvent, type SharedBusinessEvent } from "./contracts";
 
 type Tx = Prisma.TransactionClient;
 export type EventClaim = Readonly<{ eventId: string; token: string }>;
-type Consumer = (tx: Tx, event: ReviewDecidedEvent) => Promise<void>;
+type Consumer = (tx: Tx, event: SharedBusinessEvent) => Promise<void>;
 export class PermanentEventFailure extends Error {
   constructor() { super("PERMANENT_FAILURE"); }
 }
@@ -19,6 +19,19 @@ async function now(tx: Tx) {
 async function locked(tx: Tx, claim: EventClaim) {
   const [row] = await tx.$queryRaw<EventOutbox[]>`SELECT * FROM "EventOutbox" WHERE "eventId"=${claim.eventId} FOR UPDATE`;
   return row?.state === "PROCESSING" && row.leaseToken === claim.token ? row : null;
+}
+
+// Phase 2.3 delivery remains usable before the Tasker migration is approved.
+async function loadEvent(tx: Tx, id: string) {
+  const [schema] = await tx.$queryRaw<Array<{ ready: boolean }>>`SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='BusinessEvent' AND column_name='taskEntryId') AS ready`;
+  if (schema.ready) return tx.businessEvent.findUniqueOrThrow({ where: { id } });
+  const row = await tx.businessEvent.findUniqueOrThrow({ where: { id }, select: {
+    id: true, type: true, schemaVersion: true, aggregateType: true, aggregateId: true, sequence: true, projectId: true,
+    actorId: true, actorRole: true, actorVersion: true, operation: true, decisionId: true, nativeEventId: true,
+    approvalEvidenceId: true, fileVersionId: true, correlationId: true, causationId: true, idempotencyKey: true,
+    occurredAt: true, recordedAt: true, payload: true,
+  } });
+  return { ...row, taskId: null, taskEntryId: null, flexibleProjectId: null };
 }
 
 /** Trusted server bootstrap capability, never a user/role or route parameter.
@@ -62,7 +75,7 @@ export function createInternalDispatcher(db: PrismaClient, consume: Consumer, op
         if (!row || !row.leaseUntil || row.leaseUntil <= await now(tx)) return "STALE";
         const receipt = await tx.eventConsumerReceipt.findUnique({ where: { eventId_consumerKey: { eventId: row.eventId, consumerKey: CONSUMER_KEY } } });
         if (!receipt) {
-          const event = reviewEvent(await tx.businessEvent.findUniqueOrThrow({ where: { id: row.eventId } }));
+          const event = decodeBusinessEvent(await loadEvent(tx, row.eventId));
           await consume(tx, event);
           // Prevent an overlong callback from committing effects under an expired
           // lease. An interrupted transaction rolls effects and receipt back.

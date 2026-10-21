@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.authorization-services.json",
+  "compilerOptions": { "outDir": "../.tmp/universal-tasker-unit" },
+  "include": ["universal-tasker-unit-check.ts"]
+}

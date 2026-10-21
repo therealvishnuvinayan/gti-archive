@@ -1,5 +1,6 @@
 // Phase 1.3: only a NEW private cluster. Never accept URLs/credentials or reuse a DB.
 import assert from "node:assert/strict";
+import { withoutTaskerSchema } from "./tasker-schema-baseline.mjs";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -242,6 +243,21 @@ function checkAssignmentServices(runtime = false) {
     writeFileSync(deploymentSchema, withoutEventSchema(readFileSync(schemaPath, "utf8")));
   }
   run(process.execPath, [prismaCli, "migrate", "deploy", "--schema", deploymentSchema], { env: serviceEnv });
+  let eventMigrationSchema = schemaPath;
+  if (events) {
+    const eventTarget = join(root, "events-target");
+    mkdirSync(join(eventTarget, "migrations"), { recursive: true });
+    copyFileSync(join(migrationRoot, "migration_lock.toml"), join(eventTarget, "migrations/migration_lock.toml"));
+    for (const name of readdirSync(migrationRoot).filter(n => /^\d+_/.test(n) && n <= "20261021190000_shared_audit_events")) {
+      mkdirSync(join(eventTarget, "migrations", name));
+      copyFileSync(join(migrationRoot, name, "migration.sql"), join(eventTarget, "migrations", name, "migration.sql"));
+    }
+    eventMigrationSchema = join(eventTarget, "schema.prisma");
+    writeFileSync(eventMigrationSchema, withoutTaskerSchema(readFileSync(schemaPath, "utf8")));
+    // Preserve the baseline diff location used by the event suite.
+    mkdirSync(join(eventTarget, "events-baseline"));
+    copyFileSync(deploymentSchema, join(eventTarget, "events-baseline/schema.prisma"));
+  }
   const clientPath = join(root, "client"), generatedSchema = join(root, "client.prisma");
   mkdirSync(join(root, "node_modules/@prisma"), { recursive: true });
   if (!existsSync(join(root, "node_modules/@prisma/client"))) {
@@ -266,7 +282,7 @@ function checkAssignmentServices(runtime = false) {
   mkdirSync(marker, { recursive: true });
   writeFileSync(join(marker, "index.js"), "// Isolated Node server test only.\n");
   console.log(run(process.execPath, [join(output, administration ? "scripts/administration-integration-check.js" : workspace ? "scripts/workspace-authorization-integration-check.js" : search ? "scripts/flux-ai-archive-search-integration-check.js" : library ? "scripts/library-authorization-integration-check.js" : archives ? "scripts/archives-authorization-integration-check.js" : documents ? "scripts/completion-documents-integration-check.js" : governance ? "scripts/authorization-project-governance-integration-check.js" : projectWrite ? "scripts/authorization-project-write-integration-check.js" : projectRead ? "scripts/authorization-project-read-integration-check.js" : runtime ? "scripts/authorization-runtime-integration-check.js" : "scripts/authorization-services-integration-check.js")], {
-    env: { ...serviceEnv, NODE_ENV: "production", FLUX_EVENT_TEST: events ? "1" : "", FLUX_EVENT_MIGRATION_SCHEMA: events ? schemaPath : "", FLUX_FILE_IDENTITY_TEST: fileIdentity ? "1" : "", FLUX_APPROVAL_TEST: approvals ? "1" : "", FLUX_AUTH_TEST_ROOT: root, FLUX_AUTH_TEST_URL: serviceUrl, FLUX_AUTH_TEST_CLIENT: clientPath,
+    env: { ...serviceEnv, NODE_ENV: "production", FLUX_EVENT_TEST: events ? "1" : "", FLUX_EVENT_FOLLOWUP_SCHEMA: events ? schemaPath : "", FLUX_EVENT_MIGRATION_SCHEMA: events ? eventMigrationSchema : "", FLUX_FILE_IDENTITY_TEST: fileIdentity ? "1" : "", FLUX_APPROVAL_TEST: approvals ? "1" : "", FLUX_AUTH_TEST_ROOT: root, FLUX_AUTH_TEST_URL: serviceUrl, FLUX_AUTH_TEST_CLIENT: clientPath,
       NODE_PATH: join(repository, "node_modules") },
     timeout: events ? 180000 : 60000,
   }));
@@ -279,6 +295,7 @@ function checkAssignmentServices(runtime = false) {
 }
 
 function withoutEventSchema(schema) {
+  schema = withoutTaskerSchema(schema);
   for (const name of ["BusinessEvent", "EventOutbox", "EventDeliveryAttempt", "EventConsumerReceipt", "BusinessEventType", "EventDeliveryState", "EventAttemptOutcome"]) {
     schema = schema.replace(new RegExp(`^(?:model|enum) ${name} \{[\\s\\S]*?^\}`, "m"), "");
   }

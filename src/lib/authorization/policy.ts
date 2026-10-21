@@ -87,6 +87,7 @@ function resourceMatches(request: AuthorizationRequest, context: AuthorizationCo
   if (!resource || resource.id !== targetId) return false;
   if (["project.create", "project.requestCreation", "project.decideCreation", "project.activateCreation", "project.approveLegacyPreset", "project.viewGovernance"].includes(capability)) return resource.kind === "projectCreation";
   if (capability.startsWith("project.")) return resource.kind === "project" && project?.id === (resource.projectId ?? resource.id);
+  if (capability === "task.list") return resource.kind === "workspace";
   if (capability.startsWith("task.create")) return resource.kind === "project" && project?.id === resource.id;
   if (capability.startsWith("task.")) return resource.kind === "task" && task?.id === resource.id &&
     !!resource.projectId && project?.id === resource.projectId;
@@ -105,7 +106,7 @@ function evaluate(
 ): AuthorizationDecision {
   const director = actor.businessRole === "DIRECTOR" && isBusinessCapability(request.capability);
   const taskCreation = request.capability.startsWith("task.create");
-  const taskRead = ["task.view", "task.viewAsSpectator"].includes(request.capability);
+  const taskRead = ["task.list", "task.view", "task.viewAsSpectator", "task.download"].includes(request.capability);
   if (!resourceMatches(request, context)) return { decision: "DENY", reason: "RESOURCE_CONTEXT_REQUIRED" };
   // Project ownership does not imply task ownership or execution. The action
   // still needs an explicit resource permission and any task relationship below.
@@ -115,7 +116,7 @@ function evaluate(
   const ownsTask = context.task?.ownerUserId === actor.userId;
   const executesTask = context.task?.executorUserIds.includes(actor.userId) === true;
   const spectatesTask = context.task?.spectatorUserIds.includes(actor.userId) === true;
-  if (!director && request.capability.startsWith("task.") && !taskCreation &&
+  if (!director && request.capability.startsWith("task.") && !taskCreation && request.capability !== "task.list" &&
     !(ownsTask || executesTask || spectatesTask)) return { decision: "DENY", reason: "TASK_RELATIONSHIP_REQUIRED" };
   if (!director && request.capability === "task.viewAsSpectator" && !spectatesTask) {
     return { decision: "DENY", reason: "SPECTATOR_RELATIONSHIP_REQUIRED" };

@@ -1,4 +1,5 @@
 import "server-only";
+import { nativeReferenceSelect, nativeFileSelect } from "./legacy-select";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { runtimeAuthorization } from "@/lib/authorization/runtime";
@@ -78,7 +79,7 @@ async function withSource<T>(raw: unknown, download: boolean, execute: (tx: DB, 
 
 async function adoptedReference(tx: DB, source: FileSource, record: Awaited<ReturnType<typeof sourceRecord>>) {
   if (!await sharedFileIdentityAvailable(tx)) return null;
-  const reference = await tx.sharedFileReference.findUnique({ where: referenceWhere(source), include: { version: { include: { file: true } } } });
+  const reference = await tx.sharedFileReference.findUnique({ where: referenceWhere(source), select: { ...nativeReferenceSelect, version: { include: { file: { select: nativeFileSelect } } } } });
   if (!reference) return null;
   const version = reference.version;
   fileCondition(version.status === "READY" && version.bucket === record.bucket && version.storageKey === record.storageKey &&

@@ -1,0 +1,13 @@
+import assert from "node:assert/strict";
+import { deadline, object, ids, contextTarget, expectedVersion, taskTypes } from "../src/lib/tasker/contracts";
+import { approvalHash } from "../src/lib/approvals/contracts";
+assert.equal(taskTypes.length, 6);
+assert.equal(deadline("2028-02-29T12:00:00+04:00").toISOString(), "2028-02-29T08:00:00.000Z");
+for (const invalid of ["2026-02-29T12:00:00Z", "2026-04-31T12:00:00Z", "2026-10-21", "2026-10-21T12:00", null]) assert.throws(() => deadline(invalid));
+for (const invalid of [0, -1, 1.1, NaN, "2"]) assert.throws(() => expectedVersion(invalid));
+assert.throws(() => object({ actorId: "forged" }, ["title"])); assert.throws(() => ids(["u", "u"]));
+assert.throws(() => contextTarget("stage:secret")); assert.throws(() => contextTarget("task:t:forged"));
+assert.deepEqual(contextTarget("task:real-id"), { target: "task:real-id", kind: "task", key: "real-id" });
+assert.equal(approvalHash({ text: "reason", version: 2 }), approvalHash({ version: 2, text: "reason" }));
+assert.notEqual(approvalHash({ text: "reason", version: 2 }), approvalHash({ text: "changed", version: 2 }));
+console.log("PASS Tasker units: strict identity/context/input/date/version boundaries, six type vocabulary and canonical replay/evidence hashing.");

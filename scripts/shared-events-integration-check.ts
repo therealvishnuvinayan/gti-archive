@@ -47,6 +47,9 @@ export async function verifySharedEvents({ db, objects, user, fixture, load }: C
   for (const table of ["BusinessEvent", "EventOutbox", "EventDeliveryAttempt", "EventConsumerReceipt"]) assert.equal(await count(`SELECT count(*) n FROM "${table}"`), 0);
   console.log("PASS events migration: populated 107/108 -> 108/112 migrations/tables; all prior rows/checksums unchanged; zero drift, no backfill.");
 
+  // Newer native adapters are installed after the Phase 2.3 migration itself
+  // has been independently verified, before exercising the latest Prisma client.
+  if (process.env.FLUX_EVENT_FOLLOWUP_SCHEMA) migrate(["migrate", "deploy", "--schema", process.env.FLUX_EVENT_FOLLOWUP_SCHEMA]);
   const docs = load("src/lib/project-completion.js") as typeof import("../src/lib/project-completion");
   const reviews = load("src/lib/completion-documents/service.js") as typeof import("../src/lib/completion-documents/service");
   const { runProjectMutation } = load("src/lib/authorization/project-write.js") as typeof import("../src/lib/authorization/project-write");
@@ -88,8 +91,8 @@ export async function verifySharedEvents({ db, objects, user, fixture, load }: C
   await reviews.reviewCompletionDocument(spm, main.command);
   assert.equal(await db.businessEvent.count(), 1); assert.equal(await db.eventOutbox.count(), 1);
   const row = await db.businessEvent.findFirstOrThrow(), wire = reviewEvent(row);
-  const decision = await db.approvalDecision.findUniqueOrThrow({ where: { id: row.decisionId } });
-  const evidence = await db.approvalEvidence.findUniqueOrThrow({ where: { id: row.approvalEvidenceId } });
+  const decision = await db.approvalDecision.findUniqueOrThrow({ where: { id: row.decisionId! } });
+  const evidence = await db.approvalEvidence.findUniqueOrThrow({ where: { id: row.approvalEvidenceId! } });
   assert.equal(row.actorId, "spm"); assert.equal(row.nativeEventId, decision.nativeEventId); assert.equal(row.fileVersionId, evidence.fileVersionId);
   assert.equal(row.occurredAt.toISOString(), decision.decidedAt.toISOString()); assert.equal(wire.payload.checksumEvidence, "UNKNOWN");
   assert.equal(wire.correlationId, decision.requestId); assert.equal(wire.causationId, decision.nativeEventId);

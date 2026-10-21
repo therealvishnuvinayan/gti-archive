@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import type { BusinessEvent } from "@prisma/client";
 import { reviewEvent, retryDelayMs, MAX_ATTEMPTS } from "../src/lib/events/contracts";
-const event: BusinessEvent = { id: "review:decision", type: "COMPLETION_DOCUMENT_REVIEW_DECIDED", schemaVersion: 1,
+const event: BusinessEvent = { taskId: null, taskEntryId: null, flexibleProjectId: null, id: "review:decision", type: "COMPLETION_DOCUMENT_REVIEW_DECIDED", schemaVersion: 1,
   aggregateType: "COMPLETION_DOCUMENT_SUBMISSION", aggregateId: "submission", sequence: 1, projectId: "project", actorId: "actor",
   actorRole: "DIRECTOR", actorVersion: 1, operation: "reviewCompletionDocument", decisionId: "decision", nativeEventId: "native",
   approvalEvidenceId: "evidence", fileVersionId: "version", correlationId: "request", causationId: "native", idempotencyKey: "review:decision",

@@ -1,0 +1,129 @@
+"use client";
+
+import Link from "next/link";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
+import { LayoutGrid, List, Plus, ArrowLeft, Paperclip, RefreshCw } from "lucide-react";
+import { priorities, statuses, type TaskDetail, type TaskSummary } from "@/lib/tasker/contracts";
+
+const input = "w-full rounded-xl border border-[#d9e2da] bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-600";
+const button = "inline-flex items-center justify-center gap-2 rounded-xl border border-[#d9e2da] bg-white px-4 py-2 text-sm font-semibold disabled:opacity-50";
+const primary = `${button} !border-emerald-800 !bg-emerald-800 text-white`;
+const activityLabels: Record<string, string> = { CREATED: "Task created", EDIT: "Task updated", MESSAGE: "Message", SUBMIT: "Response submitted", REQUEST_COMPLETION: "Completion requested", APPROVE: "Completion approved", REJECT: "Changes requested", CLOSE: "Task closed", DELETE: "Task deleted", PREPARE_UPLOAD: "Attachment upload started", FINALIZE_UPLOAD: "Attachment ready" };
+const label = (s: string) => activityLabels[s] ?? s.toLowerCase().replaceAll("_", " ").replace(/^./, c => c.toUpperCase());
+const personName = (p: { id: string; name: string | null }) => p.name || "Business user";
+async function api<T>(path: string, data?: unknown, method = "POST"): Promise<T> {
+  const response = await fetch(`/api/tasker${path}`, data === undefined ? { cache: "no-store" } : { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+  const result = await response.json(); if (!response.ok) throw new Error(result.error ?? "Unable to load tasks."); return result as T;
+}
+type Options = { actorId: string; people: { id: string; name: string | null; role: string }[]; contexts: { target: string; name: string }[] };
+function TaskForm({ context, task, onDone, onCancel }: { context?: string; task?: TaskDetail; onDone: () => void; onCancel: () => void }) {
+  const [options, setOptions] = useState<Options | null>(null), [error, setError] = useState(""), [busy, setBusy] = useState(false);
+  const [executor, setExecutor] = useState(task?.executor.id ?? "");
+  useEffect(() => { let active = true; api<Options>(`?options=1${context ? `&context=${encodeURIComponent(context)}` : ""}`).then(o => { if (active) setOptions(o); }).catch(e => { if (active) setError(e.message); }); return () => { active = false; }; }, [context]);
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setError(""); const form = new FormData(event.currentTarget);
+    try {
+      const fields = { title: form.get("title"), brief: form.get("brief"), context: form.get("context"), deadline: new Date(String(form.get("deadline"))).toISOString(),
+        priority: form.get("priority"), executorId: executor, spectatorIds: form.getAll("spectatorIds"), commandId: crypto.randomUUID() };
+      if (task) await api(`/${task.id}`, { ...fields, action: "EDIT", expectedVersion: task.version }, "PATCH");
+      else await api("", { ...fields, type: "GENERAL", contextTarget: context || form.get("contextTarget") });
+      onDone();
+    } catch (e) { setError(e instanceof Error ? e.message : "Unable to save task."); } finally { setBusy(false); }
+  }
+  const localDate = task ? new Date(new Date(task.deadline).getTime() - new Date(task.deadline).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : "";
+  return <form onSubmit={save} className="space-y-4 rounded-2xl border border-[#d9e2da] bg-[#f4f7f3] p-5">
+    <h2 className="text-lg font-semibold">{task ? "Edit General Task" : "New General Task"}</h2>
+    {!context && !task && <label className="block text-sm">Project or assigned task context<select name="contextTarget" className={input} required><option value="">Choose a context</option>{options?.contexts.map(c => <option key={c.target} value={c.target}>{c.name}</option>)}</select></label>}
+    <label className="block text-sm">Title<input name="title" defaultValue={task?.title} className={input} required maxLength={200} /></label>
+    <label className="block text-sm">Brief<textarea name="brief" defaultValue={task?.brief} className={input} rows={4} required maxLength={20000} /></label>
+    <label className="block text-sm">Supporting context (optional)<textarea name="context" defaultValue={task?.context ?? ""} className={input} rows={2} maxLength={5000} /></label>
+    <div className="grid gap-4 sm:grid-cols-2"><label className="text-sm">Deadline (your local time)<input name="deadline" type="datetime-local" defaultValue={localDate} className={input} required /></label>
+      <label className="text-sm">Priority<select name="priority" defaultValue={task?.priority ?? "NORMAL"} className={input}>{priorities.map(p => <option key={p} value={p}>{label(p)}</option>)}</select></label></div>
+    <label className="block text-sm">Executor<select name="executorId" value={executor} onChange={e => setExecutor(e.target.value)} className={input} required><option value="">Choose an executor</option>{options?.people.filter(p => p.id !== (task?.owner.id ?? options.actorId)).map(p => <option key={p.id} value={p.id}>{personName(p)} · {label(p.role)}</option>)}</select></label>
+    <fieldset><legend className="mb-2 text-sm">Spectators (view only)</legend><div className="flex flex-wrap gap-4">{options?.people.filter(p => p.id !== (task?.owner.id ?? options.actorId) && p.id !== executor).map(p => <label key={p.id} className="flex items-center gap-2 text-sm"><input name="spectatorIds" value={p.id} type="checkbox" defaultChecked={task?.spectators.some(s => s.id === p.id)} />{personName(p)}</label>)}</div></fieldset>
+    {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+    <div className="flex gap-2"><button disabled={busy || !options} className={primary}>{busy ? "Saving…" : task ? "Save changes" : "Create General Task"}</button><button type="button" onClick={onCancel} className={button}>Cancel</button></div>
+  </form>;
+}
+export function GeneralTasker({ initial, context, createContext }: { initial: { tasks: TaskSummary[]; total: number }; context?: string; createContext?: string }) {
+  const [now, setNow] = useState(() => Date.now());
+  const [data, setData] = useState(initial), [view, setView] = useState<"grid" | "list">("grid"), [creating, setCreating] = useState(!!createContext);
+  const [status, setStatus] = useState(""), [ownerId, setOwnerId] = useState(""), [executorId, setExecutorId] = useState(""), [search, setSearch] = useState(""), [offset, setOffset] = useState(0), [error, setError] = useState("");
+  const refresh = useCallback(async () => {
+    const params = new URLSearchParams({ offset: String(offset) }); if (context) params.set("context", context); if (status) params.set("status", status);
+    if (ownerId) params.set("ownerId", ownerId); if (executorId) params.set("executorId", executorId); if (search) params.set("search", search);
+    try { setData(await api(`?${params}`)); setNow(Date.now()); setError(""); } catch (e) { setError(e instanceof Error ? e.message : "Unable to load tasks."); }
+  }, [context, status, ownerId, executorId, search, offset]);
+  useEffect(() => { const timer = setTimeout(() => { void refresh(); }, 250); return () => clearTimeout(timer); }, [refresh]);
+  const people = [...new Map(initial.tasks.flatMap(t => [t.owner, t.executor]).map(p => [p.id, p])).values()];
+  return <section className="mx-auto max-w-[1420px] space-y-5 pb-8">
+    <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-widest text-emerald-700">Universal Tasker</p><h1 className="mt-2 text-3xl font-semibold text-[#183525]">{context ? "Project General Tasks" : "My General Tasks"}</h1><p className="mt-2 text-sm text-[#68766b]">Your work as Task Owner, executor or spectator.</p></div>
+      <button onClick={() => setCreating(true)} className={primary}><Plus size={16} />New General Task</button></div>
+    {creating && <TaskForm context={createContext || context} onCancel={() => setCreating(false)} onDone={() => { setCreating(false); void refresh(); }} />}
+    <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-[#dce5dd] bg-white p-3">
+      <input aria-label="Search General Tasks" placeholder="Search tasks…" value={search} onChange={e => { setSearch(e.target.value); setOffset(0); }} className={`${input} !w-auto grow`} />
+      <select aria-label="Task status" value={status} onChange={e => { setStatus(e.target.value); setOffset(0); }} className={`${input} !w-auto`}><option value="">All statuses</option>{statuses.map(s => <option key={s} value={s}>{label(s)}</option>)}</select>
+      <select aria-label="Task Owner filter" value={ownerId} onChange={e => { setOwnerId(e.target.value); setOffset(0); }} className={`${input} !w-auto`}><option value="">All owners</option>{people.map(p => <option key={p.id} value={p.id}>{personName(p)}</option>)}</select>
+      <select aria-label="Executor filter" value={executorId} onChange={e => { setExecutorId(e.target.value); setOffset(0); }} className={`${input} !w-auto`}><option value="">All executors</option>{people.map(p => <option key={p.id} value={p.id}>{personName(p)}</option>)}</select>
+      <button className={button} aria-label="Grid view" aria-pressed={view === "grid"} onClick={() => setView("grid")}><LayoutGrid size={17} /></button><button className={button} aria-label="List view" aria-pressed={view === "list"} onClick={() => setView("list")}><List size={17} /></button><button className={button} aria-label="Refresh tasks" onClick={() => void refresh()}><RefreshCw size={17} /></button>
+    </div>
+    {error && <p role="alert" className="text-red-700">{error}</p>}
+    <p className="text-sm text-[#68766b]">{data.total} General {data.total === 1 ? "Task" : "Tasks"}</p>
+    <div className={view === "grid" ? "grid gap-4 md:grid-cols-2 xl:grid-cols-3" : "space-y-3"}>{data.tasks.map(t => {
+      const overdue = new Date(t.deadline).getTime() < now && !["COMPLETED", "CLOSED"].includes(t.status);
+      return <Link key={t.id} href={`/tasks/${t.id}`} className={`block rounded-2xl border border-[#dce5dd] bg-white p-5 transition hover:border-emerald-600 ${view === "list" ? "sm:flex sm:items-center sm:justify-between sm:gap-6" : ""}`}>
+        <div><p className="text-xs text-[#68766b]">{t.project.name} · General Task</p><h2 className="mt-2 text-lg font-semibold">{t.title}</h2><p className="mt-3 text-sm text-[#536359]">Owner: {personName(t.owner)}<br />Executor: {personName(t.executor)}</p></div>
+        <div className="mt-4 space-y-2"><div className="flex gap-2 text-xs"><span className="rounded-full bg-[#eaf0e9] px-3 py-1">{label(t.status)}</span><span className={`rounded-full px-3 py-1 ${["URGENT", "HIGH"].includes(t.priority) ? "bg-amber-100 text-amber-900" : "bg-slate-100"}`}>{label(t.priority)}</span></div><p className={`text-xs ${overdue ? "font-semibold text-red-700" : "text-[#68766b]"}`}>{overdue ? "Overdue · " : "Due · "}{new Date(t.deadline).toLocaleString()}</p></div>
+      </Link>;
+    })}</div>
+    {!data.tasks.length && <div className="rounded-2xl border border-dashed border-[#cbd8cd] p-12 text-center text-[#68766b]">No General Tasks in this view.</div>}
+    {data.total > 60 && <div className="flex gap-3"><button className={button} disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 60))}>Previous</button><button className={button} disabled={offset + 60 >= data.total} onClick={() => setOffset(offset + 60)}>Next</button></div>}
+  </section>;
+}
+export function GeneralTaskDetail({ initial }: { initial: TaskDetail }) {
+  const [task, setTask] = useState(initial), [note, setNote] = useState(""), [error, setError] = useState(""), [busy, setBusy] = useState(false), [editing, setEditing] = useState(false);
+  const [fileIds, setFileIds] = useState<string[]>([]), [replaceFileId, setReplaceFileId] = useState(""); const router = useRouter();
+  async function refresh() { setTask(await api(`/${task.id}`)); }
+  async function command(action: string) {
+    setBusy(true); setError("");
+    try { await api(`/${task.id}`, { action, text: note, fileIds: ["MESSAGE", "SUBMIT"].includes(action) ? fileIds : [], expectedVersion: task.version, commandId: crypto.randomUUID() }, "PATCH");
+      if (action === "DELETE") { router.push("/tasks"); router.refresh(); return; }
+      setNote(""); setFileIds([]); await refresh();
+    } catch (e) { setError(e instanceof Error ? e.message : "Unable to update task."); await refresh().catch(() => {}); } finally { setBusy(false); }
+  }
+  async function upload(file?: File) {
+    if (!file) return; setBusy(true); setError("");
+    try {
+      const prepared = await api<{ uploadId: string; version: number }>(`/${task.id}`, { action: "PREPARE_UPLOAD", commandId: crypto.randomUUID(), expectedVersion: task.version,
+        fileName: file.name, mimeType: file.type || "application/octet-stream", fileSize: file.size, ...(replaceFileId ? { replaceFileId } : {}) }, "PATCH");
+      const ticket = await api<{ uploadUrl: string }>(`/${task.id}/files`, { uploadId: prepared.uploadId });
+      const result = await fetch(ticket.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
+      if (!result.ok) throw new Error("Upload failed. Please retry with a new attachment.");
+      await api(`/${task.id}`, { action: "FINALIZE_UPLOAD", commandId: crypto.randomUUID(), expectedVersion: prepared.version, uploadId: prepared.uploadId }, "PATCH");
+      setFileIds(current => [...current, prepared.uploadId]); await refresh();
+    } catch (e) { setError(e instanceof Error ? e.message : "Upload failed."); await refresh().catch(() => {}); } finally { setBusy(false); }
+  }
+  const p = task.permissions, mutable = p.message || p.submit || p.close || p.delete;
+  const logicalFiles = [...new Map(task.files.filter(f => f.submittedEntryId).map(f => [f.fileId, f])).values()];
+  return <section className="mx-auto max-w-5xl space-y-6 pb-12">
+    <Link href="/tasks" className="inline-flex items-center gap-2 text-sm text-emerald-800"><ArrowLeft size={16} />My Tasks</Link>
+    <div className="rounded-2xl border border-[#dce5dd] bg-white p-6"><div className="flex flex-wrap justify-between gap-4"><div><p className="text-xs uppercase tracking-widest text-emerald-700">General Task · {task.project.name}</p><h1 className="mt-2 text-3xl font-semibold">{task.title}</h1></div><span className="h-fit rounded-full bg-emerald-50 px-3 py-1 text-sm">{label(task.status)}</span></div>
+      <p className="mt-4 text-sm text-[#68766b]">Owner: {personName(task.owner)} · Executor: {personName(task.executor)}</p><p className="mt-2 text-sm">{label(task.priority)} priority · Due {new Date(task.deadline).toLocaleString()}</p>
+      <h2 className="mt-6 font-semibold">Brief</h2><p className="mt-2 whitespace-pre-wrap text-sm leading-6">{task.brief}</p>{task.context && <><h2 className="mt-4 font-semibold">Supporting context</h2><p className="mt-2 whitespace-pre-wrap text-sm">{task.context}</p></>}
+      {!!task.spectators.length && <p className="mt-4 text-sm text-[#68766b]">Spectators: {task.spectators.map(personName).join(", ")}</p>}
+      <div className="mt-5 flex flex-wrap gap-3">{p.manage && <button className={button} onClick={() => setEditing(!editing)}>Edit task</button>}{(p.manage || p.submit) && <Link className={button} href={`/tasks?createContext=task:${task.id}`}>Create task from this context</Link>}<button className={button} onClick={() => void refresh().catch(e => setError(e.message))}>Refresh</button></div>
+    </div>
+    {editing && <TaskForm task={task} onCancel={() => setEditing(false)} onDone={() => { setEditing(false); void refresh(); }} />}
+    <section className="rounded-2xl border border-[#dce5dd] bg-white p-6"><h2 className="text-lg font-semibold">Conversation and history</h2><ol className="mt-5 space-y-5">{task.entries.map(e => <li key={e.id} className="border-l-2 border-[#dce5dd] pl-4"><p className="text-xs text-[#68766b]">{personName(e.actor)} · {label(e.action)}{e.directorOverride ? " · Director intervention" : ""} · {new Date(e.createdAt).toLocaleString()}</p><p className="mt-2 whitespace-pre-wrap text-sm">{e.text}</p>{task.files.filter(f => f.submittedEntryId === e.id).map(f => <a key={f.id} className="mt-2 block text-sm text-emerald-800 underline" href={`/api/tasker/${task.id}/files/${f.id}?versionId=${f.versionId}`}>{f.name} · v{f.number}</a>)}{e.action === "EDIT" && <details className="mt-2 text-xs"><summary>Recorded changes</summary><pre className="mt-2 whitespace-pre-wrap break-words">{JSON.stringify(e.snapshot, null, 2)}</pre></details>}</li>)}</ol></section>
+    {mutable && <section className="space-y-4 rounded-2xl border border-[#dce5dd] bg-white p-6"><h2 className="text-lg font-semibold">{p.review ? "Review completion request" : "Respond or update task"}</h2>
+      <label className="block text-sm">Message or decision reason<textarea aria-label="Message or decision reason" value={note} onChange={e => setNote(e.target.value)} maxLength={20000} rows={4} className={input} /></label>
+      {p.message && task.status !== "COMPLETION_REQUESTED" && <><div className="flex flex-wrap items-center gap-3"><select aria-label="Attachment version" value={replaceFileId} onChange={e => setReplaceFileId(e.target.value)} className={`${input} !w-auto`}><option value="">New attachment</option>{logicalFiles.map(f => <option key={f.fileId} value={f.fileId}>New version of {f.name}</option>)}</select><label className={`${button} cursor-pointer`}><Paperclip size={16} />Attach supporting file<input aria-label="Supporting file" type="file" disabled={busy} className="sr-only" onChange={e => { void upload(e.target.files?.[0]); e.target.value = ""; }} /></label></div>
+        {task.files.filter(f => !f.submittedEntryId && f.status === "READY").map(f => <label key={f.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={fileIds.includes(f.id)} onChange={e => setFileIds(current => e.target.checked ? [...current, f.id] : current.filter(id => id !== f.id))} />{f.name} · v{f.number}</label>)}</>}
+      <div className="flex flex-wrap gap-2">{p.message && <button className={button} disabled={busy || !note.trim()} onClick={() => void command("MESSAGE")}>Send message</button>}{p.submit && <button className={primary} disabled={busy || !note.trim()} onClick={() => void command("SUBMIT")}>Submit response</button>}{p.requestCompletion && <button className={button} disabled={busy || !note.trim()} onClick={() => void command("REQUEST_COMPLETION")}>Request completion</button>}{p.review && <><button className={primary} disabled={busy || !note.trim()} onClick={() => void command("APPROVE")}>Approve completion</button><button className={button} disabled={busy || !note.trim()} onClick={() => void command("REJECT")}>Request changes</button></>}{p.close && <button className={button} disabled={busy || !note.trim()} onClick={() => void command("CLOSE")}>Close task</button>}{p.delete && <button className={`${button} text-red-700`} disabled={busy || !note.trim()} onClick={() => void command("DELETE")}>Delete task</button>}</div>
+      <p className="text-xs text-[#68766b]">A reason is required for completion, review, closure and deletion. Requesting completion sends the task to its owner for review.</p>
+    </section>}
+    {!mutable && <p className="text-sm text-[#68766b]">This task is view only. Its conversation and submitted file versions remain available.</p>}
+    {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+  </section>;
+}

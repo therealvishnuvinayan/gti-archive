@@ -1,0 +1,44 @@
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, readdirSync, rmSync, symlinkSync } from "node:fs";
+import { join, resolve, dirname } from "node:path";
+import { withoutTaskerSchema } from "./tasker-schema-baseline.mjs";
+const require = createRequire(import.meta.url), repository = resolve(import.meta.dirname, ".."), root = mkdtempSync("/private/tmp/flux-v2-tasker-");
+const socket = join(root, "s"), data = join(root, "data"), candidate = "20261021210000_universal_tasker_general";
+const env = { PATH: process.env.PATH, LANG: "C", LC_ALL: "C", CHECKPOINT_DISABLE: "1", PRISMA_HIDE_UPDATE_MESSAGE: "1", PGPASSFILE: join(root, "no-pass"), PGSERVICEFILE: join(root, "no-service") };
+const url = `postgresql://flux_tasker_test@localhost:55432/flux_tasker_test?host=${encodeURIComponent(socket)}&connect_timeout=5`;
+const localEnv = { ...env, DATABASE_URL: url, DIRECT_URL: url, NODE_PATH: join(repository, "node_modules"), FLUX_TASKER_TEST_ROOT: root, FLUX_TASKER_TEST_URL: url };
+let started = false;
+function run(command, args, options = {}) { const r = spawnSync(command, args, { cwd: root, env: localEnv, encoding: "utf8", timeout: 120000, maxBuffer: 16 * 1024 * 1024, ...options }); if (r.status !== 0) throw new Error(r.stdout + r.stderr + (r.error?.message ?? "")); return r.stdout.trim(); }
+const sql = statement => run("psql", ["-X", "-qAt", "-h", socket, "-p", "55432", "-U", "flux_tasker_test", "-d", "flux_tasker_test", "-v", "ON_ERROR_STOP=1"], { input: statement });
+const prisma = args => run(process.execPath, [require.resolve("prisma/build/index.js"), ...args]);
+try {
+  mkdirSync(socket); run("initdb", ["-D", data, "--username=flux_tasker_test", "--auth=trust", "--no-locale", "--encoding=UTF8"]);
+  run("pg_ctl", ["-D", data, "-l", join(root, "postgres.log"), "-o", `-k ${socket} -p 55432 -h '' -c shared_buffers=16MB -c max_connections=25`, "-w", "start"]); started = true;
+  run("createdb", ["-h", socket, "-p", "55432", "-U", "flux_tasker_test", "flux_tasker_test"]);
+  assert.equal(sql("SHOW listen_addresses"), ""); assert.equal(sql("SHOW data_directory"), data);
+  const schema = readFileSync(join(repository, "prisma/schema.prisma"), "utf8"), schemaPath = join(root, "schema.prisma");
+  mkdirSync(join(root, "migrations")); copyFileSync(join(repository, "prisma/migrations/migration_lock.toml"), join(root, "migrations/migration_lock.toml"));
+  const migrations = readdirSync(join(repository, "prisma/migrations")).filter(n => /^\d+_/.test(n)).sort();
+  function copy(name) { mkdirSync(join(root, "migrations", name)); copyFileSync(join(repository, "prisma/migrations", name, "migration.sql"), join(root, "migrations", name, "migration.sql")); }
+  for (const name of migrations.filter(n => n !== candidate)) copy(name);
+  writeFileSync(schemaPath, withoutTaskerSchema(schema)); prisma(["validate", "--schema", schemaPath]); prisma(["migrate", "deploy", "--schema", schemaPath]);
+  assert.equal(sql('SELECT count(*) FROM "_prisma_migrations"'), "108"); assert.equal(sql("SELECT count(*) FROM pg_tables WHERE schemaname='public'"), "112");
+  assert.match(prisma(["migrate", "diff", "--from-url", url, "--to-schema-datamodel", schemaPath, "--script"]), /empty migration/);
+  const client = join(root, "client"); mkdirSync(join(root, "node_modules/@prisma"), { recursive: true }); symlinkSync(dirname(require.resolve("@prisma/client/package.json")), join(root, "node_modules/@prisma/client"));
+  writeFileSync(join(root, "client.prisma"), schema.replace('provider        = "prisma-client-js"', `provider        = "prisma-client-js"\n  output = ${JSON.stringify(client)}`)); prisma(["generate", "--schema", join(root, "client.prisma")]);
+  const output = join(root, "compiled"), config = join(root, "tsconfig.json"); writeFileSync(config, JSON.stringify({ extends: join(repository, "scripts/tsconfig.universal-tasker.json"), compilerOptions: { outDir: output, paths: { "@/*": [join(repository, "src/*")], "@prisma/client": [client] }, typeRoots: [join(repository, "node_modules/@types")] } }));
+  run(process.execPath, [require.resolve("typescript/bin/tsc"), "--project", config]); mkdirSync(join(output, "node_modules/server-only"), { recursive: true }); writeFileSync(join(output, "node_modules/server-only/index.js"), "");
+  const test = join(output, "scripts/universal-tasker-integration-check.js"); console.log(run(process.execPath, [test, "--seed"]));
+  const tables = sql("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename").split("\n");
+  const snapshot = () => tables.map(t => sql(`SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text)::text,'[]') FROM "${t}" t ${t === "_prisma_migrations" ? `WHERE migration_name <> '${candidate}'` : ""}`));
+  const before = snapshot(); copy(candidate); writeFileSync(schemaPath, schema); prisma(["migrate", "deploy", "--schema", schemaPath]); assert.deepEqual(snapshot(), before);
+  assert.equal(sql('SELECT count(*) FROM "_prisma_migrations"'), "109"); assert.equal(sql("SELECT count(*) FROM pg_tables WHERE schemaname='public'"), "116");
+  assert.equal(sql('SELECT count(*) FROM "UniversalTask"'), "0"); assert.match(prisma(["migrate", "diff", "--from-url", url, "--to-schema-datamodel", schemaPath, "--script"]), /empty migration/);
+  console.log("PASS populated migration: 108/112 → 109/116; all previous rows/checksums preserved; zero backfill; zero schema drift.");
+  console.log(run(process.execPath, [test]));
+} finally {
+  if (started) run("pg_ctl", ["-D", data, "-m", "fast", "-w", "stop"]);
+  rmSync(root, { recursive: true, force: true }); console.log("Disposable Tasker PostgreSQL removed; no application database or real storage used.");
+}

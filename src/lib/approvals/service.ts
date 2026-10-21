@@ -1,4 +1,5 @@
 import "server-only";
+import { nativeReferenceSelect } from "../files/legacy-select";
 import { prepareCompletionReviewEvent } from "../events/producer";
 import type { Prisma } from "@prisma/client";
 import { readCurrentSessionToken } from "../auth";
@@ -21,7 +22,7 @@ export async function openCompletionApproval(tx: DB, eventId: string, plan: Appr
   const event = await tx.completionDocumentEvent.findUniqueOrThrow({ where: { id: eventId } });
   approvalCondition(event.action === "DOCUMENT_SUBMITTED" && event.submissionId, "INVALID_APPROVAL_SUBMISSION_EVENT");
   const submission = await tx.completionDocumentSubmission.findUniqueOrThrow({ where: { id: event.submissionId } });
-  const reference = await tx.sharedFileReference.findUnique({ where: { completionSubmissionId: submission.id }, include: { version: true } });
+  const reference = await tx.sharedFileReference.findUnique({ where: { completionSubmissionId: submission.id }, select: nativeReferenceSelect });
   // Cutover/legacy submissions retain native review; do not invent an identity,
   // reviewer, cryptographic digest or historical engine approval for them.
   if (!reference) return null;
@@ -116,7 +117,7 @@ export async function assertCompletionApprovalAccepted(tx: DB, submissionId: str
   if (!request) return;
   const s = await tx.completionDocumentSubmission.findUniqueOrThrow({ where: { id: submissionId } });
   const evidence = await tx.approvalEvidence.findMany({ where: { requestId: request.id } });
-  const reference = await tx.sharedFileReference.findUnique({ where: { completionSubmissionId: submissionId } });
+  const reference = await tx.sharedFileReference.findUnique({ where: { completionSubmissionId: submissionId }, select: { id: true, versionId: true } });
   approvalCondition(request.state === "APPROVED" && s.status === "ACCEPTED" && reference && evidence.length === 1 &&
     evidence[0].fileVersionId === reference.versionId && request.subjectVersion === reference.versionId, "COMPLETION_APPROVAL_NOT_VALID");
 }

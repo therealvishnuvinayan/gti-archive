@@ -18,9 +18,9 @@ export async function verifySharedFiles({ db, objects, storageCalls, user, fixtu
   const roles = await db.userAuthorization.findMany({ orderBy: { userId: "asc" } });
   const legacyLinks = await db.projectStageFileHandoff.findMany({ orderBy: { id: "asc" } });
   const accepted = await db.projectCompletionDocument.findMany({ where: { projectId: "documents-main" }, orderBy: { uploadedAt: "asc" } });
-  const versions = await db.sharedFileVersion.findMany({ include: { references: true, provenance: { include: { completionEvent: true } } }, orderBy: [{ fileId: "asc" }, { number: "asc" }] });
+  const versions = await db.sharedFileVersion.findMany({ include: { references: { omit: { taskUploadId: true } }, provenance: { omit: { taskEntryId: true }, include: { completionEvent: true } } }, orderBy: [{ fileId: "asc" }, { number: "asc" }] });
   assert.ok(versions.length >= 7);
-  const invoices = await db.sharedFile.findFirstOrThrow({ where: { projectId: "documents-main", completionDocumentType: "INVOICE" }, include: { versions: { orderBy: { number: "asc" } } } });
+  const invoices = await db.sharedFile.findFirstOrThrow({ omit: { taskId: true }, where: { projectId: "documents-main", completionDocumentType: "INVOICE" }, include: { versions: { orderBy: { number: "asc" } } } });
   assert.deepEqual(invoices.versions.map(v => v.number), [1, 2], "Reopened request preserves identity and appends a version");
   for (const version of versions) {
     assert.equal(version.references.filter(r => r.role === "SOURCE").length, 1);
@@ -32,20 +32,20 @@ export async function verifySharedFiles({ db, objects, storageCalls, user, fixtu
     assert.equal(version.externalUploaderEmail, submission.externalSubmitterEmail);
     assert.equal(version.storageKey, submission.storageKey);
     assert.notEqual(version.storageKey, submission.uploadKey);
-    assert.equal(version.provenance.filter(p => p.completionEvent.action === "UPLOAD_PREPARED").length, 1);
-    if (version.status === "READY") assert.equal(version.provenance.filter(p => p.completionEvent.action === "DOCUMENT_SUBMITTED").length, 1);
+    assert.equal(version.provenance.filter(p => p.completionEvent?.action === "UPLOAD_PREPARED").length, 1);
+    if (version.status === "READY") assert.equal(version.provenance.filter(p => p.completionEvent?.action === "DOCUMENT_SUBMITTED").length, 1);
   }
   for (const document of accepted) {
-    const reference = await db.sharedFileReference.findUniqueOrThrow({ where: { completionDocumentId: document.id }, include: { version: true } });
+    const reference = await db.sharedFileReference.findUniqueOrThrow({ omit: { taskUploadId: true }, where: { completionDocumentId: document.id }, include: { version: true } });
     assert.equal(reference.role, "ACCEPTED_EVIDENCE");
-    const source = await db.sharedFileReference.findUniqueOrThrow({ where: { completionSubmissionId: document.submissionId! } });
+    const source = await db.sharedFileReference.findUniqueOrThrow({ omit: { taskUploadId: true }, where: { completionSubmissionId: document.submissionId! } });
     assert.equal(reference.versionId, source.versionId, "Accepted evidence is pinned to an exact submission, never latest");
     assert.equal(reference.version.uploadedById, document.uploadedById);
   }
   const external = versions.find(v => v.externalUploaderEmail === "replacement@example.invalid")!;
   assert.ok(external); assert.equal(external.uploadedById, null);
-  assert.equal(external.provenance.find(p => p.completionEvent.action === "DOCUMENT_ACCEPTED")?.completionEvent.actorId, "jpm");
-  assert.equal(external.provenance.find(p => p.completionEvent.action === "DOCUMENT_SUBMITTED")?.completionEvent.externalActorEmail, "replacement@example.invalid");
+  assert.equal(external.provenance.find(p => p.completionEvent?.action === "DOCUMENT_ACCEPTED")?.completionEvent?.actorId, "jpm");
+  assert.equal(external.provenance.find(p => p.completionEvent?.action === "DOCUMENT_SUBMITTED")?.completionEvent?.externalActorEmail, "replacement@example.invalid");
   const first = versions.find(v => v.status === "READY" && v.uploadedById === "spm")!;
   const firstSource = { kind: "completion-submission", id: first.references.find(r => r.completionSubmissionId)!.completionSubmissionId! } as const;
   await user("director");
@@ -70,7 +70,7 @@ export async function verifySharedFiles({ db, objects, storageCalls, user, fixtu
   const previewPath = await docs.getProjectCompletionDocumentPreviewUrlForUser(director, documentId);
   assert.match(downloadPath, /kind=completion-document/); assert.match(previewPath, /disposition=inline/);
   const previewUrl = new URL(previewPath, "http://localhost");
-  const documentReference = await db.sharedFileReference.findUniqueOrThrow({ where: { completionDocumentId: documentId } });
+  const documentReference = await db.sharedFileReference.findUniqueOrThrow({ omit: { taskUploadId: true }, where: { completionDocumentId: documentId } });
   const preview = await api.GET(new Request(previewUrl), { params: Promise.resolve({ versionId: documentReference.versionId }) });
   assert.equal(preview.status, 200); assert.match(preview.headers.get("Content-Disposition")!, /^inline;/);
   const downloadRoute = load("src/app/api/project-completion-documents/[documentId]/download/route.js") as typeof import("../src/app/api/project-completion-documents/[documentId]/download/route");
@@ -108,21 +108,21 @@ export async function verifySharedFiles({ db, objects, storageCalls, user, fixtu
   console.log("PASS files: stable identity, exact accepted versions, real internal/external attribution, preserved native history, guarded API and current scope, overwrite denial, adoption-off integrity guards.");
 
   // Native event replay is idempotent; direct database writes cannot mutate history.
-  const eventId = first.provenance.find(p => p.completionEvent.action === "DOCUMENT_SUBMITTED")!.completionEventId;
+  const eventId = first.provenance.find(p => p.completionEvent?.action === "DOCUMENT_SUBMITTED")!.completionEventId!;
   const counts = [await db.sharedFileVersion.count(), await db.sharedFileProvenance.count(), await db.sharedFileReference.count()];
   await db.$transaction(tx => adapter.recordCompletionFileEvent(tx, eventId, stored));
   assert.deepEqual([await db.sharedFileVersion.count(), await db.sharedFileProvenance.count(), await db.sharedFileReference.count()], counts);
   await assert.rejects(db.sharedFileVersion.update({ where: { id: first.id }, data: { objectETag: "rewrite" } }));
   await assert.rejects(db.sharedFileVersion.delete({ where: { id: first.id } }));
-  await assert.rejects(db.sharedFile.update({ where: { id: first.fileId }, data: { projectId: "documents-other" } }));
-  await assert.rejects(db.sharedFileReference.update({ where: { id: first.references[0].id }, data: { versionId: invoices.versions[1].id } }));
-  await assert.rejects(db.sharedFileProvenance.delete({ where: { id: first.provenance[0].id } }));
+  await assert.rejects(db.sharedFile.update({ omit: { taskId: true }, where: { id: first.fileId }, data: { projectId: "documents-other" } }));
+  await assert.rejects(db.sharedFileReference.update({ omit: { taskUploadId: true }, where: { id: first.references[0].id }, data: { versionId: invoices.versions[1].id } }));
+  await assert.rejects(db.sharedFileProvenance.delete({ omit: { taskEntryId: true }, where: { id: first.provenance[0].id } }));
   await assert.rejects(db.completionDocumentSubmission.delete({ where: { id: firstSource.id } }));
   await assert.rejects(db.sharedFileVersion.create({ data: { ...invoices.versions[0], id: "duplicate-number", status: "UPLOADING", observedAt: null, finalizedAt: null, objectETag: null } }));
-  await assert.rejects(db.sharedFile.create({ data: { projectId: "documents-other", stageId: "documents-main-stage" } }));
-  await assert.rejects(db.sharedFileReference.create({ data: { versionId: first.id, role: "REFERENCE", projectAttachmentId: "documents-other-file" } }));
-  await assert.rejects(db.sharedFileReference.create({ data: { versionId: first.id, role: "REFERENCE" } }));
-  await assert.rejects(db.sharedFileReference.create({ data: { versionId: first.id, role: "REFERENCE", projectAttachmentId: "missing-source" } }));
+  await assert.rejects(db.sharedFile.create({ omit: { taskId: true }, data: { projectId: "documents-other", stageId: "documents-main-stage" } }));
+  await assert.rejects(db.sharedFileReference.create({ omit: { taskUploadId: true }, data: { versionId: first.id, role: "REFERENCE", projectAttachmentId: "documents-other-file" } }));
+  await assert.rejects(db.sharedFileReference.create({ omit: { taskUploadId: true }, data: { versionId: first.id, role: "REFERENCE" } }));
+  await assert.rejects(db.sharedFileReference.create({ omit: { taskUploadId: true }, data: { versionId: first.id, role: "REFERENCE", projectAttachmentId: "missing-source" } }));
   console.log("PASS files: replay idempotency, immutable version/source/provenance, unique numbering, retained FKs, missing-source and cross-project reference denial.");
 
   const target = await fixture("file-races");
@@ -131,7 +131,7 @@ export async function verifySharedFiles({ db, objects, storageCalls, user, fixtu
   const meta = { projectId: target.projectId, documentType: "AUTHORITY_APPROVAL_PROOF" as const, originalFileName: "exact.pdf", mimeType: "application/pdf", fileSize: 8 };
   const pending = await docs.requestProjectCompletionDocumentUpload(spm, meta);
   const pendingSubmission = await db.completionDocumentSubmission.findUniqueOrThrow({ where: { uploadKey: pending.storageKey } });
-  const pendingReference = await db.sharedFileReference.findUniqueOrThrow({ where: { completionSubmissionId: pendingSubmission.id } });
+  const pendingReference = await db.sharedFileReference.findUniqueOrThrow({ omit: { taskUploadId: true }, where: { completionSubmissionId: pendingSubmission.id } });
   await assert.rejects(files.getSharedFileIdentity({ kind: "completion-submission", id: pendingSubmission.id }));
   await assert.rejects(docs.finalizeProjectCompletionDocumentUpload(spm, { ...meta, storageKey: pending.storageKey }));
   objects.set(pending.storageKey, { ContentLength: 8, ContentType: "text/plain", ETag: "wrong-type" });
@@ -156,7 +156,7 @@ export async function verifySharedFiles({ db, objects, storageCalls, user, fixtu
   assert.ok(finalized.some(r => r.status === "fulfilled"));
   await docs.finalizeProjectCompletionDocumentUpload(spm, { ...meta, storageKey: chosen.uploadKey });
   assert.equal(storageCalls.copies, copiesBeforeFinalization + 1);
-  const chosenRef = await db.sharedFileReference.findUniqueOrThrow({ where: { completionSubmissionId: chosen.id }, include: { version: true } });
+  const chosenRef = await db.sharedFileReference.findUniqueOrThrow({ omit: { taskUploadId: true }, where: { completionSubmissionId: chosen.id }, include: { version: true } });
   assert.equal(chosenRef.version.objectVersionId, exact.VersionId);
   assert.equal(chosenRef.version.checksumSha256, exact.ChecksumSHA256);
   assert.equal(chosenRef.version.checksumEvidence, "S3_FULL_OBJECT_SHA256");
@@ -171,7 +171,7 @@ export async function verifySharedFiles({ db, objects, storageCalls, user, fixtu
   delete process.env.FLUX_SHARED_FILE_IDENTITY;
   await reviews.reviewCompletionDocument(spm, { projectId: target.projectId, submissionId: chosen.id, decision: "ACCEPT", reason: "Exact submitted evidence checked" });
   const acceptedAfterDisabled = await db.projectCompletionDocument.findUniqueOrThrow({ where: { submissionId: chosen.id } });
-  assert.equal((await db.sharedFileReference.findUniqueOrThrow({ where: { completionDocumentId: acceptedAfterDisabled.id } })).versionId, chosenRef.versionId);
+  assert.equal((await db.sharedFileReference.findUniqueOrThrow({ omit: { taskUploadId: true }, where: { completionDocumentId: acceptedAfterDisabled.id } })).versionId, chosenRef.versionId);
   assert.equal(await db.sharedFileProvenance.count({ where: { versionId: chosenRef.versionId, completionEvent: { action: "DOCUMENT_ACCEPTED" } } }), 1);
   process.env.FLUX_SHARED_FILE_IDENTITY = "1";
   objects.set(chosen.uploadKey, { ...exact, ETag: "replayed-put" });
@@ -207,12 +207,12 @@ export async function verifySharedFiles({ db, objects, storageCalls, user, fixtu
   await assert.rejects(files.getSharedFileIdentity({ kind: "project-attachment", id: `${target.projectId}-file` }));
   // Schema-only fixture for a future native task adapter. No production write
   // adapter/backfill is enabled for this legacy path in Phase 2.1.
-  const taskFile = await db.sharedFile.create({ data: { projectId: target.projectId, stageId: "file-task", conceptFolderId: "file-concept" } });
+  const taskFile = await db.sharedFile.create({ omit: { taskId: true }, data: { projectId: target.projectId, stageId: "file-task", conceptFolderId: "file-concept" } });
   const taskData = { fileId: taskFile.id, originalFileName: "task.pdf", mimeType: "application/pdf", fileSize: 1, bucket: "fixture-no-network", storageKey: "legacy/task" };
   const wrongUploader = await db.sharedFileVersion.create({ data: { ...taskData, number: 1, uploadedById: "spm" } });
-  await assert.rejects(db.sharedFileReference.create({ data: { versionId: wrongUploader.id, role: "SOURCE", projectAttachmentId: "file-task-attachment" } }));
+  await assert.rejects(db.sharedFileReference.create({ omit: { taskUploadId: true }, data: { versionId: wrongUploader.id, role: "SOURCE", projectAttachmentId: "file-task-attachment" } }));
   const taskVersion = await db.sharedFileVersion.create({ data: { ...taskData, number: 2, uploadedById: "designer" } });
-  await db.sharedFileReference.create({ data: { versionId: taskVersion.id, role: "SOURCE", projectAttachmentId: "file-task-attachment" } });
+  await db.sharedFileReference.create({ omit: { taskUploadId: true }, data: { versionId: taskVersion.id, role: "SOURCE", projectAttachmentId: "file-task-attachment" } });
   await assert.rejects(db.sharedFileVersion.update({ where: { id: taskVersion.id }, data: { status: "READY", observedAt: new Date(), finalizedAt: new Date() } }));
   await db.sharedFileVersion.update({ where: { id: taskVersion.id }, data: { status: "READY", objectETag: "fixture-task-observation", observedAt: new Date(), finalizedAt: new Date() } });
   assert.equal((await files.getSharedFileIdentity({ kind: "project-attachment", id: "file-task-attachment" })).versionId, taskVersion.id);

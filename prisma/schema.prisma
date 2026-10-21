@@ -452,6 +452,11 @@ enum FluxAiMessageRole {
 }
 
 model User {
+  ownedUniversalTasks                 UniversalTask[]                      @relation("UniversalTaskOwner")
+  executedUniversalTasks              UniversalTask[]                      @relation("UniversalTaskExecutor")
+  universalTaskSpectators             UniversalTaskSpectator[]
+  universalTaskEntries                UniversalTaskEntry[]
+  universalTaskUploads                UniversalTaskUpload[]
   businessEvents BusinessEvent[]
   approvalRequests ApprovalRequest[] @relation("ApprovalRequester")
   approvalDecisions ApprovalDecision[]
@@ -693,6 +698,7 @@ model RolePermission {
 }
 
 model Project {
+  universalTasks          UniversalTask[]
   businessEvents BusinessEvent[]
   approvalRequests ApprovalRequest[]
   sharedFiles SharedFile[]
@@ -751,17 +757,19 @@ model Project {
   archivedAt             DateTime?
   createdAt              DateTime                       @default(now())
   updatedAt              DateTime                       @updatedAt
+  creationRequest         ProjectCreationRequest?
+  finalCompletionRequests ProjectFinalCompletionRequest[]
 
   @@index([statusId])
   @@index([ownerId])
   @@index([isPinned])
   @@index([createdAt])
   @@index([createdById])
-  creationRequest         ProjectCreationRequest?
-  finalCompletionRequests ProjectFinalCompletionRequest[]
 }
 
 model FlexibleProject {
+  businessEvents BusinessEvent[]
+  universalTasks          UniversalTask[]
   sharedFiles SharedFile[]
   id            String                        @id @default(cuid())
   slug          String                        @unique
@@ -782,12 +790,12 @@ model FlexibleProject {
   completedAt   DateTime?
   createdAt     DateTime                      @default(now())
   updatedAt     DateTime                      @updatedAt
+  creationRequest         ProjectCreationRequest?
+  finalCompletionRequests ProjectFinalCompletionRequest[]
 
   @@index([ownerId, updatedAt])
   @@index([createdById])
   @@index([status, updatedAt])
-  creationRequest         ProjectCreationRequest?
-  finalCompletionRequests ProjectFinalCompletionRequest[]
 }
 
 model FlexibleProjectCollaborator {
@@ -2434,13 +2442,13 @@ model ProjectCompletionWorkflow {
   createdAt                       DateTime                    @default(now())
   updatedAt                       DateTime                    @updatedAt
 
+  @@unique([id, projectId])
   @@index([approvalStatus])
   @@index([copyrightStatus])
   @@index([invoiceStatus])
   @@index([approvalContactUserId])
   @@index([copyrightContactUserId])
   @@index([invoiceContactUserId])
-  @@unique([id, projectId])
 }
 
 model ProjectCompletionDocument {
@@ -2846,6 +2854,8 @@ enum SharedFileReferenceRole {
 }
 
 model SharedFile {
+  taskId                 String?
+  task                   UniversalTask?                 @relation(fields: [taskId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   id String @id @default(cuid())
   projectId String?
   project Project? @relation(fields: [projectId], references: [id], onDelete: Restrict, onUpdate: Restrict)
@@ -2862,12 +2872,14 @@ model SharedFile {
   completionDocumentType ProjectCompletionDocumentType?
   createdAt DateTime @default(now())
   versions SharedFileVersion[]
+
   @@unique([completionWorkflowId, completionDocumentType])
   @@index([projectId])
   @@index([flexibleProjectId])
 }
 
 model SharedFileVersion {
+  taskUpload            UniversalTaskUpload?
   businessEvents BusinessEvent[]
   approvalEvidence ApprovalEvidence[]
   id String @id @default(cuid())
@@ -2894,12 +2906,15 @@ model SharedFileVersion {
   createdAt DateTime @default(now())
   references SharedFileReference[]
   provenance SharedFileProvenance[]
+
   @@unique([fileId, number])
   @@index([bucket, storageKey])
   @@index([uploadedById])
 }
 
 model SharedFileReference {
+  taskUploadId           String?                       @unique
+  taskUpload             UniversalTaskUpload?          @relation(fields: [taskUploadId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   id String @id @default(cuid())
   versionId String
   version SharedFileVersion @relation(fields: [versionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
@@ -2919,17 +2934,22 @@ model SharedFileReference {
   completionDocumentId String? @unique
   completionDocument ProjectCompletionDocument? @relation(fields: [completionDocumentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   createdAt DateTime @default(now())
+
   @@index([versionId])
 }
 
 // Observations of an existing native workflow decision, not a new approval engine.
 model SharedFileProvenance {
+  taskEntryId       String?
+  taskEntry         UniversalTaskEntry?      @relation(fields: [taskEntryId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   id String @id @default(cuid())
   versionId String
   version SharedFileVersion @relation(fields: [versionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  completionEventId String @unique
-  completionEvent CompletionDocumentEvent @relation(fields: [completionEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  completionEventId String?                  @unique
+  completionEvent   CompletionDocumentEvent? @relation(fields: [completionEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   createdAt DateTime @default(now())
+
+  @@unique([taskEntryId, versionId])
   @@index([versionId])
 }
 
@@ -3066,6 +3086,7 @@ model ApprovalEvent {
 
 // Phase 2.3: native history remains authoritative; SQL guards own event production.
 enum BusinessEventType {
+  TASK_ACTIVITY
   COMPLETION_DOCUMENT_REVIEW_DECIDED
 }
 
@@ -3085,27 +3106,33 @@ enum EventAttemptOutcome {
 }
 
 model BusinessEvent {
+  taskId             String?
+  task               UniversalTask?           @relation(fields: [taskId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  taskEntryId        String?                  @unique
+  taskEntry          UniversalTaskEntry?      @relation(fields: [taskEntryId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  flexibleProjectId String?
+  flexibleProject FlexibleProject? @relation(fields: [flexibleProjectId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   id                String @id
   type              BusinessEventType
   schemaVersion     Int
   aggregateType     String
   aggregateId       String
   sequence          Int
-  projectId         String
-  project           Project @relation(fields: [projectId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  projectId String?
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   actorId           String
   actor             User @relation(fields: [actorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   actorRole         String
   actorVersion      Int
   operation         String
-  decisionId        String @unique
-  decision          ApprovalDecision @relation(fields: [decisionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  nativeEventId     String @unique
-  nativeEvent       CompletionDocumentEvent @relation(fields: [nativeEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  approvalEvidenceId String
-  approvalEvidence  ApprovalEvidence @relation(fields: [approvalEvidenceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  fileVersionId     String
-  fileVersion       SharedFileVersion @relation(fields: [fileVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  decisionId String? @unique
+  decision ApprovalDecision? @relation(fields: [decisionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  nativeEventId String? @unique
+  nativeEvent CompletionDocumentEvent? @relation(fields: [nativeEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  approvalEvidenceId String?
+  approvalEvidence   ApprovalEvidence?        @relation(fields: [approvalEvidenceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  fileVersionId      String?
+  fileVersion        SharedFileVersion?       @relation(fields: [fileVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   correlationId     String
   causationId       String
   idempotencyKey    String @unique
@@ -3158,4 +3185,115 @@ model EventConsumerReceipt {
   consumedAt  DateTime @default(dbgenerated("(CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text)"))
 
   @@id([eventId, consumerKey])
+}
+
+
+// Phase 3.1: Universal Tasker core. Existing concept tasks are not converted.
+enum UniversalTaskType {
+  GENERAL
+  FILE_UPLOAD
+  DATA_INPUT
+  INSPECT_FILE
+  INITIAL_CONCEPT
+  FINAL_CONCEPT
+}
+
+enum UniversalTaskStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETION_REQUESTED
+  COMPLETED
+  CLOSED
+}
+
+enum UniversalTaskPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+model UniversalTask {
+  id          String @id @default(cuid())
+  type              UniversalTaskType        @default(GENERAL)
+  title       String
+  brief             String
+  context           String?
+  deadline          DateTime
+  priority          UniversalTaskPriority    @default(NORMAL)
+  ownerId       String
+  owner             User                     @relation("UniversalTaskOwner", fields: [ownerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  executorId        String
+  executor          User                     @relation("UniversalTaskExecutor", fields: [executorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  projectId String?
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  flexibleProjectId String?
+  flexibleProject FlexibleProject? @relation(fields: [flexibleProjectId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  status            UniversalTaskStatus      @default(OPEN)
+  version           Int                      @default(1)
+  createdAt DateTime @default(dbgenerated("(CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text)"))
+  updatedAt   DateTime          @updatedAt
+  deletedAt       DateTime?
+  spectators        UniversalTaskSpectator[]
+  entries           UniversalTaskEntry[]
+  uploads           UniversalTaskUpload[]
+  files             SharedFile[]
+  businessEvents BusinessEvent[]
+
+  @@index([ownerId, deletedAt, deadline])
+  @@index([executorId, deletedAt, deadline])
+  @@index([projectId, deletedAt])
+  @@index([flexibleProjectId, deletedAt])
+}
+
+model UniversalTaskSpectator {
+  taskId String
+  task   UniversalTask @relation(fields: [taskId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  userId    String
+  user                 User                       @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([taskId, userId])
+  @@index([userId])
+}
+
+model UniversalTaskEntry {
+  id          String @id @default(cuid())
+  taskId           String
+  task             UniversalTask          @relation(fields: [taskId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  version          Int
+  commandId String
+  commandHash      String
+  action              String
+  text             String
+  snapshot Json
+  actorId           String
+  actor             User @relation(fields: [actorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actorRole         String
+  actorVersion      Int
+  directorOverride Boolean
+  createdAt DateTime @default(dbgenerated("(CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text)"))
+  submittedFiles   UniversalTaskUpload[]
+  provenance SharedFileProvenance[]
+  businessEvent BusinessEvent?
+
+  @@unique([taskId, version])
+  @@unique([actorId, commandId])
+}
+
+model UniversalTaskUpload {
+  id          String @id @default(cuid())
+  taskId           String
+  task             UniversalTask        @relation(fields: [taskId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  versionId        String               @unique
+  version SharedFileVersion @relation(fields: [versionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  uploadedById                String
+  uploadedBy       User                 @relation(fields: [uploadedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  stagingKey       String               @unique
+  expiresAt DateTime
+  submittedEntryId String?
+  submittedEntry   UniversalTaskEntry?  @relation(fields: [submittedEntryId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  reference        SharedFileReference?
+  createdAt DateTime @default(dbgenerated("(CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text)"))
+
+  @@index([taskId])
 }
