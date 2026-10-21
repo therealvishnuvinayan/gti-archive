@@ -1,4 +1,4 @@
-import { taskEnabled } from "@/lib/tasker/contracts";
+import { taskEnabled, conceptsEnabled } from "@/lib/tasker/contracts";
 import { listTasks } from "@/lib/tasker/service";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -51,7 +51,7 @@ export default async function Home() {
           ) : null}
         </header>
 
-        {general && <Link href="/tasks" className="block rounded-2xl border border-[#d9e2da] bg-white p-5 text-emerald-900"><strong>My General Tasks · {general.total}</strong><p className="mt-1 text-sm">Open your assignments, conversations and completion reviews.</p></Link>}
+        {general && <Link href="/tasks" className="block rounded-2xl border border-[#d9e2da] bg-white p-5 text-emerald-900"><strong>{conceptsEnabled() ? "My Tasks" : "My General Tasks"} · {general.total}</strong><p className="mt-1 text-sm">Open your assignments, conversations and completion reviews.</p></Link>}
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {snapshot.kpis.map((kpi) => (
             <StatCard key={kpi.label} {...kpi} />

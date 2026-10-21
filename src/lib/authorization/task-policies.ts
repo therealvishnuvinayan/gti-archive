@@ -3,6 +3,8 @@ import type { AuthorizationContext, ResourcePolicies } from "./policy";
 import { structuredProjectReadWhere, flexibleProjectReadWhere } from "./project-read-rules";
 import { taskEnabled, availableTaskType, deliverablesEnabled } from "../tasker/contracts";
 
+import { conceptsEnabled } from "../tasker/contracts";
+import { conceptManager } from "../tasker/concepts";
 import { authorizedTarget } from "../tasker/targets";
 
 async function context({ tx, actor, request }: Parameters<NonNullable<ResourcePolicies["task.view"]>>[0]): Promise<AuthorizationContext | null> {
@@ -18,7 +20,9 @@ async function context({ tx, actor, request }: Parameters<NonNullable<ResourcePo
       resourcePermission: true, authorizedDestinationFolder: true,
       integrity: { workflowAllowed: true, actorUserId: actor.userId, preservesOwnership: true, preservesHistory: true } };
   }
-  if (request.capability === "task.createGeneral") {
+  const conceptCreation = ["task.createInspectFile", "task.createInitialConcept", "task.createFinalConcept"].includes(request.capability);
+  if (conceptCreation && (!conceptsEnabled() || !conceptManager(actor.businessRole))) return null;
+  if (request.capability === "task.createGeneral" || conceptCreation) {
     const [kind, key, extra] = request.targetId.split(":");
     if (!key || extra) return null;
     let permitted = false;
@@ -61,6 +65,7 @@ async function context({ tx, actor, request }: Parameters<NonNullable<ResourcePo
     taskLifecycleAllowed: request.capability === "task.delete" || !task.deletedAt, selfReviewPolicy: { policyId: "general.distinct-reviewer.v1", permitted: !executor } };
 }
 export const taskPolicies: ResourcePolicies = Object.freeze({
+  "task.createInspectFile": context, "task.createInitialConcept": context, "task.createFinalConcept": context,
   "task.createFileUpload": context, "task.createDataInput": context,
   "task.list": context, "task.createGeneral": context, "task.view": context, "task.download": context,
   "task.message": context, "task.execute": context, "task.requestCompletion": context,

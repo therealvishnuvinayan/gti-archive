@@ -1,6 +1,6 @@
 // Phase 1.3: only a NEW private cluster. Never accept URLs/credentials or reuse a DB.
 import assert from "node:assert/strict";
-import { withoutTaskerSchema } from "./tasker-schema-baseline.mjs";
+import { withoutTaskerSchema, withoutTaskConceptsSchema } from "./tasker-schema-baseline.mjs";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -243,7 +243,7 @@ function checkAssignmentServices(runtime = false) {
     writeFileSync(deploymentSchema, withoutEventSchema(readFileSync(schemaPath, "utf8")));
   }
   run(process.execPath, [prismaCli, "migrate", "deploy", "--schema", deploymentSchema], { env: serviceEnv });
-  let eventMigrationSchema = schemaPath;
+  let eventMigrationSchema = schemaPath, eventFollowupSchema = schemaPath;
   if (events) {
     const eventTarget = join(root, "events-target");
     mkdirSync(join(eventTarget, "migrations"), { recursive: true });
@@ -254,6 +254,12 @@ function checkAssignmentServices(runtime = false) {
     }
     eventMigrationSchema = join(eventTarget, "schema.prisma");
     writeFileSync(eventMigrationSchema, withoutTaskerSchema(readFileSync(schemaPath, "utf8")));
+    const phase32 = join(root, "events-phase32"); mkdirSync(join(phase32, "migrations"), { recursive: true });
+    copyFileSync(join(migrationRoot, "migration_lock.toml"), join(phase32, "migrations/migration_lock.toml"));
+    for (const name of readdirSync(migrationRoot).filter(n => /^\d+_/.test(n) && n < "20261022010000_universal_tasker_concepts")) {
+      mkdirSync(join(phase32, "migrations", name)); copyFileSync(join(migrationRoot, name, "migration.sql"), join(phase32, "migrations", name, "migration.sql"));
+    }
+    eventFollowupSchema = join(phase32, "schema.prisma"); writeFileSync(eventFollowupSchema, withoutTaskConceptsSchema(readFileSync(schemaPath, "utf8")));
     // Preserve the baseline diff location used by the event suite.
     mkdirSync(join(eventTarget, "events-baseline"));
     copyFileSync(deploymentSchema, join(eventTarget, "events-baseline/schema.prisma"));
@@ -282,10 +288,21 @@ function checkAssignmentServices(runtime = false) {
   mkdirSync(marker, { recursive: true });
   writeFileSync(join(marker, "index.js"), "// Isolated Node server test only.\n");
   console.log(run(process.execPath, [join(output, administration ? "scripts/administration-integration-check.js" : workspace ? "scripts/workspace-authorization-integration-check.js" : search ? "scripts/flux-ai-archive-search-integration-check.js" : library ? "scripts/library-authorization-integration-check.js" : archives ? "scripts/archives-authorization-integration-check.js" : documents ? "scripts/completion-documents-integration-check.js" : governance ? "scripts/authorization-project-governance-integration-check.js" : projectWrite ? "scripts/authorization-project-write-integration-check.js" : projectRead ? "scripts/authorization-project-read-integration-check.js" : runtime ? "scripts/authorization-runtime-integration-check.js" : "scripts/authorization-services-integration-check.js")], {
-    env: { ...serviceEnv, NODE_ENV: "production", FLUX_EVENT_TEST: events ? "1" : "", FLUX_EVENT_FOLLOWUP_SCHEMA: events ? schemaPath : "", FLUX_EVENT_MIGRATION_SCHEMA: events ? eventMigrationSchema : "", FLUX_FILE_IDENTITY_TEST: fileIdentity ? "1" : "", FLUX_APPROVAL_TEST: approvals ? "1" : "", FLUX_AUTH_TEST_ROOT: root, FLUX_AUTH_TEST_URL: serviceUrl, FLUX_AUTH_TEST_CLIENT: clientPath,
+    env: { ...serviceEnv, NODE_ENV: "production", FLUX_EVENT_TEST: events ? "1" : "", FLUX_EVENT_FOLLOWUP_SCHEMA: events ? eventFollowupSchema : "", FLUX_EVENT_MIGRATION_SCHEMA: events ? eventMigrationSchema : "", FLUX_FILE_IDENTITY_TEST: fileIdentity ? "1" : "", FLUX_APPROVAL_TEST: approvals ? "1" : "", FLUX_AUTH_TEST_ROOT: root, FLUX_AUTH_TEST_URL: serviceUrl, FLUX_AUTH_TEST_CLIENT: clientPath,
       NODE_PATH: join(repository, "node_modules") },
     timeout: events ? 180000 : 60000,
   }));
+  if (events) {
+    const query = statement => run("psql", psqlArgs(serviceDatabase), { input: statement });
+    assert.equal(query('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL'), "110");
+    for (const table of ["ApprovalRequest", "ApprovalDecision", "CompletionDocumentEvent", "BusinessEvent", "EventOutbox", "SharedFileVersion"]) assert.ok(Number(query(`SELECT count(*) FROM "${table}"`)) > 0, `${table} must be populated`);
+    const tables = query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename").split("\n");
+    const snapshot = () => tables.map(t => query(`SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text)::text,'[]') FROM "${t}" t ${t === "_prisma_migrations" ? "WHERE migration_name <> '20261022010000_universal_tasker_concepts'" : ""}`));
+    const before = snapshot(); run(process.execPath, [prismaCli, "migrate", "deploy", "--schema", schemaPath], { env: serviceEnv });
+    assert.deepEqual(snapshot(), before); assert.equal(query('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL'), "111");
+    assert.equal(query("SELECT count(*) FROM pg_tables WHERE schemaname='public'"), "120");
+    console.log("PASS Phase 3.3 additional populated migration: all 119 tables preserved, including nine accounts, accepted/rejected approvals, native document history, exact file versions, business events and delivery diagnostics.");
+  }
   const drift = run(process.execPath, [prismaCli, "migrate", "diff", "--from-url", serviceUrl,
     "--to-schema-datamodel", schemaPath, "--script"], { env: serviceEnv });
   assert.match(drift, /This is an empty migration/);
@@ -453,6 +470,17 @@ function checkProvisioning() {
   }));
   assert.match(run(process.execPath, [prismaCli, "migrate", "diff", "--from-url", guidedUrl,
     "--to-schema-datamodel", schemaPath, "--script"], { env: { ...env, DATABASE_URL: guidedUrl } }), /This is an empty migration/);
+  if (events) {
+    const query = statement => run("psql", psqlArgs(serviceDatabase), { input: statement });
+    assert.equal(query('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL'), "110");
+    for (const table of ["ApprovalRequest", "ApprovalDecision", "CompletionDocumentEvent", "BusinessEvent", "EventOutbox", "SharedFileVersion"]) assert.ok(Number(query(`SELECT count(*) FROM "${table}"`)) > 0, `${table} must be populated`);
+    const tables = query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename").split("\n");
+    const snapshot = () => tables.map(t => query(`SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text)::text,'[]') FROM "${t}" t ${t === "_prisma_migrations" ? "WHERE migration_name <> '20261022010000_universal_tasker_concepts'" : ""}`));
+    const before = snapshot(); run(process.execPath, [prismaCli, "migrate", "deploy", "--schema", schemaPath], { env: serviceEnv });
+    assert.deepEqual(snapshot(), before); assert.equal(query('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL'), "111");
+    assert.equal(query("SELECT count(*) FROM pg_tables WHERE schemaname='public'"), "120");
+    console.log("PASS Phase 3.3 additional populated migration: all 119 tables preserved, including nine accounts, accepted/rejected approvals, native document history, exact file versions, business events and delivery diagnostics.");
+  }
   const drift = run(process.execPath, [prismaCli, "migrate", "diff", "--from-url", provisioningUrl,
     "--to-schema-datamodel", schemaPath, "--script"], { env: testEnv });
   assert.match(drift, /This is an empty migration/);

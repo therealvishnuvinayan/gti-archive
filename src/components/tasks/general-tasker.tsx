@@ -5,7 +5,7 @@ import { richTextToPlainText } from "@/lib/rich-text";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { LayoutGrid, List, Plus, ArrowLeft, Paperclip, RefreshCw } from "lucide-react";
-import { priorities, statuses, type TaskDetail, type TaskSummary } from "@/lib/tasker/contracts";
+import { priorities, statuses, type TaskDetail, type TaskSummary, type ConceptSourceChoice, isDeliverable } from "@/lib/tasker/contracts";
 
 const input = "w-full rounded-xl border border-[#d9e2da] bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-600";
 const button = "inline-flex items-center justify-center gap-2 rounded-xl border border-[#d9e2da] bg-white px-4 py-2 text-sm font-semibold disabled:opacity-50";
@@ -21,11 +21,12 @@ async function api<T>(path: string, data?: unknown, method = "POST"): Promise<T>
   const response = await fetch(`/api/tasker${path}`, data === undefined ? { cache: "no-store" } : { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
   const result = await response.json(); if (!response.ok) throw new Error(result.error ?? "Unable to load tasks."); return result as T;
 }
-type Options = { targets: { target: string; label: string; modes: string[]; projectId: string }[]; actorId: string; people: { id: string; name: string | null; role: string }[]; contexts: { target: string; name: string }[] };
+type Options = { canCreateConcepts: boolean; conceptSources: ConceptSourceChoice[]; targets: { target: string; label: string; modes: string[]; projectId: string }[]; actorId: string; people: { id: string; name: string | null; role: string }[]; contexts: { target: string; name: string }[] };
 function TaskForm({ context, task, onDone, onCancel, initialDestination }: { initialDestination?: string; context?: string; task?: TaskDetail; onDone: () => void; onCancel: () => void }) {
   const [options, setOptions] = useState<Options | null>(null), [error, setError] = useState(""), [busy, setBusy] = useState(false);
   const [type, setType] = useState<TaskSummary["type"]>(task?.type ?? (initialDestination?.startsWith("checklist:") ? "DATA_INPUT" : "GENERAL")), [selectedContext, setSelectedContext] = useState(context ?? ""), [destination, setDestination] = useState(initialDestination ?? "");
   const targets = options?.targets.filter(t => `structured:${t.projectId}` === selectedContext && (type === "DATA_INPUT" ? t.target.startsWith("checklist:") : !t.target.startsWith("checklist:"))) ?? [];
+  const sourceChoices = options?.conceptSources.filter(s => s.contextTarget === selectedContext || selectedContext.startsWith("task:")) ?? [];
   const selectedTarget = targets.find(t => t.target === destination);
   const [executor, setExecutor] = useState(task?.executor.id ?? "");
   useEffect(() => { let active = true; api<Options>(`?options=1${context ? `&context=${encodeURIComponent(context)}` : ""}`).then(o => { if (active) setOptions(o); }).catch(e => { if (active) setError(e.message); }); return () => { active = false; }; }, [context]);
@@ -35,7 +36,7 @@ function TaskForm({ context, task, onDone, onCancel, initialDestination }: { ini
       const fields = { title: form.get("title"), brief: form.get("brief"), context: form.get("context"), deadline: new Date(String(form.get("deadline"))).toISOString(),
         priority: form.get("priority"), executorId: executor, spectatorIds: form.getAll("spectatorIds"), commandId: crypto.randomUUID() };
       if (task) await api(`/${task.id}`, { ...fields, action: "EDIT", expectedVersion: task.version }, "PATCH");
-      else await api("", { ...fields, type, contextTarget: selectedContext, ...(type === "GENERAL" ? {} : { destination, inputMode: form.get("inputMode") }) });
+      else await api("", { ...fields, type, contextTarget: selectedContext, ...(isDeliverable(type) ? { destination, inputMode: form.get("inputMode") } : {}), ...(type === "INSPECT_FILE" && form.get("sourceVersionId") ? { sourceVersionId: form.get("sourceVersionId") } : {}), ...(type === "FINAL_CONCEPT" ? { inspirationVersionIds: form.getAll("inspirationVersionIds") } : {}) });
       onDone();
     } catch (e) { setError(e instanceof Error ? e.message : "Unable to save task."); } finally { setBusy(false); }
   }
@@ -43,15 +44,17 @@ function TaskForm({ context, task, onDone, onCancel, initialDestination }: { ini
   return <form onSubmit={save} className="space-y-4 rounded-2xl border border-[#d9e2da] bg-[#f4f7f3] p-5">
     <h2 className="text-lg font-semibold">{task ? `Edit ${label(task.type)} Task` : `New ${label(type)} Task`}</h2>
     {!context && !task && <label className="block text-sm">Project or assigned task context<select name="contextTarget" value={selectedContext} onChange={e => { setSelectedContext(e.target.value); setType("GENERAL"); setDestination(""); }} className={input} required><option value="">Choose a context</option>{options?.contexts.map(c => <option key={c.target} value={c.target}>{c.name}</option>)}</select></label>}
-    {!task && !!options?.targets.length && <label className="block text-sm">Task type<select aria-label="Task type" value={type} onChange={e => { setType(e.target.value as TaskSummary["type"]); setDestination(""); }} className={input}>
+    {!task && (!!options?.targets.length || options?.canCreateConcepts) && <label className="block text-sm">Task type<select aria-label="Task type" value={type} onChange={e => { setType(e.target.value as TaskSummary["type"]); setDestination(""); }} className={input}>
       <option value="GENERAL">General Task</option>
       {options.targets.some(t => `structured:${t.projectId}` === selectedContext && !t.target.startsWith("checklist:")) && <option value="FILE_UPLOAD">File Upload Task</option>}
       {options.targets.some(t => `structured:${t.projectId}` === selectedContext && t.target.startsWith("checklist:")) && <option value="DATA_INPUT">Data Input Task</option>}
-      <option disabled>Inspect File — unavailable</option><option disabled>Initial Concept — unavailable</option><option disabled>Final Concept — unavailable</option>
+      {options?.canCreateConcepts && <><option value="INSPECT_FILE">Inspect File Task</option><option value="INITIAL_CONCEPT">Initial Concept Task</option><option value="FINAL_CONCEPT">Final Concept Task</option></>}
     </select></label>}
-    {!task && type !== "GENERAL" && <><label className="block text-sm">{type === "DATA_INPUT" ? "Target stage field" : "Destination folder"}<select aria-label="Task destination" value={destination} onChange={e => setDestination(e.target.value)} className={input} required><option value="">Choose an authorized destination</option>{targets.map(t => <option key={t.target} value={t.target}>{t.label}</option>)}</select></label>
+    {!task && isDeliverable(type) && <><label className="block text-sm">{type === "DATA_INPUT" ? "Target stage field" : "Destination folder"}<select aria-label="Task destination" value={destination} onChange={e => setDestination(e.target.value)} className={input} required><option value="">Choose an authorized destination</option>{targets.map(t => <option key={t.target} value={t.target}>{t.label}</option>)}</select></label>
       <label className="block text-sm">Requested answer<select name="inputMode" aria-label="Requested answer" key={destination} className={input} required>{selectedTarget?.modes.map(m => <option key={m} value={m}>{label(m)}</option>)}</select></label>
       <p className="text-sm text-[#68766b]">Work is applied only after acceptance. The executor receives task access only.</p></>}
+    {!task && type === "INSPECT_FILE" && <label className="block text-sm">Inspection source<select key={selectedContext} name="sourceVersionId" className={input}><option value="">Upload a source after creating this task</option>{sourceChoices.filter(s => s.kind === "INSPECTION").map(s => <option key={s.versionId} value={s.versionId}>{s.name} · v{s.number}</option>)}</select><span className="mt-2 block text-xs">Only sealed project files you can delegate appear here. Findings cannot be submitted until a source is pinned.</span></label>}
+    {!task && type === "FINAL_CONCEPT" && <fieldset className="space-y-2"><legend>Initial Concept inspiration (optional)</legend>{sourceChoices.filter(s => s.kind === "INSPIRATION").map(s => <label key={s.versionId} className="flex gap-2 text-sm"><input type="checkbox" name="inspirationVersionIds" value={s.versionId} />{s.sourceTaskTitle} · {s.name} · v{s.number} · {label(s.sourceState)}</label>)}{!sourceChoices.some(s => s.kind === "INSPIRATION") && <p className="text-sm text-[#68766b]">No eligible Initial Concept files in this context. You can create a Final Concept Task without inspiration.</p>}<p className="text-xs">Selected versions stay pinned. Their original review does not approve the Final Concept.</p></fieldset>}
     <label className="block text-sm">Title<input name="title" defaultValue={task?.title} className={input} required maxLength={200} /></label>
     <label className="block text-sm">Brief<textarea name="brief" defaultValue={task?.brief} className={input} rows={4} required maxLength={20000} /></label>
     <label className="block text-sm">Supporting context (optional)<textarea name="context" defaultValue={task?.context ?? ""} className={input} rows={2} maxLength={5000} /></label>
@@ -110,7 +113,7 @@ export function GeneralTaskDetail({ initial }: { initial: TaskDetail }) {
       setNote(""); setFileIds([]); setProposedText(""); setConfirmed(false); await refresh();
     } catch (e) { setError(e instanceof Error ? e.message : "Unable to update task."); await refresh().catch(() => {}); } finally { setBusy(false); }
   }
-  async function upload(file?: File) {
+  async function upload(file?: File, inspectionSource = false) {
     if (!file) return; setBusy(true); setError("");
     try {
       const prepared = await api<{ uploadId: string; version: number }>(`/${task.id}`, { action: "PREPARE_UPLOAD", commandId: crypto.randomUUID(), expectedVersion: task.version,
@@ -118,8 +121,13 @@ export function GeneralTaskDetail({ initial }: { initial: TaskDetail }) {
       const ticket = await api<{ uploadUrl: string }>(`/${task.id}/files`, { uploadId: prepared.uploadId });
       const result = await fetch(ticket.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
       if (!result.ok) throw new Error("Upload failed. Please retry with a new attachment.");
-      await api(`/${task.id}`, { action: "FINALIZE_UPLOAD", commandId: crypto.randomUUID(), expectedVersion: prepared.version, uploadId: prepared.uploadId }, "PATCH");
-      setFileIds(current => [...current, prepared.uploadId]); await refresh();
+      const finalized = await api<{ version: number }>(`/${task.id}`, { action: "FINALIZE_UPLOAD", commandId: crypto.randomUUID(), expectedVersion: prepared.version, uploadId: prepared.uploadId }, "PATCH");
+      if (inspectionSource) {
+        const detail = await api<TaskDetail>(`/${task.id}`), source = detail.files.find(f => f.id === prepared.uploadId);
+        if (!source) throw new Error("Source upload is unavailable.");
+        await api(`/${task.id}`, { action: "SET_SOURCE", sourceVersionId: source.versionId, text: "Pinned owner-uploaded inspection source.", expectedVersion: finalized.version, commandId: crypto.randomUUID() }, "PATCH");
+      } else setFileIds(current => [...current, prepared.uploadId]);
+      await refresh();
     } catch (e) { setError(e instanceof Error ? e.message : "Upload failed."); await refresh().catch(() => {}); } finally { setBusy(false); }
   }
   const request = [...task.entries].reverse().find(e => e.action === "REQUEST_COMPLETION");
@@ -143,8 +151,14 @@ export function GeneralTaskDetail({ initial }: { initial: TaskDetail }) {
       {!!task.deliverable.publishedAttachmentIds.length && <p>{task.deliverable.publishedAttachmentIds.length} accepted file(s) published to the destination.</p>}
       {task.status === "COMPLETED" && task.type === "DATA_INPUT" && <p>Accepted proposal applied to this field.</p>}
     </section>}
+    {task.references !== undefined && task.type !== "INITIAL_CONCEPT" && <section className="space-y-3 rounded-2xl border border-[#dce5dd] bg-white p-6"><h2 className="font-semibold">{task.type === "INSPECT_FILE" ? "Pinned inspection source" : "Initial Concept inspiration"}</h2>
+      {!task.references.length && <p className="text-sm">{task.type === "INSPECT_FILE" ? "Awaiting a sealed source from the Task Owner. Findings and completion requests are unavailable until then." : task.type === "FINAL_CONCEPT" ? "No Initial Concept inspiration was selected." : "Initial Concept submissions are recorded below."}</p>}
+      {task.references.map(r => { const href = `/api/tasker/${task.id}/references/${r.id}?versionId=${r.versionId}`; return <div key={r.id} className="rounded-xl bg-[#f4f7f3] p-4 text-sm"><p className="font-semibold">{r.name} · v{r.number}</p><p>Source state when selected: {label(r.sourceState)} · Uploaded by {r.uploader ? personName(r.uploader) : "Unknown"}</p>{r.sourceTask && <p>Initial Concept: {r.sourceTask.title} · Owner: {personName(r.sourceTask.owner)}</p>}{r.submission && <p>Submitted by {personName(r.submission.actor)} · {new Date(r.submission.createdAt).toLocaleString()}</p>}{r.review && <p>Original review: {label(r.review.action)} · {personName(r.review.actor)} · {new Date(r.review.createdAt).toLocaleString()}</p>}<div className="mt-2 flex gap-4"><a className="text-emerald-800 underline" href={href}>Download exact version</a>{["application/pdf","image/png","image/jpeg","image/gif","image/webp"].includes(r.mimeType) && <a className="text-emerald-800 underline" href={href + "&disposition=inline"} target="_blank" rel="noreferrer">Preview exact version</a>}</div></div>; })}
+      {p.uploadSource && <label className={`${button} cursor-pointer`}>Upload inspection source<input type="file" aria-label="Inspection source upload" className="sr-only" disabled={busy} onChange={e => { void upload(e.target.files?.[0], true); e.target.value = ""; }} /></label>}
+      {p.manage && task.type === "INSPECT_FILE" && !task.references.length && task.files.filter(f => f.status === "READY" && f.uploadedById === task.owner.id).map(f => <button key={f.id} className={button} disabled={busy} onClick={async () => { setBusy(true); setError(""); try { await api(`/${task.id}`, { action: "SET_SOURCE", sourceVersionId: f.versionId, text: "Pinned selected owner-uploaded source.", expectedVersion: task.version, commandId: crypto.randomUUID() }, "PATCH"); await refresh(); } catch (e) { setError(e instanceof Error ? e.message : "Unable to pin source."); } finally { setBusy(false); } }}>Pin {f.name} · v{f.number} as source</button>)}
+    </section>}
     {editing && <TaskForm task={task} onCancel={() => setEditing(false)} onDone={() => { setEditing(false); void refresh(); }} />}
-    <section className="rounded-2xl border border-[#dce5dd] bg-white p-6"><h2 className="text-lg font-semibold">Conversation and history</h2><ol className="mt-5 space-y-5">{task.entries.map(e => <li key={e.id} className="border-l-2 border-[#dce5dd] pl-4"><p className="text-xs text-[#68766b]">{personName(e.actor)} · {label(e.action)}{e.directorOverride ? " · Director intervention" : ""} · {new Date(e.createdAt).toLocaleString()}</p><p className="mt-2 whitespace-pre-wrap text-sm">{e.text}</p>{task.files.filter(f => f.submittedEntryId === e.id).map(f => <a key={f.id} className="mt-2 block text-sm text-emerald-800 underline" href={`/api/tasker/${task.id}/files/${f.id}?versionId=${f.versionId}`}>{f.name} · v{f.number}</a>)}{task.type === "DATA_INPUT" && e.action === "SUBMIT" && <FieldValue value={(e.snapshot as { proposedValue?: unknown }).proposedValue} rich={task.deliverable?.fieldType === "text-attachment"} />}{e.action === "EDIT" && <details className="mt-2 text-xs"><summary>Recorded changes</summary><pre className="mt-2 whitespace-pre-wrap break-words">{JSON.stringify(e.snapshot, null, 2)}</pre></details>}</li>)}</ol></section>
+    <section className="rounded-2xl border border-[#dce5dd] bg-white p-6"><h2 className="text-lg font-semibold">Conversation and history</h2><ol className="mt-5 space-y-5">{task.entries.map(e => <li key={e.id} className="border-l-2 border-[#dce5dd] pl-4"><p className="text-xs text-[#68766b]">{personName(e.actor)} · {label(e.action)}{e.directorOverride ? " · Director intervention" : ""} · {new Date(e.createdAt).toLocaleString()}</p><p className="mt-2 whitespace-pre-wrap text-sm">{e.text}</p>{task.submissions?.filter(s => s.id === e.id).map(s => <p key={s.id} className="mt-2 text-sm font-semibold">Concept evidence: {label(s.state)}{s.reviewer ? ` · Reviewed by ${personName(s.reviewer)}` : ""}</p>)}{task.files.filter(f => f.submittedEntryId === e.id).map(f => <a key={f.id} className="mt-2 block text-sm text-emerald-800 underline" href={`/api/tasker/${task.id}/files/${f.id}?versionId=${f.versionId}`}>{f.name} · v{f.number}</a>)}{task.type === "DATA_INPUT" && e.action === "SUBMIT" && <FieldValue value={(e.snapshot as { proposedValue?: unknown }).proposedValue} rich={task.deliverable?.fieldType === "text-attachment"} />}{e.action === "EDIT" && <details className="mt-2 text-xs"><summary>Recorded changes</summary><pre className="mt-2 whitespace-pre-wrap break-words">{JSON.stringify(e.snapshot, null, 2)}</pre></details>}</li>)}</ol></section>
     {mutable && <section className="space-y-4 rounded-2xl border border-[#dce5dd] bg-white p-6"><h2 className="text-lg font-semibold">{p.review ? "Review completion request" : "Respond or update task"}</h2>
       {p.review && task.deliverable && <div className="space-y-3 rounded-xl bg-emerald-50 p-4"><h3 className="font-semibold">Accept this exact submission</h3><p>Destination: {task.deliverable.label}</p>
         {task.type === "DATA_INPUT" && <p className="text-sm">Acceptance replaces this field’s value and attachment links with this proposal. Earlier evidence is retained.</p>}{task.type === "DATA_INPUT" && <FieldValue value={evidence?.proposedValue} rich={task.deliverable.fieldType === "text-attachment"} />}

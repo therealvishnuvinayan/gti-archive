@@ -14,6 +14,10 @@ export async function body(request: Request) {
   try { return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown; } catch { throw new TaskerError("INVALID_JSON"); }
 }
 const messages: Record<string, string> = {
+  INSPECTION_SOURCE_REQUIRED: "The Task Owner must pin a sealed inspection source before findings can be submitted.",
+  SOURCE_ALREADY_PINNED: "This inspection already has an immutable source. Create a new task to inspect another version.",
+  SOURCE_UNAVAILABLE: "This exact source is unavailable or cannot be delegated in this task context.",
+  SOURCE_INELIGIBLE: "Select a current submitted or approved Initial Concept version.",
   FIELD_CONFLICT_REFRESH_AND_RESUBMIT: "The field changed since this task was created. Review current and proposed values, refresh the target, and request a new submission.",
   TARGET_MOVED_OR_REPLACED: "The destination was moved or replaced. Create a task for a currently authorized destination.",
   TARGET_UNAVAILABLE: "The destination no longer exists or is no longer writable.",

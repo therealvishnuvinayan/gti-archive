@@ -11,6 +11,8 @@ import { captureFileIntegrity } from "../files/contracts";
 import { copyStoredObject, createPresignedUploadUrl, getObjectMetadata, getS3BucketName, readPinnedStoredObject } from "@/lib/storage/s3";
 import { availableTaskType, deliverablesEnabled, TaskerError, actions, contextTarget, deadline, ensure, expectedVersion, id, ids, object, priority, statuses, taskEnabled, text, type TaskAction, type TaskDetail, type TaskSummary } from "./contracts";
 
+import { conceptCreationCapabilities, conceptManager, conceptSourceChoices, resolveTaskReference, saveTaskReference, submissionState, taskReferences } from "./concepts";
+import { conceptsEnabled, enabledTaskTypes, isConceptType, isDeliverable } from "./contracts";
 import { authorizedTarget, targetChoices, proposedValue, recheckTarget } from "./targets";
 import { prepareApplication, applyApplication, completeApplication } from "./applications";
 
@@ -67,14 +69,17 @@ export async function taskOptions(target?: string) {
     const [structured, flexible, assigned] = target ? [[], [], []] : await Promise.all([
       tx.project.findMany({ where: structuredProjectReadWhere(actor), select: { id: true, name: true }, orderBy: { name: "asc" } }),
       tx.flexibleProject.findMany({ where: flexibleProjectReadWhere(actor), select: { id: true, name: true }, orderBy: { name: "asc" } }),
-      tx.universalTask.findMany({ where: { deletedAt: null, type: deliverablesEnabled() ? { in: ["GENERAL", "FILE_UPLOAD", "DATA_INPUT"] } : "GENERAL", OR: [{ ownerId: grant.actorUserId }, { executorId: grant.actorUserId }] }, select: { id: true, title: true }, orderBy: { updatedAt: "desc" } }),
+      tx.universalTask.findMany({ where: { deletedAt: null, type: { in: enabledTaskTypes() }, OR: [{ ownerId: grant.actorUserId }, { executorId: grant.actorUserId }] }, select: { id: true, title: true }, orderBy: { updatedAt: "desc" } }),
     ]);
     // Names/roles only. No account administration, legacy labels or email export.
     const people = await tx.user.findMany({ where: { authorization: { accountStatus: "ACTIVE", businessRole: { not: null } } },
       select: { ...person, authorization: { select: { businessRole: true } } }, orderBy: { name: "asc" } });
     const projectIds = target ? [ (await projectFor(tx, contextTarget(target))).projectId ].filter((v): v is string => !!v) : structured.map(p => p.id);
     const targets = deliverablesEnabled() ? await targetChoices(tx, grant.actorUserId, projectIds) : [];
-    return { targets, actorId: grant.actorUserId, people: people.map(p => ({ id: p.id, name: p.name, role: p.authorization!.businessRole })), contexts: [
+    const conceptContexts = target ? [await projectFor(tx, contextTarget(target))] : [
+      ...structured.map(p => ({ projectId: p.id, flexibleProjectId: null })), ...flexible.map(p => ({ projectId: null, flexibleProjectId: p.id }))];
+    const conceptSources = conceptsEnabled() ? await conceptSourceChoices(tx, grant.actorUserId, conceptContexts) : [];
+    return { conceptSources, canCreateConcepts: conceptsEnabled() && conceptManager(actor.businessRole), targets, actorId: grant.actorUserId, people: people.map(p => ({ id: p.id, name: p.name, role: p.authorization!.businessRole })), contexts: [
       ...structured.map(p => ({ target: `structured:${p.id}`, name: p.name })),
       ...flexible.map(p => ({ target: `flexible:${p.id}`, name: p.name })),
       ...assigned.map(t => ({ target: `task:${t.id}`, name: `Task context: ${t.title}` })),
@@ -95,7 +100,7 @@ export async function listTasks(raw: unknown = {}) {
       if (ctx.kind === "task") throw new Error("Use a project context for task lists");
       project = ctx.kind === "structured" ? { projectId: ctx.key } : { flexibleProjectId: ctx.key };
     }
-    const where: Prisma.UniversalTaskWhereInput = { deletedAt: null, type: deliverablesEnabled() ? { in: ["GENERAL", "FILE_UPLOAD", "DATA_INPUT"] } : "GENERAL", status: v.status as typeof statuses[number] | undefined, ownerId, executorId,
+    const where: Prisma.UniversalTaskWhereInput = { deletedAt: null, type: { in: enabledTaskTypes() }, status: v.status as typeof statuses[number] | undefined, ownerId, executorId,
       AND: [project, ...(actor.businessRole === "DIRECTOR" && ctx ? [] : [relationWhere(grant.actorUserId)]),
         ...(search ? [{ OR: [{ title: { contains: search, mode: "insensitive" as const } }, { brief: { contains: search, mode: "insensitive" as const } }] }] : [])] };
     const [rows, total] = await Promise.all([tx.universalTask.findMany({ where, include: relations, orderBy: [{ deadline: "asc" }, { id: "asc" }], skip: offset, take: 60 }), tx.universalTask.count({ where })]);
@@ -103,14 +108,14 @@ export async function listTasks(raw: unknown = {}) {
   });
 }
 export async function createTask(raw: unknown) {
-  enabled(); const v = object(raw, ["commandId", "contextTarget", "type", "title", "brief", "context", "deadline", "priority", "executorId", "spectatorIds", "destination", "inputMode"]);
+  enabled(); const v = object(raw, ["commandId", "contextTarget", "type", "title", "brief", "context", "deadline", "priority", "executorId", "spectatorIds", "destination", "inputMode", "sourceVersionId", "inspirationVersionIds"]);
   ensure(typeof v.type === "string" && availableTaskType(v.type), "TASK_TYPE_UNAVAILABLE");
   const commandId = id(v.commandId), target = contextTarget(v.contextTarget);
   const fields = { title: text(v.title, 200), brief: text(v.brief, 20000), context: text(v.context, 5000, true) || null,
     deadline: deadline(v.deadline), priority: priority(v.priority), executorId: id(v.executorId) };
   const spectators = ids(v.spectatorIds), commandHash = hash(v);
-  const taskType = v.type as TaskSummary["type"], newType = taskType !== "GENERAL";
-  return runtimeAuthorization.runAuthorized({ capability: taskType === "FILE_UPLOAD" ? "task.createFileUpload" : taskType === "DATA_INPUT" ? "task.createDataInput" : "task.createGeneral", targetId: newType ? text(v.destination, 160) : target.target }, async (tx, grant) => {
+  const taskType = v.type as TaskSummary["type"], newType = isDeliverable(taskType);
+  return runtimeAuthorization.runAuthorized({ capability: taskType === "FILE_UPLOAD" ? "task.createFileUpload" : taskType === "DATA_INPUT" ? "task.createDataInput" : isConceptType(taskType) ? conceptCreationCapabilities[taskType as keyof typeof conceptCreationCapabilities] : "task.createGeneral", targetId: newType ? text(v.destination, 160) : target.target }, async (tx, grant) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${grant.actorUserId + ":" + commandId}, 0))`;
     const old = await replay(tx, grant, commandId, commandHash); if (old) return { id: old.taskId, version: old.version, replayed: true };
     await eligible(tx, grant.actorUserId, fields.executorId, spectators);
@@ -124,8 +129,14 @@ export async function createTask(raw: unknown) {
     if (destination) await tx.universalTaskTarget.create({ data: { taskId: task.id, kind: destination.kind, nativeId: destination.nativeId,
       inputMode: text(v.inputMode, 20), label: destination.label, identity: destination.identity, identityHash: hash(destination.identity),
       expectedState: destination.state, expectedHash: hash(destination.state) } });
-    await record(tx, task, grant, commandId, commandHash, "CREATED", fields.brief,
-      { title: fields.title, deadline: fields.deadline.toISOString(), priority: fields.priority, executorId: fields.executorId, spectatorIds: spectators, context: fields.context });
+    ensure(v.sourceVersionId === undefined || taskType === "INSPECT_FILE", "UNSUPPORTED_SOURCE");
+    ensure(v.inspirationVersionIds === undefined || taskType === "FINAL_CONCEPT", "UNSUPPORTED_SOURCE");
+    const sourceIds = taskType === "INSPECT_FILE" && v.sourceVersionId !== undefined ? [id(v.sourceVersionId)] : ids(v.inspirationVersionIds);
+    const sources = [];
+    for (const versionId of sourceIds) sources.push(await resolveTaskReference(tx, grant.actorUserId, task, versionId));
+    const created = await record(tx, task, grant, commandId, commandHash, "CREATED", fields.brief,
+      { ...(isConceptType(task.type) ? { referenceVersionIds: sourceIds } : {}), title: fields.title, deadline: fields.deadline.toISOString(), priority: fields.priority, executorId: fields.executorId, spectatorIds: spectators, context: fields.context });
+    for (const source of sources) await saveTaskReference(tx, task.id, created.id, source);
     return { id: task.id, version: task.version, replayed: false };
   });
 }
@@ -140,7 +151,7 @@ export async function getTask(taskId: string): Promise<TaskDetail> {
     const uploads = await tx.universalTaskUpload.findMany({ where: { taskId, OR: [{ submittedEntryId: { not: null } }, { uploadedById: grant.actorUserId }] }, include: { version: true }, orderBy: { createdAt: "asc" } });
     const sensitive = task.type === "GENERAL" || director || owner || executor;
     let deliverable: TaskDetail["deliverable"];
-    if (task.type !== "GENERAL") {
+    if (isDeliverable(task.type)) {
       const target = await tx.universalTaskTarget.findUniqueOrThrow({ where: { taskId } });
       const application = sensitive ? await tx.universalTaskApplication.findFirst({ where: { taskId }, orderBy: { createdAt: "desc" }, include: { publications: true } }) : null;
       deliverable = { label: target.label, inputMode: target.inputMode, fieldType: (target.identity as { fieldType?: string }).fieldType, publishedAttachmentIds: sensitive ? application?.publications.flatMap(p => p.attachmentId ? [p.attachmentId] : []) ?? [] : [],
@@ -151,20 +162,25 @@ export async function getTask(taskId: string): Promise<TaskDetail> {
         catch (error) { if (!(error instanceof TaskerError)) throw error; deliverable.errorCode = error.code; }
       }
     }
-    return { ...summary(task), deliverable, entries: (sensitive ? entries : []).map(e => ({ id: e.id, version: e.version, action: e.action, text: e.text,
+    const references = isConceptType(task.type) && sensitive ? await taskReferences(tx, task) : undefined;
+    const submissions = ["INITIAL_CONCEPT", "FINAL_CONCEPT"].includes(task.type) && sensitive ? entries.filter(e => e.action === "SUBMIT").map(e => {
+      const result = submissionState(e, entries); return { id: e.id, state: result.state, reviewer: result.review ? entries.find(r => r.id === result.review!.id)!.actor : null };
+    }) : undefined;
+    const sourceReady = task.type !== "INSPECT_FILE" || !!references?.length;
+    return { ...summary(task), deliverable, references, submissions, entries: (sensitive ? entries : []).map(e => ({ id: e.id, version: e.version, action: e.action, text: e.text,
       actor: e.actor, directorOverride: e.directorOverride, createdAt: e.createdAt.toISOString(), snapshot: task.type !== "GENERAL" && !director && !owner && e.action === "REFRESH_TARGET" ? {} : e.snapshot })),
       files: (sensitive ? uploads : []).map(u => ({ id: u.id, fileId: u.version.fileId, versionId: u.versionId, number: u.version.number,
         name: u.version.originalFileName, size: u.version.fileSize, status: u.version.status, uploadedById: u.uploadedById, submittedEntryId: u.submittedEntryId })),
-      permissions: { manage: working && (director || owner), message: active && (director || owner || executor), submit: working && (director || executor),
-        requestCompletion: working && (director || executor), review: active && task.status === "COMPLETION_REQUESTED" && (director || owner) && !executor && pendingRequest?.actorId !== grant.actorUserId,
+      permissions: { uploadSource: task.type === "INSPECT_FILE" && working && owner && !sourceReady, manage: working && (director || owner), message: active && (director || owner || executor), submit: working && sourceReady && (director || executor),
+        requestCompletion: working && sourceReady && (director || executor), review: active && task.status === "COMPLETION_REQUESTED" && (director || owner) && !executor && pendingRequest?.actorId !== grant.actorUserId,
         close: active && (director || owner), delete: !task.deletedAt && (director || owner) } };
   });
 }
 const capability: { [K in TaskAction]: string } = { EDIT: "task.manage", MESSAGE: "task.message", SUBMIT: "task.execute", REQUEST_COMPLETION: "task.requestCompletion",
-  APPROVE: "task.review", REJECT: "task.review", CLOSE: "task.complete", DELETE: "task.delete", PREPARE_UPLOAD: "task.message", FINALIZE_UPLOAD: "task.message", REFRESH_TARGET: "task.manage" };
+  APPROVE: "task.review", REJECT: "task.review", CLOSE: "task.complete", DELETE: "task.delete", PREPARE_UPLOAD: "task.message", FINALIZE_UPLOAD: "task.message", REFRESH_TARGET: "task.manage", SET_SOURCE: "task.manage" };
 export async function mutateTask(taskId: string, raw: unknown) {
   enabled(); id(taskId);
-  const v = object(raw, ["commandId", "expectedVersion", "action", "text", "fileIds", "title", "brief", "context", "deadline", "priority", "executorId", "spectatorIds", "uploadId", "fileName", "mimeType", "fileSize", "replaceFileId", "proposedText"]);
+  const v = object(raw, ["commandId", "expectedVersion", "action", "text", "fileIds", "title", "brief", "context", "deadline", "priority", "executorId", "spectatorIds", "uploadId", "fileName", "mimeType", "fileSize", "replaceFileId", "proposedText", "sourceVersionId"]);
   ensure(actions.includes(v.action as TaskAction), "INVALID_ACTION"); const action = v.action as TaskAction;
   const commandId = id(v.commandId), commandHash = hash({ taskId, ...v });
   let version = expectedVersion(v.expectedVersion);
@@ -173,7 +189,7 @@ export async function mutateTask(taskId: string, raw: unknown) {
   if (action === "APPROVE" && deliverablesEnabled()) {
     const prepared = await runtimeAuthorization.runAuthorized({ capability: "task.review", targetId: taskId, reason: note }, async (tx, grant) => {
       const task = await tx.universalTask.findUniqueOrThrow({ where: { id: taskId } });
-      if (task.type === "GENERAL" || await replay(tx, grant, commandId, commandHash, taskId)) return null;
+      if (!isDeliverable(task.type) || await replay(tx, grant, commandId, commandHash, taskId)) return null;
       ensure(task.version === version, "STALE_TASK_VERSION", 409);
       const result = await prepareApplication(tx, task, grant.actorUserId);
       if (!result.created) return { version: task.version, id: result.application.id };
@@ -190,11 +206,18 @@ export async function mutateTask(taskId: string, raw: unknown) {
     ensure(!task.deletedAt, "TASK_DELETED", 409); ensure(task.version === version, "STALE_TASK_VERSION", 409);
     const active = !["COMPLETED", "CLOSED"].includes(task.status);
     ensure(active || action === "DELETE", "TASK_TERMINAL", 409);
+    let source: Awaited<ReturnType<typeof resolveTaskReference>> | undefined;
     let applied: Awaited<ReturnType<typeof applyApplication>> | undefined;
     const data: Prisma.UniversalTaskUncheckedUpdateInput = { version: { increment: 1 } };
     let snapshot: Prisma.InputJsonObject = {}, files: string[] = [], uploadId: string | undefined, newSpectators: string[] | null = null;
-    if (["EDIT", "SUBMIT", "REQUEST_COMPLETION", "PREPARE_UPLOAD", "FINALIZE_UPLOAD"].includes(action)) ensure(task.status !== "COMPLETION_REQUESTED", "REVIEW_PENDING", 409);
-    if (action === "EDIT") {
+    if (["EDIT", "SUBMIT", "REQUEST_COMPLETION", "PREPARE_UPLOAD", "FINALIZE_UPLOAD", "SET_SOURCE"].includes(action)) ensure(task.status !== "COMPLETION_REQUESTED", "REVIEW_PENDING", 409);
+    if (task.type === "INSPECT_FILE" && ["SUBMIT", "REQUEST_COMPLETION"].includes(action)) ensure(await tx.universalTaskReference.count({ where: { taskId, kind: "INSPECTION" } }) === 1, "INSPECTION_SOURCE_REQUIRED", 409);
+    if (action === "SET_SOURCE") {
+      ensure(conceptsEnabled() && task.type === "INSPECT_FILE", "UNSUPPORTED_SOURCE");
+      ensure(await tx.universalTaskReference.count({ where: { taskId } }) === 0, "SOURCE_ALREADY_PINNED", 409);
+      source = await resolveTaskReference(tx, grant.actorUserId, task, id(v.sourceVersionId));
+      snapshot = { referenceVersionIds: [source.version.id] };
+    } else if (action === "EDIT") {
       data.title = text(v.title, 200); data.brief = text(v.brief, 20000); data.context = text(v.context, 5000, true) || null;
       data.deadline = deadline(v.deadline); data.priority = priority(v.priority); data.executorId = id(v.executorId);
       const spectators = ids(v.spectatorIds); await eligible(tx, task.ownerId, data.executorId, spectators);
@@ -209,7 +232,7 @@ export async function mutateTask(taskId: string, raw: unknown) {
       snapshot = { fileVersionIds: uploads.map(u => u.versionId) };
       if (action === "SUBMIT") {
         data.status = "IN_PROGRESS";
-        if (task.type !== "GENERAL") {
+        if (isDeliverable(task.type)) {
           const target = await tx.universalTaskTarget.findUniqueOrThrow({ where: { taskId } });
           snapshot = { ...snapshot, proposedValue: proposedValue(target, v.proposedText, uploads.length), targetHash: target.expectedHash };
         }
@@ -231,7 +254,7 @@ export async function mutateTask(taskId: string, raw: unknown) {
       ensure(request.actorId !== grant.actorUserId, "SELF_REVIEW_DENIED", 403);
       data.status = action === "APPROVE" ? "COMPLETED" : "IN_PROGRESS";
       snapshot = { requestId: request.id, evidence: request.snapshot };
-      if (action === "APPROVE" && task.type !== "GENERAL") {
+      if (action === "APPROVE" && isDeliverable(task.type)) {
         applied = await applyApplication(tx, task, grant.actorUserId, note);
         snapshot = { ...snapshot, applicationId: applied.application.id };
       }
@@ -275,6 +298,7 @@ export async function mutateTask(taskId: string, raw: unknown) {
     const updated = await tx.universalTask.update({ where: { id: taskId, version }, data });
     if (newSpectators) await tx.universalTaskSpectator.createMany({ data: newSpectators.map(userId => ({ taskId, userId })) });
     const entry = await record(tx, updated, grant, commandId, commandHash, action, note, snapshot);
+    if (source) await saveTaskReference(tx, taskId, entry.id, source);
     if (applied) await completeApplication(tx, applied, updated, entry);
     if (files.length) await tx.universalTaskUpload.updateMany({ where: { id: { in: files } }, data: { submittedEntryId: entry.id } });
     if (Array.isArray(snapshot.fileVersionIds)) for (const versionId of snapshot.fileVersionIds) {
@@ -326,5 +350,23 @@ export async function downloadTaskFile(taskId: string, uploadId: string, version
 export async function countMyGeneralTasks() {
   if (!taskEnabled()) return 0;
   return runtimeAuthorization.runAuthorized({ capability: "task.list", targetId: "root" }, (tx, grant) =>
-    tx.universalTask.count({ where: { type: deliverablesEnabled() ? { in: ["GENERAL", "FILE_UPLOAD", "DATA_INPUT"] } : "GENERAL", deletedAt: null, ...relationWhere(grant.actorUserId) } }));
+    tx.universalTask.count({ where: { type: { in: enabledTaskTypes() }, deletedAt: null, ...relationWhere(grant.actorUserId) } }));
+}
+
+export async function downloadTaskReference(taskId: string, referenceId: string, versionId: string) {
+  enabled(); ensure(conceptsEnabled(), "TASK_TYPE_UNAVAILABLE", 404); id(taskId); id(referenceId); id(versionId);
+  return runtimeAuthorization.runAuthorized({ capability: "task.download", targetId: taskId }, async tx => {
+    const task = await tx.universalTask.findUniqueOrThrow({ where: { id: taskId } });
+    ensure(isConceptType(task.type), "SOURCE_UNAVAILABLE", 403);
+    const available = await taskReferences(tx, task);
+    ensure(available.some(r => r.id === referenceId && r.versionId === versionId), "SOURCE_UNAVAILABLE", 403);
+    const fv = await tx.sharedFileVersion.findUniqueOrThrow({ where: { id: versionId } });
+    ensure(fv.status === "READY" && fv.objectETag && (fv.applicationSealed || fv.objectVersionId), "SOURCE_UNAVAILABLE", 403);
+    const result = await readPinnedStoredObject({ bucket: fv.bucket, storageKey: fv.storageKey, objectVersionId: fv.objectVersionId, objectETag: fv.objectETag, checksumSha256: fv.checksumSha256 });
+    try {
+      const observed = captureFileIntegrity(result, fv);
+      ensure(result.Body && observed.objectETag === fv.objectETag && (!fv.objectVersionId || observed.objectVersionId === fv.objectVersionId) && (!fv.checksumSha256 || observed.checksumSha256 === fv.checksumSha256), "FILE_CHANGED", 409);
+      return { body: result.Body, name: fv.originalFileName, mimeType: fv.mimeType, size: fv.fileSize };
+    } catch (error) { if (result.Body && "destroy" in result.Body) result.Body.destroy(); throw error; }
+  });
 }

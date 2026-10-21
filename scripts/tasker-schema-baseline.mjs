@@ -14,7 +14,14 @@ export function withoutTaskerSchema(schema) {
 
 // Phase 3.1 schema remains usable while the deliverable capability is off.
 export function withoutTaskDeliverablesSchema(schema) {
+  schema = withoutTaskConceptsSchema(schema);
   for (const name of ["UniversalTaskTarget", "UniversalTaskApplication", "UniversalTaskPublication"]) schema = schema.replace(new RegExp(`^model ${name} \\{[\\s\\S]*?^\\}`, "m"), "");
   schema = schema.replace(/^  (?:deliverableTarget|applications|applicationRequest|applicationAcceptance|taskPublicationSources|taskPublicationResult|taskPublication|reviewedTaskApplications)\s+[^\n]+\n/gm, "");
   return schema.replace(/^  TASK_DELIVERABLE_ACCEPTED\n/m, "");
+}
+
+// Phase 3.2 compatibility: relation-only additions must not leak into old schemas.
+export function withoutTaskConceptsSchema(schema) {
+  return schema.replace(/^model UniversalTaskReference \{[\s\S]*?^\}/m, "")
+    .replace(/^  (?:taskReferences|selectedTaskReferences|submittedTaskReferences|reviewedTaskReferences)\s+[^\n]+\n/gm, "");
 }

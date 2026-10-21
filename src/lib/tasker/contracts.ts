@@ -2,11 +2,11 @@
 export const taskTypes = ["GENERAL", "FILE_UPLOAD", "DATA_INPUT", "INSPECT_FILE", "INITIAL_CONCEPT", "FINAL_CONCEPT"] as const;
 export const priorities = ["LOW", "NORMAL", "HIGH", "URGENT"] as const;
 export const statuses = ["OPEN", "IN_PROGRESS", "COMPLETION_REQUESTED", "COMPLETED", "CLOSED"] as const;
-export const actions = ["EDIT", "MESSAGE", "SUBMIT", "REQUEST_COMPLETION", "APPROVE", "REJECT", "CLOSE", "DELETE", "PREPARE_UPLOAD", "FINALIZE_UPLOAD", "REFRESH_TARGET"] as const;
+export const actions = ["EDIT", "MESSAGE", "SUBMIT", "REQUEST_COMPLETION", "APPROVE", "REJECT", "CLOSE", "DELETE", "PREPARE_UPLOAD", "FINALIZE_UPLOAD", "REFRESH_TARGET", "SET_SOURCE"] as const;
 export type TaskAction = typeof actions[number];
 export type Person = { id: string; name: string | null };
 export type TaskSummary = {
-  id: string; title: string; type: "GENERAL" | "FILE_UPLOAD" | "DATA_INPUT"; brief: string; context: string | null;
+  id: string; title: string; type: typeof taskTypes[number]; brief: string; context: string | null;
   priority: typeof priorities[number]; deadline: string; status: typeof statuses[number]; version: number;
   owner: Person; executor: Person; spectators: Person[];
   project: { id: string; name: string; kind: "structured" | "flexible" };
@@ -14,14 +14,24 @@ export type TaskSummary = {
 };
 export type TaskFile = { id: string; fileId: string; versionId: string; number: number; name: string; status: string;
   size: number; uploadedById: string; submittedEntryId: string | null };
+export type TaskReference = {
+  id: string; kind: string; fileId: string; versionId: string; number: number; name: string; mimeType: string;
+  sourceState: string; sourceTask: { id: string; title: string; owner: Person } | null;
+  submission: { id: string; actor: Person; createdAt: string } | null;
+  review: { id: string; actor: Person; createdAt: string; action: string } | null;
+  uploader: Person | null;
+};
+export type ConceptSourceChoice = { versionId: string; name: string; number: number; contextTarget: string; kind: "INSPECTION" | "INSPIRATION"; sourceState: string; sourceTaskTitle?: string };
 export type TaskDetail = TaskSummary & {
   entries: { id: string; version: number; action: string; text: string; actor: Person; directorOverride: boolean;
     createdAt: string; snapshot: unknown }[];
   files: TaskFile[];
+  references?: TaskReference[];
+  submissions?: { id: string; state: string; reviewer: Person | null }[];
   deliverable?: { label: string; inputMode: string; fieldType?: string; expectedState?: unknown; currentState?: unknown; conflict?: boolean;
     applicationState?: string; errorCode?: string | null; publishedAttachmentIds: string[] };
 
-  permissions: { manage: boolean; message: boolean; submit: boolean; requestCompletion: boolean; review: boolean; close: boolean; delete: boolean };
+  permissions: { uploadSource?: boolean; manage: boolean; message: boolean; submit: boolean; requestCompletion: boolean; review: boolean; close: boolean; delete: boolean };
 };
 export class TaskerError extends Error {
   constructor(readonly code: string, readonly status = 400) { super(code); this.name = "TaskerError"; }
@@ -62,7 +72,12 @@ export function contextTarget(value: unknown) {
 export function taskEnabled() { return process.env.FLUX_UNIVERSAL_TASKER === "1"; }
 
 export function deliverablesEnabled() { return taskEnabled() && process.env.FLUX_TASKER_DELIVERABLES === "1"; }
-export function availableTaskType(type: string) { return type === "GENERAL" || (deliverablesEnabled() && ["FILE_UPLOAD", "DATA_INPUT"].includes(type)); }
+export function availableTaskType(type: string) { return enabledTaskTypes().includes(type as typeof taskTypes[number]); }
 
 // Deliberate existing-field adapter allowlist; new native fields need review.
 export const taskInputFields: readonly string[] = ["OUTPUT_NAME", "TAR", "NICOTINE", "BARCODE", "TECHNICAL_DRAWING", "RELATED_GRAPHICS", "THREEDS", "QR_CODE", "INVOICE", "TRACK_TRACE", "TAX_STAMP"];
+
+export function conceptsEnabled() { return taskEnabled() && process.env.FLUX_TASKER_CONCEPTS === "1"; }
+export function isDeliverable(type: string) { return ["FILE_UPLOAD", "DATA_INPUT"].includes(type); }
+export function isConceptType(type: string) { return ["INSPECT_FILE", "INITIAL_CONCEPT", "FINAL_CONCEPT"].includes(type); }
+export function enabledTaskTypes() { return taskTypes.filter(type => type === "GENERAL" || (deliverablesEnabled() && isDeliverable(type)) || (conceptsEnabled() && isConceptType(type))); }

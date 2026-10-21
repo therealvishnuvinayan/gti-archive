@@ -59,7 +59,7 @@ export type TaskActivityEvent = {
   native: { type: "UniversalTaskEntry"; id: string };
   actor: Extract<EventActor, { kind: "INTERNAL" }>;
   context: { projectId: string | null; flexibleProjectId: string | null; taskId: string };
-  operation: "generalTaskCommand" | "deliverableTaskCommand"; correlationId: string; causationId: string; idempotencyKey: string; occurredAt: string;
+  operation: "generalTaskCommand" | "deliverableTaskCommand" | "conceptTaskCommand"; correlationId: string; causationId: string; idempotencyKey: string; occurredAt: string;
   payload: { action: string; status: string; directorOverride: boolean };
 };
 export type SharedBusinessEvent = ReviewDecidedEvent | TaskActivityEvent;
@@ -67,11 +67,11 @@ export function decodeBusinessEvent(row: BusinessEvent): SharedBusinessEvent {
   if (row.type === EVENT_TYPE) return reviewEvent(row);
   const p = row.payload;
   if (row.type !== "TASK_ACTIVITY" || row.schemaVersion !== 1 || row.aggregateType !== "UNIVERSAL_TASK" ||
-    !["generalTaskCommand", "deliverableTaskCommand"].includes(row.operation) || !row.taskId || !row.taskEntryId || row.aggregateId !== row.taskId ||
+    !["generalTaskCommand", "deliverableTaskCommand", "conceptTaskCommand"].includes(row.operation) || !row.taskId || !row.taskEntryId || row.aggregateId !== row.taskId ||
     Number(!!row.projectId) + Number(!!row.flexibleProjectId) !== 1 || row.decisionId || row.nativeEventId || row.approvalEvidenceId || row.fileVersionId ||
     !Number.isInteger(row.sequence) || row.sequence < 1 || !Number.isInteger(row.actorVersion) || row.actorVersion < 1 || !Number.isFinite(row.occurredAt.getTime()) || row.id !== `task:${row.taskEntryId}` || row.idempotencyKey !== row.id || row.causationId !== row.taskEntryId || row.correlationId !== row.taskId || !["DIRECTOR","SENIOR_PROJECT_MANAGER","JUNIOR_PROJECT_MANAGER","DESIGNER","DIGITAL_LEAD"].includes(row.actorRole) ||
     !p || typeof p !== "object" || Array.isArray(p) || Object.keys(p).sort().join() !== "action,directorOverride,status" ||
-    typeof p.action !== "string" || !["CREATED","EDIT","MESSAGE","SUBMIT","REQUEST_COMPLETION","APPROVE","REJECT","CLOSE","DELETE","PREPARE_UPLOAD","FINALIZE_UPLOAD","REFRESH_TARGET","PREPARE_APPLICATION","APPLICATION_FAILED"].includes(p.action) ||
+    typeof p.action !== "string" || !["CREATED","EDIT","MESSAGE","SUBMIT","REQUEST_COMPLETION","APPROVE","REJECT","CLOSE","DELETE","PREPARE_UPLOAD","FINALIZE_UPLOAD","REFRESH_TARGET","PREPARE_APPLICATION","APPLICATION_FAILED","SET_SOURCE"].includes(p.action) ||
     typeof p.status !== "string" || !["OPEN","IN_PROGRESS","COMPLETION_REQUESTED","COMPLETED","CLOSED"].includes(p.status) || typeof p.directorOverride !== "boolean") throw new Error("UNSUPPORTED_EVENT_CONTRACT");
   return { id: row.id, type: "TASK_ACTIVITY", schemaVersion: 1, aggregate: { type: "UNIVERSAL_TASK", id: row.taskId, sequence: row.sequence },
     native: { type: "UniversalTaskEntry", id: row.taskEntryId }, actor: { kind: "INTERNAL", userId: row.actorId, businessRole: row.actorRole, authorizationVersion: row.actorVersion },

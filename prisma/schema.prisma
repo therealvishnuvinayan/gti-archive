@@ -2112,6 +2112,8 @@ model FluxAiSearchHistory {
 }
 
 model ProjectAttachment {
+  taskReferences UniversalTaskReference[]
+
   taskPublication UniversalTaskPublication?
 
   sharedFileReference SharedFileReference?
@@ -2884,6 +2886,8 @@ model SharedFile {
 }
 
 model SharedFileVersion {
+  taskReferences UniversalTaskReference[]
+
   taskPublicationSources UniversalTaskPublication[] @relation("TaskPublicationSource")
   taskPublicationResult UniversalTaskPublication? @relation("TaskPublicationResult")
 
@@ -3222,6 +3226,8 @@ enum UniversalTaskPriority {
 }
 
 model UniversalTask {
+  taskReferences UniversalTaskReference[]
+
   deliverableTarget UniversalTaskTarget?
   applications UniversalTaskApplication[]
 
@@ -3268,6 +3274,10 @@ model UniversalTaskSpectator {
 }
 
 model UniversalTaskEntry {
+  selectedTaskReferences UniversalTaskReference[] @relation("TaskReferenceSelection")
+  submittedTaskReferences UniversalTaskReference[] @relation("TaskReferenceSubmission")
+  reviewedTaskReferences UniversalTaskReference[] @relation("TaskReferenceReview")
+
   applicationRequest UniversalTaskApplication? @relation("TaskApplicationRequest")
   applicationAcceptance UniversalTaskApplication? @relation("TaskApplicationAcceptance")
 
@@ -3295,6 +3305,8 @@ model UniversalTaskEntry {
 }
 
 model UniversalTaskUpload {
+  taskReferences UniversalTaskReference[]
+
   id          String @id @default(cuid())
   taskId           String
   task             UniversalTask        @relation(fields: [taskId], references: [id], onDelete: Restrict, onUpdate: Restrict)
@@ -3358,4 +3370,28 @@ model UniversalTaskPublication {
   publishedVersionId String? @unique
   publishedVersion SharedFileVersion? @relation("TaskPublicationResult", fields: [publishedVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   @@unique([applicationId, sourceVersionId])
+}
+
+// Phase 3.3: exact native source references. Submission/review history remains
+// authoritative; this table grants only a selected version within one task.
+model UniversalTaskReference {
+  id String @id @default(cuid())
+  taskId String
+  task UniversalTask @relation(fields: [taskId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  kind String
+  versionId String
+  version SharedFileVersion @relation(fields: [versionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  selectedEntryId String
+  selectedEntry UniversalTaskEntry @relation("TaskReferenceSelection", fields: [selectedEntryId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sourceUploadId String?
+  sourceUpload UniversalTaskUpload? @relation(fields: [sourceUploadId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sourceAttachmentId String?
+  sourceAttachment ProjectAttachment? @relation(fields: [sourceAttachmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sourceSubmissionId String?
+  sourceSubmission UniversalTaskEntry? @relation("TaskReferenceSubmission", fields: [sourceSubmissionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sourceReviewId String?
+  sourceReview UniversalTaskEntry? @relation("TaskReferenceReview", fields: [sourceReviewId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sourceState String
+  @@unique([taskId, versionId])
+  @@index([sourceSubmissionId])
 }
