@@ -1,13 +1,23 @@
 import "server-only";
 import type { AuthorizationContext, ResourcePolicies } from "./policy";
 import { structuredProjectReadWhere, flexibleProjectReadWhere } from "./project-read-rules";
-import { taskEnabled } from "../tasker/contracts";
+import { taskEnabled, availableTaskType, deliverablesEnabled } from "../tasker/contracts";
+
+import { authorizedTarget } from "../tasker/targets";
 
 async function context({ tx, actor, request }: Parameters<NonNullable<ResourcePolicies["task.view"]>>[0]): Promise<AuthorizationContext | null> {
   if (!taskEnabled() || !actor.businessRole) return null;
   // These are genuine authenticated values, never supplied through command JSON.
   await tx.$queryRaw`SELECT set_config('flux.task_actor', ${actor.userId}, true), set_config('flux.task_session', ${actor.session.id}, true)`;
   if (request.capability === "task.list") return request.targetId === "root" ? { resource: { id: "root", kind: "workspace" }, resourcePermission: true, integrity: { workflowAllowed: true, actorUserId: actor.userId, preservesOwnership: true, preservesHistory: true } } : null;
+  if (["task.createFileUpload", "task.createDataInput"].includes(request.capability)) {
+    if (!deliverablesEnabled()) return null;
+    const target = await authorizedTarget(tx, actor.userId, request.targetId);
+    if ((target.kind === "checklist") !== (request.capability === "task.createDataInput")) return null;
+    return { resource: { id: request.targetId, kind: "project", projectId: target.projectId }, project: { id: target.projectId, participantUserIds: target.participantUserIds },
+      resourcePermission: true, authorizedDestinationFolder: true,
+      integrity: { workflowAllowed: true, actorUserId: actor.userId, preservesOwnership: true, preservesHistory: true } };
+  }
   if (request.capability === "task.createGeneral") {
     const [kind, key, extra] = request.targetId.split(":");
     if (!key || extra) return null;
@@ -17,7 +27,7 @@ async function context({ tx, actor, request }: Parameters<NonNullable<ResourcePo
       const source = await tx.universalTask.findUnique({ where: { id: key } });
       // A spectator cannot turn read access into creation authority. Only a task's
       // owner/executor may reuse its minimal project identity; no stage is exposed.
-      permitted = !!source && !source.deletedAt && source.type === "GENERAL" &&
+      permitted = !!source && !source.deletedAt && availableTaskType(source.type) &&
         (actor.businessRole === "DIRECTOR" || source.ownerId === actor.userId || source.executorId === actor.userId);
     } else if (["structured", "flexible"].includes(kind)) {
       await tx.$executeRaw`LOCK TABLE "Project", "ProjectCoOwner", "ProjectExecutor", "ProjectCollaborator", "ProjectConceptFolder", "FlexibleProject", "FlexibleProjectCollaborator", "FlexibleMilestone" IN SHARE MODE`;
@@ -31,9 +41,10 @@ async function context({ tx, actor, request }: Parameters<NonNullable<ResourcePo
   }
   await tx.$queryRaw`SELECT id FROM "UniversalTask" WHERE id=${request.targetId} FOR UPDATE`;
   const task = await tx.universalTask.findUnique({ where: { id: request.targetId }, include: { spectators: true } });
-  if (!task || task.type !== "GENERAL") return null;
+  if (!task || !availableTaskType(task.type)) return null;
   const director = actor.businessRole === "DIRECTOR", owner = task.ownerId === actor.userId, executor = task.executorId === actor.userId;
   const spectatorIds = task.spectators.map(s => s.userId), spectator = spectatorIds.includes(actor.userId);
+  if (task.type !== "GENERAL" && request.capability === "task.download" && !(director || owner || executor)) return null;
   const read = ["task.view", "task.download"].includes(request.capability);
   // Deleted evidence is retained for its owner/Director. Normal lists exclude it.
   if (!(director || owner || executor || spectator) || (task.deletedAt && !(director || owner))) return null;
@@ -50,6 +61,7 @@ async function context({ tx, actor, request }: Parameters<NonNullable<ResourcePo
     taskLifecycleAllowed: request.capability === "task.delete" || !task.deletedAt, selfReviewPolicy: { policyId: "general.distinct-reviewer.v1", permitted: !executor } };
 }
 export const taskPolicies: ResourcePolicies = Object.freeze({
+  "task.createFileUpload": context, "task.createDataInput": context,
   "task.list": context, "task.createGeneral": context, "task.view": context, "task.download": context,
   "task.message": context, "task.execute": context, "task.requestCompletion": context,
   "task.review": context, "task.complete": context, "task.delete": context, "task.manage": context,

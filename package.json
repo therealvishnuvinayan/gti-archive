@@ -109,6 +109,7 @@
     "authorization:workspace-check": "node scripts/run-authorization-isolated-integration.mjs --workspace",
     "authorization:workspace-browser-check": "node scripts/workspace-browser-check.mjs",
     "tasker:check": "node scripts/run-universal-tasker-isolated.mjs",
+    "tasker:deliverables-browser-check": "node scripts/tasker-deliverables-browser-check.mjs",
     "tasker:browser-check": "node scripts/universal-tasker-browser-check.mjs",
     "tasker:unit-check": "tsc --project scripts/tsconfig.universal-tasker-unit.json && node .tmp/universal-tasker-unit/scripts/universal-tasker-unit-check.js"
   },

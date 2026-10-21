@@ -14,6 +14,14 @@ export async function body(request: Request) {
   try { return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown; } catch { throw new TaskerError("INVALID_JSON"); }
 }
 const messages: Record<string, string> = {
+  FIELD_CONFLICT_REFRESH_AND_RESUBMIT: "The field changed since this task was created. Review current and proposed values, refresh the target, and request a new submission.",
+  TARGET_MOVED_OR_REPLACED: "The destination was moved or replaced. Create a task for a currently authorized destination.",
+  TARGET_UNAVAILABLE: "The destination no longer exists or is no longer writable.",
+  FRESH_SUBMISSION_REQUIRED: "Submit a new response after changes, rejection or target refresh before requesting completion.",
+  INPUT_MODE_FILES_REQUIRED: "Attach the required files for this response; text-only responses cannot include submitted files.",
+  PROPOSED_TEXT_REQUIRED: "Enter the proposed field value before submitting.",
+  APPLICATION_REVIEWER_CHANGED: "This publication attempt belongs to another reviewer. Request changes before starting a new review.",
+  UNSUPPORTED_FIELD: "This stage field is not supported for Data Input Tasks.",
   TASKER_DISABLED: "General Tasks are not available yet.", TASK_TYPE_UNAVAILABLE: "This task type is not available yet.",
   STALE_TASK_VERSION: "This task changed. Review the refreshed task and try again.", COMMAND_REUSED: "This request has already been used with different details. Refresh and try again.",
   DISTINCT_EXECUTOR_REQUIRED: "Choose an executor other than the Task Owner.", SPECTATORS_MUST_BE_VIEW_ONLY: "The owner and executor cannot also be spectators.",

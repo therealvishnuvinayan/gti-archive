@@ -1,5 +1,5 @@
 import { GeneralTasker } from "@/components/tasks/general-tasker";
-import { taskEnabled } from "@/lib/tasker/contracts";
+import { taskEnabled, deliverablesEnabled } from "@/lib/tasker/contracts";
 import { listTasks } from "@/lib/tasker/service";
 import { redirect } from "next/navigation";
 
@@ -9,7 +9,7 @@ import { requireUser } from "@/lib/auth";
 import { canUseTasks } from "@/lib/permissions/resolver";
 import { getUserTasksPageData } from "@/lib/user-tasks";
 
-export default async function TasksPage({ searchParams }: { searchParams: Promise<{ context?: string; createContext?: string }> }) {
+export default async function TasksPage({ searchParams }: { searchParams: Promise<{ context?: string; createContext?: string; destination?: string }> }) {
   const user = await requireUser();
 
   if (!canUseTasks(user)) {
@@ -23,7 +23,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   return (
     <DashboardLayout>
       {general ? <>
-        <GeneralTasker initial={general} context={query.context} createContext={query.createContext} />
+        <GeneralTasker deliverables={deliverablesEnabled()} initial={general} context={query.context} createContext={query.createContext} initialDestination={query.destination} />
         <details className="mt-8 rounded-2xl border border-[#d9e2da] p-5"><summary className="cursor-pointer font-semibold">Legacy concept tasks</summary><p className="my-3 text-sm text-[#68766b]">Concept tasks continue in their existing project workflow.</p><UserTasksWorkspace data={data} /></details>
       </> : <UserTasksWorkspace data={data} />}
     </DashboardLayout>

@@ -352,6 +352,7 @@ enum ProjectRevisionStatus {
 }
 
 enum ActivityLogAction {
+  TASK_DELIVERABLE_ACCEPTED
   ASSET_UPLOADED
   COMMENT_ATTACHMENT_UPLOADED
   REVISION_CREATED
@@ -452,6 +453,8 @@ enum FluxAiMessageRole {
 }
 
 model User {
+  reviewedTaskApplications UniversalTaskApplication[]
+
   ownedUniversalTasks                 UniversalTask[]                      @relation("UniversalTaskOwner")
   executedUniversalTasks              UniversalTask[]                      @relation("UniversalTaskExecutor")
   universalTaskSpectators             UniversalTaskSpectator[]
@@ -2109,6 +2112,8 @@ model FluxAiSearchHistory {
 }
 
 model ProjectAttachment {
+  taskPublication UniversalTaskPublication?
+
   sharedFileReference SharedFileReference?
   id                         String                                @id @default(cuid())
   projectId                  String
@@ -2879,6 +2884,9 @@ model SharedFile {
 }
 
 model SharedFileVersion {
+  taskPublicationSources UniversalTaskPublication[] @relation("TaskPublicationSource")
+  taskPublicationResult UniversalTaskPublication? @relation("TaskPublicationResult")
+
   taskUpload            UniversalTaskUpload?
   businessEvents BusinessEvent[]
   approvalEvidence ApprovalEvidence[]
@@ -3214,6 +3222,9 @@ enum UniversalTaskPriority {
 }
 
 model UniversalTask {
+  deliverableTarget UniversalTaskTarget?
+  applications UniversalTaskApplication[]
+
   id          String @id @default(cuid())
   type              UniversalTaskType        @default(GENERAL)
   title       String
@@ -3257,6 +3268,9 @@ model UniversalTaskSpectator {
 }
 
 model UniversalTaskEntry {
+  applicationRequest UniversalTaskApplication? @relation("TaskApplicationRequest")
+  applicationAcceptance UniversalTaskApplication? @relation("TaskApplicationAcceptance")
+
   id          String @id @default(cuid())
   taskId           String
   task             UniversalTask          @relation(fields: [taskId], references: [id], onDelete: Restrict, onUpdate: Restrict)
@@ -3296,4 +3310,52 @@ model UniversalTaskUpload {
   createdAt DateTime @default(dbgenerated("(CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text)"))
 
   @@index([taskId])
+}
+
+// Phase 3.2: immutable native identifiers remain historical evidence after a
+// folder/field is deleted. Resolvers revalidate them under native project locks.
+model UniversalTaskTarget {
+  taskId String @id
+  task UniversalTask @relation(fields: [taskId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  kind String
+  nativeId String
+  inputMode String
+  label String
+  identity Json
+  identityHash String
+  expectedState Json
+  expectedHash String
+}
+
+model UniversalTaskApplication {
+  id String @id @default(cuid())
+  taskId String
+  task UniversalTask @relation(fields: [taskId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  requestEntryId String @unique
+  requestEntry UniversalTaskEntry @relation("TaskApplicationRequest", fields: [requestEntryId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  reviewerId String
+  reviewer User @relation(fields: [reviewerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  state String @default("PREPARED")
+  errorCode String?
+  acceptedEntryId String? @unique
+  acceptedEntry UniversalTaskEntry? @relation("TaskApplicationAcceptance", fields: [acceptedEntryId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  publications UniversalTaskPublication[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([taskId])
+}
+
+model UniversalTaskPublication {
+  id String @id @default(cuid())
+  applicationId String
+  application UniversalTaskApplication @relation(fields: [applicationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sourceVersionId String
+  sourceVersion SharedFileVersion @relation("TaskPublicationSource", fields: [sourceVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  bucket String
+  storageKey String @unique
+  attachmentId String? @unique
+  attachment ProjectAttachment? @relation(fields: [attachmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  publishedVersionId String? @unique
+  publishedVersion SharedFileVersion? @relation("TaskPublicationResult", fields: [publishedVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  @@unique([applicationId, sourceVersionId])
 }

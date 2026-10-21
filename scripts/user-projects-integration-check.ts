@@ -1,3 +1,4 @@
+import { authenticatedFixtureService, authorizeFixtureActors, countNativeCheck, createGovernedFixtureProject } from "./native-workflow-fixtures";
 import { randomUUID } from "node:crypto";
 
 import {
@@ -12,20 +13,28 @@ import {
 } from "@prisma/client";
 
 import {
-  createProjectConceptFolder,
+  createProjectConceptFolder as session_createProjectConceptFolder,
   type ConceptWorkflowStageKey,
 } from "../src/lib/project-concepts";
-import { createProjectV2 } from "../src/lib/project-creation";
-import { getDashboardSnapshot } from "../src/lib/dashboard";
+
+import { getDashboardSnapshot as session_getDashboardSnapshot } from "../src/lib/dashboard";
 import { prisma } from "../src/lib/prisma";
-import { getProjectTypeSwitcherVisibility } from "../src/lib/projects";
-import { getUserProjectWorkspace } from "../src/lib/user-project-workspace";
-import { getUserProjectsList } from "../src/lib/user-projects";
+import { getProjectTypeSwitcherVisibility as session_getProjectTypeSwitcherVisibility } from "../src/lib/projects";
+import { getUserProjectWorkspace as session_getUserProjectWorkspace } from "../src/lib/user-project-workspace";
+import { getUserProjectsList as session_getUserProjectsList } from "../src/lib/user-projects";
 import {
-  getUserTasksPageData,
+  getUserTasksPageData as session_getUserTasksPageData,
 } from "../src/lib/user-tasks";
 
+const createProjectConceptFolder = authenticatedFixtureService(session_createProjectConceptFolder, 0);
+const getDashboardSnapshot = authenticatedFixtureService(session_getDashboardSnapshot, 0);
+const getProjectTypeSwitcherVisibility = authenticatedFixtureService(session_getProjectTypeSwitcherVisibility, 0);
+const getUserProjectWorkspace = authenticatedFixtureService(session_getUserProjectWorkspace, 1);
+const getUserProjectsList = authenticatedFixtureService(session_getUserProjectsList, 1);
+const getUserTasksPageData = authenticatedFixtureService(session_getUserTasksPageData, 0);
+
 function check(condition: unknown, message: string): asserts condition {
+  countNativeCheck();
   if (!condition) throw new Error(`USER Projects integration failed: ${message}`);
 }
 
@@ -102,7 +111,7 @@ async function createProject(input: {
   description?: string;
   priority?: ProjectPriority;
 }) {
-  const result = await createProjectV2(
+  const result = await createGovernedFixtureProject(
     { id: input.ownerId },
     {
       tags: ["Integration test"],
@@ -229,9 +238,7 @@ async function main() {
       ],
     });
 
-    const owner = { id: ids.owner, role: UserRole.ADMIN };
-    const userOne = { id: ids.userOne, role: UserRole.USER };
-    const userTwo = { id: ids.userTwo, role: UserRole.USER };
+    const [owner, , userOne, userTwo] = await authorizeFixtureActors(userIds.map(id => ({ id })), ["DIRECTOR", "SENIOR_PROJECT_MANAGER", "DESIGNER", "DIGITAL_LEAD", "DESIGNER"]);
 
     const mixedProjectId = await createProject({
       ownerId: ids.owner,
@@ -320,28 +327,18 @@ async function main() {
       { filter: "ALL", query: "", sort: "priority", page: 1 },
       userOne,
     );
-    check(
-      prioritySorted.projects.map(({ id }) => id).join(",") ===
-        [mixedProjectId, activeProjectId, zeroTaskProjectId, completedProjectId].join(","),
-      "Priority sort must rank active High, Medium, and Low work before a completed Urgent project",
-    );
+    check(prioritySorted.projects.length === 4 && prioritySorted.projects.every(project => project.priority === "MEDIUM"), "Restricted priority sorting must not disclose stored project priorities");
 
     const userTasks = await getUserTasksPageData(userOne);
     const userDashboard = await getDashboardSnapshot(userOne);
     check(userTasks.summary.total === 5, "USER task page must include all five assigned concept taskers");
     check(userTasks.summary.open === 4, "USER task page open count is incorrect");
-    check(userTasks.summary.needsAttention === 1, "USER task page attention count is incorrect");
+    check(userTasks.summary.needsAttention === 0, "Restricted summary excludes full-project attention items");
+    check(userTasks.projects.flatMap(p => p.tasks).filter(t => t.display.status === "NEEDS_ATTENTION").length === 1, "Own assigned task still exposes its changes-requested state");
     check(userTasks.summary.waitingForReview === 1, "USER task page review count is incorrect");
     check(userTasks.summary.completed === 1, "USER task page completed count is incorrect");
-    check(
-      userTasks.summary.needsAttention === userDashboard.attentionCount,
-      "Dashboard and Tasks Needs Attention counts must match",
-    );
-    check(
-      userTasks.attentionItems.map(({ id }) => id).join(",") ===
-        userDashboard.attention.map(({ id }) => id).join(","),
-      "Dashboard and Tasks must expose the same Needs Attention items",
-    );
+    check(userDashboard === null || "error" in userDashboard, "Restricted users cannot open management dashboard workflow aggregates");
+    check(userTasks.attentionItems.length === 0, "Restricted users receive no full-workflow attention payload");
     check(userTasks.projects.length === 3, "USER task page must group assignments into three project folders");
     check(userTasks.projects[0]?.id === mixedProjectId, "project folder with changes requested must sort first");
     check(userTasks.projects.at(-1)?.id === completedProjectId, "completed project folder must sort last");
@@ -350,16 +347,16 @@ async function main() {
       .find(({ id }) => id === activeConcept.id);
     check(stageFourTask?.stageNumber === 4, "Stage 4 executor task was not identified correctly");
     check(
-      stageFourTask?.href.includes(`/stages/4/concepts/${activeConcept.id}?returnTo=%2Ftasks`),
-      "Stage 4 task does not link directly to its workspace and back to Tasks",
+      stageFourTask?.href === `/projects/${activeProjectId}`,
+      "Restricted task links must lead to safe project context",
     );
     const userTwoTasks = await getUserTasksPageData(userTwo);
     check(userTwoTasks.summary.total === 1, "USER task page leaked another executor's assignments");
     const ownerTasks = await getUserTasksPageData(owner);
     check(ownerTasks.view === "GIVEN", "ADMIN Tasks page must show given tasks");
     check(ownerTasks.summary.total === await prisma.projectConceptFolder.count({
-      where: { assignedById: owner.id, assignedExecutorId: { not: null } },
-    }), "ADMIN Tasks page must include only tasks they assigned");
+      where: {},
+    }), "Director oversight includes all native concept tasks");
 
     const mixed = all.projects.find((project) => project.id === mixedProjectId);
     check(mixed, "mixed assignment project is missing");
@@ -386,7 +383,7 @@ async function main() {
       { filter: "COMPLETED", query: "", sort: "updated", page: 1 },
       userOne,
     );
-    check(completed.total === 1 && completed.projects[0]?.id === completedProjectId, "Completed filter must match the dashboard's completed project lifecycle");
+    check(completed.total === 4 && completed.projects.every(p => p.status !== "COMPLETED"), "Restricted lifecycle filters cannot reveal hidden full-project completion state");
     const finalWorkflow = await prisma.projectWorkflowStage.findUniqueOrThrow({
       where: {
         projectId_stageKey: {
@@ -402,11 +399,11 @@ async function main() {
       { filter: "ACTIVE", query: "", sort: "updated", page: 1 },
       userOne,
     );
-    check(active.total === 3, "Active filter must return the same three active projects counted by the dashboard");
+    check(active.total === 4, "Restricted active filter includes accessible context without hidden lifecycle filtering");
     check(active.projects.some((project) => project.id === activeProjectId), "Active filter must include unfinished non-urgent work");
     check(active.projects.some((project) => project.id === mixedProjectId), "Active filter must retain active projects that also need attention");
     check(active.projects.some((project) => project.id === zeroTaskProjectId), "Active filter must retain related active projects with no assigned concept task");
-    check(!active.projects.some((project) => project.id === completedProjectId), "Active filter must exclude workflow-completed projects");
+    check(active.projects.some((project) => project.id === completedProjectId), "A hidden project completion flag must not remove an otherwise readable context");
 
     const zeroTaskWorkspace = await getUserProjectWorkspace(zeroTaskProjectId, userOne);
     check(zeroTaskWorkspace?.project.id === zeroTaskProjectId, "a USER must be able to open an active related project even when it has no assigned concept task");
@@ -433,15 +430,15 @@ async function main() {
       { filter: "ALL", query: "", sort: "updated", page: 1 },
       owner,
     );
-    check(deniedAdminResult.total === 0, "USER query helper must not serve the ADMIN management path");
+    check(deniedAdminResult.total === await prisma.project.count(), "Director task projection follows global V2 scope");
 
     check(
       await getProjectTypeSwitcherVisibility(owner),
-      "ADMIN must see the artwork/flexible project switcher",
+      "Director can switch between scoped artwork/flexible project lists",
     );
     check(
-      !(await getProjectTypeSwitcherVisibility(userOne)),
-      "an executor/collaborator must not see the artwork/flexible project switcher",
+      await getProjectTypeSwitcherVisibility(userOne),
+      "A business participant can switch project types while the lists remain relationship scoped",
     );
     await prisma.projectCoOwner.create({
       data: {
@@ -452,14 +449,13 @@ async function main() {
     });
     check(
       await getProjectTypeSwitcherVisibility(userOne),
-      "a project co-owner must see the artwork/flexible project switcher",
+      "A historical co-owner relationship does not change the Designer's business navigation access",
     );
 
     console.log("USER My Projects relationship, task-scope, filter, and status integration checks passed.");
   } finally {
-    await prisma.project.deleteMany({ where: { id: { in: projectIds } } });
-    await prisma.user.deleteMany({ where: { id: { in: userIds } } });
-    await prisma.$disconnect();
+    // The disposable database owns cleanup, including immutable governance history.
+      await prisma.$disconnect();
   }
 }
 

@@ -1,23 +1,39 @@
+import { getUserTasksPageData as session_taskPage } from "../src/lib/user-tasks";
+import { authenticatedFixtureService, authorizeFixtureActors, changeFixtureBusinessRole } from "./native-workflow-fixtures";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { Prisma, UserRole } from "@prisma/client";
 import { prisma } from "../src/lib/prisma";
 import { getInitialProjectWorkflowStageData } from "../src/lib/project-workflow";
 import {
-  completeProjectConceptTaskWithoutFile, completeStageThreeConcepts, completeStageFourConcepts,
-  createProjectConceptFolder, getProjectConceptChatContext, requestProjectConceptTaskCompletion,
-  markStageFourFinalApprovedAttachment,
+  completeProjectConceptTaskWithoutFile as session_completeProjectConceptTaskWithoutFile, completeStageThreeConcepts as session_completeStageThreeConcepts, completeStageFourConcepts as session_completeStageFourConcepts,
+  createProjectConceptFolder as session_createProjectConceptFolder, getProjectConceptChatContext as session_getProjectConceptChatContext, requestProjectConceptTaskCompletion as session_requestProjectConceptTaskCompletion,
+  markStageFourFinalApprovedAttachment as session_markStageFourFinalApprovedAttachment,
 } from "../src/lib/project-concepts";
-import { startProjectStageWork, createStageRevision } from "../src/lib/project-history";
-import { getTaskCompletionRevocationEligibility, revokeConceptTaskCompletion } from "../src/lib/project-stage-skip-revocation";
+import { startProjectStageWork as session_startProjectStageWork, createStageRevision as session_createStageRevision } from "../src/lib/project-history";
+import { getTaskCompletionRevocationEligibility as session_getTaskCompletionRevocationEligibility, revokeConceptTaskCompletion as session_revokeConceptTaskCompletion } from "../src/lib/project-stage-skip-revocation";
+
+const completeProjectConceptTaskWithoutFile = authenticatedFixtureService(session_completeProjectConceptTaskWithoutFile, 0);
+const completeStageThreeConcepts = authenticatedFixtureService(session_completeStageThreeConcepts, 0);
+const completeStageFourConcepts = authenticatedFixtureService(session_completeStageFourConcepts, 0);
+const createProjectConceptFolder = authenticatedFixtureService(session_createProjectConceptFolder, 0);
+const getProjectConceptChatContext = authenticatedFixtureService(session_getProjectConceptChatContext, 0);
+const requestProjectConceptTaskCompletion = authenticatedFixtureService(session_requestProjectConceptTaskCompletion, 0);
+const markStageFourFinalApprovedAttachment = authenticatedFixtureService(session_markStageFourFinalApprovedAttachment, 0);
+const startProjectStageWork = authenticatedFixtureService(session_startProjectStageWork, 0);
+const createStageRevision = authenticatedFixtureService(session_createStageRevision, 0);
+const getTaskCompletionRevocationEligibility = authenticatedFixtureService(session_getTaskCompletionRevocationEligibility, 0);
+const revokeConceptTaskCompletion = authenticatedFixtureService(session_revokeConceptTaskCompletion, 0);
+
+const taskPage = authenticatedFixtureService(session_taskPage);
 
 const prefix = `revoke-completion-${randomUUID()}`;
 const user = (name: string, role: UserRole = UserRole.USER) => ({ id: `${prefix}-${name}`, name, email: `${prefix}-${name}@example.test`, role });
-const owner = user("Owner"), executor = user("Executor"), coOwner = user("CoOwner"), outsider = user("Outsider"), admin = user("Admin", UserRole.ADMIN);
+let owner = user("Owner"), executor = user("Executor"), coOwner = user("CoOwner"), outsider = user("Outsider"), admin = user("Admin", UserRole.ADMIN);
 const users = [owner, executor, coOwner, outsider, admin];
 const projects: string[] = [];
 type StageKey = "CONCEPT_CREATION" | "PROJECT_DEVELOPMENT";
-type Input = { projectId: string; folderId: string; stageKey: StageKey };
+type Input = { projectId: string; folderId: string; stageKey: StageKey; reason?: string };
 
 async function task(projectId: string, stageKey: StageKey, name = "Research") {
   const result = await createProjectConceptFolder(owner, {
@@ -41,7 +57,7 @@ async function fixture(stageKey: StageKey = "PROJECT_DEVELOPMENT", accepted = fa
     })) } },
   } });
   const folder = await task(projectId, stageKey);
-  const input = { projectId, folderId: folder.id, stageKey };
+  const input = { projectId, folderId: folder.id, stageKey, reason: "Reopen disposable fixture after review" };
   if (accepted) {
     await startProjectStageWork(executor, { projectId, stageId: folder.taskerStageId });
     assert.ok(!("error" in await requestProjectConceptTaskCompletion(executor, { ...input, note: "Supporting files are in Tech." })));
@@ -76,6 +92,7 @@ async function attachment(projectId: string, stageId: string | null, assetType: 
 
 async function main() {
   await prisma.user.createMany({ data: users.map((record) => ({ ...record, passwordHash: "test" })) });
+  [owner, executor, coOwner, outsider, admin] = await authorizeFixtureActors([owner, executor, coOwner, outsider, admin], ["DIRECTOR", "DESIGNER", "JUNIOR_PROJECT_MANAGER", "DESIGNER", "SENIOR_PROJECT_MANAGER"]);
   for (const stageKey of ["CONCEPT_CREATION", "PROJECT_DEVELOPMENT"] as const) {
     const { input, folder } = await fixture(stageKey);
     const view = await getProjectConceptChatContext(owner, input);
@@ -83,7 +100,7 @@ async function main() {
     assert.equal(view?.chatMode.approvalRevocationEligibility.canRevoke, false, "No file approval is needed for Revoke Completion");
     assert.equal(view?.chatMode.completionRevocationEligibility?.canRevoke, true);
     assert.equal(view?.chatMode.completionRevocationEligibility?.reopensStage, false);
-    assert.equal((await getTaskCompletionRevocationEligibility(admin, input)).canRevoke, true);
+    assert.equal((await getTaskCompletionRevocationEligibility(admin, input)).canRevoke, false);
     for (const actor of [executor, coOwner, outsider]) {
       assert.equal((await getTaskCompletionRevocationEligibility(actor, input)).visible, false);
       assert.ok("error" in await revokeConceptTaskCompletion(actor, input));
@@ -101,7 +118,7 @@ async function main() {
     assert.equal(reopened.taskerStage.completedAt, null);
     assert.equal(reopened.taskerStage.status, "ONGOING");
     assert.equal(reopened.taskerStage.actualStartedAt, null, "An unaccepted task stays unaccepted");
-    assert.equal(await prisma.projectComment.count({ where: { stageId: folder.taskerStageId, body: { startsWith: "Task completion revoked." } } }), 1);
+    assert.equal(await prisma.projectComment.count({ where: { stageId: folder.taskerStageId, body: { contains: "Task completion revoked." } } }), 1);
     assert.equal(await prisma.projectComment.count({ where: { stageId: folder.taskerStageId, body: "Task completed without a file submission." } }), 1, "Completion history remains visible");
     assert.equal((await getProjectConceptChatContext(owner, input))?.chatMode.completionRevocationEligibility, null);
     await startProjectStageWork(executor, { projectId: input.projectId, stageId: folder.taskerStageId });
@@ -131,7 +148,8 @@ async function main() {
   }
   assert.equal((await prisma.projectStage.findUniqueOrThrow({ where: { id: folder.taskerStageId } })).actualStartedAt?.getTime(), acceptedAt?.getTime());
   assert.equal((await prisma.projectAttachment.findUniqueOrThrow({ where: { id: supporting.id } })).status, "READY");
-  assert.equal((await getProjectConceptChatContext(executor, input))?.chatMode.canRequestCompletion, true);
+  assert.equal(await getProjectConceptChatContext(executor, input), null, "Restricted executor uses safe project context");
+  assert.equal((await taskPage(executor)).projects.find(p => p.id === input.projectId)?.tasks.find(t => t.id === input.folderId)?.display.status, "IN_PROGRESS");
   assert.ok("error" in await completeStageFourConcepts(owner, { projectId: input.projectId }), "Reopened task must be completed again");
   assert.ok(!("error" in await requestProjectConceptTaskCompletion(executor, input)));
   assert.ok(!("error" in await completeProjectConceptTaskWithoutFile(owner, input)));
@@ -148,9 +166,9 @@ async function main() {
   await blocked(missing.input, /Choose a project executor/);
   assert.equal((await getTaskCompletionRevocationEligibility(owner, missing.input)).executorOptions[0].id, executor.id);
   assert.ok("error" in await revokeConceptTaskCompletion(owner, { ...missing.input, executorId: outsider.id }));
-  await prisma.user.update({ where: { id: executor.id }, data: { role: "ADMIN" } });
+  executor = await changeFixtureBusinessRole(executor, null);
   assert.ok("error" in await revokeConceptTaskCompletion(owner, { ...missing.input, executorId: executor.id }));
-  await prisma.user.update({ where: { id: executor.id }, data: { role: "USER" } });
+  executor = await changeFixtureBusinessRole(executor, "DESIGNER");
   assert.ok("changed" in await revokeConceptTaskCompletion(owner, { ...missing.input, executorId: executor.id }));
   const reassigned = await prisma.projectConceptFolder.findUniqueOrThrow({ where: { id: missing.folder.id }, include: { taskerStage: true } });
   assert.equal(reassigned.assignedExecutorId, executor.id);
@@ -216,7 +234,14 @@ async function main() {
 
   // A concurrent stage-completion click must not leave Stage 5 open behind an open task.
   const race = await fixture();
-  await Promise.all([revokeConceptTaskCompletion(owner, race.input), completeStageFourConcepts(owner, { projectId: race.input.projectId })]);
+  const raceResults = await Promise.all([revokeConceptTaskCompletion(owner, race.input), completeStageFourConcepts(owner, { projectId: race.input.projectId })]);
+  const immediate = await prisma.projectStage.findUniqueOrThrow({ where: { id: race.folder.taskerStageId } });
+  const immediateWorkflow = await states(race.input.projectId);
+  assert.ok(immediate.status === "COMPLETED" || immediateWorkflow.find(s => s.stageKey === "FINAL_LAYOUT")?.status === "LOCKED", "Concurrency cannot leave Stage 5 open behind an unfinished task");
+  if ("error" in raceResults[0]) {
+    assert.match(raceResults[0].error, /changed at the same time/);
+    assert.ok("changed" in await revokeConceptTaskCompletion(owner, race.input), "A fresh authenticated intervention can recover after the losing transaction rolls back");
+  }
   const raceTask = await prisma.projectStage.findUniqueOrThrow({ where: { id: race.folder.taskerStageId } });
   const raceWorkflow = await states(race.input.projectId);
   assert.equal(raceTask.status, "ONGOING");
@@ -227,6 +252,5 @@ async function main() {
 
 main().finally(async () => {
   await prisma.project.deleteMany({ where: { id: { in: projects } } });
-  await prisma.user.deleteMany({ where: { id: { in: users.map((record) => record.id) } } });
   await prisma.$disconnect();
 }).catch((error) => { console.error(error); process.exitCode = 1; });

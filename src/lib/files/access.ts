@@ -134,3 +134,19 @@ export async function openSharedFileVersion(rawSource: unknown, versionId: strin
     }
   });
 }
+
+/** Native folder text previews retain the same version pin as downloads. */
+export async function readSharedFileTextIfAdopted(source: FileSource, maxBytes: number) {
+  const identity = await getSharedFileIdentity(source);
+  if (!identity.versionId) return null;
+  const opened = await openSharedFileVersion(source, identity.versionId);
+  const reader = opened.body.transformToWebStream().getReader();
+  const chunks: Uint8Array[] = []; let size = 0;
+  try {
+    while (size < maxBytes) {
+      const next = await reader.read(); if (next.done) break;
+      const chunk = next.value.subarray(0, maxBytes - size); chunks.push(chunk); size += chunk.length;
+    }
+  } finally { await reader.cancel(); }
+  return Buffer.concat(chunks).toString("utf8");
+}

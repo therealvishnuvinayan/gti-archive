@@ -88,7 +88,7 @@ function resourceMatches(request: AuthorizationRequest, context: AuthorizationCo
   if (["project.create", "project.requestCreation", "project.decideCreation", "project.activateCreation", "project.approveLegacyPreset", "project.viewGovernance"].includes(capability)) return resource.kind === "projectCreation";
   if (capability.startsWith("project.")) return resource.kind === "project" && project?.id === (resource.projectId ?? resource.id);
   if (capability === "task.list") return resource.kind === "workspace";
-  if (capability.startsWith("task.create")) return resource.kind === "project" && project?.id === resource.id;
+  if (capability.startsWith("task.create")) return resource.kind === "project" && project?.id === (resource.projectId ?? resource.id);
   if (capability.startsWith("task.")) return resource.kind === "task" && task?.id === resource.id &&
     !!resource.projectId && project?.id === resource.projectId;
   if (capability.startsWith("template.")) return resource.kind === "template";

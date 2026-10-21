@@ -1,3 +1,4 @@
+import { readSharedFileTextIfAdopted } from "./files/access";
 import { runProjectMutation } from "@/lib/authorization/project-write";
 import { requireProjectResourceRead } from "@/lib/authorization/project-read";
 import { AttachmentAssetType, Prisma } from "@prisma/client";
@@ -198,7 +199,8 @@ export async function getProjectResearchTextFileContent(
   const maxBytes = input.excerpt
     ? TEXT_FILE_EXCERPT_MAX_BYTES
     : TEXT_FILE_PREVIEW_MAX_BYTES;
-  const content = await readTextObject({
+  const adopted = await readSharedFileTextIfAdopted({ kind: "project-attachment", id: file.attachment.id }, maxBytes);
+  const content = adopted ?? await readTextObject({
     bucket: file.attachment.bucket,
     storageKey: file.attachment.storageKey,
     maxBytes,

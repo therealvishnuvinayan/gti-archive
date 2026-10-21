@@ -1,3 +1,5 @@
+import { getApplicationUrl } from "./secure-external-token";
+import { getSharedFileDownloadPath } from "./files/access";
 import { inAuthorizedProjectMutation, activeProjectMutation } from "@/lib/authorization/project-transaction";
 import { runProjectMutation } from "@/lib/authorization/project-write";
 import { refreshProjectReader, requireProjectResourceRead } from "@/lib/authorization/project-read";
@@ -6850,6 +6852,8 @@ export async function getAttachmentDownloadUrlForUser(
 ) {
  user = await refreshProjectReader(user);
   await requireProjectResourceRead('file', attachmentId, 'project.viewFile', user);
+ const shared = await getSharedFileDownloadPath({ kind: "project-attachment", id: attachmentId }, false);
+ if (shared) return new URL(shared, getApplicationUrl()).toString();
  const attachment = await prisma.projectAttachment.findUniqueOrThrow({where:{id:attachmentId},select:{bucket:true,storageKey:true,originalFileName:true,mimeType:true}});
  return createPresignedDownloadUrl({bucket:attachment.bucket,storageKey:attachment.storageKey,fileName:attachment.originalFileName,mimeType:attachment.mimeType});
 }
@@ -6860,6 +6864,8 @@ export async function getAttachmentPreviewUrlForUser(
 ) {
  user = await refreshProjectReader(user);
   await requireProjectResourceRead('file', attachmentId, 'project.viewFile', user);
+ const shared = await getSharedFileDownloadPath({ kind: "project-attachment", id: attachmentId }, true);
+ if (shared) return new URL(shared, getApplicationUrl()).toString();
  const attachment = await prisma.projectAttachment.findUniqueOrThrow({where:{id:attachmentId},select:{bucket:true,storageKey:true,originalFileName:true,mimeType:true}});
  return createPresignedPreviewUrl({bucket:attachment.bucket,storageKey:attachment.storageKey,fileName:attachment.originalFileName,mimeType:attachment.mimeType});
 }
@@ -7256,4 +7262,22 @@ export async function deleteAttachmentForUser(
 ) {
   return runProjectMutation(user, "deleteAttachmentForUser", { kind: "file", id: attachmentId }, async (trustedUser) =>
     deleteAttachmentForUserImplementation(trustedUser, attachmentId), undefined);
+}
+
+/** Trusted Tasker adapter. Caller holds task/project/target locks, rechecks the
+ * native write policy and observes the sealed destination before this insert. */
+export async function publishTaskAttachmentTx(tx: Prisma.TransactionClient, input: {
+  projectId: string; kind: string; nativeId: string; reviewerId: string; note: string;
+  bucket: string; storageKey: string;
+  source: { uploadedById: string | null; originalFileName: string; mimeType: string; fileSize: number };
+}) {
+  if (!input.source.uploadedById || !["research-folder", "private-folder", "checklist"].includes(input.kind)) throw new Error("INVALID_TASK_PUBLICATION");
+  const attachment = await tx.projectAttachment.create({ data: { projectId: input.projectId, uploadedById: input.source.uploadedById,
+    reviewedById: input.reviewerId, reviewedAt: new Date(), reviewNote: input.note,
+    fileName: input.source.originalFileName, originalFileName: input.source.originalFileName, mimeType: input.source.mimeType, fileSize: input.source.fileSize,
+    bucket: input.bucket, storageKey: input.storageKey, status: "READY",
+    assetType: input.kind === "private-folder" ? "PROJECT_PRIVATE_FILE" : input.kind === "research-folder" ? "PROJECT_RESEARCH_FILE" : "FILE_CHECKLIST_ATTACHMENT",
+    privateFolderId: input.kind === "private-folder" ? input.nativeId : null } });
+  if (input.kind === "research-folder") await tx.projectResearchFolderFile.create({ data: { folderId: input.nativeId, attachmentId: attachment.id, addedById: input.reviewerId } });
+  return attachment;
 }

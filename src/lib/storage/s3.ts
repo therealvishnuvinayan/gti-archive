@@ -443,11 +443,12 @@ export async function copyStoredObject(input: {
   bucket: string;
   storageKey: string;
   sourceETag?: string;
+  sourceVersionId?: string | null;
 }) {
   await getS3Client("regional").send(new CopyObjectCommand({
     Bucket: input.bucket,
     Key: input.storageKey,
-    CopySource: `${input.sourceBucket}/${encodeURIComponent(input.sourceKey)}`,
+    CopySource: `${input.sourceBucket}/${encodeURIComponent(input.sourceKey)}${input.sourceVersionId ? `?versionId=${encodeURIComponent(input.sourceVersionId)}` : ""}`,
     CopySourceIfMatch: input.sourceETag,
   }));
 }

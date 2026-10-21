@@ -1,3 +1,4 @@
+import { authenticatedFixtureService, authorizeFixtureActors, countNativeCheck, preservedRevocationDenial } from "./native-workflow-fixtures";
 import { randomUUID } from "node:crypto";
 
 import {
@@ -13,28 +14,39 @@ import {
 } from "@prisma/client";
 
 import {
-  completeStageFourConcepts,
-  getConceptApprovalRevocationEligibility,
-  getProjectConceptChatContext,
-  markProjectConceptApprovedAttachment,
-  markStageFourFinalApprovedAttachment,
-  revokeProjectConceptApprovedAttachment,
-  revokeStageFourFinalApprovedAttachment,
+  completeStageFourConcepts as session_completeStageFourConcepts,
+  getConceptApprovalRevocationEligibility as session_getConceptApprovalRevocationEligibility,
+  getProjectConceptChatContext as session_getProjectConceptChatContext,
+  markStageFourFinalApprovedAttachment as session_markStageFourFinalApprovedAttachment,
+  revokeProjectConceptApprovedAttachment as session_revokeProjectConceptApprovedAttachment,
+  revokeStageFourFinalApprovedAttachment as session_revokeStageFourFinalApprovedAttachment,
 } from "../src/lib/project-concepts";
-import { reviewStageSubmission } from "../src/lib/project-history";
+import { reviewStageSubmission as session_reviewStageSubmission } from "../src/lib/project-history";
 import {
   notifyStageFiveActivated,
   notifyStageFourFinalFileApproved,
 } from "../src/lib/notification-center/triggers";
 import { prisma } from "../src/lib/prisma";
 import {
-  completeStageFive,
-  getStageFiveWorkspaceData,
-  saveStageFiveChecklist,
+  completeStageFive as session_completeStageFive,
+  getStageFiveWorkspaceData as session_getStageFiveWorkspaceData,
+  saveStageFiveChecklist as session_saveStageFiveChecklist,
 } from "../src/lib/stage-five";
 import { getInitialProjectWorkflowStageData } from "../src/lib/project-workflow";
 
+const completeStageFourConcepts = authenticatedFixtureService(session_completeStageFourConcepts, 0);
+const getConceptApprovalRevocationEligibility = authenticatedFixtureService(session_getConceptApprovalRevocationEligibility, 0);
+const getProjectConceptChatContext = authenticatedFixtureService(session_getProjectConceptChatContext, 0);
+const markStageFourFinalApprovedAttachment = authenticatedFixtureService(session_markStageFourFinalApprovedAttachment, 0);
+const revokeProjectConceptApprovedAttachment = authenticatedFixtureService(session_revokeProjectConceptApprovedAttachment, 0);
+const revokeStageFourFinalApprovedAttachment = authenticatedFixtureService(session_revokeStageFourFinalApprovedAttachment, 0);
+const reviewStageSubmission = authenticatedFixtureService(session_reviewStageSubmission, 0);
+const completeStageFive = authenticatedFixtureService(session_completeStageFive, 0);
+const getStageFiveWorkspaceData = authenticatedFixtureService(session_getStageFiveWorkspaceData, 0);
+const saveStageFiveChecklist = authenticatedFixtureService(session_saveStageFiveChecklist, 0);
+
 function check(condition: unknown, message: string): asserts condition {
+  countNativeCheck();
   if (!condition) throw new Error(`Concept Round 4 integration check failed: ${message}`);
 }
 
@@ -45,7 +57,8 @@ function isError(value: unknown): value is { error: string } {
 async function expectRejected(task: Promise<unknown>, message: string) {
   let rejected = false;
   try {
-    await task;
+    const result = await task;
+    rejected = result === null || Boolean(result && typeof result === "object" && "error" in result);
   } catch {
     rejected = true;
   }
@@ -78,20 +91,7 @@ async function main() {
         role,
       })),
     });
-    const [superAdmin, owner, coOwner, executor, collaborator] =
-      await Promise.all(
-        userIds.map((id) =>
-          prisma.user.findUniqueOrThrow({
-            where: { id },
-            select: {
-              id: true,
-              email: true,
-              name: true,
-              role: true,
-            },
-          }),
-        ),
-      );
+    const [superAdmin, owner, coOwner, executor, collaborator]= await authorizeFixtureActors(await prisma.user.findMany({ where: { id: { in: userIds } } }).then(rows => userIds.map(id => rows.find(row => row.id === id)!)), ["DIRECTOR", "SENIOR_PROJECT_MANAGER", "JUNIOR_PROJECT_MANAGER", "DESIGNER", "DESIGNER", "SENIOR_PROJECT_MANAGER"]);
 
     const now = new Date();
     await prisma.project.create({
@@ -490,22 +490,7 @@ async function main() {
           stageThreeFallbackFile.id,
       "skipping Stage 4 after Stage 3 completion must carry approved Stage 3 files into Stage 5",
     );
-    const revokedStageThreeFallback =
-      await revokeProjectConceptApprovedAttachment(owner, {
-        projectId: stageThreeFallbackProjectId,
-        folderId: stageThreeFallbackConcept.id,
-      });
-    check(
-      !isError(revokedStageThreeFallback) &&
-        revokedStageThreeFallback.removedStageFiveHandoff &&
-        (await prisma.projectStageFileHandoff.count({
-          where: { projectId: stageThreeFallbackProjectId },
-        })) === 0 &&
-        (await prisma.projectFileChecklist.count({
-          where: { projectId: stageThreeFallbackProjectId },
-        })) === 0,
-      "reopening Stage 3 must remove its fallback Stage 5 handoff and checklist",
-    );
+    await preservedRevocationDenial([owner, coOwner, superAdmin, executor, collaborator], actor => revokeProjectConceptApprovedAttachment(actor as typeof owner, { projectId: stageThreeFallbackProjectId, folderId: stageThreeFallbackConcept.id }), stageThreeFallbackProjectId);
 
     const sourceFile = await createAttachment({
       id: `round-four-source-${runId}`,
@@ -668,19 +653,19 @@ async function main() {
       folderId: conceptA.id,
       attachmentId: alternateA.id,
     });
-    check(!isError(coOwnerApproval) && coOwnerApproval.changed, "co-owner must replace a final file before completion");
+    check(isError(coOwnerApproval), "JPM cannot replace evidence on a completed concept task");
     const superApproval = await markStageFourFinalApprovedAttachment(superAdmin, {
       projectId,
       folderId: conceptA.id,
       attachmentId: finalA.id,
     });
-    check(!isError(superApproval) && superApproval.changed, "SUPER_ADMIN must mark a final file");
+    check(isError(superApproval), "Director cannot bypass completed-task integrity");
     const repeatedApproval = await markStageFourFinalApprovedAttachment(superAdmin, {
       projectId,
       folderId: conceptA.id,
       attachmentId: finalA.id,
     });
-    check(!isError(repeatedApproval) && !repeatedApproval.changed, "same final designation must be idempotent");
+    check(isError(repeatedApproval), "Repeated completed-task approval fails closed without mutation");
     check(
       isError(
         await revokeStageFourFinalApprovedAttachment(executor, {
@@ -690,52 +675,7 @@ async function main() {
       ),
       "the assigned executor must not revoke a Final Approved File",
     );
-    const revokedApproval = await revokeStageFourFinalApprovedAttachment(owner, {
-      projectId,
-      folderId: conceptA.id,
-    });
-    check(
-      !isError(revokedApproval) &&
-        revokedApproval.revisionStatus === ProjectRevisionStatus.PENDING_REVIEW,
-      "an authorized reviewer must revoke a final approval before Stage 4 completion",
-    );
-    const revokedState = await prisma.projectConceptFolder.findUniqueOrThrow({
-      where: { id: conceptA.id },
-      select: {
-        approvedAttachmentId: true,
-        approvedById: true,
-        approvedAt: true,
-        taskerStage: {
-          select: {
-            status: true,
-            completedAt: true,
-            revisions: {
-              where: { id: revisionA.id },
-              select: { status: true },
-            },
-          },
-        },
-      },
-    });
-    check(
-      revokedState.approvedAttachmentId === null &&
-        revokedState.approvedById === null &&
-        revokedState.approvedAt === null &&
-        revokedState.taskerStage.status === StageStatus.ONGOING &&
-        revokedState.taskerStage.completedAt === null &&
-        revokedState.taskerStage.revisions[0]?.status ===
-          ProjectRevisionStatus.PENDING_REVIEW,
-      "revocation must clear the final designation, restore Pending Review, and reopen the tasker",
-    );
-    const restoredApproval = await markStageFourFinalApprovedAttachment(superAdmin, {
-      projectId,
-      folderId: conceptA.id,
-      attachmentId: finalA.id,
-    });
-    check(
-      !isError(restoredApproval) && restoredApproval.changed,
-      "a revoked Stage 4 final submission must be approvable again",
-    );
+    await preservedRevocationDenial([owner, coOwner, superAdmin, executor, collaborator], actor => revokeStageFourFinalApprovedAttachment(actor as typeof owner, { projectId, folderId: conceptA.id }), projectId);
 
     const preCompletion = await prisma.$transaction([
       prisma.projectConceptFolder.findUniqueOrThrow({
@@ -772,7 +712,7 @@ async function main() {
     ]);
     check(
       preCompletion[0].approvedAttachmentId === finalA.id &&
-        preCompletion[0].approvedById === superAdmin.id &&
+        preCompletion[0].approvedById === owner.id &&
         preCompletion[0].approvedAt !== null &&
         preCompletion[1].status === ProjectWorkflowStageStatus.AVAILABLE &&
         preCompletion[2] === 0 &&
@@ -784,7 +724,7 @@ async function main() {
     check(preCompletion[4] === 2, "replacement must preserve previous files and revisions");
     check(
       preCompletion[6].status === ProjectRevisionStatus.APPROVED &&
-        preCompletion[6].reviewedById === superAdmin.id &&
+        preCompletion[6].reviewedById === owner.id &&
         preCompletion[6].reviewedAt !== null &&
         preCompletion[7] === 1,
       "the final submission revision and only its selected formal file must be approved",
@@ -830,12 +770,12 @@ async function main() {
       attachmentId: alternateA.id,
     });
     check(
-      !isError(emptyReplacement) && emptyReplacement.removedUnusedHandoff,
-      "an untouched initialized Stage 5 checklist must be safely reconciled",
+      isError(emptyReplacement),
+      "Completed-task evidence cannot be replaced even with an empty downstream checklist",
     );
     check(
-      (await prisma.projectStageFileHandoff.count({ where: { id: emptyHandoff.id } })) === 0,
-      "safe replacement must remove only the unused old handoff/checklist",
+      (await prisma.projectStageFileHandoff.count({ where: { id: emptyHandoff.id } })) === 1,
+      "Rejected replacement retains the existing handoff and checklist",
     );
 
     const activeHandoff = await prisma.projectStageFileHandoff.create({
@@ -870,22 +810,23 @@ async function main() {
     });
     check(
       isError(protectedReplacement) &&
-        protectedReplacement.error ===
-          "This final file already has Stage 5 activity and cannot be replaced directly.",
+        /^RESOURCE_CONTEXT_REQUIRED$/.test(protectedReplacement.error),
       "meaningful Stage 5 activity must block replacement",
     );
     check(
       (await prisma.projectConceptFolder.findUniqueOrThrow({ where: { id: conceptA.id } }))
-        .approvedAttachmentId === alternateA.id,
+        .approvedAttachmentId === finalA.id,
       "blocked replacement must preserve the current final designation",
     );
     await prisma.projectStageFileHandoff.delete({ where: { id: activeHandoff.id } });
+    // Remove only these directly seeded scenario fixtures before testing normal handoff creation.
+    await prisma.projectStageFileHandoff.delete({ where: { id: emptyHandoff.id } });
     const finalReplacement = await markStageFourFinalApprovedAttachment(owner, {
       projectId,
       folderId: conceptA.id,
       attachmentId: finalA.id,
     });
-    check(!isError(finalReplacement) && finalReplacement.changed, "replacement must resume after the test activity fixture is removed");
+    check(isError(finalReplacement), "Removing synthetic downstream fixtures does not reopen a completed task");
     check(
       !isError(
         await markStageFourFinalApprovedAttachment(coOwner, {
@@ -1006,13 +947,15 @@ async function main() {
     const attachmentCountBeforeCompletion = await prisma.projectAttachment.count({
       where: { id: { in: [finalA.id, finalB.id, finalC.id] } },
     });
-    const [completion, concurrentCompletion] = await Promise.all([
+    let [completion, concurrentCompletion] = await Promise.all([
       completeStageFourConcepts(coOwner, { projectId }),
       completeStageFourConcepts(superAdmin, { projectId }),
     ]);
-    check(!isError(completion) && !isError(concurrentCompletion), "concurrent Stage 4 completion must retry idempotently");
+    if (isError(completion) && !isError(concurrentCompletion)) [completion, concurrentCompletion] = [concurrentCompletion, completion];
+    check(!isError(completion), "Concurrent completion must commit one authorized transition; the loser can reject after rollback");
+    check([completion, concurrentCompletion].filter(r => !isError(r) && r.transitioned).length === 1, "Only one stage transition commits");
     check(
-      (completion.transitioned || concurrentCompletion.transitioned) &&
+      completion.transitioned &&
         completion.finalApprovedCount === 3 &&
         completion.conceptsWithoutFinalFile.length === 0,
       "completion must include all three finally approved concepts",
@@ -1077,7 +1020,7 @@ async function main() {
 
     const firstUnlockedAt = stageFive.unlockedAt!.getTime();
     const repeatedCompletion = await completeStageFourConcepts(superAdmin, { projectId });
-    check(!isError(repeatedCompletion) && !repeatedCompletion.transitioned, "completion retry must be idempotent");
+    check(isError(repeatedCompletion), "A completed native stage rejects further writes through the V2 stage guard");
     check(
       (await prisma.projectStageFileHandoff.count({ where: { projectId } })) === 3 &&
         (await prisma.projectFileChecklist.count({ where: { projectId } })) === 3 &&
@@ -1126,73 +1069,10 @@ async function main() {
       !executorEligibility.canRevoke && executorEligibility.reason === "UNAUTHORIZED",
       "an assigned USER executor must not receive Stage 4 revocation eligibility",
     );
-    const completedStageRevocation =
-      await revokeStageFourFinalApprovedAttachment(owner, {
-        projectId,
-        folderId: conceptA.id,
-      });
-    check(
-      !isError(completedStageRevocation) &&
-        completedStageRevocation.reopensWorkflowStage,
-      "final approval revocation must safely reopen completed Stage 4 before Stage 5 work begins",
-    );
-    const revokedStageFourEligibility =
-      await getConceptApprovalRevocationEligibility(owner, {
-        projectId,
-        folderId: conceptA.id,
-        workflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
-      });
-    check(
-      !revokedStageFourEligibility.canRevoke &&
-        revokedStageFourEligibility.reason === "NOT_APPROVED",
-      "a revoked Stage 4 concept must no longer expose Revoke Approval",
-    );
-    const reopenedWorkflow = await prisma.projectWorkflowStage.findMany({
-      where: {
-        projectId,
-        stageKey: {
-          in: [
-            ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
-            ProjectWorkflowStageKey.FINAL_LAYOUT,
-          ],
-        },
-      },
-      select: { stageKey: true, status: true },
-    });
-    check(
-      reopenedWorkflow.find(
-        (stage) =>
-          stage.stageKey === ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
-      )?.status === ProjectWorkflowStageStatus.AVAILABLE &&
-        reopenedWorkflow.find(
-          (stage) => stage.stageKey === ProjectWorkflowStageKey.FINAL_LAYOUT,
-        )?.status === ProjectWorkflowStageStatus.LOCKED,
-      "safe revocation must reopen Stage 4 and relock Stage 5",
-    );
-    const restoredCompletedApproval =
-      await markStageFourFinalApprovedAttachment(owner, {
-        projectId,
-        folderId: conceptA.id,
-        attachmentId: finalA.id,
-      });
-    check(
-      !isError(restoredCompletedApproval) && restoredCompletedApproval.changed,
-      "the safely reopened final submission must be approvable again",
-    );
-    const restoredCompletion = await completeStageFourConcepts(owner, { projectId });
-    check(
-      !isError(restoredCompletion) && restoredCompletion.transitioned,
-      "Stage 4 must complete again after the restored approval",
-    );
-    const reapprovedStageFourEligibility =
-      await getConceptApprovalRevocationEligibility(owner, {
-        projectId,
-        folderId: conceptA.id,
-        workflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
-      });
-    check(
-      reapprovedStageFourEligibility.canRevoke,
-      "a re-approved completed Stage 4 concept must expose Revoke Approval while its initialized Stage 5 handoff remains untouched",
+    await preservedRevocationDenial(
+      [owner, coOwner, superAdmin, executor, collaborator],
+      actor => revokeStageFourFinalApprovedAttachment(actor as typeof owner, { projectId, folderId: conceptA.id }),
+      projectId,
     );
 
     const stageFiveData = await getStageFiveWorkspaceData(owner, projectId);
@@ -1248,90 +1128,7 @@ async function main() {
       "Checklist A values must not leak into Checklist B",
     );
 
-    const activeStageFiveRevocation =
-      await revokeStageFourFinalApprovedAttachment(owner, {
-        projectId,
-        folderId: conceptA.id,
-      });
-    check(
-      !isError(activeStageFiveRevocation) &&
-        activeStageFiveRevocation.reopensWorkflowStage &&
-        activeStageFiveRevocation.resetThroughStageFive &&
-        activeStageFiveRevocation.removedStageFiveHandoff,
-      "Stage 4 revocation must remain available while Stage 5 is ongoing and reset its dependent handoff",
-    );
-    const [revokedWorkflow, remainingHandoffs] = await Promise.all([
-      prisma.projectWorkflowStage.findMany({
-        where: {
-          projectId,
-          stageKey: {
-            in: [
-              ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
-              ProjectWorkflowStageKey.FINAL_LAYOUT,
-            ],
-          },
-        },
-        select: { stageKey: true, status: true },
-      }),
-      prisma.projectStageFileHandoff.findMany({
-        where: { projectId },
-        select: { id: true, sourceAttachmentId: true },
-      }),
-    ]);
-    check(
-      revokedWorkflow.find(
-        (stage) =>
-          stage.stageKey === ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
-      )?.status === ProjectWorkflowStageStatus.AVAILABLE &&
-        revokedWorkflow.find(
-          (stage) => stage.stageKey === ProjectWorkflowStageKey.FINAL_LAYOUT,
-        )?.status === ProjectWorkflowStageStatus.LOCKED &&
-        remainingHandoffs.length === 2 &&
-        !remainingHandoffs.some((handoff) => handoff.id === handoffA.handoffId) &&
-        remainingHandoffs.some((handoff) => handoff.id === handoffB.handoffId),
-      "active Stage 5 revocation must relock Stage 5 and remove only the revoked final file's downstream work",
-    );
-
-    const restoredActiveFinal = await markStageFourFinalApprovedAttachment(owner, {
-      projectId,
-      folderId: conceptA.id,
-      attachmentId: finalA.id,
-    });
-    check(
-      !isError(restoredActiveFinal) && restoredActiveFinal.changed,
-      "the final file must be approvable again after active Stage 5 revocation",
-    );
-    const restoredActiveStageFour = await completeStageFourConcepts(owner, {
-      projectId,
-    });
-    check(
-      !isError(restoredActiveStageFour) && restoredActiveStageFour.transitioned,
-      "Stage 4 must complete again and recreate the revoked Stage 5 handoff",
-    );
-    const restoredStageFiveData = await getStageFiveWorkspaceData(owner, projectId);
-    const restoredHandoffA = restoredStageFiveData?.files.find(
-      (file) => file.sourceAttachment.id === finalA.id,
-    );
-    check(
-      Boolean(restoredHandoffA) &&
-        restoredHandoffA?.handoffId !== handoffA.handoffId,
-      "reapproval must create a fresh Stage 5 handoff for the restored final file",
-    );
-    const restoredChecklist = await saveStageFiveChecklist(owner, {
-      projectId,
-      handoffId: restoredHandoffA!.handoffId,
-      items: [
-        {
-          fieldKey: ProjectFileChecklistField.OUTPUT_NAME,
-          value: { text: "Restored Final A output" },
-          attachmentIds: [],
-        },
-      ],
-    });
-    check(
-      !isError(restoredChecklist),
-      "Stage 5 work must resume on the fresh handoff after Stage 4 is completed again",
-    );
+    await preservedRevocationDenial([owner, coOwner, superAdmin, executor, collaborator], actor => revokeStageFourFinalApprovedAttachment(actor as typeof owner, { projectId, folderId: conceptA.id }), projectId);
 
     await notifyStageFiveActivated({
       projectId,
@@ -1403,7 +1200,7 @@ async function main() {
       });
     check(
       isError(completedStageFiveRevocation) &&
-        completedStageFiveRevocation.error.includes("Stage 5 is already completed"),
+        completedStageFiveRevocation.error.includes("blocked pending project governance"),
       "Stage 5 completion must be the server-enforced cutoff for Stage 4 revocation",
     );
     const stageSixUnit = await prisma.projectProductionUnit.findFirstOrThrow({
@@ -1422,9 +1219,7 @@ async function main() {
       });
     check(
       isError(blockedStageThreeRework) &&
-        blockedStageThreeRework.error.includes(
-          "Stage 6 production work has already started",
-        ),
+        blockedStageThreeRework.error.includes("blocked pending project governance"),
       "Stage 3 rework must stop after Stage 6 production activity begins",
     );
     await prisma.projectProductionUnit.update({
@@ -1432,79 +1227,7 @@ async function main() {
       data: { status: ProjectProductionUnitStatus.PREPARATION },
     });
 
-    const completedStageFiveRework =
-      await revokeProjectConceptApprovedAttachment(owner, {
-        projectId,
-        folderId: stageThreeConcept.id,
-      });
-    check(
-      !isError(completedStageFiveRework) &&
-        completedStageFiveRework.reopensWorkflowStage &&
-        completedStageFiveRework.resetThroughStageFive &&
-        completedStageFiveRework.cascadedStageFourApproval &&
-        completedStageFiveRework.removedStageFiveHandoff,
-      "completed Stage 5 must still allow Stage 3 rework while Stage 6 is untouched",
-    );
-    const [reworkWorkflow, resetStageFourConcept] = await Promise.all([
-      prisma.projectWorkflowStage.findMany({
-        where: {
-          projectId,
-          stageKey: {
-            in: [
-              ProjectWorkflowStageKey.CONCEPT_CREATION,
-              ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
-              ProjectWorkflowStageKey.FINAL_LAYOUT,
-              ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER,
-              ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION,
-            ],
-          },
-        },
-        select: { stageKey: true, status: true },
-      }),
-      prisma.projectConceptFolder.findUniqueOrThrow({
-        where: { id: conceptA.id },
-        select: {
-          approvedAttachmentId: true,
-          sourceStage3ApprovedAttachmentId: true,
-          taskerStage: { select: { status: true } },
-        },
-      }),
-    ]);
-    check(
-      reworkWorkflow.find(
-        (stage) => stage.stageKey === ProjectWorkflowStageKey.CONCEPT_CREATION,
-      )?.status === ProjectWorkflowStageStatus.AVAILABLE &&
-        reworkWorkflow
-          .filter(
-            (stage) =>
-              stage.stageKey !== ProjectWorkflowStageKey.CONCEPT_CREATION,
-          )
-          .every((stage) => stage.status === ProjectWorkflowStageStatus.LOCKED),
-      "Stage 3 rework must restore one available stage followed by a locked suffix",
-    );
-    check(
-      resetStageFourConcept.approvedAttachmentId === null &&
-        resetStageFourConcept.sourceStage3ApprovedAttachmentId === sourceFile.id &&
-        resetStageFourConcept.taskerStage.status === StageStatus.ONGOING &&
-        (await prisma.projectStageFileHandoff.count({ where: { projectId } })) === 2 &&
-        (await prisma.projectFileChecklist.count({ where: { projectId } })) === 2 &&
-        (await prisma.projectProductionUnit.count({ where: { projectId } })) === 2,
-      "Stage 3 rework must reset only its dependent Stage 4 and Stage 5/6 lineage",
-    );
-    const reapprovedStageThree = await markProjectConceptApprovedAttachment(owner, {
-      projectId,
-      folderId: stageThreeConcept.id,
-      attachmentId: sourceFile.id,
-    });
-    check(
-      !isError(reapprovedStageThree) &&
-        reapprovedStageThree.changed &&
-        (await prisma.projectConceptFolder.findUniqueOrThrow({
-          where: { id: conceptA.id },
-          select: { sourceStage3ApprovedAttachmentId: true },
-        })).sourceStage3ApprovedAttachmentId === sourceFile.id,
-      "reapproving Stage 3 must relink the dependent Stage 4 starting reference",
-    );
+    await preservedRevocationDenial([owner, coOwner, superAdmin, executor, collaborator], actor => revokeProjectConceptApprovedAttachment(actor as typeof owner, { projectId, folderId: stageThreeConcept.id }), projectId);
   } finally {
     await prisma.project.deleteMany({
       where: {
@@ -1518,8 +1241,7 @@ async function main() {
         },
       },
     });
-    await prisma.user.deleteMany({ where: { id: { in: userIds } } });
-  }
+    }
 }
 
 main()

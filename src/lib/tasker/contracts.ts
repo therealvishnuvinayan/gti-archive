@@ -1,12 +1,12 @@
-// Browser-safe General Task contracts. The five future types are never executable.
+// Browser-safe Tasker contracts. New adapters require a separately activated migration.
 export const taskTypes = ["GENERAL", "FILE_UPLOAD", "DATA_INPUT", "INSPECT_FILE", "INITIAL_CONCEPT", "FINAL_CONCEPT"] as const;
 export const priorities = ["LOW", "NORMAL", "HIGH", "URGENT"] as const;
 export const statuses = ["OPEN", "IN_PROGRESS", "COMPLETION_REQUESTED", "COMPLETED", "CLOSED"] as const;
-export const actions = ["EDIT", "MESSAGE", "SUBMIT", "REQUEST_COMPLETION", "APPROVE", "REJECT", "CLOSE", "DELETE", "PREPARE_UPLOAD", "FINALIZE_UPLOAD"] as const;
+export const actions = ["EDIT", "MESSAGE", "SUBMIT", "REQUEST_COMPLETION", "APPROVE", "REJECT", "CLOSE", "DELETE", "PREPARE_UPLOAD", "FINALIZE_UPLOAD", "REFRESH_TARGET"] as const;
 export type TaskAction = typeof actions[number];
 export type Person = { id: string; name: string | null };
 export type TaskSummary = {
-  id: string; title: string; type: "GENERAL"; brief: string; context: string | null;
+  id: string; title: string; type: "GENERAL" | "FILE_UPLOAD" | "DATA_INPUT"; brief: string; context: string | null;
   priority: typeof priorities[number]; deadline: string; status: typeof statuses[number]; version: number;
   owner: Person; executor: Person; spectators: Person[];
   project: { id: string; name: string; kind: "structured" | "flexible" };
@@ -18,6 +18,9 @@ export type TaskDetail = TaskSummary & {
   entries: { id: string; version: number; action: string; text: string; actor: Person; directorOverride: boolean;
     createdAt: string; snapshot: unknown }[];
   files: TaskFile[];
+  deliverable?: { label: string; inputMode: string; fieldType?: string; expectedState?: unknown; currentState?: unknown; conflict?: boolean;
+    applicationState?: string; errorCode?: string | null; publishedAttachmentIds: string[] };
+
   permissions: { manage: boolean; message: boolean; submit: boolean; requestCompletion: boolean; review: boolean; close: boolean; delete: boolean };
 };
 export class TaskerError extends Error {
@@ -57,3 +60,9 @@ export function contextTarget(value: unknown) {
   return { target, kind, key };
 }
 export function taskEnabled() { return process.env.FLUX_UNIVERSAL_TASKER === "1"; }
+
+export function deliverablesEnabled() { return taskEnabled() && process.env.FLUX_TASKER_DELIVERABLES === "1"; }
+export function availableTaskType(type: string) { return type === "GENERAL" || (deliverablesEnabled() && ["FILE_UPLOAD", "DATA_INPUT"].includes(type)); }
+
+// Deliberate existing-field adapter allowlist; new native fields need review.
+export const taskInputFields: readonly string[] = ["OUTPUT_NAME", "TAR", "NICOTINE", "BARCODE", "TECHNICAL_DRAWING", "RELATED_GRAPHICS", "THREEDS", "QR_CODE", "INVOICE", "TRACK_TRACE", "TAX_STAMP"];
