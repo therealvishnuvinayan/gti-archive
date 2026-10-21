@@ -452,6 +452,7 @@ enum FluxAiMessageRole {
 }
 
 model User {
+  businessEvents BusinessEvent[]
   approvalRequests ApprovalRequest[] @relation("ApprovalRequester")
   approvalDecisions ApprovalDecision[]
   approvalEvents ApprovalEvent[]
@@ -692,6 +693,7 @@ model RolePermission {
 }
 
 model Project {
+  businessEvents BusinessEvent[]
   approvalRequests ApprovalRequest[]
   sharedFiles SharedFile[]
   id                     String                         @id @default(cuid())
@@ -2532,6 +2534,7 @@ model CompletionDocumentSubmission {
 }
 
 model CompletionDocumentEvent {
+  businessEvent BusinessEvent?
   requestedApproval ApprovalRequest? @relation("ApprovalSubmissionEvent")
   approvalDecision ApprovalDecision?
   approvalEvents ApprovalEvent[]
@@ -2865,6 +2868,7 @@ model SharedFile {
 }
 
 model SharedFileVersion {
+  businessEvents BusinessEvent[]
   approvalEvidence ApprovalEvidence[]
   id String @id @default(cuid())
   fileId String
@@ -3004,6 +3008,7 @@ model ApprovalStep {
 }
 
 model ApprovalEvidence {
+  businessEvents BusinessEvent[]
   id String @id @default(cuid())
   requestId String
   request ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Restrict, onUpdate: Restrict)
@@ -3015,6 +3020,7 @@ model ApprovalEvidence {
 }
 
 model ApprovalDecision {
+  businessEvent BusinessEvent?
   id String @id @default(cuid())
   requestId String
   request ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Restrict, onUpdate: Restrict)
@@ -3055,4 +3061,101 @@ model ApprovalEvent {
   details Json
   createdAt DateTime @default(now())
   @@index([requestId, createdAt])
+}
+
+
+// Phase 2.3: native history remains authoritative; SQL guards own event production.
+enum BusinessEventType {
+  COMPLETION_DOCUMENT_REVIEW_DECIDED
+}
+
+enum EventDeliveryState {
+  PENDING
+  PROCESSING
+  DELIVERED
+  FAILED
+}
+
+enum EventAttemptOutcome {
+  CLAIMED
+  SUCCEEDED
+  RETRY
+  DEAD
+  EXPIRED
+}
+
+model BusinessEvent {
+  id                String @id
+  type              BusinessEventType
+  schemaVersion     Int
+  aggregateType     String
+  aggregateId       String
+  sequence          Int
+  projectId         String
+  project           Project @relation(fields: [projectId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actorId           String
+  actor             User @relation(fields: [actorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actorRole         String
+  actorVersion      Int
+  operation         String
+  decisionId        String @unique
+  decision          ApprovalDecision @relation(fields: [decisionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  nativeEventId     String @unique
+  nativeEvent       CompletionDocumentEvent @relation(fields: [nativeEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  approvalEvidenceId String
+  approvalEvidence  ApprovalEvidence @relation(fields: [approvalEvidenceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  fileVersionId     String
+  fileVersion       SharedFileVersion @relation(fields: [fileVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  correlationId     String
+  causationId       String
+  idempotencyKey    String @unique
+  occurredAt        DateTime
+  recordedAt        DateTime @default(dbgenerated("(CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text)"))
+  payload           Json
+  delivery          EventOutbox?
+  receipts          EventConsumerReceipt[]
+
+  @@unique([aggregateType, aggregateId, sequence])
+  @@index([projectId, occurredAt, id])
+  @@index([fileVersionId])
+  @@index([approvalEvidenceId])
+  @@index([actorId])
+}
+
+model EventOutbox {
+  eventId       String @id
+  event         BusinessEvent @relation(fields: [eventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  consumerKey   String
+  state         EventDeliveryState @default(PENDING)
+  attempts      Int @default(0)
+  availableAt   DateTime @default(dbgenerated("(CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text)"))
+  leaseToken    String?
+  leaseUntil    DateTime?
+  deliveredAt   DateTime?
+  lastErrorCode String?
+  history       EventDeliveryAttempt[]
+
+  @@index([state, availableAt])
+  @@index([state, leaseUntil])
+}
+
+model EventDeliveryAttempt {
+  id          String @id @default(cuid())
+  eventId     String
+  delivery    EventOutbox @relation(fields: [eventId], references: [eventId], onDelete: Restrict, onUpdate: Restrict)
+  attempt     Int
+  outcome     EventAttemptOutcome
+  errorCode   String?
+  occurredAt  DateTime @default(dbgenerated("(CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text)"))
+
+  @@unique([eventId, attempt, outcome])
+}
+
+model EventConsumerReceipt {
+  eventId     String
+  event       BusinessEvent @relation(fields: [eventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  consumerKey String
+  consumedAt  DateTime @default(dbgenerated("(CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text)"))
+
+  @@id([eventId, consumerKey])
 }

@@ -1,4 +1,5 @@
 import "server-only";
+import { prepareCompletionReviewEvent } from "../events/producer";
 import type { Prisma } from "@prisma/client";
 import { readCurrentSessionToken } from "../auth";
 import { resolveAuthenticatedSession } from "../authorization/session";
@@ -95,6 +96,7 @@ export async function decideApproval(tx: DB, requestId: string, input: { expecte
   // A trusted adapter changes the authoritative native state in this transaction.
   // Deferred SQL guards prohibit committing either side without the other.
   const nativeEventId = next.state === "PENDING" ? null : await applyNative(input.outcome, decidedAt);
+  await prepareCompletionReviewEvent(tx, request.projectId, nativeEventId);
   const decision = await tx.approvalDecision.create({ data: { requestId, stepId: step.id, commandId: expected.commandId,
     expectedRevision: expected.revision, evidenceHash: expected.evidenceHash, outcome: input.outcome, reason,
     actorId: actor.userId, actorRole: actor.businessRole!, actorVersion: actor.authorizationVersion!, sessionId: actor.session.id,

@@ -194,6 +194,7 @@ try {
   if (process.argv.includes("--archives")) checkAssignmentServices("archives");
   if (process.argv.includes("--completion-documents")) checkAssignmentServices("completion-documents");
   if (process.argv.includes("--file-identity")) { checkSharedFileMigration(); checkAssignmentServices("file-identity"); }
+  if (process.argv.includes("--events")) checkAssignmentServices("events");
   if (process.argv.includes("--approvals")) { checkApprovalMigration(); checkAssignmentServices("approvals"); }
   if (process.argv.includes("--project-governance")) checkAssignmentServices("project-governance");
   if (process.argv.includes("--project-write")) checkAssignmentServices("project-write");
@@ -217,7 +218,8 @@ function checkAssignmentServices(runtime = false) {
   const workspace = runtime === "workspace", search = runtime === "search";
   const library = runtime === "library";
   const archives = runtime === "archives";
-  const approvals = runtime === "approvals";
+  const events = runtime === "events";
+  const approvals = runtime === "approvals" || events;
   const fileIdentity = runtime === "file-identity" || approvals;
   const documents = runtime === "completion-documents" || fileIdentity;
   const governance = runtime === "project-governance";
@@ -227,7 +229,19 @@ function checkAssignmentServices(runtime = false) {
   sql(`CREATE DATABASE "${serviceDatabase}"`, "postgres");
   const serviceUrl = databaseUrl.replace(`/${database}?`, `/${serviceDatabase}?`);
   const serviceEnv = { ...prismaEnv, DATABASE_URL: serviceUrl, PRISMA_GENERATE_SKIP_AUTOINSTALL: "1" };
-  run(process.execPath, [prismaCli, "migrate", "deploy", "--schema", schemaPath], { env: serviceEnv });
+  let deploymentSchema = schemaPath;
+  if (events) {
+    const baseline = join(root, "events-baseline");
+    mkdirSync(join(baseline, "migrations"), { recursive: true });
+    copyFileSync(join(migrationRoot, "migration_lock.toml"), join(baseline, "migrations/migration_lock.toml"));
+    for (const name of readdirSync(migrationRoot).filter(n => /^\d+_/.test(n) && n < "20261021190000_shared_audit_events")) {
+      mkdirSync(join(baseline, "migrations", name));
+      copyFileSync(join(migrationRoot, name, "migration.sql"), join(baseline, "migrations", name, "migration.sql"));
+    }
+    deploymentSchema = join(baseline, "schema.prisma");
+    writeFileSync(deploymentSchema, withoutEventSchema(readFileSync(schemaPath, "utf8")));
+  }
+  run(process.execPath, [prismaCli, "migrate", "deploy", "--schema", deploymentSchema], { env: serviceEnv });
   const clientPath = join(root, "client"), generatedSchema = join(root, "client.prisma");
   mkdirSync(join(root, "node_modules/@prisma"), { recursive: true });
   if (!existsSync(join(root, "node_modules/@prisma/client"))) {
@@ -252,9 +266,9 @@ function checkAssignmentServices(runtime = false) {
   mkdirSync(marker, { recursive: true });
   writeFileSync(join(marker, "index.js"), "// Isolated Node server test only.\n");
   console.log(run(process.execPath, [join(output, administration ? "scripts/administration-integration-check.js" : workspace ? "scripts/workspace-authorization-integration-check.js" : search ? "scripts/flux-ai-archive-search-integration-check.js" : library ? "scripts/library-authorization-integration-check.js" : archives ? "scripts/archives-authorization-integration-check.js" : documents ? "scripts/completion-documents-integration-check.js" : governance ? "scripts/authorization-project-governance-integration-check.js" : projectWrite ? "scripts/authorization-project-write-integration-check.js" : projectRead ? "scripts/authorization-project-read-integration-check.js" : runtime ? "scripts/authorization-runtime-integration-check.js" : "scripts/authorization-services-integration-check.js")], {
-    env: { ...serviceEnv, NODE_ENV: "production", FLUX_FILE_IDENTITY_TEST: fileIdentity ? "1" : "", FLUX_APPROVAL_TEST: approvals ? "1" : "", FLUX_AUTH_TEST_ROOT: root, FLUX_AUTH_TEST_URL: serviceUrl, FLUX_AUTH_TEST_CLIENT: clientPath,
+    env: { ...serviceEnv, NODE_ENV: "production", FLUX_EVENT_TEST: events ? "1" : "", FLUX_EVENT_MIGRATION_SCHEMA: events ? schemaPath : "", FLUX_FILE_IDENTITY_TEST: fileIdentity ? "1" : "", FLUX_APPROVAL_TEST: approvals ? "1" : "", FLUX_AUTH_TEST_ROOT: root, FLUX_AUTH_TEST_URL: serviceUrl, FLUX_AUTH_TEST_CLIENT: clientPath,
       NODE_PATH: join(repository, "node_modules") },
-    timeout: 60000,
+    timeout: events ? 180000 : 60000,
   }));
   const drift = run(process.execPath, [prismaCli, "migrate", "diff", "--from-url", serviceUrl,
     "--to-schema-datamodel", schemaPath, "--script"], { env: serviceEnv });
@@ -264,7 +278,14 @@ function checkAssignmentServices(runtime = false) {
   console.log(`PASS: ${approvals ? "Phase 2.2 reusable approvals" : fileIdentity ? "Phase 2.1 shared file identity" : administration ? "Phase 1.5I administration" : workspace ? "Phase 1.5H workspace" : search ? "Phase 1.5H search" : library ? "Phase 1.5G Library" : archives ? "Phase 1.5F Archives" : documents ? "Phase 1.5E completion documents" : governance ? "Phase 1.5D project governance" : projectWrite ? "Phase 1.5C project write" : projectRead ? "Phase 1.5B project read" : runtime ? "Phase 1.5A runtime" : "Phase 1.4A Prisma service"} integration, targeted TypeScript and empty schema drift.`);
 }
 
+function withoutEventSchema(schema) {
+  for (const name of ["BusinessEvent", "EventOutbox", "EventDeliveryAttempt", "EventConsumerReceipt", "BusinessEventType", "EventDeliveryState", "EventAttemptOutcome"]) {
+    schema = schema.replace(new RegExp(`^(?:model|enum) ${name} \{[\\s\\S]*?^\}`, "m"), "");
+  }
+  return schema.replace(/^  (?:businessEvents|businessEvent)\s+[^\n]+\n/gm, "");
+}
 function withoutApprovalSchema(schema) {
+  schema = withoutEventSchema(schema);
   for (const name of ["ApprovalRequest", "ApprovalStep", "ApprovalEvidence", "ApprovalDecision", "ApprovalEvent", "ApprovalSubjectType", "ApprovalRequestState", "ApprovalStepEligibility", "ApprovalDecisionOutcome", "ApprovalEventAction"]) {
     schema = schema.replace(new RegExp(`^(?:model|enum) ${name} \\{[\\s\\S]*?^\\}`, "m"), "");
   }
@@ -371,7 +392,7 @@ function checkApprovalMigration() {
   });
   const before = snapshot();
   mkdirSync(join(directory, "migrations", candidate));copyFileSync(join(migrationRoot, candidate, "migration.sql"), join(directory, "migrations", candidate, "migration.sql"));
-  copyFileSync(schemaPath, baselinePath);migrate(["migrate", "deploy", "--schema", baselinePath]);
+  writeFileSync(baselinePath, withoutEventSchema(readFileSync(schemaPath, "utf8")));migrate(["migrate", "deploy", "--schema", baselinePath]);
   assert.deepEqual(snapshot(), before, "All existing rows and ledger checksums must survive approval migration unchanged");
   assert.equal(sql('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL', db), "107");
   assert.equal(sql("SELECT count(*) FROM pg_tables WHERE schemaname='public'", db), "108");

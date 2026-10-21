@@ -202,6 +202,10 @@ async function main(){
       renewSession: async (id: string) => { const assignment = await db.userAuthorization.findUniqueOrThrow({ where: { userId: id } });
         const value = createVersionedSessionToken(assignment.authorizationVersion); tokens.set(id, value);
         await db.session.create({ data: { userId: id, token: value, expiresAt: new Date(Date.now() + 3600000) } }); return user(id); } });
+    if (process.env.FLUX_EVENT_TEST === "1") {
+      const { verifySharedEvents } = localRequire(join(compiledRoot, "scripts/shared-events-integration-check.js")) as typeof import("./shared-events-integration-check");
+      await verifySharedEvents({ db, objects, user, fixture, load: (name: string) => localRequire(join(compiledRoot, name)) });
+    }
   }
 
  } finally { moduleApi._load=original; }
