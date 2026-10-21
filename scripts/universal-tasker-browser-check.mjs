@@ -14,6 +14,7 @@ const root=mkdtempSync(join(process.platform==='darwin'?'/private/tmp':tmpdir(),
 const data=join(root,'data'), socket=join(root,'s'), app=join(root,'app');
 const artifact=process.env.FLUX_BROWSER_ARTIFACTS||'/private/tmp/flux-phase31-browser-artifacts';mkdirSync(artifact,{recursive:true,mode:0o700});
 const build=resolve(process.env.FLUX_BROWSER_BUILD||repository);
+const stageBaseline=process.env.FLUX_BROWSER_STAGE_BASELINE==='1';
 const env={PATH:process.env.PATH,LANG:'C',LC_ALL:'C',CHECKPOINT_DISABLE:'1',PRISMA_HIDE_UPDATE_MESSAGE:'1',NEXT_TELEMETRY_DISABLED:'1',PGPASSFILE:join(root,'no-password'),PGSERVICEFILE:join(root,'no-service')};
 const url=`postgresql://flux_browser@localhost:55437/flux_library_browser?host=${encodeURIComponent(socket)}&connect_timeout=5`;
 const pgArgs=['-X','-qAt','-h',socket,'-p','55437','-U','flux_browser','-v','ON_ERROR_STOP=1','-d','flux_library_browser'];
@@ -29,9 +30,9 @@ try {
  run('psql',[...pgArgs.slice(0,-1),'postgres'],{input:'CREATE DATABASE flux_library_browser;'});
  const identity=JSON.parse(sql(`SELECT json_build_object('data',current_setting('data_directory'),'tcp',current_setting('listen_addresses'),'version',current_setting('server_version'))`));assert.equal(identity.data,data);assert.equal(identity.tcp,'');result.postgres=identity.version;
  cpSync(join(repository,'prisma/schema.prisma'),join(root,'schema.prisma'));mkdirSync(join(root,'migrations'));
- for(const entry of readdirSync(join(repository,'prisma/migrations')))cpSync(join(repository,'prisma/migrations',entry),join(root,'migrations',entry),{recursive:true});
+ for(const entry of readdirSync(join(repository,'prisma/migrations')))if(!stageBaseline||entry!=='20261023010000_stage_builder_drafts')cpSync(join(repository,'prisma/migrations',entry),join(root,'migrations',entry),{recursive:true});
  run(process.execPath,[require.resolve('prisma/build/index.js'),'migrate','deploy','--schema',join(root,'schema.prisma')],{env:{...env,DATABASE_URL:url}});
- assert.equal(Number(sql('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL')),112);
+ assert.equal(Number(sql('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL')),stageBaseline?112:113);
  const {PrismaClient}=require('@prisma/client');db=new PrismaClient({datasourceUrl:url});
  const password=randomBytes(24).toString('base64url'),salt=randomBytes(16).toString('hex'),passwordHash=`${salt}:${scryptSync(password,salt,64).toString('hex')}`;
  const roles=[['director','DIRECTOR'],['spm','SENIOR_PROJECT_MANAGER'],['spm2','SENIOR_PROJECT_MANAGER'],['jpm','JUNIOR_PROJECT_MANAGER'],['designer','DESIGNER'],['designer2','DESIGNER'],['digital','DIGITAL_LEAD'],['tech',null],['tech2',null]];
@@ -120,6 +121,7 @@ try {
  assert.equal(JSON.stringify(await db.project.findMany()),projectSnapshot);assert.equal(await db.user.count(),9);assert.equal(await db.archivedProjectFile.count(),0);assert.equal(await db.manualArchiveFile.count(),0);
  assert.deepEqual(result.pageErrors,[]);assert.deepEqual(result.blockedExternalRequests,[]);assert.ok(!logs.join('').includes('EXTERNAL_NETWORK_FORBIDDEN'));assert.ok(result.storageOperations.some(o=>o.startsWith('PUT')));
  pass('Unrelated and Technical Admin direct APIs/files denied; legacy concept view preserved; mobile history; nine identities/projects unchanged; fake storage only and no external requests');
+ if(stageBaseline){await director.goto(origin+'/projects');assert.equal(await director.getByRole('link',{name:'Workflow drafts · Stage Builder'}).count(),0);assert.equal(await requestStatus(director,'/api/workflow-drafts'),404);await shot(director,'112-schema-projects-with-drafts-disabled');pass('Current production code runs Projects and General Tasks on 112 migrations with Stage Builder disabled; no draft UI or API access.');}
  result.status='PASS';
 } catch(error) {result.status='FAIL';result.error=error.message;console.error(error.stack);process.exitCode=1;if(browser)for(const [i,context]of browser.contexts().entries())for(const [j,page]of context.pages().entries()){await page.screenshot({path:join(artifact,`failure-${i}-${j}.png`),fullPage:true}).catch(()=>{});console.log(JSON.stringify({url:page.url().split('#')[0],text:(await page.locator('body').innerText()).slice(-3500)}));}}
 finally {writeFileSync(join(artifact,'result.json'),JSON.stringify(result,null,2),{mode:0o600});writeFileSync(join(artifact,'server.log'),logs.join(''),{mode:0o600});await browser?.close();server?.kill('SIGTERM');await new Promise(r=>setTimeout(r,300));await db?.$disconnect();if(storage)await new Promise(r=>storage.close(r));if(started)run('pg_ctl',['-D',data,'-m','fast','-w','stop']);rmSync(root,{recursive:true,force:true});console.log('Disposable browser app/database/object fixture removed. Artifacts: '+artifact);}

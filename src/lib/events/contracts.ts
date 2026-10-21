@@ -62,9 +62,30 @@ export type TaskActivityEvent = {
   operation: "generalTaskCommand" | "deliverableTaskCommand" | "conceptTaskCommand"; correlationId: string; causationId: string; idempotencyKey: string; occurredAt: string;
   payload: { action: string; status: string; directorOverride: boolean };
 };
-export type SharedBusinessEvent = ReviewDecidedEvent | TaskActivityEvent;
+export type WorkflowDraftEvent = {
+  id: string; type: "WORKFLOW_DRAFT_REVISED"; schemaVersion: 1;
+  aggregate: { type: "WORKFLOW_DRAFT"; id: string; sequence: number };
+  native: { type: "WorkflowDraftRevision"; id: string };
+  actor: Extract<EventActor, { kind: "INTERNAL" }>;
+  operation: "draftWorkflowCommand"; correlationId: string; causationId: string; idempotencyKey: string; occurredAt: string;
+  payload: { action: "CREATE" | "REVISE" | "CLONE"; configurationHash: string; validationStatus: "VALID" | "INCOMPLETE" };
+};
+export type SharedBusinessEvent = ReviewDecidedEvent | TaskActivityEvent | WorkflowDraftEvent;
 export function decodeBusinessEvent(row: BusinessEvent): SharedBusinessEvent {
   if (row.type === EVENT_TYPE) return reviewEvent(row);
+  if (row.type === "WORKFLOW_DRAFT_REVISED") {
+    const p = row.payload;
+    if (row.schemaVersion !== 1 || row.aggregateType !== "WORKFLOW_DRAFT" || row.operation !== "draftWorkflowCommand" ||
+      !row.aggregateId || !row.causationId || row.id !== `draft:${row.causationId}` || row.idempotencyKey !== row.id || row.correlationId !== row.aggregateId ||
+      !Number.isInteger(row.sequence) || row.sequence < 1 || !Number.isInteger(row.actorVersion) || row.actorVersion < 1 || !row.actorId || !Number.isFinite(row.occurredAt.getTime()) ||
+      !["DIRECTOR", "SENIOR_PROJECT_MANAGER"].includes(row.actorRole) || [row.projectId, row.flexibleProjectId, row.taskId, row.taskEntryId, row.decisionId, row.nativeEventId, row.approvalEvidenceId, row.fileVersionId].some(v => v !== null) ||
+      !p || typeof p !== "object" || Array.isArray(p) || Object.keys(p).sort().join() !== "action,configurationHash,validationStatus" ||
+      typeof p.action !== "string" || !["CREATE", "REVISE", "CLONE"].includes(p.action) || typeof p.configurationHash !== "string" || !/^[a-f0-9]{64}$/.test(p.configurationHash) ||
+      typeof p.validationStatus !== "string" || !["VALID", "INCOMPLETE"].includes(p.validationStatus)) throw new Error("UNSUPPORTED_EVENT_CONTRACT");
+    return { id: row.id, type: "WORKFLOW_DRAFT_REVISED", schemaVersion: 1, aggregate: { type: "WORKFLOW_DRAFT", id: row.aggregateId, sequence: row.sequence },
+      native: { type: "WorkflowDraftRevision", id: row.causationId }, actor: { kind: "INTERNAL", userId: row.actorId, businessRole: row.actorRole, authorizationVersion: row.actorVersion },
+      operation: "draftWorkflowCommand", correlationId: row.correlationId, causationId: row.causationId, idempotencyKey: row.idempotencyKey, occurredAt: row.occurredAt.toISOString(), payload: p as WorkflowDraftEvent["payload"] };
+  }
   const p = row.payload;
   if (row.type !== "TASK_ACTIVITY" || row.schemaVersion !== 1 || row.aggregateType !== "UNIVERSAL_TASK" ||
     !["generalTaskCommand", "deliverableTaskCommand", "conceptTaskCommand"].includes(row.operation) || !row.taskId || !row.taskEntryId || row.aggregateId !== row.taskId ||

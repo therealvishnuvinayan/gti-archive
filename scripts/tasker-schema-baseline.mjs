@@ -28,6 +28,13 @@ export function withoutTaskConceptsSchema(schema) {
 }
 
 export function withoutTaskSistersSchema(schema) {
+  schema = withoutStageBuilderSchema(schema);
   for (const name of ["UniversalTaskFamilyLink", "UniversalTaskInheritedEvidence"]) schema = schema.replace(new RegExp(`^model ${name} \\{[\\s\\S]*?^\\}`, "m"), "");
   return schema.replace(/^  (?:sisterLink|sisterChildren|familyMembers|sisterCreation|inheritedSubmissions|inheritedReviews|inheritedEvidence)\s+[^\n]+\n/gm, "");
+}
+
+// Phase 4.1 adds only virtual relations to existing models and one event type.
+export function withoutStageBuilderSchema(schema) {
+  for (const name of ["WorkflowDraft", "WorkflowDraftRevision"]) schema = schema.replace(new RegExp(`^model ${name} \{[\\s\\S]*?^\}`, "m"), "");
+  return schema.replace(/^  (?:workflowDrafts|workflowDraftRevisions|workflowDraftRevision)\s+[^\n]+\n/gm, "").replace(/^  WORKFLOW_DRAFT_REVISED\n/m, "");
 }

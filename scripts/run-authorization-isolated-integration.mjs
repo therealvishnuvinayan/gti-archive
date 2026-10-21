@@ -297,11 +297,11 @@ function checkAssignmentServices(runtime = false) {
     assert.equal(query('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL'), "110");
     for (const table of ["ApprovalRequest", "ApprovalDecision", "CompletionDocumentEvent", "BusinessEvent", "EventOutbox", "SharedFileVersion"]) assert.ok(Number(query(`SELECT count(*) FROM "${table}"`)) > 0, `${table} must be populated`);
     const tables = query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename").split("\n");
-    const snapshot = () => tables.map(t => query(`SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text)::text,'[]') FROM "${t}" t ${t === "_prisma_migrations" ? "WHERE migration_name NOT IN ('20261022010000_universal_tasker_concepts','20261022030000_universal_tasker_sisters')" : ""}`));
+    const snapshot = () => tables.map(t => query(`SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text)::text,'[]') FROM "${t}" t ${t === "_prisma_migrations" ? "WHERE migration_name NOT IN ('20261022010000_universal_tasker_concepts','20261022030000_universal_tasker_sisters','20261023010000_stage_builder_drafts')" : ""}`));
     const before = snapshot(); run(process.execPath, [prismaCli, "migrate", "deploy", "--schema", schemaPath], { env: serviceEnv });
-    assert.deepEqual(snapshot(), before); assert.equal(query('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL'), "112");
-    assert.equal(query("SELECT count(*) FROM pg_tables WHERE schemaname='public'"), "122");
-    console.log("PASS Phase 3.3/3.4 additional populated migrations: all 119 tables preserved, including nine accounts, accepted/rejected approvals, native document history, exact file versions, business events and delivery diagnostics.");
+    assert.deepEqual(snapshot(), before); assert.equal(query('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL'), "113");
+    assert.equal(query("SELECT count(*) FROM pg_tables WHERE schemaname='public'"), "124");
+    console.log("PASS Phase 3.3/3.4/4.1 additional populated migrations: all 119 tables preserved, including nine accounts, accepted/rejected approvals, native document history, exact file versions, business events and delivery diagnostics.");
   }
   const drift = run(process.execPath, [prismaCli, "migrate", "diff", "--from-url", serviceUrl,
     "--to-schema-datamodel", schemaPath, "--script"], { env: serviceEnv });
@@ -475,11 +475,11 @@ function checkProvisioning() {
     assert.equal(query('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL'), "110");
     for (const table of ["ApprovalRequest", "ApprovalDecision", "CompletionDocumentEvent", "BusinessEvent", "EventOutbox", "SharedFileVersion"]) assert.ok(Number(query(`SELECT count(*) FROM "${table}"`)) > 0, `${table} must be populated`);
     const tables = query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename").split("\n");
-    const snapshot = () => tables.map(t => query(`SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text)::text,'[]') FROM "${t}" t ${t === "_prisma_migrations" ? "WHERE migration_name NOT IN ('20261022010000_universal_tasker_concepts','20261022030000_universal_tasker_sisters')" : ""}`));
+    const snapshot = () => tables.map(t => query(`SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text)::text,'[]') FROM "${t}" t ${t === "_prisma_migrations" ? "WHERE migration_name NOT IN ('20261022010000_universal_tasker_concepts','20261022030000_universal_tasker_sisters','20261023010000_stage_builder_drafts')" : ""}`));
     const before = snapshot(); run(process.execPath, [prismaCli, "migrate", "deploy", "--schema", schemaPath], { env: serviceEnv });
-    assert.deepEqual(snapshot(), before); assert.equal(query('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL'), "112");
-    assert.equal(query("SELECT count(*) FROM pg_tables WHERE schemaname='public'"), "122");
-    console.log("PASS Phase 3.3/3.4 additional populated migrations: all 119 tables preserved, including nine accounts, accepted/rejected approvals, native document history, exact file versions, business events and delivery diagnostics.");
+    assert.deepEqual(snapshot(), before); assert.equal(query('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL'), "113");
+    assert.equal(query("SELECT count(*) FROM pg_tables WHERE schemaname='public'"), "124");
+    console.log("PASS Phase 3.3/3.4/4.1 additional populated migrations: all 119 tables preserved, including nine accounts, accepted/rejected approvals, native document history, exact file versions, business events and delivery diagnostics.");
   }
   const drift = run(process.execPath, [prismaCli, "migrate", "diff", "--from-url", provisioningUrl,
     "--to-schema-datamodel", schemaPath, "--script"], { env: testEnv });
