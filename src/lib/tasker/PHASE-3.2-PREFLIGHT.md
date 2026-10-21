@@ -1,5 +1,7 @@
 # Phase 3.2 — verification closure and controlled activation preflight
 
+This is the historical pre-activation checkpoint. The subsequent separately approved [development activation is complete](PHASE-3.2-ACTIVATION.md); its report records the current state.
+
 2026-10-21. **PASS — awaiting explicit approval. No migration applied; deliverables remain disabled.** Live preflight completed at **17:07:58 UTC / 21:07:58 Dubai**. This report supersedes the legacy-runner gap and activation recommendation in the [initial implementation report](PHASE-3.2.md), whose implementation history remains intact.
 
 ## 1. Both legacy runners execute and pass

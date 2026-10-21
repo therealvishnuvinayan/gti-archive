@@ -1,8 +1,8 @@
 # Phase 3.2 — File Upload and Data Input Tasks
 
-Implementation report, 2026-10-21. **Not activated.** The existing Phase 3.1 configuration remains unchanged. No Neon connection/migration, live S3 operation, account/permission change, external worker, push or deployment was performed during the initial implementation.
+Initial implementation report, 2026-10-21. **Status at that checkpoint: not activated.** The existing Phase 3.1 configuration remains unchanged. No Neon connection/migration, live S3 operation, account/permission change, external worker, push or deployment was performed during the initial implementation.
 
-The subsequent [verification closure and read-only activation preflight](PHASE-3.2-PREFLIGHT.md) supersedes the legacy-runner gaps and recommendation in sections 12–14 below. Both legacy commands now pass; the independently checked Neon baseline remains unchanged. Migration execution and local deliverable activation still require explicit approval.
+**Current status:** [controlled development activation completed](PHASE-3.2-ACTIVATION.md). The approved migration is applied and the local deliverables flag is enabled; all required postchecks and isolated acceptance passed. The [preceding preflight](PHASE-3.2-PREFLIGHT.md) and sections below retain their historical checkpoint results.
 
 ## 1. Files created and modified
 
