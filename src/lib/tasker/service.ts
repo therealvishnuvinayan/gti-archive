@@ -16,6 +16,9 @@ import { conceptsEnabled, enabledTaskTypes, isConceptType, isDeliverable } from 
 import { authorizedTarget, targetChoices, proposedValue, recheckTarget } from "./targets";
 import { prepareApplication, applyApplication, completeApplication } from "./applications";
 
+import { confirmationHash, familyInfo, inheritedEvidence, reusableValues, saveSister, sisterCommand, sourceEvidence, sourceTask, taskAccess, validateSister } from "./families";
+import { sistersEnabled } from "./contracts";
+
 type Tx = Prisma.TransactionClient;
 type Grant = Extract<AuthorizationDecision, { decision: "ALLOW" }>;
 const person = { id: true, name: true } as const;
@@ -87,36 +90,57 @@ export async function taskOptions(target?: string) {
   });
 }
 export async function listTasks(raw: unknown = {}) {
-  enabled(); const v = object(raw, ["context", "status", "ownerId", "executorId", "search", "offset"]);
+  enabled(); const v = object(raw, ["context", "status", "ownerId", "executorId", "search", "offset", "type", "priority", "scope", "overdue", "sort", "familyId"]);
   const ctx = v.context === undefined ? null : contextTarget(v.context);
   if (v.status !== undefined) ensure(statuses.includes(v.status as typeof statuses[number]), "INVALID_STATUS");
+  if (v.type !== undefined) ensure(typeof v.type === "string" && availableTaskType(v.type), "TASK_TYPE_UNAVAILABLE");
+  if (v.priority !== undefined) priority(v.priority);
+  ensure(v.scope === undefined || ["mine", "accessible", "project"].includes(String(v.scope)), "INVALID_SCOPE");
+  ensure(v.scope !== "project" || ctx, "PROJECT_CONTEXT_REQUIRED");
+  ensure(v.overdue === undefined || v.overdue === "1", "INVALID_QUERY");
+  const sort = v.sort ?? "deadline"; ensure(["deadline", "priority", "created", "recent"].includes(String(sort)), "INVALID_SORT");
   const ownerId = v.ownerId === undefined ? undefined : id(v.ownerId), executorId = v.executorId === undefined ? undefined : id(v.executorId);
   const search = text(v.search, 120, true), offset = v.offset === undefined ? 0 : Number(v.offset);
   ensure(Number.isSafeInteger(offset) && offset >= 0 && offset <= 100000, "INVALID_OFFSET");
+  const familyId = v.familyId === undefined ? null : id(v.familyId);
+  if (familyId) ensure(sistersEnabled(), "SISTERS_DISABLED", 404);
   return runtimeAuthorization.runAuthorized({ capability: "task.list", targetId: "root" }, async (tx, grant) => {
-    const actor = await principal(tx);
+    const actor = await principal(tx), director = actor.businessRole === "DIRECTOR";
     let project: Prisma.UniversalTaskWhereInput = {};
     if (ctx) {
-      if (ctx.kind === "task") throw new Error("Use a project context for task lists");
+      ensure(ctx.kind !== "task", "INVALID_CONTEXT");
       project = ctx.kind === "structured" ? { projectId: ctx.key } : { flexibleProjectId: ctx.key };
     }
-    const where: Prisma.UniversalTaskWhereInput = { deletedAt: null, type: { in: enabledTaskTypes() }, status: v.status as typeof statuses[number] | undefined, ownerId, executorId,
-      AND: [project, ...(actor.businessRole === "DIRECTOR" && ctx ? [] : [relationWhere(grant.actorUserId)]),
+    const access = v.scope === "mine" ? { OR: [{ ownerId: grant.actorUserId }, { executorId: grant.actorUserId }] } :
+      director && (ctx || v.scope === "accessible" || familyId) ? {} : relationWhere(grant.actorUserId);
+    let family: Prisma.UniversalTaskWhereInput = {};
+    if (familyId) {
+      ensure(await tx.universalTask.findFirst({ where: { id: familyId, AND: taskAccess(grant.actorUserId, director) } }), "SOURCE_UNAVAILABLE", 403);
+      const rootId = (await tx.universalTaskFamilyLink.findUnique({ where: { taskId: familyId } }))?.rootTaskId ?? familyId;
+      family = { OR: [{ id: rootId }, { sisterLink: { rootTaskId: rootId } }] };
+    }
+    const where: Prisma.UniversalTaskWhereInput = { deletedAt: familyId ? undefined : null, type: v.type ? v.type as TaskSummary["type"] : { in: enabledTaskTypes() }, status: v.status as typeof statuses[number] | undefined, priority: v.priority as TaskSummary["priority"] | undefined, ownerId, executorId,
+      AND: [project, access, taskAccess(grant.actorUserId, director), family, ...(v.overdue ? [{ deadline: { lt: new Date() }, status: { in: ["OPEN", "IN_PROGRESS", "COMPLETION_REQUESTED"] as typeof statuses[number][] } }] : []),
         ...(search ? [{ OR: [{ title: { contains: search, mode: "insensitive" as const } }, { brief: { contains: search, mode: "insensitive" as const } }] }] : [])] };
-    const [rows, total] = await Promise.all([tx.universalTask.findMany({ where, include: relations, orderBy: [{ deadline: "asc" }, { id: "asc" }], skip: offset, take: 60 }), tx.universalTask.count({ where })]);
-    return { tasks: rows.map(summary), total };
+    const orderBy: Prisma.UniversalTaskOrderByWithRelationInput[] = [sort === "priority" ? { priority: "desc" } : sort === "created" ? { createdAt: "desc" } : sort === "recent" ? { updatedAt: "desc" } : { deadline: "asc" }, { id: "asc" }];
+    const [rows, total] = await Promise.all([tx.universalTask.findMany({ where, include: relations, orderBy, skip: offset, take: 60 }), tx.universalTask.count({ where })]);
+    const tasks: TaskSummary[] = [];
+    for (const row of rows) tasks.push({ ...summary(row), ...(sistersEnabled() ? { family: await familyInfo(tx, row.id, grant.actorUserId, director) } : {}) });
+    return { tasks, total };
   });
 }
 export async function createTask(raw: unknown) {
-  enabled(); const v = object(raw, ["commandId", "contextTarget", "type", "title", "brief", "context", "deadline", "priority", "executorId", "spectatorIds", "destination", "inputMode", "sourceVersionId", "inspirationVersionIds"]);
+  enabled(); const v = object(raw, ["commandId", "contextTarget", "type", "title", "brief", "context", "deadline", "priority", "executorId", "spectatorIds", "destination", "inputMode", "sourceVersionId", "inspirationVersionIds", "sister"]);
   ensure(typeof v.type === "string" && availableTaskType(v.type), "TASK_TYPE_UNAVAILABLE");
   const commandId = id(v.commandId), target = contextTarget(v.contextTarget);
   const fields = { title: text(v.title, 200), brief: text(v.brief, 20000), context: text(v.context, 5000, true) || null,
     deadline: deadline(v.deadline), priority: priority(v.priority), executorId: id(v.executorId) };
+  if (v.sister !== undefined) sisterCommand(v.sister);
   const spectators = ids(v.spectatorIds), commandHash = hash(v);
   const taskType = v.type as TaskSummary["type"], newType = isDeliverable(taskType);
   return runtimeAuthorization.runAuthorized({ capability: taskType === "FILE_UPLOAD" ? "task.createFileUpload" : taskType === "DATA_INPUT" ? "task.createDataInput" : isConceptType(taskType) ? conceptCreationCapabilities[taskType as keyof typeof conceptCreationCapabilities] : "task.createGeneral", targetId: newType ? text(v.destination, 160) : target.target }, async (tx, grant) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${grant.actorUserId + ":" + commandId}, 0))`;
+    if (v.sister !== undefined) await sourceTask(tx, grant.actorUserId, sisterCommand(v.sister).sourceTaskId);
     const old = await replay(tx, grant, commandId, commandHash); if (old) return { id: old.taskId, version: old.version, replayed: true };
     await eligible(tx, grant.actorUserId, fields.executorId, spectators);
     const destination = newType ? await authorizedTarget(tx, grant.actorUserId, v.destination) : null;
@@ -124,7 +148,9 @@ export async function createTask(raw: unknown) {
       ensure(target.kind === "structured" && destination.projectId === target.key, "CROSS_PROJECT_TARGET", 403);
       ensure(destination.modes.includes(text(v.inputMode, 20)), "UNSUPPORTED_INPUT_MODE");
     }
-    const task = await tx.universalTask.create({ data: { type: taskType, ...fields, ...await projectFor(tx, target), ownerId: grant.actorUserId,
+    const project = await projectFor(tx, target);
+    const sister = v.sister === undefined ? null : await validateSister(tx, grant.actorUserId, v, project);
+    const task = await tx.universalTask.create({ data: { type: taskType, ...fields, ...project, ownerId: grant.actorUserId,
       spectators: { create: spectators.map(userId => ({ userId })) } } });
     if (destination) await tx.universalTaskTarget.create({ data: { taskId: task.id, kind: destination.kind, nativeId: destination.nativeId,
       inputMode: text(v.inputMode, 20), label: destination.label, identity: destination.identity, identityHash: hash(destination.identity),
@@ -133,9 +159,10 @@ export async function createTask(raw: unknown) {
     ensure(v.inspirationVersionIds === undefined || taskType === "FINAL_CONCEPT", "UNSUPPORTED_SOURCE");
     const sourceIds = taskType === "INSPECT_FILE" && v.sourceVersionId !== undefined ? [id(v.sourceVersionId)] : ids(v.inspirationVersionIds);
     const sources = [];
-    for (const versionId of sourceIds) sources.push(await resolveTaskReference(tx, grant.actorUserId, task, versionId));
+    for (const versionId of sourceIds) sources.push(await resolveTaskReference(tx, grant.actorUserId, task, versionId, sister?.sourceTaskId));
     const created = await record(tx, task, grant, commandId, commandHash, "CREATED", fields.brief,
-      { ...(isConceptType(task.type) ? { referenceVersionIds: sourceIds } : {}), title: fields.title, deadline: fields.deadline.toISOString(), priority: fields.priority, executorId: fields.executorId, spectatorIds: spectators, context: fields.context });
+      { ...(sister ? { sister: { sourceTaskId: sister.sourceTaskId, rootTaskId: sister.rootTaskId, sourceVersion: sister.sourceVersion, mode: sister.mode, evidenceVersionIds: sister.evidenceVersionIds } } : {}), ...(isConceptType(task.type) ? { referenceVersionIds: sourceIds } : {}), title: fields.title, deadline: fields.deadline.toISOString(), priority: fields.priority, executorId: fields.executorId, spectatorIds: spectators, context: fields.context });
+    if (sister) await saveSister(tx, task.id, created.id, sister);
     for (const source of sources) await saveTaskReference(tx, task.id, created.id, source);
     return { id: task.id, version: task.version, replayed: false };
   });
@@ -163,15 +190,17 @@ export async function getTask(taskId: string): Promise<TaskDetail> {
       }
     }
     const references = isConceptType(task.type) && sensitive ? await taskReferences(tx, task) : undefined;
-    const submissions = ["INITIAL_CONCEPT", "FINAL_CONCEPT"].includes(task.type) && sensitive ? entries.filter(e => e.action === "SUBMIT").map(e => {
+    const submissions = sensitive ? entries.filter(e => e.action === "SUBMIT").map(e => {
       const result = submissionState(e, entries); return { id: e.id, state: result.state, reviewer: result.review ? entries.find(r => r.id === result.review!.id)!.actor : null };
     }) : undefined;
     const sourceReady = task.type !== "INSPECT_FILE" || !!references?.length;
-    return { ...summary(task), deliverable, references, submissions, entries: (sensitive ? entries : []).map(e => ({ id: e.id, version: e.version, action: e.action, text: e.text,
-      actor: e.actor, directorOverride: e.directorOverride, createdAt: e.createdAt.toISOString(), snapshot: task.type !== "GENERAL" && !director && !owner && e.action === "REFRESH_TARGET" ? {} : e.snapshot })),
+    const family = sistersEnabled() ? await familyInfo(tx, taskId, grant.actorUserId, director) : undefined;
+    const inherited = sistersEnabled() && (director || owner || executor) ? await inheritedEvidence(tx, taskId) : undefined;
+    return { ...summary(task), family, inheritedEvidence: inherited, sistersEnabled: sistersEnabled(), deliverable, references, submissions, entries: (sensitive ? entries : []).map(e => ({ id: e.id, version: e.version, action: e.action, text: e.text,
+      actor: e.actor, directorOverride: e.directorOverride, createdAt: e.createdAt.toISOString(), snapshot: task.type !== "GENERAL" && !director && !owner && e.action === "REFRESH_TARGET" ? {} : redactSisterSnapshot(e.snapshot) })),
       files: (sensitive ? uploads : []).map(u => ({ id: u.id, fileId: u.version.fileId, versionId: u.versionId, number: u.version.number,
         name: u.version.originalFileName, size: u.version.fileSize, status: u.version.status, uploadedById: u.uploadedById, submittedEntryId: u.submittedEntryId })),
-      permissions: { uploadSource: task.type === "INSPECT_FILE" && working && owner && !sourceReady, manage: working && (director || owner), message: active && (director || owner || executor), submit: working && sourceReady && (director || executor),
+      permissions: { createSister: sistersEnabled() && task.status === "COMPLETED" && !task.deletedAt && (director || owner || executor), uploadSource: task.type === "INSPECT_FILE" && working && owner && !sourceReady, manage: working && (director || owner), message: active && (director || owner || executor), submit: working && sourceReady && (director || executor),
         requestCompletion: working && sourceReady && (director || executor), review: active && task.status === "COMPLETION_REQUESTED" && (director || owner) && !executor && pendingRequest?.actorId !== grant.actorUserId,
         close: active && (director || owner), delete: !task.deletedAt && (director || owner) } };
   });
@@ -361,6 +390,47 @@ export async function downloadTaskReference(taskId: string, referenceId: string,
     const available = await taskReferences(tx, task);
     ensure(available.some(r => r.id === referenceId && r.versionId === versionId), "SOURCE_UNAVAILABLE", 403);
     const fv = await tx.sharedFileVersion.findUniqueOrThrow({ where: { id: versionId } });
+    ensure(fv.status === "READY" && fv.objectETag && (fv.applicationSealed || fv.objectVersionId), "SOURCE_UNAVAILABLE", 403);
+    const result = await readPinnedStoredObject({ bucket: fv.bucket, storageKey: fv.storageKey, objectVersionId: fv.objectVersionId, objectETag: fv.objectETag, checksumSha256: fv.checksumSha256 });
+    try {
+      const observed = captureFileIntegrity(result, fv);
+      ensure(result.Body && observed.objectETag === fv.objectETag && (!fv.objectVersionId || observed.objectVersionId === fv.objectVersionId) && (!fv.checksumSha256 || observed.checksumSha256 === fv.checksumSha256), "FILE_CHANGED", 409);
+      return { body: result.Body, name: fv.originalFileName, mimeType: fv.mimeType, size: fv.fileSize };
+    } catch (error) { if (result.Body && "destroy" in result.Body) result.Body.destroy(); throw error; }
+  });
+}
+
+function redactSisterSnapshot(snapshot: Prisma.JsonValue) {
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) return snapshot;
+  const copy = { ...snapshot }; delete copy.sister; return copy;
+}
+export async function sisterDraft(taskId: string) {
+  enabled(); ensure(sistersEnabled(), "SISTERS_DISABLED", 404);
+  return runtimeAuthorization.runAuthorized({ capability: "task.view", targetId: id(taskId) }, async (tx, grant) => {
+    const source = await sourceTask(tx, grant.actorUserId, taskId);
+    const actor = await tx.user.findUniqueOrThrow({ where: { id: grant.actorUserId }, select: person });
+    const project = source.projectId ? await tx.project.findUniqueOrThrow({ where: { id: source.projectId }, select: { name: true } }) : await tx.flexibleProject.findUniqueOrThrow({ where: { id: source.flexibleProjectId! }, select: { name: true } });
+    return { source: { id: source.id, title: source.title, version: source.version, projectName: project.name }, owner: actor, references: await taskReferences(tx, source),
+      values: await reusableValues(tx, source), evidence: await sourceEvidence(tx, taskId) };
+  });
+}
+export async function previewSister(raw: unknown) {
+  const proposal = object(raw, ["commandId", "contextTarget", "type", "title", "brief", "context", "deadline", "priority", "executorId", "spectatorIds", "destination", "inputMode", "sourceVersionId", "inspirationVersionIds", "sister"]);
+  const command = sisterCommand(proposal.sister);
+  return runtimeAuthorization.runAuthorized({ capability: "task.view", targetId: command.sourceTaskId }, async (tx, grant) => {
+    const source = await sourceTask(tx, grant.actorUserId, command.sourceTaskId);
+    ensure(source.version === command.sourceVersion, "STALE_SISTER_SOURCE", 409);
+    return { confirmation: confirmationHash(grant.actorUserId, proposal) };
+  });
+}
+export async function downloadInheritedEvidence(taskId: string, referenceId: string, versionId: string) {
+  enabled(); ensure(sistersEnabled(), "SISTERS_DISABLED", 404); id(taskId); id(referenceId); id(versionId);
+  return runtimeAuthorization.runAuthorized({ capability: "task.download", targetId: taskId }, async (tx, grant) => {
+    const task = await tx.universalTask.findUniqueOrThrow({ where: { id: taskId } });
+    const actor = await principal(tx);
+    ensure(actor.businessRole === "DIRECTOR" || [task.ownerId, task.executorId].includes(grant.actorUserId), "SOURCE_UNAVAILABLE", 403);
+    const ref = await tx.universalTaskInheritedEvidence.findFirst({ where: { id: referenceId, taskId, versionId }, include: { version: true } });
+    ensure(ref, "SOURCE_UNAVAILABLE", 403); const fv = ref.version;
     ensure(fv.status === "READY" && fv.objectETag && (fv.applicationSealed || fv.objectVersionId), "SOURCE_UNAVAILABLE", 403);
     const result = await readPinnedStoredObject({ bucket: fv.bucket, storageKey: fv.storageKey, objectVersionId: fv.objectVersionId, objectETag: fv.objectETag, checksumSha256: fv.checksumSha256 });
     try {

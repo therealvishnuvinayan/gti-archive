@@ -14,6 +14,10 @@ export async function body(request: Request) {
   try { return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown; } catch { throw new TaskerError("INVALID_JSON"); }
 }
 const messages: Record<string, string> = {
+  SISTERS_DISABLED: "Sister Tasks are not available yet.",
+  SISTER_CONFIRMATION_REQUIRED: "Review the Sister Task details and explicitly confirm creation.",
+  STALE_SISTER_SOURCE: "The source changed. Reload its details before creating a Sister Task.",
+  KEEP_VALUES_CHANGED: "Keep uses the original details. Choose Modify to change them.",
   INSPECTION_SOURCE_REQUIRED: "The Task Owner must pin a sealed inspection source before findings can be submitted.",
   SOURCE_ALREADY_PINNED: "This inspection already has an immutable source. Create a new task to inspect another version.",
   SOURCE_UNAVAILABLE: "This exact source is unavailable or cannot be delegated in this task context.",

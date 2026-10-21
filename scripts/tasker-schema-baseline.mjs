@@ -22,6 +22,12 @@ export function withoutTaskDeliverablesSchema(schema) {
 
 // Phase 3.2 compatibility: relation-only additions must not leak into old schemas.
 export function withoutTaskConceptsSchema(schema) {
+  schema = withoutTaskSistersSchema(schema);
   return schema.replace(/^model UniversalTaskReference \{[\s\S]*?^\}/m, "")
     .replace(/^  (?:taskReferences|selectedTaskReferences|submittedTaskReferences|reviewedTaskReferences)\s+[^\n]+\n/gm, "");
+}
+
+export function withoutTaskSistersSchema(schema) {
+  for (const name of ["UniversalTaskFamilyLink", "UniversalTaskInheritedEvidence"]) schema = schema.replace(new RegExp(`^model ${name} \\{[\\s\\S]*?^\\}`, "m"), "");
+  return schema.replace(/^  (?:sisterLink|sisterChildren|familyMembers|sisterCreation|inheritedSubmissions|inheritedReviews|inheritedEvidence)\s+[^\n]+\n/gm, "");
 }

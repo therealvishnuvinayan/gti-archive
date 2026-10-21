@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { EvidenceInfo, FamilyCards, RevisionComparison, SisterComposer } from "./task-families";
 import { richTextToPlainText } from "@/lib/rich-text";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { LayoutGrid, List, Plus, ArrowLeft, Paperclip, RefreshCw } from "lucide-react";
-import { priorities, statuses, type TaskDetail, type TaskSummary, type ConceptSourceChoice, isDeliverable } from "@/lib/tasker/contracts";
+import { priorities, statuses, taskTypes, type TaskDetail, type TaskSummary, type ConceptSourceChoice, isDeliverable } from "@/lib/tasker/contracts";
 
 const input = "w-full rounded-xl border border-[#d9e2da] bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-600";
 const button = "inline-flex items-center justify-center gap-2 rounded-xl border border-[#d9e2da] bg-white px-4 py-2 text-sm font-semibold disabled:opacity-50";
@@ -66,15 +67,16 @@ function TaskForm({ context, task, onDone, onCancel, initialDestination }: { ini
     <div className="flex gap-2"><button disabled={busy || !options} className={primary}>{busy ? "Saving…" : task ? "Save changes" : `Create ${label(type)} Task`}</button><button type="button" onClick={onCancel} className={button}>Cancel</button></div>
   </form>;
 }
-export function GeneralTasker({ initial, context, createContext, initialDestination, deliverables = false }: { initialDestination?: string; deliverables?: boolean; initial: { tasks: TaskSummary[]; total: number }; context?: string; createContext?: string }) {
-  const [now, setNow] = useState(() => Date.now());
+export function GeneralTasker({ initial, context, createContext, initialDestination, familyId, deliverables = false }: { familyId?: string; initialDestination?: string; deliverables?: boolean; initial: { tasks: TaskSummary[]; total: number }; context?: string; createContext?: string }) {
   const [data, setData] = useState(initial), [view, setView] = useState<"grid" | "list">("grid"), [creating, setCreating] = useState(!!createContext);
   const [status, setStatus] = useState(""), [ownerId, setOwnerId] = useState(""), [executorId, setExecutorId] = useState(""), [search, setSearch] = useState(""), [offset, setOffset] = useState(0), [error, setError] = useState("");
+  const [type, setType] = useState(""), [priority, setPriority] = useState(""), [scope, setScope] = useState(""), [sort, setSort] = useState("deadline"), [overdue, setOverdue] = useState(false);
   const refresh = useCallback(async () => {
     const params = new URLSearchParams({ offset: String(offset) }); if (context) params.set("context", context); if (status) params.set("status", status);
     if (ownerId) params.set("ownerId", ownerId); if (executorId) params.set("executorId", executorId); if (search) params.set("search", search);
-    try { setData(await api(`?${params}`)); setNow(Date.now()); setError(""); } catch (e) { setError(e instanceof Error ? e.message : "Unable to load tasks."); }
-  }, [context, status, ownerId, executorId, search, offset]);
+    if (familyId) params.set("familyId", familyId); if (type) params.set("type", type); if (priority) params.set("priority", priority); if (scope) params.set("scope", scope); if (overdue) params.set("overdue", "1"); params.set("sort", sort);
+    try { setData(await api(`?${params}`)); setError(""); } catch (e) { setError(e instanceof Error ? e.message : "Unable to load tasks."); }
+  }, [context, status, ownerId, executorId, search, offset, type, priority, scope, sort, overdue, familyId]);
   useEffect(() => { const timer = setTimeout(() => { void refresh(); }, 250); return () => clearTimeout(timer); }, [refresh]);
   const people = [...new Map(initial.tasks.flatMap(t => [t.owner, t.executor]).map(p => [p.id, p])).values()];
   return <section className="mx-auto max-w-[1420px] space-y-5 pb-8">
@@ -86,23 +88,23 @@ export function GeneralTasker({ initial, context, createContext, initialDestinat
       <select aria-label="Task status" value={status} onChange={e => { setStatus(e.target.value); setOffset(0); }} className={`${input} !w-auto`}><option value="">All statuses</option>{statuses.map(s => <option key={s} value={s}>{label(s)}</option>)}</select>
       <select aria-label="Task Owner filter" value={ownerId} onChange={e => { setOwnerId(e.target.value); setOffset(0); }} className={`${input} !w-auto`}><option value="">All owners</option>{people.map(p => <option key={p.id} value={p.id}>{personName(p)}</option>)}</select>
       <select aria-label="Executor filter" value={executorId} onChange={e => { setExecutorId(e.target.value); setOffset(0); }} className={`${input} !w-auto`}><option value="">All executors</option>{people.map(p => <option key={p.id} value={p.id}>{personName(p)}</option>)}</select>
+      <select aria-label="Task type filter" className={`${input} !w-auto`} value={type} onChange={e => { setType(e.target.value); setOffset(0); }}><option value="">All types</option>{taskTypes.map(t => <option key={t} value={t}>{label(t)}</option>)}</select>
+      <select aria-label="Priority filter" className={`${input} !w-auto`} value={priority} onChange={e => { setPriority(e.target.value); setOffset(0); }}><option value="">All priorities</option>{priorities.map(p => <option key={p}>{p}</option>)}</select>
+      <select aria-label="Task scope" className={`${input} !w-auto`} value={scope} onChange={e => { setScope(e.target.value); setOffset(0); }}><option value="">My tasks and spectator work</option><option value="mine">My owned or assigned work</option><option value="accessible">All authorized tasks</option>{context && <option value="project">Authorized project tasks</option>}</select>
+      <select aria-label="Sort tasks" className={`${input} !w-auto`} value={sort} onChange={e => { setSort(e.target.value); setOffset(0); }}><option value="deadline">Deadline</option><option value="priority">Priority</option><option value="created">Newest created</option><option value="recent">Recent activity</option></select>
+      <label className="flex gap-2 text-sm"><input type="checkbox" checked={overdue} onChange={e => { setOverdue(e.target.checked); setOffset(0); }} />Overdue only</label>
       <button className={button} aria-label="Grid view" aria-pressed={view === "grid"} onClick={() => setView("grid")}><LayoutGrid size={17} /></button><button className={button} aria-label="List view" aria-pressed={view === "list"} onClick={() => setView("list")}><List size={17} /></button><button className={button} aria-label="Refresh tasks" onClick={() => void refresh()}><RefreshCw size={17} /></button>
     </div>
     {error && <p role="alert" className="text-red-700">{error}</p>}
     <p className="text-sm text-[#68766b]">{data.total} {deliverables ? "" : "General "}{data.total === 1 ? "Task" : "Tasks"}</p>
-    <div className={view === "grid" ? "grid gap-4 md:grid-cols-2 xl:grid-cols-3" : "space-y-3"}>{data.tasks.map(t => {
-      const overdue = new Date(t.deadline).getTime() < now && !["COMPLETED", "CLOSED"].includes(t.status);
-      return <Link key={t.id} href={`/tasks/${t.id}`} className={`block rounded-2xl border border-[#dce5dd] bg-white p-5 transition hover:border-emerald-600 ${view === "list" ? "sm:flex sm:items-center sm:justify-between sm:gap-6" : ""}`}>
-        <div><p className="text-xs text-[#68766b]">{t.project.name} · {label(t.type)} Task</p><h2 className="mt-2 text-lg font-semibold">{t.title}</h2><p className="mt-3 text-sm text-[#536359]">Owner: {personName(t.owner)}<br />Executor: {personName(t.executor)}</p></div>
-        <div className="mt-4 space-y-2"><div className="flex gap-2 text-xs"><span className="rounded-full bg-[#eaf0e9] px-3 py-1">{label(t.status)}</span><span className={`rounded-full px-3 py-1 ${["URGENT", "HIGH"].includes(t.priority) ? "bg-amber-100 text-amber-900" : "bg-slate-100"}`}>{label(t.priority)}</span></div><p className={`text-xs ${overdue ? "font-semibold text-red-700" : "text-[#68766b]"}`}>{overdue ? "Overdue · " : "Due · "}{new Date(t.deadline).toLocaleString()}</p></div>
-      </Link>;
-    })}</div>
+    <FamilyCards tasks={data.tasks} view={view} />
     {!data.tasks.length && <div className="rounded-2xl border border-dashed border-[#cbd8cd] p-12 text-center text-[#68766b]">No tasks in this view.</div>}
     {data.total > 60 && <div className="flex gap-3"><button className={button} disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 60))}>Previous</button><button className={button} disabled={offset + 60 >= data.total} onClick={() => setOffset(offset + 60)}>Next</button></div>}
   </section>;
 }
 export function GeneralTaskDetail({ initial }: { initial: TaskDetail }) {
   const [task, setTask] = useState(initial), [note, setNote] = useState(""), [error, setError] = useState(""), [busy, setBusy] = useState(false), [editing, setEditing] = useState(false);
+  const [creatingSister, setCreatingSister] = useState(false);
   const [proposedText, setProposedText] = useState(""), [confirmed, setConfirmed] = useState(false);
   const [fileIds, setFileIds] = useState<string[]>([]), [replaceFileId, setReplaceFileId] = useState(""); const router = useRouter();
   async function refresh() { setTask(await api(`/${task.id}`)); }
@@ -140,8 +142,12 @@ export function GeneralTaskDetail({ initial }: { initial: TaskDetail }) {
       <p className="mt-4 text-sm text-[#68766b]">Owner: {personName(task.owner)} · Executor: {personName(task.executor)}</p><p className="mt-2 text-sm">{label(task.priority)} priority · Due {new Date(task.deadline).toLocaleString()}</p>
       <h2 className="mt-6 font-semibold">Brief</h2><p className="mt-2 whitespace-pre-wrap text-sm leading-6">{task.brief}</p>{task.context && <><h2 className="mt-4 font-semibold">Supporting context</h2><p className="mt-2 whitespace-pre-wrap text-sm">{task.context}</p></>}
       {!!task.spectators.length && <p className="mt-4 text-sm text-[#68766b]">Spectators: {task.spectators.map(personName).join(", ")}</p>}
-      <div className="mt-5 flex flex-wrap gap-3">{p.manage && <button className={button} onClick={() => setEditing(!editing)}>Edit task</button>}{(p.manage || p.submit) && <Link className={button} href={`/tasks?createContext=task:${task.id}`}>Create task from this context</Link>}<button className={button} onClick={() => void refresh().catch(e => setError(e.message))}>Refresh</button></div>
+      <div className="mt-5 flex flex-wrap gap-3">{p.createSister && <button className={button} onClick={() => setCreatingSister(true)}>Create Sister Task</button>}{p.manage && <button className={button} onClick={() => setEditing(!editing)}>Edit task</button>}{(p.manage || p.submit) && <Link className={button} href={`/tasks?createContext=task:${task.id}`}>Create task from this context</Link>}<button className={button} onClick={() => void refresh().catch(e => setError(e.message))}>Refresh</button></div>
     </div>
+    {creatingSister && <SisterComposer taskId={task.id} onCancel={() => setCreatingSister(false)} />}
+    {task.family && (task.family.isSister || task.family.count > 1) && <section className="rounded-2xl border p-5"><h2 className="font-semibold">Task family</h2><p>{task.family.isSister ? "Sister Task" : "Original task"} · {task.family.count} accessible tasks</p>{task.family.source ? <Link className="underline" href={`/tasks/${task.family.source.id}`}>Immediate source: {task.family.source.title}</Link> : task.family.isSister ? <p>Source details are restricted.</p> : null}<p>{task.family.root && <Link className="underline" href={`/tasks/${task.family.root.id}`}>Root: {task.family.root.title}</Link>}</p><Link className="underline" href={`/tasks?familyId=${task.family.anchorId}`}>Browse this family</Link></section>}
+    {!!task.inheritedEvidence?.length && <section className="space-y-4 rounded-2xl border p-5"><h2 className="font-semibold">Read-only historical context</h2><p className="text-sm">These exact source versions are historical evidence. They are not submissions or accepted deliverables for this task.</p>{task.inheritedEvidence.map(e => <div key={e.id} className="rounded-xl border p-3"><h3 className="font-semibold">{e.name} · v{e.number}</h3><EvidenceInfo evidence={e} href={`/api/tasker/${task.id}/evidence/${e.id}?versionId=${e.versionId}`} /></div>)}</section>}
+    {task.sistersEnabled && <RevisionComparison task={task} />}
     {task.deliverable && <section className="space-y-3 rounded-2xl border border-[#dce5dd] bg-white p-6">
       <h2 className="font-semibold">{task.type === "DATA_INPUT" ? "Target stage field" : "Destination folder"}</h2><p>{task.deliverable.label}</p><p className="text-sm">Requested answer: {label(task.deliverable.inputMode)}</p>
       {task.deliverable.conflict && <p role="alert" className="text-red-700">The field changed. Review the current and proposed values, refresh the target, and submit a new response.</p>}
@@ -158,7 +164,7 @@ export function GeneralTaskDetail({ initial }: { initial: TaskDetail }) {
       {p.manage && task.type === "INSPECT_FILE" && !task.references.length && task.files.filter(f => f.status === "READY" && f.uploadedById === task.owner.id).map(f => <button key={f.id} className={button} disabled={busy} onClick={async () => { setBusy(true); setError(""); try { await api(`/${task.id}`, { action: "SET_SOURCE", sourceVersionId: f.versionId, text: "Pinned selected owner-uploaded source.", expectedVersion: task.version, commandId: crypto.randomUUID() }, "PATCH"); await refresh(); } catch (e) { setError(e instanceof Error ? e.message : "Unable to pin source."); } finally { setBusy(false); } }}>Pin {f.name} · v{f.number} as source</button>)}
     </section>}
     {editing && <TaskForm task={task} onCancel={() => setEditing(false)} onDone={() => { setEditing(false); void refresh(); }} />}
-    <section className="rounded-2xl border border-[#dce5dd] bg-white p-6"><h2 className="text-lg font-semibold">Conversation and history</h2><ol className="mt-5 space-y-5">{task.entries.map(e => <li key={e.id} className="border-l-2 border-[#dce5dd] pl-4"><p className="text-xs text-[#68766b]">{personName(e.actor)} · {label(e.action)}{e.directorOverride ? " · Director intervention" : ""} · {new Date(e.createdAt).toLocaleString()}</p><p className="mt-2 whitespace-pre-wrap text-sm">{e.text}</p>{task.submissions?.filter(s => s.id === e.id).map(s => <p key={s.id} className="mt-2 text-sm font-semibold">Concept evidence: {label(s.state)}{s.reviewer ? ` · Reviewed by ${personName(s.reviewer)}` : ""}</p>)}{task.files.filter(f => f.submittedEntryId === e.id).map(f => <a key={f.id} className="mt-2 block text-sm text-emerald-800 underline" href={`/api/tasker/${task.id}/files/${f.id}?versionId=${f.versionId}`}>{f.name} · v{f.number}</a>)}{task.type === "DATA_INPUT" && e.action === "SUBMIT" && <FieldValue value={(e.snapshot as { proposedValue?: unknown }).proposedValue} rich={task.deliverable?.fieldType === "text-attachment"} />}{e.action === "EDIT" && <details className="mt-2 text-xs"><summary>Recorded changes</summary><pre className="mt-2 whitespace-pre-wrap break-words">{JSON.stringify(e.snapshot, null, 2)}</pre></details>}</li>)}</ol></section>
+    <section className="rounded-2xl border border-[#dce5dd] bg-white p-6"><h2 className="text-lg font-semibold">Conversation and history</h2><ol className="mt-5 space-y-5">{task.entries.map(e => <li key={e.id} className="border-l-2 border-[#dce5dd] pl-4"><p className="text-xs text-[#68766b]">{personName(e.actor)} · {label(e.action)}{e.directorOverride ? " · Director intervention" : ""} · {new Date(e.createdAt).toLocaleString()}</p><p className="mt-2 whitespace-pre-wrap text-sm">{e.text}</p>{task.submissions?.filter(s => s.id === e.id).map(s => <p key={s.id} className="mt-2 text-sm font-semibold">Submission evidence: {label(s.state)}{s.reviewer ? ` · Reviewed by ${personName(s.reviewer)}` : ""}</p>)}{task.files.filter(f => f.submittedEntryId === e.id).map(f => <a key={f.id} className="mt-2 block text-sm text-emerald-800 underline" href={`/api/tasker/${task.id}/files/${f.id}?versionId=${f.versionId}`}>{f.name} · v{f.number}</a>)}{task.type === "DATA_INPUT" && e.action === "SUBMIT" && <FieldValue value={(e.snapshot as { proposedValue?: unknown }).proposedValue} rich={task.deliverable?.fieldType === "text-attachment"} />}{e.action === "EDIT" && <details className="mt-2 text-xs"><summary>Recorded changes</summary><pre className="mt-2 whitespace-pre-wrap break-words">{JSON.stringify(e.snapshot, null, 2)}</pre></details>}</li>)}</ol></section>
     {mutable && <section className="space-y-4 rounded-2xl border border-[#dce5dd] bg-white p-6"><h2 className="text-lg font-semibold">{p.review ? "Review completion request" : "Respond or update task"}</h2>
       {p.review && task.deliverable && <div className="space-y-3 rounded-xl bg-emerald-50 p-4"><h3 className="font-semibold">Accept this exact submission</h3><p>Destination: {task.deliverable.label}</p>
         {task.type === "DATA_INPUT" && <p className="text-sm">Acceptance replaces this field’s value and attachment links with this proposal. Earlier evidence is retained.</p>}{task.type === "DATA_INPUT" && <FieldValue value={evidence?.proposedValue} rich={task.deliverable.fieldType === "text-attachment"} />}

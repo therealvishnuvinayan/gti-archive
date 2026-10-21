@@ -3,8 +3,9 @@ import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, readdirSync, rmSync, symlinkSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
-import { withoutTaskerSchema, withoutTaskDeliverablesSchema, withoutTaskConceptsSchema } from "./tasker-schema-baseline.mjs";
+import { withoutTaskerSchema, withoutTaskDeliverablesSchema, withoutTaskConceptsSchema, withoutTaskSistersSchema } from "./tasker-schema-baseline.mjs";
 const require = createRequire(import.meta.url), repository = resolve(import.meta.dirname, ".."), root = mkdtempSync("/private/tmp/flux-v2-tasker-");
+const sistersCandidate = "20261022030000_universal_tasker_sisters";
 const conceptsCandidate = "20261022010000_universal_tasker_concepts";
 const deliverablesCandidate = "20261021230000_universal_tasker_deliverables";
 const socket = join(root, "s"), data = join(root, "data"), candidate = "20261021210000_universal_tasker_general";
@@ -24,7 +25,7 @@ try {
   mkdirSync(join(root, "migrations")); copyFileSync(join(repository, "prisma/migrations/migration_lock.toml"), join(root, "migrations/migration_lock.toml"));
   const migrations = readdirSync(join(repository, "prisma/migrations")).filter(n => /^\d+_/.test(n)).sort();
   function copy(name) { mkdirSync(join(root, "migrations", name)); copyFileSync(join(repository, "prisma/migrations", name, "migration.sql"), join(root, "migrations", name, "migration.sql")); }
-  for (const name of migrations.filter(n => n !== candidate && n !== deliverablesCandidate && n !== conceptsCandidate)) copy(name);
+  for (const name of migrations.filter(n => n !== candidate && n !== deliverablesCandidate && n !== conceptsCandidate && n !== sistersCandidate)) copy(name);
   writeFileSync(schemaPath, withoutTaskerSchema(schema)); prisma(["validate", "--schema", schemaPath]); prisma(["migrate", "deploy", "--schema", schemaPath]);
   assert.equal(sql('SELECT count(*) FROM "_prisma_migrations"'), "108"); assert.equal(sql("SELECT count(*) FROM pg_tables WHERE schemaname='public'"), "112");
   assert.match(prisma(["migrate", "diff", "--from-url", url, "--to-schema-datamodel", schemaPath, "--script"]), /empty migration/);
@@ -50,7 +51,7 @@ try {
   console.log(run(process.execPath, [join(output, "scripts/tasker-deliverables-integration-check.js")]));
   const phase32Tables = sql("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename").split("\n");
   const phase32Snapshot = () => phase32Tables.map(t => sql(`SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text)::text,'[]') FROM "${t}" t ${t === "_prisma_migrations" ? `WHERE migration_name <> '${conceptsCandidate}'` : ""}`));
-  const phase32Before = phase32Snapshot(); copy(conceptsCandidate); writeFileSync(schemaPath, schema); prisma(["migrate", "deploy", "--schema", schemaPath]);
+  const phase32Before = phase32Snapshot(); copy(conceptsCandidate); writeFileSync(schemaPath, withoutTaskSistersSchema(schema)); prisma(["migrate", "deploy", "--schema", schemaPath]);
   assert.deepEqual(phase32Snapshot(), phase32Before);
   assert.equal(sql('SELECT count(*) FROM "_prisma_migrations"'), "111"); assert.equal(sql("SELECT count(*) FROM pg_tables WHERE schemaname='public'"), "120");
   assert.equal(sql('SELECT count(*) FROM "UniversalTaskReference"'), "0");
@@ -61,6 +62,25 @@ try {
   assert.match(prisma(["migrate", "diff", "--from-url", url, "--to-schema-datamodel", schemaPath, "--script"]), /empty migration/);
   console.log("PASS Phase 3.3 populated migration: 110/119 → 111/120; every prior row/checksum preserved; no backfill; no drift; General/deliverables with flag off passed before candidate.");
   console.log(run(process.execPath, [join(output, "scripts/tasker-concepts-integration-check.js")]));
+  console.log(run(process.execPath, [join(output, "scripts/tasker-sisters-integration-check.js"), "--baseline"]));
+  const phase33Tables = sql("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename").split("\n");
+  const phase33Snapshot = () => phase33Tables.map(t => sql(`SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text)::text,'[]') FROM "${t}" t ${t === "_prisma_migrations" ? `WHERE migration_name <> '${sistersCandidate}'` : ""}`));
+  const phase33Before = phase33Snapshot(); copy(sistersCandidate); writeFileSync(schemaPath, schema); prisma(["migrate", "deploy", "--schema", schemaPath]);
+  assert.deepEqual(phase33Snapshot(), phase33Before);
+  assert.equal(sql('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL'), "112");
+  assert.equal(sql('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NULL'), "0");
+  assert.equal(sql("SELECT count(*) FROM pg_tables WHERE schemaname='public'"), "122");
+  for (const table of ["UniversalTaskFamilyLink", "UniversalTaskInheritedEvidence"]) assert.equal(sql(`SELECT count(*) FROM "${table}"`), "0");
+  assert.match(prisma(["migrate", "diff", "--from-url", url, "--to-schema-datamodel", schemaPath, "--script"]), /empty migration/);
+  for (const [table, foreignKeys, indexes] of [["UniversalTaskFamilyLink", 4, 4], ["UniversalTaskInheritedEvidence", 5, 3]]) {
+    assert.equal(sql(`SELECT count(*) FROM pg_constraint WHERE conrelid='"${table}"'::regclass AND contype='f' AND convalidated AND confdeltype='r' AND confupdtype='r'`), String(foreignKeys));
+    assert.equal(sql(`SELECT count(*) FROM pg_index WHERE indrelid='"${table}"'::regclass AND indisvalid AND indisready`), String(indexes));
+    assert.equal(sql(`SELECT count(*) FROM pg_constraint WHERE conrelid='"${table}"'::regclass AND contype='c' AND convalidated`), "1");
+  }
+  assert.equal(sql("SELECT count(*) FROM pg_trigger WHERE tgname IN ('flux_task_family_guard','flux_task_family_truncate','flux_task_inherited_guard','flux_task_inherited_truncate','flux_task_family_entry_consistency','flux_task_family_consistency','flux_task_inherited_consistency') AND tgenabled='O'"), "7");
+  console.log("PASS Phase 3.4 populated migration: 111/120 → 112/122; completed tasks across all six types, exact files, native reviews, events, accounts and legacy rows unchanged; zero backfill/drift.");
+  console.log(run(process.execPath, [join(output, "scripts/tasker-sisters-integration-check.js")]));
+
 } finally {
   if (started) run("pg_ctl", ["-D", data, "-m", "fast", "-w", "stop"]);
   rmSync(root, { recursive: true, force: true }); console.log("Disposable Tasker PostgreSQL removed; no application database or real storage used.");

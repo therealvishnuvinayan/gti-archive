@@ -48,7 +48,7 @@ async function inspirationSource(tx: Tx, actorId: string, context: Context, vers
   ensure(["SUBMITTED", "APPROVED"].includes(state), "SOURCE_INELIGIBLE", 403);
   return { version: upload.version, sourceUploadId: upload.id, sourceAttachmentId: null, sourceSubmissionId: submission.id, sourceReviewId: review?.id ?? null, sourceState: state, sourceTaskTitle: source.title };
 }
-export async function resolveTaskReference(tx: Tx, actorId: string, task: UniversalTask, versionId: string) {
+export async function resolveTaskReference(tx: Tx, actorId: string, task: UniversalTask, versionId: string, sisterSourceId?: string) {
   ensure(conceptsEnabled(), "TASK_TYPE_UNAVAILABLE", 404); id(versionId);
   if (task.type === "FINAL_CONCEPT") return { ...await inspirationSource(tx, actorId, task, versionId), kind: "INSPIRATION" };
   ensure(task.type === "INSPECT_FILE", "UNSUPPORTED_SOURCE");
@@ -59,6 +59,16 @@ export async function resolveTaskReference(tx: Tx, actorId: string, task: Univer
     ensure(own.version.status === "READY" && own.version.applicationSealed && own.version.objectETag, "SOURCE_UNAVAILABLE", 403);
     return { version: own.version, sourceUploadId: own.id, sourceAttachmentId: null, sourceSubmissionId: null, sourceReviewId: null, sourceState: "SEALED", kind: "INSPECTION" };
   }
+  if (sisterSourceId) {
+    const ref = await tx.universalTaskReference.findFirst({ where: { taskId: sisterSourceId, versionId, kind: "INSPECTION", sourceUploadId: { not: null } }, include: { sourceUpload: { include: { version: true, task: true } } } });
+    if (ref?.sourceUpload) {
+      const auth = await tx.userAuthorization.findUniqueOrThrow({ where: { userId: actorId } });
+      ensure(auth.accountStatus === "ACTIVE" && (auth.businessRole === "DIRECTOR" || ref.sourceUpload.task.ownerId === actorId), "SOURCE_DELEGATION_DENIED", 403);
+      const version = ref.sourceUpload.version;
+      ensure(version.status === "READY" && version.objectETag && (version.applicationSealed || version.objectVersionId), "SOURCE_UNAVAILABLE", 403);
+      return { version, sourceUploadId: ref.sourceUploadId, sourceAttachmentId: null, sourceSubmissionId: null, sourceReviewId: null, sourceState: "SEALED", kind: "INSPECTION" };
+    }
+  }
   // Director intervention also rechecks the actual owner's delegation authority.
   const selected = await projectSource(tx, task.ownerId, task, versionId);
   if (actorId !== task.ownerId) await projectSource(tx, actorId, task, versionId);
@@ -67,7 +77,11 @@ export async function resolveTaskReference(tx: Tx, actorId: string, task: Univer
 export async function saveTaskReference(tx: Tx, taskId: string, selectedEntryId: string, source: Awaited<ReturnType<typeof resolveTaskReference>>) {
   const { version, sourceUploadId, sourceAttachmentId, sourceSubmissionId, sourceReviewId, sourceState, kind } = source;
   await tx.universalTaskReference.create({ data: { taskId, selectedEntryId, versionId: version.id, sourceUploadId, sourceAttachmentId, sourceSubmissionId, sourceReviewId, sourceState, kind } });
-  await tx.sharedFileProvenance.create({ data: { versionId: version.id, taskEntryId: selectedEntryId } });
+  // A Sister can deliberately retain this same inspection version as historical
+  // context. Both relationships share one exact native creation provenance row.
+  if (!await tx.sharedFileProvenance.findUnique({ where: { taskEntryId_versionId: { taskEntryId: selectedEntryId, versionId: version.id } } })) {
+    await tx.sharedFileProvenance.create({ data: { versionId: version.id, taskEntryId: selectedEntryId } });
+  }
 }
 export async function conceptSourceChoices(tx: Tx, actorId: string, contexts: Context[]): Promise<ConceptSourceChoice[]> {
   const auth = await tx.userAuthorization.findUniqueOrThrow({ where: { userId: actorId } });

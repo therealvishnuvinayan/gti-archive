@@ -6,6 +6,7 @@ export const actions = ["EDIT", "MESSAGE", "SUBMIT", "REQUEST_COMPLETION", "APPR
 export type TaskAction = typeof actions[number];
 export type Person = { id: string; name: string | null };
 export type TaskSummary = {
+  family?: TaskFamily;
   id: string; title: string; type: typeof taskTypes[number]; brief: string; context: string | null;
   priority: typeof priorities[number]; deadline: string; status: typeof statuses[number]; version: number;
   owner: Person; executor: Person; spectators: Person[];
@@ -27,11 +28,13 @@ export type TaskDetail = TaskSummary & {
     createdAt: string; snapshot: unknown }[];
   files: TaskFile[];
   references?: TaskReference[];
+  inheritedEvidence?: HistoricalEvidence[];
+  sistersEnabled?: boolean;
   submissions?: { id: string; state: string; reviewer: Person | null }[];
   deliverable?: { label: string; inputMode: string; fieldType?: string; expectedState?: unknown; currentState?: unknown; conflict?: boolean;
     applicationState?: string; errorCode?: string | null; publishedAttachmentIds: string[] };
 
-  permissions: { uploadSource?: boolean; manage: boolean; message: boolean; submit: boolean; requestCompletion: boolean; review: boolean; close: boolean; delete: boolean };
+  permissions: { createSister?: boolean; uploadSource?: boolean; manage: boolean; message: boolean; submit: boolean; requestCompletion: boolean; review: boolean; close: boolean; delete: boolean };
 };
 export class TaskerError extends Error {
   constructor(readonly code: string, readonly status = 400) { super(code); this.name = "TaskerError"; }
@@ -81,3 +84,9 @@ export function conceptsEnabled() { return taskEnabled() && process.env.FLUX_TAS
 export function isDeliverable(type: string) { return ["FILE_UPLOAD", "DATA_INPUT"].includes(type); }
 export function isConceptType(type: string) { return ["INSPECT_FILE", "INITIAL_CONCEPT", "FINAL_CONCEPT"].includes(type); }
 export function enabledTaskTypes() { return taskTypes.filter(type => type === "GENERAL" || (deliverablesEnabled() && isDeliverable(type)) || (conceptsEnabled() && isConceptType(type))); }
+
+export function sistersEnabled() { return taskEnabled() && process.env.FLUX_TASKER_SISTERS === "1"; }
+export type TaskFamily = { anchorId: string; root: { id: string; title: string } | null; source: { id: string; title: string } | null; isSister: boolean; count: number; latestActivity: string };
+export type HistoricalEvidence = { id: string; versionId: string; fileId: string; name: string; number: number; size: number; mimeType: string;
+  uploader: Person | null; sourceState: string; submission: { id: string; actor: Person; createdAt: string };
+  review: { id: string; actor: Person; createdAt: string; action: string } | null };

@@ -108,6 +108,7 @@
     "authorization:administration-browser-check": "node scripts/administration-browser-check.mjs",
     "authorization:workspace-check": "node scripts/run-authorization-isolated-integration.mjs --workspace",
     "authorization:workspace-browser-check": "node scripts/workspace-browser-check.mjs",
+    "tasker:sisters-browser-check": "node scripts/tasker-sisters-browser-check.mjs",
     "tasker:check": "node scripts/run-universal-tasker-isolated.mjs",
     "tasker:concepts-browser-check": "node scripts/tasker-concepts-browser-check.mjs",
     "tasker:deliverables-browser-check": "node scripts/tasker-deliverables-browser-check.mjs",

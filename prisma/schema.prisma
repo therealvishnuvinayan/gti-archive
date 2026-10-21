@@ -2886,6 +2886,8 @@ model SharedFile {
 }
 
 model SharedFileVersion {
+  inheritedEvidence UniversalTaskInheritedEvidence[]
+
   taskReferences UniversalTaskReference[]
 
   taskPublicationSources UniversalTaskPublication[] @relation("TaskPublicationSource")
@@ -3226,6 +3228,10 @@ enum UniversalTaskPriority {
 }
 
 model UniversalTask {
+  sisterLink UniversalTaskFamilyLink? @relation("SisterTask")
+  sisterChildren UniversalTaskFamilyLink[] @relation("SisterSource")
+  familyMembers UniversalTaskFamilyLink[] @relation("SisterRoot")
+
   taskReferences UniversalTaskReference[]
 
   deliverableTarget UniversalTaskTarget?
@@ -3274,6 +3280,10 @@ model UniversalTaskSpectator {
 }
 
 model UniversalTaskEntry {
+  sisterCreation UniversalTaskFamilyLink?
+  inheritedSubmissions UniversalTaskInheritedEvidence[] @relation("InheritedSubmission")
+  inheritedReviews UniversalTaskInheritedEvidence[] @relation("InheritedReview")
+
   selectedTaskReferences UniversalTaskReference[] @relation("TaskReferenceSelection")
   submittedTaskReferences UniversalTaskReference[] @relation("TaskReferenceSubmission")
   reviewedTaskReferences UniversalTaskReference[] @relation("TaskReferenceReview")
@@ -3305,6 +3315,8 @@ model UniversalTaskEntry {
 }
 
 model UniversalTaskUpload {
+  inheritedEvidence UniversalTaskInheritedEvidence[]
+
   taskReferences UniversalTaskReference[]
 
   id          String @id @default(cuid())
@@ -3394,4 +3406,39 @@ model UniversalTaskReference {
   sourceState String
   @@unique([taskId, versionId])
   @@index([sourceSubmissionId])
+}
+
+// Phase 3.4: a fresh task is linked once to its completed immediate source.
+model UniversalTaskFamilyLink {
+  taskId String @id
+  task UniversalTask @relation("SisterTask", fields: [taskId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sourceTaskId String
+  sourceTask UniversalTask @relation("SisterSource", fields: [sourceTaskId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  rootTaskId String
+  rootTask UniversalTask @relation("SisterRoot", fields: [rootTaskId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdEntryId String @unique
+  createdEntry UniversalTaskEntry @relation(fields: [createdEntryId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sourceVersion Int
+  mode String
+  evidence UniversalTaskInheritedEvidence[]
+  @@index([sourceTaskId])
+  @@index([rootTaskId])
+}
+
+// Historical context only: never a new upload, submission or acceptance.
+model UniversalTaskInheritedEvidence {
+  id String @id @default(cuid())
+  taskId String
+  family UniversalTaskFamilyLink @relation(fields: [taskId], references: [taskId], onDelete: Restrict, onUpdate: Restrict)
+  versionId String
+  version SharedFileVersion @relation(fields: [versionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sourceUploadId String
+  sourceUpload UniversalTaskUpload @relation(fields: [sourceUploadId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sourceEntryId String
+  sourceEntry UniversalTaskEntry @relation("InheritedSubmission", fields: [sourceEntryId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sourceReviewId String?
+  sourceReview UniversalTaskEntry? @relation("InheritedReview", fields: [sourceReviewId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sourceState String
+  @@unique([taskId, versionId])
+  @@index([sourceEntryId])
 }
