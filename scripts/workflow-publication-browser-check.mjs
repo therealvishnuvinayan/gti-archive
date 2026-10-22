@@ -1,3 +1,4 @@
+import { withoutStageRuntimeSchema } from "./tasker-schema-baseline.mjs";
 // Stage Builder acceptance: disposable PostgreSQL, fictional logins and an
 // isolated production build. No environment files, live storage or external consumers.
 import nodeAssert from 'node:assert/strict';
@@ -6,7 +7,7 @@ const assert=new Proxy(nodeAssert,{get(target,key){const value=Reflect.get(targe
 import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes, scryptSync } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { readFileSync, cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -29,8 +30,8 @@ try {
  run('pg_ctl',['-D',data,'-l',join(root,'postgres.log'),'-o',`-h '' -k ${socket} -p 55437 -c unix_socket_permissions=0700 -c wal_level=minimal -c max_wal_senders=0 -c min_wal_size=32MB -c max_wal_size=64MB`,'-w','start']);started=true;
  run('psql',[...pgArgs.slice(0,-1),'postgres'],{input:'CREATE DATABASE flux_library_browser;'});
  const identity=JSON.parse(sql(`SELECT json_build_object('data',current_setting('data_directory'),'tcp',current_setting('listen_addresses'),'version',current_setting('server_version'))`));assert.equal(identity.data,data);assert.equal(identity.tcp,'');result.postgres=identity.version;
- cpSync(join(repository,'prisma/schema.prisma'),join(root,'schema.prisma'));mkdirSync(join(root,'migrations'));
- for(const entry of readdirSync(join(repository,'prisma/migrations')))cpSync(join(repository,'prisma/migrations',entry),join(root,'migrations',entry),{recursive:true});
+ writeFileSync(join(root,'schema.prisma'),withoutStageRuntimeSchema(readFileSync(join(repository,'prisma/schema.prisma'),'utf8')));mkdirSync(join(root,'migrations'));
+ for(const entry of readdirSync(join(repository,'prisma/migrations')).filter(n=>n!=='20261023030000_stage_runtime'))cpSync(join(repository,'prisma/migrations',entry),join(root,'migrations',entry),{recursive:true});
  run(process.execPath,[require.resolve('prisma/build/index.js'),'migrate','deploy','--schema',join(root,'schema.prisma')],{env:{...env,DATABASE_URL:url}});
  assert.equal(Number(sql('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL')),114);
  const {PrismaClient}=require('@prisma/client');db=new PrismaClient({datasourceUrl:url});

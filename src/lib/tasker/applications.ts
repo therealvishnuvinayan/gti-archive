@@ -61,10 +61,10 @@ export async function applyApplication(tx: Tx, task: UniversalTask, reviewerId: 
     ensure(integrity.objectETag === source.objectETag && (!source.checksumSha256 || integrity.checksumSha256 === source.checksumSha256), "FILE_CHANGED", 409);
     const attachment = await publishTaskAttachmentTx(tx, { projectId: current.projectId, kind: stored.kind, nativeId: stored.nativeId, source, reviewerId, note,
       bucket: publication.bucket, storageKey: publication.storageKey });
-    const file = await tx.sharedFile.create({ data: { projectId: current.projectId } });
+    const file = await tx.sharedFile.create({ select: { id: true }, data: { projectId: current.projectId } });
     const version = await tx.sharedFileVersion.create({ data: { fileId: file.id, number: 1, uploadedById: source.uploadedById,
       originalFileName: source.originalFileName, mimeType: source.mimeType, fileSize: source.fileSize, bucket: publication.bucket, storageKey: publication.storageKey, applicationSealed: true } });
-    await tx.sharedFileReference.create({ data: { versionId: version.id, role: "SOURCE", projectAttachmentId: attachment.id } });
+    await tx.sharedFileReference.create({ select: { id: true }, data: { versionId: version.id, role: "SOURCE", projectAttachmentId: attachment.id } });
     await tx.sharedFileVersion.update({ where: { id: version.id }, data: { ...integrity, status: "READY", observedAt: new Date(), finalizedAt: new Date() } });
     await tx.universalTaskPublication.update({ where: { id: publication.id }, data: { attachmentId: attachment.id, publishedVersionId: version.id } });
     attachmentIds.push(attachment.id); versionIds.push(version.id);

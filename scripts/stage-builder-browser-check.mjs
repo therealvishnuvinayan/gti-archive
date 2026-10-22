@@ -31,7 +31,7 @@ try {
  run('psql',[...pgArgs.slice(0,-1),'postgres'],{input:'CREATE DATABASE flux_library_browser;'});
  const identity=JSON.parse(sql(`SELECT json_build_object('data',current_setting('data_directory'),'tcp',current_setting('listen_addresses'),'version',current_setting('server_version'))`));assert.equal(identity.data,data);assert.equal(identity.tcp,'');result.postgres=identity.version;
  writeFileSync(join(root,'schema.prisma'),withoutWorkflowPublicationSchema(readFileSync(join(repository,'prisma/schema.prisma'),'utf8')));mkdirSync(join(root,'migrations'));
- for(const entry of readdirSync(join(repository,'prisma/migrations')).filter(n=>n!=='20261023020000_workflow_publication'))cpSync(join(repository,'prisma/migrations',entry),join(root,'migrations',entry),{recursive:true});
+ for(const entry of readdirSync(join(repository,'prisma/migrations')).filter(n=>n!=='20261023020000_workflow_publication'&&n!=='20261023030000_stage_runtime'))cpSync(join(repository,'prisma/migrations',entry),join(root,'migrations',entry),{recursive:true});
  run(process.execPath,[require.resolve('prisma/build/index.js'),'migrate','deploy','--schema',join(root,'schema.prisma')],{env:{...env,DATABASE_URL:url}});
  assert.equal(Number(sql('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL')),113);
  const {PrismaClient}=require('@prisma/client');db=new PrismaClient({datasourceUrl:url});

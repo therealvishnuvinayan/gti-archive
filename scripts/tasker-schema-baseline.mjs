@@ -42,10 +42,21 @@ export function withoutStageBuilderSchema(schema) {
 
 // Phase 4.2 adds no scalar columns to old models: generated clients remain compatible.
 export function withoutWorkflowPublicationSchema(schema) {
+  schema = withoutStageRuntimeSchema(schema);
   for (const name of ["WorkflowPublicationSubmission", "PublishedWorkflow", "PublishedWorkflowVersion", "WorkflowPublicationAudit"]) {
     schema = schema.replace(new RegExp(`^model ${name} \{[\\s\\S]*?^\}`, "m"), "");
     schema = schema.replace(new RegExp(`^  \\w+\\s+${name}(?:\\[\\]|\\?)?[^\\n]*\\n`, "gm"), "");
   }
   schema = schema.replace(/^  (?:WORKFLOW_DRAFT_REVISION|WORKFLOW_PUBLICATION_SUBMITTED|WORKFLOW_PUBLICATION_SUPERSEDED|WORKFLOW_PUBLICATION_DECIDED|WORKFLOW_VERSION_PUBLISHED)\n/gm, "");
   return schema.replace(/model ApprovalRequest \{[\s\S]*?^\}/m, block => block.replace(/^(  (?:projectId|project|completionSubmissionId|completionSubmission|submissionEventId|submissionEvent)\s+\w+)\?/gm, "$1"));
+}
+
+// Phase 4.3 stays disabled on the existing 114-migration database.
+export function withoutStageRuntimeSchema(schema) {
+  for (const name of ["RuntimeProject", "RuntimeParticipant", "RuntimeStage", "RuntimeFileSubmission", "RuntimeApprovalSubmission", "RuntimeActivity"]) {
+    schema = schema.replace(new RegExp(`^model ${name} \{[\\s\\S]*?^\}`, "m"), "");
+    schema = schema.replace(new RegExp(`^  \\w+\\s+${name}(?:\\[\\]|\\?)?[^\\n]*\\n`, "gm"), "");
+  }
+  return schema.replace(/^  (?:runtimeStageId|runtimeSubmissionId)\s+[^\n]+\n/gm, "")
+    .replace(/^  (?:RUNTIME_STAGE|RUNTIME_STAGE_REVIEWER|RUNTIME_ACTIVITY)\n/gm, "");
 }

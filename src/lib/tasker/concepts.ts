@@ -1,4 +1,5 @@
 import "server-only";
+import { nativeReferenceSelect, taskFileSelect } from "../files/legacy-select";
 import type { Prisma, UniversalTask, UniversalTaskEntry } from "@prisma/client";
 import { conceptsEnabled, ensure, id, TaskerError, type ConceptSourceChoice, type TaskReference } from "./contracts";
 import { authorizedTarget } from "./targets";
@@ -21,7 +22,7 @@ function sameContext(a: Context, b: Context) { return a.projectId === b.projectI
  * be laundered into delegation. Historical unmapped files are not adopted here. */
 async function projectSource(tx: Tx, actorId: string, context: Context, versionId: string) {
   const ref = await tx.sharedFileReference.findFirst({ where: { versionId, projectAttachmentId: { not: null } },
-    include: { projectAttachment: { include: { researchFolderFile: true } }, version: { include: { file: true } } } });
+    select: { ...nativeReferenceSelect, projectAttachment: { include: { researchFolderFile: true } }, version: { include: { file: { select: taskFileSelect } } } } });
   const a = ref?.projectAttachment, v = ref?.version;
   ensure(a && v && context.projectId && !context.flexibleProjectId && a.projectId === context.projectId && sameContext(v.file, context), "SOURCE_UNAVAILABLE", 403);
   ensure(a.status === "READY" && v.status === "READY" && v.objectETag && (v.applicationSealed || v.objectVersionId) &&
@@ -33,7 +34,7 @@ async function projectSource(tx: Tx, actorId: string, context: Context, versionI
   return { version: v, sourceAttachmentId: a.id, sourceUploadId: null, sourceSubmissionId: null, sourceReviewId: null, sourceState: "SEALED" };
 }
 async function inspirationSource(tx: Tx, actorId: string, context: Context, versionId: string) {
-  const upload = await tx.universalTaskUpload.findUnique({ where: { versionId }, include: { version: { include: { file: true } } } });
+  const upload = await tx.universalTaskUpload.findUnique({ where: { versionId }, include: { version: { include: { file: { select: taskFileSelect } } } } });
   ensure(upload?.submittedEntryId, "SOURCE_UNAVAILABLE", 403);
   await tx.$queryRaw`SELECT id FROM "UniversalTask" WHERE id=${upload.taskId} FOR SHARE`;
   const source = await tx.universalTask.findUniqueOrThrow({ where: { id: upload.taskId } });
@@ -104,7 +105,7 @@ export async function conceptSourceChoices(tx: Tx, actorId: string, contexts: Co
 }
 export async function taskReferences(tx: Tx, task: UniversalTask): Promise<TaskReference[]> {
   const rows = await tx.universalTaskReference.findMany({ where: { taskId: task.id }, include: {
-    version: { include: { file: true, uploadedBy: { select: person } } }, sourceAttachment: { select: { projectId: true } }, sourceUpload: { include: { task: { include: { owner: { select: person } } } } },
+    version: { include: { file: { select: taskFileSelect }, uploadedBy: { select: person } } }, sourceAttachment: { select: { projectId: true } }, sourceUpload: { include: { task: { include: { owner: { select: person } } } } },
     sourceSubmission: { include: { actor: { select: person } } }, sourceReview: { include: { actor: { select: person } } },
   }, orderBy: { id: "asc" } });
   return rows.map(r => {

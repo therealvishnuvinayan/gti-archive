@@ -3,8 +3,9 @@ import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, readdirSync, rmSync, symlinkSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
-import { withoutTaskerSchema, withoutTaskDeliverablesSchema, withoutTaskConceptsSchema, withoutTaskSistersSchema, withoutStageBuilderSchema, withoutWorkflowPublicationSchema } from "./tasker-schema-baseline.mjs";
+import { withoutTaskerSchema, withoutTaskDeliverablesSchema, withoutTaskConceptsSchema, withoutTaskSistersSchema, withoutStageBuilderSchema, withoutWorkflowPublicationSchema, withoutStageRuntimeSchema } from "./tasker-schema-baseline.mjs";
 const require = createRequire(import.meta.url), repository = resolve(import.meta.dirname, ".."), root = mkdtempSync("/private/tmp/flux-v2-tasker-");
+const runtimeCandidate = "20261023030000_stage_runtime";
 const publicationCandidate = "20261023020000_workflow_publication";
 const draftsCandidate = "20261023010000_stage_builder_drafts";
 const sistersCandidate = "20261022030000_universal_tasker_sisters";
@@ -23,16 +24,16 @@ try {
   run("pg_ctl", ["-D", data, "-l", join(root, "postgres.log"), "-o", `-k ${socket} -p 55432 -h '' -c shared_buffers=16MB -c max_connections=25`, "-w", "start"]); started = true;
   run("createdb", ["-h", socket, "-p", "55432", "-U", "flux_tasker_test", "flux_tasker_test"]);
   assert.equal(sql("SHOW listen_addresses"), ""); assert.equal(sql("SHOW data_directory"), data);
-  const completeSchema = readFileSync(join(repository, "prisma/schema.prisma"), "utf8"), schema = withoutStageBuilderSchema(completeSchema), schemaPath = join(root, "schema.prisma");
+  const runtimeSchema = readFileSync(join(repository, "prisma/schema.prisma"), "utf8"), completeSchema = withoutStageRuntimeSchema(runtimeSchema), schema = withoutStageBuilderSchema(completeSchema), schemaPath = join(root, "schema.prisma");
   mkdirSync(join(root, "migrations")); copyFileSync(join(repository, "prisma/migrations/migration_lock.toml"), join(root, "migrations/migration_lock.toml"));
   const migrations = readdirSync(join(repository, "prisma/migrations")).filter(n => /^\d+_/.test(n)).sort();
   function copy(name) { mkdirSync(join(root, "migrations", name)); copyFileSync(join(repository, "prisma/migrations", name, "migration.sql"), join(root, "migrations", name, "migration.sql")); }
-  for (const name of migrations.filter(n => n !== candidate && n !== deliverablesCandidate && n !== conceptsCandidate && n !== sistersCandidate && n !== draftsCandidate && n !== publicationCandidate)) copy(name);
+  for (const name of migrations.filter(n => n !== runtimeCandidate && n !== candidate && n !== deliverablesCandidate && n !== conceptsCandidate && n !== sistersCandidate && n !== draftsCandidate && n !== publicationCandidate)) copy(name);
   writeFileSync(schemaPath, withoutTaskerSchema(schema)); prisma(["validate", "--schema", schemaPath]); prisma(["migrate", "deploy", "--schema", schemaPath]);
   assert.equal(sql('SELECT count(*) FROM "_prisma_migrations"'), "108"); assert.equal(sql("SELECT count(*) FROM pg_tables WHERE schemaname='public'"), "112");
   assert.match(prisma(["migrate", "diff", "--from-url", url, "--to-schema-datamodel", schemaPath, "--script"]), /empty migration/);
   const client = join(root, "client"); mkdirSync(join(root, "node_modules/@prisma"), { recursive: true }); symlinkSync(dirname(require.resolve("@prisma/client/package.json")), join(root, "node_modules/@prisma/client"));
-  writeFileSync(join(root, "client.prisma"), completeSchema.replace('provider        = "prisma-client-js"', `provider        = "prisma-client-js"\n  output = ${JSON.stringify(client)}`)); prisma(["generate", "--schema", join(root, "client.prisma")]);
+  writeFileSync(join(root, "client.prisma"), runtimeSchema.replace('provider        = "prisma-client-js"', `provider        = "prisma-client-js"\n  output = ${JSON.stringify(client)}`)); prisma(["generate", "--schema", join(root, "client.prisma")]);
   const output = join(root, "compiled"), config = join(root, "tsconfig.json"); writeFileSync(config, JSON.stringify({ extends: join(repository, "scripts/tsconfig.universal-tasker.json"), compilerOptions: { outDir: output, paths: { "@/*": [join(repository, "src/*")], "@prisma/client": [client] }, typeRoots: [join(repository, "node_modules/@types")] } }));
   run(process.execPath, [require.resolve("typescript/bin/tsc"), "--project", config]); mkdirSync(join(output, "node_modules/server-only"), { recursive: true }); writeFileSync(join(output, "node_modules/server-only/index.js"), "");
   const test = join(output, "scripts/universal-tasker-integration-check.js"); console.log(run(process.execPath, [test, "--seed"]));
@@ -83,7 +84,7 @@ try {
   console.log("PASS Phase 3.4 populated migration: 111/120 → 112/122; completed tasks across all six types, exact files, native reviews, events, accounts and legacy rows unchanged; zero backfill/drift.");
   console.log(run(process.execPath, [join(output, "scripts/tasker-sisters-integration-check.js")]));
 
-  if (process.argv.includes("--stage-builder") || process.argv.includes("--workflow-publication")) {
+  if (process.argv.includes("--stage-builder") || (process.argv.includes("--workflow-publication") || process.argv.includes("--stage-runtime"))) {
     const draftTest = join(output, "scripts/stage-builder-integration-check.js");
     console.log(run(process.execPath, [draftTest, "--baseline"]));
     const oldTables = sql("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename").split("\n");
@@ -96,7 +97,7 @@ try {
     assert.match(prisma(["migrate", "diff", "--from-url", url, "--to-schema-datamodel", schemaPath, "--script"]), /empty migration/);
     console.log("PASS Phase 4.1 populated migration: 112/122 → 113/124; all previous tables and ledger checksums unchanged; zero backfill, drafts, publication and schema drift.");
     console.log(run(process.execPath, [draftTest]));
-    if (process.argv.includes("--workflow-publication")) {
+    if ((process.argv.includes("--workflow-publication") || process.argv.includes("--stage-runtime"))) {
       const publicationTest = join(output, "scripts/workflow-publication-integration-check.js");
       console.log(run(process.execPath, [publicationTest, "--baseline"]));
       const tables113 = sql("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename").split("\n");
@@ -117,6 +118,26 @@ try {
         'newFunctions',(SELECT count(*) FROM pg_proc WHERE proname IN ('flux_workflow_actor_current','flux_workflow_publication_guard','flux_workflow_approval_consistency','flux_workflow_publication_consistency','flux_workflow_supersede_review','flux_emit_workflow_publication_event')),
         'newTriggers',(SELECT count(*) FROM pg_trigger WHERE NOT tgisinternal AND tgenabled='O' AND tgname IN ('flux_workflow_publication_guard','flux_workflow_publication_truncate','flux_workflow_publication_consistency','flux_workflow_supersede_review','flux_emit_workflow_publication_event')))`));
       console.log(run(process.execPath, [publicationTest]));
+      if (process.argv.includes("--stage-runtime")) {
+        const runtimeTest = join(output, "scripts/stage-runtime-integration-check.js");
+        console.log(run(process.execPath, [runtimeTest, "--baseline"]));
+        const oldTables = sql("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename").split("\n");
+        const snapshot114 = () => oldTables.map(t => sql(`SELECT coalesce(jsonb_agg(to_jsonb(t)-ARRAY['runtimeStageId','runtimeSubmissionId'] ORDER BY to_jsonb(t)::text)::text,'[]') FROM "${t}" t ${t === "_prisma_migrations" ? `WHERE migration_name <> '${runtimeCandidate}'` : ""}`));
+        const before114 = snapshot114(); copy(runtimeCandidate); writeFileSync(schemaPath, runtimeSchema); prisma(["migrate", "deploy", "--schema", schemaPath]);
+        assert.deepEqual(snapshot114(), before114);
+        assert.equal(sql('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL'), "115");
+        assert.equal(sql("SELECT count(*) FROM pg_tables WHERE schemaname='public'"), "134");
+        assert.match(prisma(["migrate", "diff", "--from-url", url, "--to-schema-datamodel", schemaPath, "--script"]), /empty migration/);
+        console.log("PASS Phase 4.3 populated migration: 114/128 → 115/134; every pre-existing column/row and ledger checksum preserved, nullable file adapters empty; no backfill/drift.");
+        console.log("Runtime object inventory: " + sql(`SELECT json_build_object(
+          'newTables',(SELECT count(*) FROM pg_tables WHERE schemaname='public' AND tablename LIKE 'Runtime%'),
+          'indexes',(SELECT count(*) FROM pg_index i JOIN pg_class t ON t.oid=i.indrelid WHERE t.relname LIKE 'Runtime%' AND i.indisvalid AND i.indisready),
+          'foreignKeys',(SELECT count(*) FROM pg_constraint c JOIN pg_class t ON t.oid=c.conrelid WHERE t.relname LIKE 'Runtime%' AND c.contype='f' AND c.convalidated),
+          'checks',(SELECT count(*) FROM pg_constraint c JOIN pg_class t ON t.oid=c.conrelid WHERE t.relname LIKE 'Runtime%' AND c.contype='c' AND c.convalidated),
+          'newFunctions',(SELECT count(*) FROM pg_proc WHERE proname IN ('flux_runtime_authorized','flux_runtime_ready','flux_runtime_guard','flux_runtime_consistency','flux_emit_runtime_event','flux_runtime_approval_write','flux_runtime_approval_consistency')),
+          'newTriggers',(SELECT count(*) FROM pg_trigger WHERE NOT tgisinternal AND tgenabled='O' AND tgname IN ('flux_runtime_guard','flux_runtime_truncate','flux_runtime_consistency','flux_emit_runtime_event')))`));
+        console.log(run(process.execPath, [runtimeTest]));
+      }
     }
 
   }

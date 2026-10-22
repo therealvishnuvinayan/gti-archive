@@ -299,16 +299,16 @@ export async function mutateTask(taskId: string, raw: unknown) {
       const fileName = text(v.fileName, 240), mimeType = text(v.mimeType, 120), fileSize = Number(v.fileSize);
       ensure(Number.isSafeInteger(fileSize) && fileSize > 0 && fileSize <= 100 * 1024 * 1024, "INVALID_FILE_SIZE");
       ensure(/^[\w.+-]+\/[\w.+-]+$/.test(mimeType), "INVALID_MIME_TYPE");
-      const replacing = v.replaceFileId === undefined ? null : await tx.sharedFile.findFirst({ where: { id: id(v.replaceFileId), taskId } });
+      const replacing = v.replaceFileId === undefined ? null : await tx.sharedFile.findFirst({ select: { id: true }, where: { id: id(v.replaceFileId), taskId } });
       ensure(v.replaceFileId === undefined || replacing, "INVALID_REPLACEMENT");
-      const file = replacing ?? await tx.sharedFile.create({ data: { taskId, projectId: task.projectId, flexibleProjectId: task.flexibleProjectId } });
+      const file = replacing ?? await tx.sharedFile.create({ select: { id: true }, data: { taskId, projectId: task.projectId, flexibleProjectId: task.flexibleProjectId } });
       const last = await tx.sharedFileVersion.aggregate({ where: { fileId: file.id }, _max: { number: true } });
       uploadId = randomUUID(); const bucket = getS3BucketName(), prefix = `universal-tasks/${taskId}/${uploadId}`;
       const fv = await tx.sharedFileVersion.create({ data: { fileId: file.id, number: (last._max.number ?? 0) + 1, uploadedById: grant.actorUserId,
         originalFileName: fileName, mimeType, fileSize, bucket, storageKey: `${prefix}/evidence`, applicationSealed: true } });
       await tx.universalTaskUpload.create({ data: { id: uploadId, taskId, versionId: fv.id, uploadedById: grant.actorUserId,
         stagingKey: `${prefix}/upload`, expiresAt: new Date(Date.now() + 600000) } });
-      await tx.sharedFileReference.create({ data: { versionId: fv.id, role: "SOURCE", taskUploadId: uploadId } });
+      await tx.sharedFileReference.create({ select: { id: true }, data: { versionId: fv.id, role: "SOURCE", taskUploadId: uploadId } });
       snapshot = { uploadId, fileVersionIds: [fv.id] };
     } else if (action === "FINALIZE_UPLOAD") {
       uploadId = id(v.uploadId);

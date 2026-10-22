@@ -1,3 +1,4 @@
+import { StageRuntimeEntry } from "@/components/projects/stage-runtime-entry";
 import { isDirectorReader } from "@/lib/authorization/project-read-rules";
 import { getProjectContextIndex } from "@/lib/authorization/project-context";
 import { isProjectManagerReader } from "@/lib/authorization/project-read-rules";
@@ -123,7 +124,7 @@ export default async function ProjectsPage({
     return (
       <DashboardLayout>
         {canCreateProjects(user) && <Link className="mb-4 inline-block underline" href="/projects/approvals">Project approvals and requests</Link>}
-        <StageBuilderEntry />
+        <StageBuilderEntry /><StageRuntimeEntry />
         <FlexibleProjectsRouteWorkspace
           projects={flexiblePage.projects}
           projectCount={flexiblePage.total}
@@ -180,7 +181,7 @@ export default async function ProjectsPage({
   return (
     <DashboardLayout>
       <Link className="mb-4 inline-block underline" href="/projects/approvals">Project approvals and requests</Link>
-      <StageBuilderEntry />
+      <StageBuilderEntry /><StageRuntimeEntry />
       <ProjectsBrowser
         projects={data.projects}
         projectCount={data.projectCount}

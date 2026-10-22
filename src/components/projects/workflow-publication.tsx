@@ -16,7 +16,7 @@ async function send<T>(url: string, data?: unknown): Promise<T> {
   const res = await fetch(url, data ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) } : { cache: "no-store" });
   const result = await res.json(); if (!res.ok) throw new Error(result.error || "Request unavailable. Refresh and try again."); return result;
 }
-export function PublicationNotice({ approved = true }: { approved?: boolean }) { return <p className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">{approved ? PUBLICATION_NOTICE : "Definition review only. Publication requires an explicit Director decision. Project creation and stage execution are not available yet."}</p>; }
+export function PublicationNotice({ approved = true }: { approved?: boolean }) { return <p className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">{approved ? PUBLICATION_NOTICE : "Definition review only. Publication requires an explicit Director decision. This preview creates no project or runtime stage."}</p>; }
 function Hash({ value }: { value: string }) { return <p className="break-all font-mono text-xs">Definition SHA-256: {value}</p>; }
 export function DraftPublicationPanel({ initial, draft, dirty }: { initial: Publication; draft: Awaited<ReturnType<typeof getDraft>>; dirty: boolean }) {
   const [data, setData] = useState(initial), [summary, setSummary] = useState(""), [busy, setBusy] = useState(false), [error, setError] = useState("");

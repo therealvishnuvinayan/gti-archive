@@ -94,8 +94,21 @@ function workflowPublicationEvent(row: BusinessEvent): WorkflowPublicationEvent 
     native: { type: published ? "PublishedWorkflowVersion" : "WorkflowPublicationAudit", id: row.causationId }, actor: { kind: "INTERNAL", userId: row.actorId, businessRole: row.actorRole, authorizationVersion: row.actorVersion },
     operation: "workflowPublicationCommand", correlationId: row.correlationId, causationId: row.causationId, idempotencyKey: row.idempotencyKey, occurredAt: row.occurredAt.toISOString(), payload: p as WorkflowPublicationEvent["payload"] };
 }
-export type SharedBusinessEvent = ReviewDecidedEvent | TaskActivityEvent | WorkflowDraftEvent | WorkflowPublicationEvent;
+export type RuntimeActivityEvent = {
+  id: string; type: "RUNTIME_ACTIVITY"; schemaVersion: 1;
+  aggregate: { type: "RUNTIME_PROJECT"; id: string; sequence: number };
+  native: { type: "RuntimeActivity"; id: string };
+  actor: Extract<EventActor, { kind: "INTERNAL" }>;
+  operation: "runtimeStageCommand"; correlationId: string; causationId: string; idempotencyKey: string; occurredAt: string;
+  payload: { action: string; stageId: string | null };
+};
+export type SharedBusinessEvent = RuntimeActivityEvent | ReviewDecidedEvent | TaskActivityEvent | WorkflowDraftEvent | WorkflowPublicationEvent;
 export function decodeBusinessEvent(row: BusinessEvent): SharedBusinessEvent {
+  if (row.type === "RUNTIME_ACTIVITY") {
+    const p = row.payload;
+    if (row.schemaVersion !== 1 || row.aggregateType !== "RUNTIME_PROJECT" || row.operation !== "runtimeStageCommand" || !row.aggregateId || !row.causationId || row.id !== `runtime:${row.causationId}` || row.idempotencyKey !== row.id || row.correlationId !== row.aggregateId || !Number.isSafeInteger(row.sequence) || row.sequence < 1 || !Number.isSafeInteger(row.actorVersion) || row.actorVersion < 1 || !row.actorId || !Number.isFinite(row.occurredAt.getTime()) || !["DIRECTOR", "SENIOR_PROJECT_MANAGER", "JUNIOR_PROJECT_MANAGER"].includes(row.actorRole) || [row.projectId, row.flexibleProjectId, row.taskId, row.taskEntryId, row.decisionId, row.nativeEventId, row.approvalEvidenceId, row.fileVersionId].some(v => v !== null) || !p || typeof p !== "object" || Array.isArray(p) || Object.keys(p).sort().join() !== "action,stageId" || typeof p.action !== "string" || !["CREATED", "FIELDS", "CHECKLIST", "UPLOAD_PREPARED", "FILE_SUBMITTED", "UPLOAD_FAILED", "FILE_DECIDED", "APPROVAL_SUBMITTED", "APPROVAL_DECIDED", "COMPLETED"].includes(p.action) || (p.action === "CREATED" ? p.stageId !== null : typeof p.stageId !== "string" || !p.stageId)) throw new Error("UNSUPPORTED_EVENT_CONTRACT");
+    return { id: row.id, type: "RUNTIME_ACTIVITY", schemaVersion: 1, aggregate: { type: "RUNTIME_PROJECT", id: row.aggregateId, sequence: row.sequence }, native: { type: "RuntimeActivity", id: row.causationId }, actor: { kind: "INTERNAL", userId: row.actorId, businessRole: row.actorRole, authorizationVersion: row.actorVersion }, operation: "runtimeStageCommand", correlationId: row.correlationId, causationId: row.causationId, idempotencyKey: row.idempotencyKey, occurredAt: row.occurredAt.toISOString(), payload: p as RuntimeActivityEvent["payload"] };
+  }
   if (["WORKFLOW_PUBLICATION_SUBMITTED", "WORKFLOW_PUBLICATION_SUPERSEDED", "WORKFLOW_PUBLICATION_DECIDED", "WORKFLOW_VERSION_PUBLISHED"].includes(row.type)) return workflowPublicationEvent(row);
   if (row.type === EVENT_TYPE) return reviewEvent(row);
   if (row.type === "WORKFLOW_DRAFT_REVISED") {

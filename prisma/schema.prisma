@@ -453,6 +453,15 @@ enum FluxAiMessageRole {
 }
 
 model User {
+  runtimeOwned RuntimeProject[] @relation("RuntimeOwner")
+  runtimeCreated RuntimeProject[] @relation("RuntimeCreator")
+  runtimeParticipants RuntimeParticipant[] @relation("RuntimeParticipantUser")
+  runtimeParticipantAdds RuntimeParticipant[] @relation("RuntimeParticipantActor")
+  runtimeCompleted RuntimeStage[]
+  runtimeSubmissions RuntimeFileSubmission[] @relation("RuntimeSubmitter")
+  runtimeReviews RuntimeFileSubmission[] @relation("RuntimeReviewer")
+  runtimeApprovals RuntimeApprovalSubmission[]
+  runtimeActivity RuntimeActivity[]
   workflowDrafts WorkflowDraft[] @relation("WorkflowDraftCreator")
   workflowDraftRevisions WorkflowDraftRevision[] @relation("WorkflowDraftActor")
   reviewedTaskApplications UniversalTaskApplication[]
@@ -2867,6 +2876,8 @@ enum SharedFileReferenceRole {
 }
 
 model SharedFile {
+  runtimeStageId String?
+  runtimeStage RuntimeStage? @relation(fields: [runtimeStageId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   taskId                 String?
   task                   UniversalTask?                 @relation(fields: [taskId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   id String @id @default(cuid())
@@ -2892,6 +2903,7 @@ model SharedFile {
 }
 
 model SharedFileVersion {
+  runtimeSubmission RuntimeFileSubmission?
   inheritedEvidence UniversalTaskInheritedEvidence[]
 
   taskReferences UniversalTaskReference[]
@@ -2933,6 +2945,8 @@ model SharedFileVersion {
 }
 
 model SharedFileReference {
+  runtimeSubmissionId String? @unique
+  runtimeSubmission RuntimeFileSubmission? @relation(fields: [runtimeSubmissionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   taskUploadId           String?                       @unique
   taskUpload             UniversalTaskUpload?          @relation(fields: [taskUploadId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   id String @id @default(cuid())
@@ -2976,6 +2990,7 @@ model SharedFileProvenance {
 
 // Each subject has a reviewed native adapter and immutable native foreign keys.
 enum ApprovalSubjectType {
+  RUNTIME_STAGE
   COMPLETION_DOCUMENT_SUBMISSION
   WORKFLOW_DRAFT_REVISION
 }
@@ -2988,6 +3003,7 @@ enum ApprovalRequestState {
 }
 
 enum ApprovalStepEligibility {
+  RUNTIME_STAGE_REVIEWER
   DOCUMENT_REVIEWER
   DIRECTOR
 }
@@ -3005,6 +3021,7 @@ enum ApprovalEventAction {
 }
 
 model ApprovalRequest {
+  runtimeSubmission RuntimeApprovalSubmission?
   workflowPublicationSubmission WorkflowPublicationSubmission?
   workflowPublishedVersion PublishedWorkflowVersion?
   id String @id @default(cuid())
@@ -3111,6 +3128,7 @@ model ApprovalEvent {
 
 // Phase 2.3: native history remains authoritative; SQL guards own event production.
 enum BusinessEventType {
+  RUNTIME_ACTIVITY
   WORKFLOW_PUBLICATION_SUBMITTED
   WORKFLOW_PUBLICATION_SUPERSEDED
   WORKFLOW_PUBLICATION_DECIDED
@@ -3136,6 +3154,7 @@ enum EventAttemptOutcome {
 }
 
 model BusinessEvent {
+  runtimeActivity RuntimeActivity?
   workflowPublicationAudit WorkflowPublicationAudit?
   workflowPublishedVersion PublishedWorkflowVersion?
   workflowDraftRevision WorkflowDraftRevision?
@@ -3546,6 +3565,7 @@ model PublishedWorkflow {
 }
 
 model PublishedWorkflowVersion {
+  runtimeProjects RuntimeProject[]
   id String @id @default(cuid())
   workflowId String
   workflow PublishedWorkflow @relation(fields: [workflowId], references: [id], onDelete: Restrict, onUpdate: Restrict)
@@ -3591,4 +3611,127 @@ model WorkflowPublicationAudit {
   eventId String @unique
   event BusinessEvent @relation(fields: [eventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   @@index([supersedingRevisionId])
+}
+
+// Phase 4.3: a narrowly typed project identity, independent of legacy stage initializers.
+model RuntimeProject {
+  id String @id @default(cuid())
+  title String
+  description String
+  ownerId String
+  owner User @relation("RuntimeOwner", fields: [ownerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdById String
+  createdBy User @relation("RuntimeCreator", fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  publishedVersionId String
+  publishedVersion PublishedWorkflowVersion @relation(fields: [publishedVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  workflowId String
+  versionNumber Int
+  definitionHash String
+  state String @default("ACTIVE")
+  revision Int @default(1)
+  createdAt DateTime
+  participants RuntimeParticipant[]
+  stages RuntimeStage[]
+  activity RuntimeActivity[]
+  @@index([ownerId, createdAt, id])
+}
+model RuntimeParticipant {
+  id String @id @default(cuid())
+  projectId String
+  project RuntimeProject @relation(fields: [projectId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  userId String
+  user User @relation("RuntimeParticipantUser", fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  role String
+  addedById String
+  addedBy User @relation("RuntimeParticipantActor", fields: [addedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdAt DateTime
+  @@unique([projectId, userId])
+}
+model RuntimeStage {
+  id String @id @default(cuid())
+  projectId String
+  project RuntimeProject @relation(fields: [projectId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  definitionStageId String
+  position Int
+  configuration Json
+  state String @default("AVAILABLE")
+  revision Int @default(0)
+  evidenceRevision Int @default(0)
+  values Json
+  checklist Json
+  completedById String?
+  completedBy User? @relation(fields: [completedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  completedAt DateTime?
+  completionSnapshot Json?
+  sharedFiles SharedFile[]
+  submissions RuntimeFileSubmission[]
+  approvals RuntimeApprovalSubmission[]
+  activity RuntimeActivity[]
+  @@unique([projectId, definitionStageId])
+  @@unique([projectId, position])
+}
+model RuntimeFileSubmission {
+  id String @id @default(cuid())
+  stageId String
+  stage RuntimeStage @relation(fields: [stageId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  capabilityId String
+  versionId String @unique
+  version SharedFileVersion @relation(fields: [versionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  supersedesId String? @unique
+  supersedes RuntimeFileSubmission? @relation("RuntimeFileRevision", fields: [supersedesId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  replacement RuntimeFileSubmission? @relation("RuntimeFileRevision")
+  sharedReference SharedFileReference?
+  submittedById String
+  submittedBy User @relation("RuntimeSubmitter", fields: [submittedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  state String @default("UPLOADING")
+  stagingKey String
+  expiresAt DateTime
+  createdAt DateTime
+  submittedAt DateTime?
+  reviewedById String?
+  reviewedBy User? @relation("RuntimeReviewer", fields: [reviewedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  reviewedAt DateTime?
+  reason String?
+  failureCode String?
+  @@index([stageId, capabilityId])
+}
+model RuntimeApprovalSubmission {
+  id String @id @default(cuid())
+  stageId String
+  stage RuntimeStage @relation(fields: [stageId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  capabilityId String
+  evidenceRevision Int
+  snapshot Json
+  snapshotHash String
+  requestedById String
+  requestedBy User @relation(fields: [requestedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actorVersion Int
+  requestedAt DateTime
+  approvalRequestId String @unique
+  request ApprovalRequest @relation(fields: [approvalRequestId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  @@index([stageId, capabilityId, requestedAt])
+}
+model RuntimeActivity {
+  id String @id @default(cuid())
+  projectId String
+  project RuntimeProject @relation(fields: [projectId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  stageId String?
+  stage RuntimeStage? @relation(fields: [stageId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sequence Int
+  action String
+  actorId String
+  actor User @relation(fields: [actorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actorRole String
+  actorVersion Int
+  sessionId String
+  commandId String
+  commandHash String
+  snapshot Json
+  result Json
+  createdAt DateTime
+  eventId String @unique
+  event BusinessEvent @relation(fields: [eventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  @@unique([actorId, commandId])
+  @@unique([projectId, sequence])
+  @@index([stageId, sequence])
 }

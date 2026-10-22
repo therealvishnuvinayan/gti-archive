@@ -8,7 +8,7 @@ export type ApprovalSubjectRequest = Prisma.ApprovalRequestGetPayload<{ include:
 /** Trusted, explicitly registered native adapters only. No public route accepts
  * adapters, subjects, policy plans, principals or callbacks from a client. */
 type NativeDecisionAdapter = {
-  subjectType: "COMPLETION_DOCUMENT_SUBMISSION" | "WORKFLOW_DRAFT_REVISION";
+  subjectType: "COMPLETION_DOCUMENT_SUBMISSION" | "WORKFLOW_DRAFT_REVISION" | "RUNTIME_STAGE";
   authorize: (request: ApprovalSubjectRequest) => Promise<AuthenticatedPrincipal>;
   applyNative: (outcome: ApprovalOutcome, at: Date) => Promise<string | null>;
   afterDecision?: (decision: ApprovalDecision, event: ApprovalEvent) => Promise<void>;
@@ -30,7 +30,7 @@ export async function decideTypedApproval(tx: Tx, requestId: string,
     approvalHash({ subjectSnapshot: request.subjectSnapshot, policySnapshot: request.policySnapshot,
       evidence: request.evidence.map(e => ({ fileVersionId: e.fileVersionId, snapshot: e.snapshot })) }) === request.evidenceHash, "APPROVAL_EVIDENCE_CHANGED");
   const step = request.steps.find(s => s.id === expected.stepId);
-  approvalCondition(step && (step.eligibility === "DOCUMENT_REVIEWER" || actor.businessRole === "DIRECTOR"), "APPROVER_STEP_DENIED");
+  approvalCondition(step && (step.eligibility === "DOCUMENT_REVIEWER" || (adapter.subjectType === "RUNTIME_STAGE" && step.eligibility === "RUNTIME_STAGE_REVIEWER") || actor.businessRole === "DIRECTOR"), "APPROVER_STEP_DENIED");
   approvalCondition(!request.expiresAt || request.expiresAt > new Date(), "APPROVAL_REQUEST_EXPIRED");
   const previous = await tx.approvalDecision.findUnique({ where: { requestId_commandId: { requestId, commandId: expected.commandId } } });
   if (previous) {
@@ -48,7 +48,7 @@ export async function decideTypedApproval(tx: Tx, requestId: string,
     decidedAt, nativeEventId } });
   await tx.approvalRequest.update({ where: { id: requestId }, data: { ...next, revision: { increment: 1 } } });
   const event = await tx.approvalEvent.create({ data: { requestId, action: "DECIDED", actorId: actor.userId, nativeEventId,
-    decisionId: decision.id, ...(adapter.subjectType === "WORKFLOW_DRAFT_REVISION" ? { createdAt: decidedAt } : {}),
+    decisionId: decision.id, ...(adapter.subjectType !== "COMPLETION_DOCUMENT_SUBMISSION" ? { createdAt: decidedAt } : {}),
     details: { outcome: input.outcome, reason, revision: expected.revision + 1, evidenceHash: expected.evidenceHash } } });
   await adapter.afterDecision?.(decision, event);
   approvalCondition(Date.parse(actor.session.expiresAt) > Date.now(), "APPROVER_SESSION_EXPIRED");

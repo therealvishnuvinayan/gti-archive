@@ -73,7 +73,7 @@ function businessSnapshot() {
     AND tablename NOT IN ('_prisma_migrations', 'UserAuthorization', 'UserAuthorizationChange') ORDER BY tablename`).split("\n");
   return Object.fromEntries(tables.map((table) => {
     assert.match(table, /^[A-Za-z0-9_]+$/);
-    return [table, sql(`SELECT count(*) || ':' || md5(coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text)::text, '[]')) FROM "${table}" t`)];
+    return [table, sql(`SELECT count(*) || ':' || md5(coalesce(jsonb_agg(to_jsonb(t)-ARRAY['runtimeStageId','runtimeSubmissionId'] ORDER BY to_jsonb(t)::text)::text, '[]')) FROM "${table}" t`)];
   }));
 }
 function startClient(name, initialSql, closeInput = false) {
@@ -297,11 +297,11 @@ function checkAssignmentServices(runtime = false) {
     assert.equal(query('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL'), "110");
     for (const table of ["ApprovalRequest", "ApprovalDecision", "CompletionDocumentEvent", "BusinessEvent", "EventOutbox", "SharedFileVersion"]) assert.ok(Number(query(`SELECT count(*) FROM "${table}"`)) > 0, `${table} must be populated`);
     const tables = query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename").split("\n");
-    const snapshot = () => tables.map(t => query(`SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text)::text,'[]') FROM "${t}" t ${t === "_prisma_migrations" ? "WHERE migration_name NOT IN ('20261022010000_universal_tasker_concepts','20261022030000_universal_tasker_sisters','20261023010000_stage_builder_drafts','20261023020000_workflow_publication')" : ""}`));
+    const snapshot = () => tables.map(t => query(`SELECT coalesce(jsonb_agg(to_jsonb(t)-ARRAY['runtimeStageId','runtimeSubmissionId'] ORDER BY to_jsonb(t)::text)::text,'[]') FROM "${t}" t ${t === "_prisma_migrations" ? "WHERE migration_name NOT IN ('20261022010000_universal_tasker_concepts','20261022030000_universal_tasker_sisters','20261023010000_stage_builder_drafts','20261023020000_workflow_publication','20261023030000_stage_runtime')" : ""}`));
     const before = snapshot(); run(process.execPath, [prismaCli, "migrate", "deploy", "--schema", schemaPath], { env: serviceEnv });
-    assert.deepEqual(snapshot(), before); assert.equal(query('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL'), "114");
-    assert.equal(query("SELECT count(*) FROM pg_tables WHERE schemaname='public'"), "128");
-    console.log("PASS Phase 3.3/3.4/4.1/4.2 additional populated migrations: all 119 tables preserved, including nine accounts, accepted/rejected approvals, native document history, exact file versions, business events and delivery diagnostics.");
+    assert.deepEqual(snapshot(), before); assert.equal(query('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL'), "115");
+    assert.equal(query("SELECT count(*) FROM pg_tables WHERE schemaname='public'"), "134");
+    console.log("PASS Phase 3.3/3.4/4.1/4.2/4.3 additional populated migrations: all 119 tables preserved, including nine accounts, accepted/rejected approvals, native document history, exact file versions, business events and delivery diagnostics.");
   }
   const drift = run(process.execPath, [prismaCli, "migrate", "diff", "--from-url", serviceUrl,
     "--to-schema-datamodel", schemaPath, "--script"], { env: serviceEnv });
@@ -368,7 +368,7 @@ function checkSharedFileMigration() {
   const snapshot = () => tables.map(table => {
     assert.match(table, /^[A-Za-z0-9_]+$/);
     const filter = table === "_prisma_migrations" ? ` WHERE migration_name <> '${candidate}'` : "";
-    return sql(`SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text)::text, '[]') FROM "${table}" t${filter}`, db);
+    return sql(`SELECT coalesce(jsonb_agg(to_jsonb(t)-ARRAY['runtimeStageId','runtimeSubmissionId'] ORDER BY to_jsonb(t)::text)::text, '[]') FROM "${table}" t${filter}`, db);
   });
   const before = snapshot();
   mkdirSync(join(directory, "migrations", candidate));
@@ -422,7 +422,7 @@ function checkApprovalMigration() {
   const tables = sql("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename", db).split("\n");
   const snapshot = () => tables.map(table => {
     assert.match(table, /^[A-Za-z0-9_]+$/);
-    return sql(`SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text)::text,'[]') FROM "${table}" t${table === "_prisma_migrations" ? ` WHERE migration_name <> '${candidate}'` : ""}`, db);
+    return sql(`SELECT coalesce(jsonb_agg(to_jsonb(t)-ARRAY['runtimeStageId','runtimeSubmissionId'] ORDER BY to_jsonb(t)::text)::text,'[]') FROM "${table}" t${table === "_prisma_migrations" ? ` WHERE migration_name <> '${candidate}'` : ""}`, db);
   });
   const before = snapshot();
   mkdirSync(join(directory, "migrations", candidate));copyFileSync(join(migrationRoot, candidate, "migration.sql"), join(directory, "migrations", candidate, "migration.sql"));
@@ -475,11 +475,11 @@ function checkProvisioning() {
     assert.equal(query('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL'), "110");
     for (const table of ["ApprovalRequest", "ApprovalDecision", "CompletionDocumentEvent", "BusinessEvent", "EventOutbox", "SharedFileVersion"]) assert.ok(Number(query(`SELECT count(*) FROM "${table}"`)) > 0, `${table} must be populated`);
     const tables = query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename").split("\n");
-    const snapshot = () => tables.map(t => query(`SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text)::text,'[]') FROM "${t}" t ${t === "_prisma_migrations" ? "WHERE migration_name NOT IN ('20261022010000_universal_tasker_concepts','20261022030000_universal_tasker_sisters','20261023010000_stage_builder_drafts','20261023020000_workflow_publication')" : ""}`));
+    const snapshot = () => tables.map(t => query(`SELECT coalesce(jsonb_agg(to_jsonb(t)-ARRAY['runtimeStageId','runtimeSubmissionId'] ORDER BY to_jsonb(t)::text)::text,'[]') FROM "${t}" t ${t === "_prisma_migrations" ? "WHERE migration_name NOT IN ('20261022010000_universal_tasker_concepts','20261022030000_universal_tasker_sisters','20261023010000_stage_builder_drafts','20261023020000_workflow_publication','20261023030000_stage_runtime')" : ""}`));
     const before = snapshot(); run(process.execPath, [prismaCli, "migrate", "deploy", "--schema", schemaPath], { env: serviceEnv });
-    assert.deepEqual(snapshot(), before); assert.equal(query('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL'), "114");
-    assert.equal(query("SELECT count(*) FROM pg_tables WHERE schemaname='public'"), "128");
-    console.log("PASS Phase 3.3/3.4/4.1/4.2 additional populated migrations: all 119 tables preserved, including nine accounts, accepted/rejected approvals, native document history, exact file versions, business events and delivery diagnostics.");
+    assert.deepEqual(snapshot(), before); assert.equal(query('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL'), "115");
+    assert.equal(query("SELECT count(*) FROM pg_tables WHERE schemaname='public'"), "134");
+    console.log("PASS Phase 3.3/3.4/4.1/4.2/4.3 additional populated migrations: all 119 tables preserved, including nine accounts, accepted/rejected approvals, native document history, exact file versions, business events and delivery diagnostics.");
   }
   const drift = run(process.execPath, [prismaCli, "migrate", "diff", "--from-url", provisioningUrl,
     "--to-schema-datamodel", schemaPath, "--script"], { env: testEnv });

@@ -85,7 +85,7 @@ function resourceMatches(request: AuthorizationRequest, context: AuthorizationCo
   const { capability, targetId } = request;
   const { resource, project, task } = context;
   if (!resource || resource.id !== targetId) return false;
-  if (["project.create", "project.requestCreation", "project.decideCreation", "project.activateCreation", "project.approveLegacyPreset", "project.viewGovernance"].includes(capability)) return resource.kind === "projectCreation";
+  if (["project.runtimeCreate", "project.runtimeList", "project.create", "project.requestCreation", "project.decideCreation", "project.activateCreation", "project.approveLegacyPreset", "project.viewGovernance"].includes(capability)) return resource.kind === "projectCreation";
   if (capability.startsWith("project.")) return resource.kind === "project" && project?.id === (resource.projectId ?? resource.id);
   if (capability === "task.list") return resource.kind === "workspace";
   if (capability.startsWith("task.create")) return resource.kind === "project" && project?.id === (resource.projectId ?? resource.id);

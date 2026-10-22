@@ -9,6 +9,7 @@
     "tasker-concepts-integration-check.ts",
     "tasker-sisters-integration-check.ts",
     "stage-builder-integration-check.ts",
-    "workflow-publication-integration-check.ts"
+    "workflow-publication-integration-check.ts",
+    "stage-runtime-integration-check.ts"
   ]
 }

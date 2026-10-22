@@ -1,6 +1,6 @@
 import { commandId, ensure, record, validateDefinition, type WorkflowDefinition } from "./contracts";
 
-export const PUBLICATION_NOTICE = "Approved definition — retained for future project use. Project creation and stage execution are not available yet.";
+export const PUBLICATION_NOTICE = "Approved definition — immutable published version. Creating an authorized runtime project is a separate operation.";
 export const WORKFLOW_PUBLICATION_POLICY = Object.freeze({ key: "workflow-publication.director.v1", steps: Object.freeze(["DIRECTOR" as const]) });
 // Explicitly confirmed by the business owner for Phase 4.2. This does not
 // alter Tasker/native-file self-review policies or create another approver.
