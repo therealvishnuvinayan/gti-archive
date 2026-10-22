@@ -16,9 +16,11 @@ export async function recordCompletionApprovalEvent(tx: DB, eventId: string) {
   if (!["configureProjectCompletionWorkflow", "prepareAuthorityApprovalRequest", "prepareCopyrightTransferRequest",
     "requestProjectFinalInvoice", "markProjectInvoiceNotRequired", "DOCUMENT_REVISION_REQUESTED"].includes(event.action)) return;
   const workflow = await tx.projectCompletionWorkflow.findUniqueOrThrow({ where: { id: event.workflowId } });
-  const pending = await tx.approvalRequest.findMany({ where: { projectId: event.projectId, state: "PENDING" }, include: { completionSubmission: true } });
+  const pending = await tx.approvalRequest.findMany({ where: { projectId: event.projectId, subjectType: "COMPLETION_DOCUMENT_SUBMISSION", state: "PENDING" }, include: { completionSubmission: true } });
   for (const request of pending) {
-    const s = request.completionSubmission, state = stepState(workflow, s.type);
+    const s = request.completionSubmission;
+    approvalCondition(s, "APPROVAL_SUBJECT_MISMATCH");
+    const state = stepState(workflow, s.type);
     if (s.workflowId === workflow.id && (!state.required || state.status !== "PENDING" || state.requestedAt?.getTime() !== s.requestTime.getTime())) {
       await tx.approvalRequest.update({ where: { id: request.id }, data: { state: "SUPERSEDED", revision: { increment: 1 },
         supersededAt: event.createdAt, supersessionReason: "Native document request changed; a fresh submission is required." } });
@@ -40,6 +42,7 @@ export async function rejectSupersededCompletion(tx: DB, requestId: string, expe
   const expected = parseApprovalExpectation(expectedValue);
   await tx.$queryRaw`SELECT id FROM "ApprovalRequest" WHERE id = ${requestId} FOR UPDATE`;
   const request = await tx.approvalRequest.findUniqueOrThrow({ where: { id: requestId }, include: { steps: true, completionSubmission: true } });
+  approvalCondition(request.subjectType === "COMPLETION_DOCUMENT_SUBMISSION" && request.projectId && request.completionSubmission, "APPROVAL_SUBJECT_MISMATCH");
   const actor = await approvalActor(tx, request.projectId);
   approvalCondition(request.state === "SUPERSEDED" && expected.requestId === request.id && expected.revision === request.revision &&
     expected.evidenceHash === request.evidenceHash && request.steps.some(s => s.id === expected.stepId && s.position === request.currentStep), "APPROVAL_REQUEST_STALE");

@@ -48,6 +48,9 @@ export const businessCapabilityCatalog = {
     "template.editProposal",
     "template.approvePublish",
     "template.configureCustomStages",
+    "template.submitWorkflow",
+    "template.viewWorkflowApprovals",
+    "template.viewPublications",
   ],
   task: [
     "task.list",

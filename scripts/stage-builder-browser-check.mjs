@@ -1,10 +1,13 @@
 // Stage Builder acceptance: disposable PostgreSQL, fictional logins and an
 // isolated production build. No environment files, live storage or external consumers.
-import assert from 'node:assert/strict';
+import { withoutWorkflowPublicationSchema } from './tasker-schema-baseline.mjs';
+import nodeAssert from 'node:assert/strict';
+let assertions=0;
+const assert=new Proxy(nodeAssert,{get(target,key){const value=Reflect.get(target,key);return typeof value==='function'&&key!=='AssertionError'?(...args)=>{assertions++;return Reflect.apply(value,target,args);}:value;}});
 import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes, scryptSync } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, readFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -27,8 +30,8 @@ try {
  run('pg_ctl',['-D',data,'-l',join(root,'postgres.log'),'-o',`-h '' -k ${socket} -p 55437 -c unix_socket_permissions=0700 -c wal_level=minimal -c max_wal_senders=0 -c min_wal_size=32MB -c max_wal_size=64MB`,'-w','start']);started=true;
  run('psql',[...pgArgs.slice(0,-1),'postgres'],{input:'CREATE DATABASE flux_library_browser;'});
  const identity=JSON.parse(sql(`SELECT json_build_object('data',current_setting('data_directory'),'tcp',current_setting('listen_addresses'),'version',current_setting('server_version'))`));assert.equal(identity.data,data);assert.equal(identity.tcp,'');result.postgres=identity.version;
- cpSync(join(repository,'prisma/schema.prisma'),join(root,'schema.prisma'));mkdirSync(join(root,'migrations'));
- for(const entry of readdirSync(join(repository,'prisma/migrations')))cpSync(join(repository,'prisma/migrations',entry),join(root,'migrations',entry),{recursive:true});
+ writeFileSync(join(root,'schema.prisma'),withoutWorkflowPublicationSchema(readFileSync(join(repository,'prisma/schema.prisma'),'utf8')));mkdirSync(join(root,'migrations'));
+ for(const entry of readdirSync(join(repository,'prisma/migrations')).filter(n=>n!=='20261023020000_workflow_publication'))cpSync(join(repository,'prisma/migrations',entry),join(root,'migrations',entry),{recursive:true});
  run(process.execPath,[require.resolve('prisma/build/index.js'),'migrate','deploy','--schema',join(root,'schema.prisma')],{env:{...env,DATABASE_URL:url}});
  assert.equal(Number(sql('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL')),113);
  const {PrismaClient}=require('@prisma/client');db=new PrismaClient({datasourceUrl:url});
@@ -51,6 +54,9 @@ try {
 
  async function request(page,path,data,method='PATCH'){return page.evaluate(async({path,data,method})=>{const r=await fetch(path,data?{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}:{});return {status:r.status,body:r.headers.get('content-type')?.includes('application/json')?await r.json():(await r.arrayBuffer(),null),disposition:r.headers.get('content-disposition')};},{path,data,method});}
  const director=await pageFor('director');
+ assert.equal(sql("SELECT to_regclass('public.\"WorkflowPublicationSubmission\"')"),'');
+ assert.equal((await request(director,'/api/workflow-approvals')).status,404);
+ assert.equal((await request(director,'/api/published-workflows')).status,404);
  await director.goto(origin+'/projects');await director.getByRole('link',{name:'Workflow drafts · Stage Builder'}).click();
  await director.getByRole('heading',{name:'Workflow drafts',exact:true}).waitFor();await shot(director,'director-draft-list');
  await director.getByRole('button',{name:'Create New Workflow Draft'}).click();await director.getByRole('heading',{name:'Custom Stage Builder'}).waitFor();
@@ -112,7 +118,8 @@ try {
  assert.equal(JSON.stringify(await db.userAuthorization.findMany({orderBy:{userId:'asc'},include:{user:{select:{role:true,email:true,passwordHash:true}}}})),accountSnapshot);
  assert.equal(result.pageErrors.length,0);assert.equal(result.blockedExternalRequests.length,0);assert.equal(logs.some(s=>/EXTERNAL_(NETWORK|FETCH)_FORBIDDEN/.test(s)),false);
  pass('Unauthorized role and cross-SPM browser/API denials; forged approval, origin and oversized bodies rejected; publication/approval/activation endpoints absent; projects, real approval requests and approved presets never created; synthetic accounts preserved.');
- console.log(JSON.stringify({screenshots:result.screens.length,pageErrors:result.pageErrors.length,externalRequests:result.blockedExternalRequests.length}));
+ result.assertions=assertions;result.publicationDisabledBaselineMigrations=113;
+ console.log(JSON.stringify({assertions,screenshots:result.screens.length,pageErrors:result.pageErrors.length,externalRequests:result.blockedExternalRequests.length}));
 } finally {
  if(browser)await browser.close();if(db)await db.$disconnect();if(server){server.kill('SIGTERM');await new Promise(r=>server.once('exit',r));}
  if(started)run('pg_ctl',['-D',data,'-m','fast','-w','stop']);

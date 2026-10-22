@@ -35,6 +35,17 @@ export function withoutTaskSistersSchema(schema) {
 
 // Phase 4.1 adds only virtual relations to existing models and one event type.
 export function withoutStageBuilderSchema(schema) {
+  schema = withoutWorkflowPublicationSchema(schema);
   for (const name of ["WorkflowDraft", "WorkflowDraftRevision"]) schema = schema.replace(new RegExp(`^model ${name} \{[\\s\\S]*?^\}`, "m"), "");
   return schema.replace(/^  (?:workflowDrafts|workflowDraftRevisions|workflowDraftRevision)\s+[^\n]+\n/gm, "").replace(/^  WORKFLOW_DRAFT_REVISED\n/m, "");
+}
+
+// Phase 4.2 adds no scalar columns to old models: generated clients remain compatible.
+export function withoutWorkflowPublicationSchema(schema) {
+  for (const name of ["WorkflowPublicationSubmission", "PublishedWorkflow", "PublishedWorkflowVersion", "WorkflowPublicationAudit"]) {
+    schema = schema.replace(new RegExp(`^model ${name} \{[\\s\\S]*?^\}`, "m"), "");
+    schema = schema.replace(new RegExp(`^  \\w+\\s+${name}(?:\\[\\]|\\?)?[^\\n]*\\n`, "gm"), "");
+  }
+  schema = schema.replace(/^  (?:WORKFLOW_DRAFT_REVISION|WORKFLOW_PUBLICATION_SUBMITTED|WORKFLOW_PUBLICATION_SUPERSEDED|WORKFLOW_PUBLICATION_DECIDED|WORKFLOW_VERSION_PUBLISHED)\n/gm, "");
+  return schema.replace(/model ApprovalRequest \{[\s\S]*?^\}/m, block => block.replace(/^(  (?:projectId|project|completionSubmissionId|completionSubmission|submissionEventId|submissionEvent)\s+\w+)\?/gm, "$1"));
 }

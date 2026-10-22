@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { DraftPublicationPanel } from "./workflow-publication";
+import type { getDraftPublication } from "@/lib/stage-builder/publication";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, Copy, Plus, Save, Trash2 } from "lucide-react";
@@ -15,7 +17,7 @@ const button = "inline-flex items-center justify-center gap-2 rounded-lg border 
 const primary = `${button} !border-blue-700 !bg-blue-700 !text-white hover:!bg-blue-800`;
 const titleCase = (s: string) => s.toLowerCase().replaceAll("_", " ").replace(/^./, c => c.toUpperCase());
 function Text({ label, value, onChange, multiline = false, max = 160 }: { label: string; value: string; onChange: (v: string) => void; multiline?: boolean; max?: number }) {
-  return <label className="block text-sm font-medium text-slate-700">{label}{multiline ? <textarea className={control} rows={3} maxLength={max} value={value} onChange={e => onChange(e.target.value)} /> : <input className={control} maxLength={max} value={value} onChange={e => onChange(e.target.value)} />}</label>;
+  return <label className="block text-sm font-medium text-slate-700">{label}{multiline ? <textarea aria-label={label} className={control} rows={3} maxLength={max} value={value} onChange={e => onChange(e.target.value)} /> : <input aria-label={label} className={control} maxLength={max} value={value} onChange={e => onChange(e.target.value)} />}</label>;
 }
 function Select({ label, value, options, onChange }: { label: string; value: string; options: readonly string[]; onChange: (v: string) => void }) {
   return <label className="block text-sm font-medium text-slate-700">{label}<select aria-label={label} className={control} value={value} onChange={e => onChange(e.target.value)}>{options.map(o => <option key={o} value={o}>{titleCase(o)}</option>)}</select></label>;
@@ -139,7 +141,8 @@ export function WorkflowPreview({ definition: d }: { definition: WorkflowDefinit
     </Panel>)}<p className="text-sm text-slate-600">Project creation and final completion remain subject to existing Director governance.</p>
   </section>;
 }
-export function StageBuilder({ initial }: { initial: Draft }) {
+export function StageBuilder({ initial, publication }: { initial: Draft; publication?: Awaited<ReturnType<typeof getDraftPublication>> | null }) {
+  const [publicationData, setPublicationData] = useState(publication);
   const router = useRouter(), [saved, setSaved] = useState(initial), [definition, setDefinition] = useState(initial.definition), [selected, setSelected] = useState(initial.definition.stages[0]?.id ?? ""), [preview, setPreview] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(""), [status, setStatus] = useState(""), [showErrors, setShowErrors] = useState(false);
   const retry = useRef<{ json: string; commandId: string } | null>(null), cloneCommand = useRef<string | null>(null);
   const dirty = JSON.stringify(definition) !== JSON.stringify(saved.definition), historical = saved.revision !== saved.currentRevision;
@@ -157,6 +160,7 @@ export function StageBuilder({ initial }: { initial: Draft }) {
       const json = JSON.stringify({ definition, expectedRevision: saved.currentRevision });
       if (retry.current?.json !== json) retry.current = { json, commandId: crypto.randomUUID() };
       await api(`/api/workflow-drafts/${saved.workflowId}`, { ...JSON.parse(json), commandId: retry.current.commandId }, "PATCH");
+      if (publicationData) setPublicationData(await api(`/api/workflow-drafts/${saved.workflowId}/publication`));
       const latest = await api<Draft>(`/api/workflow-drafts/${saved.workflowId}`); setSaved(latest); setDefinition(latest.definition); retry.current = null;
       setStatus(`Saved revision ${latest.revision}${latest.issues.length ? " — configuration needs attention" : " — configuration valid"}.`);
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
@@ -166,7 +170,8 @@ export function StageBuilder({ initial }: { initial: Draft }) {
   return <main className="mx-auto max-w-7xl space-y-5 p-4 sm:p-8">
     <Link href="/projects/workflow-drafts" className="text-sm text-blue-700 underline" onClick={e => { if (dirty && !confirm("Leave without saving your changes?")) e.preventDefault(); }}>All workflow drafts</Link>
     <header className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-semibold text-slate-900">Custom Stage Builder</h1><p className="mt-1 text-sm text-slate-600">Revision {saved.revision} · {dirty ? "Unsaved changes" : "Saved draft"}</p></div><div className="flex flex-wrap gap-2"><button className={button} onClick={() => setPreview(!preview)}>{preview ? "Edit workflow" : "Preview Workflow"}</button><button className={button} disabled={busy || dirty || historical} onClick={clone}><Copy size={16} />Duplicate draft</button><button className={primary} disabled={busy || historical} onClick={save}><Save size={16} />{busy ? "Working…" : "Save Draft"}</button></div></header>
-    <Notice />
+    {publicationData ? <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Draft workspace. Changes require Director review and publication. Project creation and stage execution are unavailable.</p> : <Notice />}
+    {publicationData && <DraftPublicationPanel key={`${saved.revision}:${publicationData.submissions[0]?.status}`} initial={publicationData} draft={saved} dirty={dirty} />}
     <p role="status" aria-live="polite" className="text-sm text-green-800">{status}</p>
     {error && <div role="alert" className="space-y-2 rounded-lg bg-red-50 p-4 text-sm text-red-800"><p>{error}</p><a className="underline" href={`/projects/workflow-drafts/${saved.workflowId}`} target="_blank" rel="noreferrer">Open current saved revision in a new tab</a></div>}
     {historical && <p className="rounded-lg bg-blue-50 p-4 text-sm">Historical revision {saved.revision} is read-only. <Link href={`/projects/workflow-drafts/${saved.workflowId}`} className="underline">Open current revision {saved.currentRevision}</Link></p>}

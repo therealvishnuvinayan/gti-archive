@@ -5,9 +5,10 @@ import type { Prisma } from "@prisma/client";
 import { readCurrentSessionToken } from "../auth";
 import { resolveAuthenticatedSession } from "../authorization/session";
 import { activeProjectMutation } from "../authorization/project-transaction";
-import { approvalCondition, approvalHash, nextApprovalState, parseApprovalExpectation, validateApprovalPlan,
+import { approvalCondition, approvalHash, validateApprovalPlan,
   type ApprovalOutcome, type ApprovalPlan } from "./contracts";
 
+import { decideTypedApproval } from "./engine";
 import { approvalEngineAvailable } from "./activation";
 
 type DB = Prisma.TransactionClient;
@@ -72,41 +73,21 @@ export async function approvalActor(tx: DB, projectId: string) {
 
 export async function decideApproval(tx: DB, requestId: string, input: { expected: unknown; outcome: ApprovalOutcome; reason: string },
   applyNative: (outcome: ApprovalOutcome, decidedAt: Date) => Promise<string>) {
-  const expected = parseApprovalExpectation(input.expected), reason = input.reason?.trim();
-  approvalCondition(reason && reason.length <= 2000 && ["APPROVE", "REJECT"].includes(input.outcome), "APPROVAL_DECISION_REASON_REQUIRED");
-  await tx.$queryRaw`SELECT id FROM "ApprovalRequest" WHERE id = ${requestId} FOR UPDATE`;
-  const request = await tx.approvalRequest.findUniqueOrThrow({ where: { id: requestId }, include: {
-    steps: { orderBy: { position: "asc" } }, evidence: { orderBy: { fileVersionId: "asc" } },
-  } });
-  const actor = await approvalActor(tx, request.projectId);
-  approvalCondition(expected.requestId === request.id && expected.evidenceHash === request.evidenceHash &&
-    approvalHash({ subjectSnapshot: request.subjectSnapshot, policySnapshot: request.policySnapshot,
-      evidence: request.evidence.map(e => ({ fileVersionId: e.fileVersionId, snapshot: e.snapshot })) }) === request.evidenceHash, "APPROVAL_EVIDENCE_CHANGED");
-  const step = request.steps.find(s => s.id === expected.stepId);
-  approvalCondition(step && (step.eligibility === "DOCUMENT_REVIEWER" || actor.businessRole === "DIRECTOR"), "APPROVER_STEP_DENIED");
-  approvalCondition(!request.expiresAt || request.expiresAt > new Date(), "APPROVAL_REQUEST_EXPIRED");
-  const previous = await tx.approvalDecision.findUnique({ where: { requestId_commandId: { requestId, commandId: expected.commandId } } });
-  if (previous) {
-    approvalCondition(request.state !== "SUPERSEDED" && previous.actorId === actor.userId && previous.stepId === step.id &&
-      previous.expectedRevision === expected.revision && previous.evidenceHash === expected.evidenceHash &&
-      previous.outcome === input.outcome && previous.reason === reason, "CONFLICTING_APPROVAL_DECISION_REPLAY");
-    return { state: request.state, duplicate: true };
-  }
-  approvalCondition(request.state === "PENDING" && request.revision === expected.revision && request.currentStep === step.position, "APPROVAL_REQUEST_STALE");
-  const next = nextApprovalState(request.currentStep, request.steps.length, input.outcome), decidedAt = new Date();
-  // A trusted adapter changes the authoritative native state in this transaction.
-  // Deferred SQL guards prohibit committing either side without the other.
-  const nativeEventId = next.state === "PENDING" ? null : await applyNative(input.outcome, decidedAt);
-  await prepareCompletionReviewEvent(tx, request.projectId, nativeEventId);
-  const decision = await tx.approvalDecision.create({ data: { requestId, stepId: step.id, commandId: expected.commandId,
-    expectedRevision: expected.revision, evidenceHash: expected.evidenceHash, outcome: input.outcome, reason,
-    actorId: actor.userId, actorRole: actor.businessRole!, actorVersion: actor.authorizationVersion!, sessionId: actor.session.id,
-    decidedAt, nativeEventId } });
-  await tx.approvalRequest.update({ where: { id: requestId }, data: { ...next, revision: { increment: 1 } } });
-  await tx.approvalEvent.create({ data: { requestId, action: "DECIDED", actorId: actor.userId, nativeEventId,
-    decisionId: decision.id, details: { outcome: input.outcome, reason, revision: expected.revision + 1, evidenceHash: expected.evidenceHash } } });
-  approvalCondition(Date.parse(actor.session.expiresAt) > Date.now(), "APPROVER_SESSION_EXPIRED");
-  return { state: next.state, duplicate: false };
+  const result = await decideTypedApproval(tx, requestId, input, {
+    subjectType: "COMPLETION_DOCUMENT_SUBMISSION",
+    authorize: request => {
+      approvalCondition(request.projectId && request.completionSubmissionId && request.submissionEventId, "APPROVAL_SUBJECT_MISMATCH");
+      return approvalActor(tx, request.projectId);
+    },
+    applyNative: async (outcome, at) => {
+      const nativeEventId = await applyNative(outcome, at);
+      const request = await tx.approvalRequest.findUniqueOrThrow({ where: { id: requestId } });
+      approvalCondition(request.projectId, "APPROVAL_SUBJECT_MISMATCH");
+      await prepareCompletionReviewEvent(tx, request.projectId, nativeEventId);
+      return nativeEventId;
+    },
+  });
+  return { state: result.state, duplicate: result.duplicate };
 }
 
 /** Additional defense at the existing mandatory-document/final-completion gate.

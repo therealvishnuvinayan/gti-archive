@@ -1,5 +1,6 @@
 import "server-only";
-import { createHash } from "node:crypto";
+import { configurationHash } from "./hash";
+export { configurationHash } from "./hash";
 import type { Prisma, WorkflowDraftRevision } from "@prisma/client";
 import { runtimeAuthorization } from "../authorization/runtime";
 import { readCurrentSessionToken } from "../auth";
@@ -8,13 +9,6 @@ import { commandId, ensure, identifier, parseDefinition, record, validateDefinit
 
 export const draftsEnabled = () => process.env.FLUX_STAGE_BUILDER_DRAFTS === "1";
 function enabled() { ensure(draftsEnabled(), "DRAFTS_DISABLED", 404); }
-// Canonical JSON prevents object-key order from changing replay/hash identity.
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (value && typeof value === "object") return `{${Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, val]) => `${JSON.stringify(key)}:${canonical(val)}`).join(",")}}`;
-  return JSON.stringify(value);
-}
-export const configurationHash = (value: unknown) => createHash("sha256").update(canonical(value)).digest("hex");
 type Tx = Prisma.TransactionClient;
 async function actor(tx: Tx) {
   const session = await resolveAuthenticatedSession(tx, await readCurrentSessionToken());

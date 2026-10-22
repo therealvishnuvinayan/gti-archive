@@ -2,6 +2,7 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { AuthorizationDeniedError } from "../authorization/policy";
 import { getApplicationUrl } from "../secure-external-token";
+import { ApprovalError } from "../approvals/contracts";
 import { DraftError, ensure, MAX_DEFINITION_BYTES } from "./contracts";
 
 export async function body(request: Request) {
@@ -16,6 +17,10 @@ export async function body(request: Request) {
 export async function response(operation: () => Promise<unknown>) {
   try { return NextResponse.json(await operation(), { headers: { "Cache-Control": "private, no-store" } }); }
   catch (error) {
+    if (error instanceof ApprovalError) {
+      const denied = /DENIED|SESSION/.test(error.code);
+      return NextResponse.json({ error: "This review is unavailable or changed. Refresh the request and check your decision details.", code: error.code }, { status: denied ? 403 : 409, headers: { "Cache-Control": "private, no-store" } });
+    }
     const status = error instanceof DraftError ? error.status : error instanceof AuthorizationDeniedError ? 403 : 500;
     const code = error instanceof DraftError ? error.code : status === 403 ? "ACCESS_DENIED" : "DRAFT_OPERATION_FAILED";
     const message = code === "STALE_REVISION" ? "This draft changed. Your edits are still here. Open the current revision and reconcile before saving." :

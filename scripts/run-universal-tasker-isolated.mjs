@@ -3,8 +3,9 @@ import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, readdirSync, rmSync, symlinkSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
-import { withoutTaskerSchema, withoutTaskDeliverablesSchema, withoutTaskConceptsSchema, withoutTaskSistersSchema, withoutStageBuilderSchema } from "./tasker-schema-baseline.mjs";
+import { withoutTaskerSchema, withoutTaskDeliverablesSchema, withoutTaskConceptsSchema, withoutTaskSistersSchema, withoutStageBuilderSchema, withoutWorkflowPublicationSchema } from "./tasker-schema-baseline.mjs";
 const require = createRequire(import.meta.url), repository = resolve(import.meta.dirname, ".."), root = mkdtempSync("/private/tmp/flux-v2-tasker-");
+const publicationCandidate = "20261023020000_workflow_publication";
 const draftsCandidate = "20261023010000_stage_builder_drafts";
 const sistersCandidate = "20261022030000_universal_tasker_sisters";
 const conceptsCandidate = "20261022010000_universal_tasker_concepts";
@@ -26,7 +27,7 @@ try {
   mkdirSync(join(root, "migrations")); copyFileSync(join(repository, "prisma/migrations/migration_lock.toml"), join(root, "migrations/migration_lock.toml"));
   const migrations = readdirSync(join(repository, "prisma/migrations")).filter(n => /^\d+_/.test(n)).sort();
   function copy(name) { mkdirSync(join(root, "migrations", name)); copyFileSync(join(repository, "prisma/migrations", name, "migration.sql"), join(root, "migrations", name, "migration.sql")); }
-  for (const name of migrations.filter(n => n !== candidate && n !== deliverablesCandidate && n !== conceptsCandidate && n !== sistersCandidate && n !== draftsCandidate)) copy(name);
+  for (const name of migrations.filter(n => n !== candidate && n !== deliverablesCandidate && n !== conceptsCandidate && n !== sistersCandidate && n !== draftsCandidate && n !== publicationCandidate)) copy(name);
   writeFileSync(schemaPath, withoutTaskerSchema(schema)); prisma(["validate", "--schema", schemaPath]); prisma(["migrate", "deploy", "--schema", schemaPath]);
   assert.equal(sql('SELECT count(*) FROM "_prisma_migrations"'), "108"); assert.equal(sql("SELECT count(*) FROM pg_tables WHERE schemaname='public'"), "112");
   assert.match(prisma(["migrate", "diff", "--from-url", url, "--to-schema-datamodel", schemaPath, "--script"]), /empty migration/);
@@ -82,12 +83,12 @@ try {
   console.log("PASS Phase 3.4 populated migration: 111/120 → 112/122; completed tasks across all six types, exact files, native reviews, events, accounts and legacy rows unchanged; zero backfill/drift.");
   console.log(run(process.execPath, [join(output, "scripts/tasker-sisters-integration-check.js")]));
 
-  if (process.argv.includes("--stage-builder")) {
+  if (process.argv.includes("--stage-builder") || process.argv.includes("--workflow-publication")) {
     const draftTest = join(output, "scripts/stage-builder-integration-check.js");
     console.log(run(process.execPath, [draftTest, "--baseline"]));
     const oldTables = sql("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename").split("\n");
     const snapshot112 = () => oldTables.map(t => sql(`SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text)::text,'[]') FROM "${t}" t ${t === "_prisma_migrations" ? `WHERE migration_name <> '${draftsCandidate}'` : ""}`));
-    const before112 = snapshot112(); copy(draftsCandidate); writeFileSync(schemaPath, completeSchema); prisma(["migrate", "deploy", "--schema", schemaPath]);
+    const before112 = snapshot112(); copy(draftsCandidate); writeFileSync(schemaPath, withoutWorkflowPublicationSchema(completeSchema)); prisma(["migrate", "deploy", "--schema", schemaPath]);
     assert.deepEqual(snapshot112(), before112);
     assert.equal(sql('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL'), "113");
     assert.equal(sql("SELECT count(*) FROM pg_tables WHERE schemaname='public'"), "124");
@@ -95,6 +96,29 @@ try {
     assert.match(prisma(["migrate", "diff", "--from-url", url, "--to-schema-datamodel", schemaPath, "--script"]), /empty migration/);
     console.log("PASS Phase 4.1 populated migration: 112/122 → 113/124; all previous tables and ledger checksums unchanged; zero backfill, drafts, publication and schema drift.");
     console.log(run(process.execPath, [draftTest]));
+    if (process.argv.includes("--workflow-publication")) {
+      const publicationTest = join(output, "scripts/workflow-publication-integration-check.js");
+      console.log(run(process.execPath, [publicationTest, "--baseline"]));
+      const tables113 = sql("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename").split("\n");
+      const snapshot113 = () => tables113.map(t => sql(`SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text)::text,'[]') FROM "${t}" t ${t === "_prisma_migrations" ? `WHERE migration_name <> '${publicationCandidate}'` : ""}`));
+      const before113 = snapshot113(); copy(publicationCandidate); writeFileSync(schemaPath, completeSchema); prisma(["migrate", "deploy", "--schema", schemaPath]);
+      assert.deepEqual(snapshot113(), before113);
+      assert.equal(sql('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL'), "114");
+      assert.equal(sql('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NULL'), "0");
+      assert.equal(sql("SELECT count(*) FROM pg_tables WHERE schemaname='public'"), "128");
+      for (const table of ["WorkflowPublicationSubmission", "WorkflowPublicationAudit", "PublishedWorkflow", "PublishedWorkflowVersion"]) assert.equal(sql(`SELECT count(*) FROM "${table}"`), "0");
+      assert.match(prisma(["migrate", "diff", "--from-url", url, "--to-schema-datamodel", schemaPath, "--script"]), /empty migration/);
+      console.log("PASS Phase 4.2 populated migration: 113/124 → 114/128; all existing draft revisions, six Tasker types, Sisters, file provenance, events, accounts and ledger preserved; empty publication tables; zero drift.");
+      const publicationTables = "'WorkflowPublicationSubmission','WorkflowPublicationAudit','PublishedWorkflow','PublishedWorkflowVersion'";
+      console.log("Publication object inventory: " + sql(`SELECT json_build_object(
+        'indexes',(SELECT count(*) FROM pg_index i JOIN pg_class c ON c.oid=i.indrelid WHERE c.relname IN (${publicationTables}) AND i.indisvalid AND i.indisready),
+        'foreignKeys',(SELECT count(*) FROM pg_constraint c JOIN pg_class t ON t.oid=c.conrelid WHERE t.relname IN (${publicationTables}) AND c.contype='f' AND c.convalidated),
+        'checks',(SELECT count(*) FROM pg_constraint c JOIN pg_class t ON t.oid=c.conrelid WHERE t.relname IN (${publicationTables}) AND c.contype='c' AND c.convalidated),
+        'newFunctions',(SELECT count(*) FROM pg_proc WHERE proname IN ('flux_workflow_actor_current','flux_workflow_publication_guard','flux_workflow_approval_consistency','flux_workflow_publication_consistency','flux_workflow_supersede_review','flux_emit_workflow_publication_event')),
+        'newTriggers',(SELECT count(*) FROM pg_trigger WHERE NOT tgisinternal AND tgenabled='O' AND tgname IN ('flux_workflow_publication_guard','flux_workflow_publication_truncate','flux_workflow_publication_consistency','flux_workflow_supersede_review','flux_emit_workflow_publication_event')))`));
+      console.log(run(process.execPath, [publicationTest]));
+    }
+
   }
 
 } finally {

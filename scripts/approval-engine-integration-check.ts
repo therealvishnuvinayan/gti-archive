@@ -44,6 +44,7 @@ export async function verifyApprovalEngine({ db, objects, user, renewSession, fi
   assert.equal(r.evidence.length, 1); assert.equal(r.subjectVersion, r.evidence[0].fileVersionId);
   assert.equal(r.evidence[0].fileVersion.checksumEvidence, "UNKNOWN"); assert.equal(r.evidence[0].fileVersion.checksumSha256, null);
   assert.equal(r.requestedById, "spm"); assert.equal(r.events[0].actorId, "spm"); assert.equal(r.state, "PENDING");
+  assert.ok(r.submissionEventId);
   const nativeEvent = await db.completionDocumentEvent.findUniqueOrThrow({ where: { id: r.submissionEventId } });
   await db.$transaction(tx => engine.openCompletionApproval(tx, nativeEvent.id));
   assert.equal(await db.approvalRequest.count({ where: { completionSubmissionId: target.submission.id } }), 1);

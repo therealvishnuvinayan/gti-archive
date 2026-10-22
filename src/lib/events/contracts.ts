@@ -70,8 +70,33 @@ export type WorkflowDraftEvent = {
   operation: "draftWorkflowCommand"; correlationId: string; causationId: string; idempotencyKey: string; occurredAt: string;
   payload: { action: "CREATE" | "REVISE" | "CLONE"; configurationHash: string; validationStatus: "VALID" | "INCOMPLETE" };
 };
-export type SharedBusinessEvent = ReviewDecidedEvent | TaskActivityEvent | WorkflowDraftEvent;
+export type WorkflowPublicationEvent = {
+  id: string; type: "WORKFLOW_PUBLICATION_SUBMITTED" | "WORKFLOW_PUBLICATION_SUPERSEDED" | "WORKFLOW_PUBLICATION_DECIDED" | "WORKFLOW_VERSION_PUBLISHED"; schemaVersion: 1;
+  aggregate: { type: "WORKFLOW_PUBLICATION_REQUEST"; id: string; sequence: number };
+  native: { type: "WorkflowPublicationAudit" | "PublishedWorkflowVersion"; id: string };
+  actor: Extract<EventActor, { kind: "INTERNAL" }>;
+  operation: "workflowPublicationCommand"; correlationId: string; causationId: string; idempotencyKey: string; occurredAt: string;
+  payload: { action: "SUBMITTED" | "SUPERSEDED" | "APPROVE" | "REJECT" | "PUBLISHED"; workflowId: string; draftRevisionId: string; configurationHash: string; requestId: string; versionId?: string; versionNumber?: number };
+};
+function workflowPublicationEvent(row: BusinessEvent): WorkflowPublicationEvent {
+  const p = row.payload, published = row.type === "WORKFLOW_VERSION_PUBLISHED";
+  const actions = row.type === "WORKFLOW_PUBLICATION_SUBMITTED" ? ["SUBMITTED"] : row.type === "WORKFLOW_PUBLICATION_SUPERSEDED" ? ["SUPERSEDED"] : published ? ["PUBLISHED"] : ["APPROVE", "REJECT"];
+  const sequence = row.type === "WORKFLOW_PUBLICATION_SUBMITTED" ? 1 : published ? 3 : 2;
+  if (row.schemaVersion !== 1 || row.aggregateType !== "WORKFLOW_PUBLICATION_REQUEST" || row.operation !== "workflowPublicationCommand" ||
+    !row.aggregateId || !row.causationId || row.id !== `${published ? "workflow-version" : "workflow-approval"}:${row.causationId}` || row.idempotencyKey !== row.id || row.correlationId !== row.aggregateId ||
+    row.sequence !== sequence || !Number.isInteger(row.actorVersion) || row.actorVersion < 1 || !row.actorId || !Number.isFinite(row.occurredAt.getTime()) ||
+    !["DIRECTOR", "SENIOR_PROJECT_MANAGER"].includes(row.actorRole) || ((published || row.type === "WORKFLOW_PUBLICATION_DECIDED") && row.actorRole !== "DIRECTOR") ||
+    [row.projectId, row.flexibleProjectId, row.taskId, row.taskEntryId, row.decisionId, row.nativeEventId, row.approvalEvidenceId, row.fileVersionId].some(v => v !== null) ||
+    !p || typeof p !== "object" || Array.isArray(p) || Object.keys(p).sort().join() !== (published ? "action,configurationHash,draftRevisionId,requestId,versionId,versionNumber,workflowId" : "action,configurationHash,draftRevisionId,requestId,workflowId") ||
+    typeof p.action !== "string" || !actions.includes(p.action) || p.requestId !== row.aggregateId || typeof p.workflowId !== "string" || !p.workflowId || typeof p.draftRevisionId !== "string" || !p.draftRevisionId ||
+    typeof p.configurationHash !== "string" || !/^[a-f0-9]{64}$/.test(p.configurationHash) || (published && (p.versionId !== row.causationId || !Number.isSafeInteger(p.versionNumber) || Number(p.versionNumber) < 1))) throw new Error("UNSUPPORTED_EVENT_CONTRACT");
+  return { id: row.id, type: row.type as WorkflowPublicationEvent["type"], schemaVersion: 1, aggregate: { type: "WORKFLOW_PUBLICATION_REQUEST", id: row.aggregateId, sequence },
+    native: { type: published ? "PublishedWorkflowVersion" : "WorkflowPublicationAudit", id: row.causationId }, actor: { kind: "INTERNAL", userId: row.actorId, businessRole: row.actorRole, authorizationVersion: row.actorVersion },
+    operation: "workflowPublicationCommand", correlationId: row.correlationId, causationId: row.causationId, idempotencyKey: row.idempotencyKey, occurredAt: row.occurredAt.toISOString(), payload: p as WorkflowPublicationEvent["payload"] };
+}
+export type SharedBusinessEvent = ReviewDecidedEvent | TaskActivityEvent | WorkflowDraftEvent | WorkflowPublicationEvent;
 export function decodeBusinessEvent(row: BusinessEvent): SharedBusinessEvent {
+  if (["WORKFLOW_PUBLICATION_SUBMITTED", "WORKFLOW_PUBLICATION_SUPERSEDED", "WORKFLOW_PUBLICATION_DECIDED", "WORKFLOW_VERSION_PUBLISHED"].includes(row.type)) return workflowPublicationEvent(row);
   if (row.type === EVENT_TYPE) return reviewEvent(row);
   if (row.type === "WORKFLOW_DRAFT_REVISED") {
     const p = row.payload;
