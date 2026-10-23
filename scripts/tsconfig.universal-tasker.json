@@ -15,6 +15,7 @@
     "runtime-tasker-check.ts",
     "runtime-deliverables-check.ts",
     "runtime-concepts-check.ts",
-    "runtime-completion-check.ts"
+    "runtime-completion-check.ts",
+    "standard-template-integration-check.ts"
   ]
 }

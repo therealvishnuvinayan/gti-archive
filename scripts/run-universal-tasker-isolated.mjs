@@ -168,6 +168,7 @@ try {
           console.log("PASS Phase 4.4D catalog: runtime reference table, three restrictive FKs, three indexes, four enabled triggers, three new functions and retained native reference/family guards.");
           console.log(run(process.execPath, [join(output, "scripts/runtime-concepts-check.js")]));
           console.log(run(process.execPath, [join(output, "scripts/runtime-completion-check.js")]));
+          if (process.argv.includes("--standard-templates")) console.log(run(process.execPath, [join(output, "scripts/standard-template-integration-check.js")]));
         }
       }
     }

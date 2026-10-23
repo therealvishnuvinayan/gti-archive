@@ -1,0 +1,2623 @@
+{
+  "title": "Flux – Project Process Templates & Content Specification",
+  "version": "2026-09-29",
+  "sha256": "4d86f90d173a406ad9f3a5ffbba7ce55776b5d209f4bc2a0e4653f299d61b944",
+  "pagination": "Unverified: supplied as 19 pages; OOXML contains no page count, page breaks or rendered page markers. Section/paragraph locators are authoritative for this binary.",
+  "paragraphs": [
+    {
+      "id": "P0002",
+      "text": "Flux – Project Process Templates & Content Specification",
+      "page": null
+    },
+    {
+      "id": "P0003",
+      "text": "Sep 29, 2026 · @Slavo",
+      "page": null
+    },
+    {
+      "id": "P0004",
+      "text": "Flux will run every GTI project from one of five master process templates (Packaging, POSM & Promo, Retail Display, Exhibition Stand, Digital) plus a Custom option, so junior project managers are guided step by step. This document defines the content: stages, data to collect, actions, roles, approvals and standard documents. It deliberately contains no technical or programming detail.",
+      "page": null
+    },
+    {
+      "id": "P0005",
+      "text": "1. Roles & governance",
+      "page": null
+    },
+    {
+      "id": "P0006",
+      "text": "Every project has the same set of roles. The Global Marketing Director (\"Director\") holds final authority over external communication, money, templates and vendor selection.",
+      "page": null
+    },
+    {
+      "id": "P0007",
+      "text": "Role",
+      "page": null
+    },
+    {
+      "id": "P0008",
+      "text": "Who",
+      "page": null
+    },
+    {
+      "id": "P0009",
+      "text": "Main responsibilities",
+      "page": null
+    },
+    {
+      "id": "P0010",
+      "text": "Director",
+      "page": null
+    },
+    {
+      "id": "P0011",
+      "text": "Global Marketing Director (role, not a named person; delegable only via the Leave module)",
+      "page": null
+    },
+    {
+      "id": "P0012",
+      "text": "Approves all external releases, contracts and money; selects pitch participants; edits master templates; approves Custom projects and stage skips; last step of every Final Artwork approval; sees all costs in all projects",
+      "page": null
+    },
+    {
+      "id": "P0013",
+      "text": "Owner",
+      "page": null
+    },
+    {
+      "id": "P0014",
+      "text": "Project manager running the project, including junior PMs",
+      "page": null
+    },
+    {
+      "id": "P0015",
+      "text": "Leads the project day to day, fills forms, builds approval chains, sees the project budget, can override stage gates with a reason",
+      "page": null
+    },
+    {
+      "id": "P0016",
+      "text": "Co-owner",
+      "page": null
+    },
+    {
+      "id": "P0017",
+      "text": "Senior PM or the Director",
+      "page": null
+    },
+    {
+      "id": "P0018",
+      "text": "Mandatory on every project led by a junior; supervises, sees the project budget, can override stage gates with a reason",
+      "page": null
+    },
+    {
+      "id": "P0019",
+      "text": "Executor",
+      "page": null
+    },
+    {
+      "id": "P0020",
+      "text": "Internal designers / specialists assigned to the project",
+      "page": null
+    },
+    {
+      "id": "P0021",
+      "text": "Creative and technical work, technical and print check of Final Artwork",
+      "page": null
+    },
+    {
+      "id": "P0022",
+      "text": "Collaborator",
+      "page": null
+    },
+    {
+      "id": "P0023",
+      "text": "Other internal GTI people (Purchase, Sales, Legal, Finance, Warehouse, Digital Lead)",
+      "page": null
+    },
+    {
+      "id": "P0024",
+      "text": "Contribute data, files and approvals on request",
+      "page": null
+    },
+    {
+      "id": "P0025",
+      "text": "Stakeholder / Approver",
+      "page": null
+    },
+    {
+      "id": "P0026",
+      "text": "Anyone added to an approval chain (CEO, Purchase, Client such as Sales Director, NPD Lead or GM)",
+      "page": null
+    },
+    {
+      "id": "P0027",
+      "text": "Approve or reject a deliverable",
+      "page": null
+    },
+    {
+      "id": "P0028",
+      "text": "Vendor",
+      "page": null
+    },
+    {
+      "id": "P0029",
+      "text": "External agency, printer, supplier, stand builder, software house",
+      "page": null
+    },
+    {
+      "id": "P0030",
+      "text": "Works only via Flux and only when approved in CERBER",
+      "page": null
+    },
+    {
+      "id": "P0031",
+      "text": "Governance rules",
+      "page": null
+    },
+    {
+      "id": "P0032",
+      "text": "A junior PM is always the Owner of the project; a senior PM or the Director must be Co-owner. A project cannot start without one.",
+      "page": null
+    },
+    {
+      "id": "P0033",
+      "text": "Only the Director may change master templates. Changes apply to future projects only; running projects keep the version they started with.",
+      "page": null
+    },
+    {
+      "id": "P0034",
+      "text": "Any PM may put together a Custom project; it starts only after Director approval.",
+      "page": null
+    },
+    {
+      "id": "P0035",
+      "text": "The Director selects every pitch participant (how many and which companies). A junior may suggest names but cannot add, remove or swap them.",
+      "page": null
+    },
+    {
+      "id": "P0036",
+      "text": "Nothing opening a relationship or involving money leaves Flux for a vendor without Director approval (section 12).",
+      "page": null
+    },
+    {
+      "id": "P0037",
+      "text": "Owner and Co-owner may move to the next stage with unmet conditions, with a mandatory written reason; the Director is notified.",
+      "page": null
+    },
+    {
+      "id": "P0038",
+      "text": "Skipping a whole stage is allowed only where the template permits it, and only with Director approval.",
+      "page": null
+    },
+    {
+      "id": "P0039",
+      "text": "2. Template system",
+      "page": null
+    },
+    {
+      "id": "P0040",
+      "text": "One common project engine, five master templates and one Custom option. A template decides the stage names, form and checklist fields, required fields, default folders, standard documents, default approvers, sample/acceptance type, typical stage durations, which stages may be skipped, starter tasks, and the guidance texts shown to the PM.",
+      "page": null
+    },
+    {
+      "id": "P0041",
+      "text": "Templates",
+      "page": null
+    },
+    {
+      "id": "P0042",
+      "text": "Packaging",
+      "page": null
+    },
+    {
+      "id": "P0043",
+      "text": "POSM & Promotional Materials (printed POSM and branded merchandise in one template, with a material-type switch)",
+      "page": null
+    },
+    {
+      "id": "P0044",
+      "text": "Retail Display",
+      "page": null
+    },
+    {
+      "id": "P0045",
+      "text": "Exhibition Stand",
+      "page": null
+    },
+    {
+      "id": "P0046",
+      "text": "Digital",
+      "page": null
+    },
+    {
+      "id": "P0047",
+      "text": "Custom (built by a PM, started only after Director approval)",
+      "page": null
+    },
+    {
+      "id": "P0048",
+      "text": "Common stage skeleton (every template maps to it, so Dashboard, Project Tracker and reports stay comparable):",
+      "page": null
+    },
+    {
+      "id": "P0049",
+      "text": "Brief",
+      "page": null
+    },
+    {
+      "id": "P0050",
+      "text": "Research / Sourcing",
+      "page": null
+    },
+    {
+      "id": "P0051",
+      "text": "Concept",
+      "page": null
+    },
+    {
+      "id": "P0052",
+      "text": "Development",
+      "page": null
+    },
+    {
+      "id": "P0053",
+      "text": "Specification",
+      "page": null
+    },
+    {
+      "id": "P0054",
+      "text": "Production & Approval",
+      "page": null
+    },
+    {
+      "id": "P0055",
+      "text": "Implementation & Acceptance",
+      "page": null
+    },
+    {
+      "id": "P0056",
+      "text": "Packaging adds stage 8 (Commercialisation); Exhibition Stand adds event and wrap-up stages. Every project ends with closing, mandatory vendor rating and archiving.",
+      "page": null
+    },
+    {
+      "id": "P0057",
+      "text": "The first field of every new project is \"Project type / Template\", because it determines everything that follows.",
+      "page": null
+    },
+    {
+      "id": "P0058",
+      "text": "Guidance for junior PMs, on every stage",
+      "page": null
+    },
+    {
+      "id": "P0059",
+      "text": "A \"What now?\" panel with three parts: Goal of this stage (one sentence), What you must do (checklist of actions), When you can move on (definition of done).",
+      "page": null
+    },
+    {
+      "id": "P0060",
+      "text": "Stage gates: \"Next Stage\" stays inactive until required fields are filled and required tasks and approvals are done. Owner or Co-owner may override with a reason (the Director is notified).",
+      "page": null
+    },
+    {
+      "id": "P0061",
+      "text": "Example answers inside fields, e.g. Target Market: \"GCC, Iraq – Kurdistan Region\".",
+      "page": null
+    },
+    {
+      "id": "P0062",
+      "text": "Backward scheduling: the PM enters the end date and Flux proposes stage deadlines from typical durations in the template, and warns when a vendor lead time does not fit.",
+      "page": null
+    },
+    {
+      "id": "P0063",
+      "text": "Mandatory approvers defined by the template cannot be removed by the PM, only extended.",
+      "page": null
+    },
+    {
+      "id": "P0064",
+      "text": "\"Ask a senior\" button: escalates to the Co-owner with the stage context.",
+      "page": null
+    },
+    {
+      "id": "P0065",
+      "text": "Starter tasks generated when a stage opens, assigned to a role (e.g. \"Owner\", \"Executor\") and editable by the Owner.",
+      "page": null
+    },
+    {
+      "id": "P0066",
+      "text": "Standard documents pre-filled with project data (section 17).",
+      "page": null
+    },
+    {
+      "id": "P0067",
+      "text": "Fixes to the current screens",
+      "page": null
+    },
+    {
+      "id": "P0068",
+      "text": "Stage 5 is called \"Final Layout\" on the overview and \"File Checklist\" on the stage page; names must come from the template and be consistent.",
+      "page": null
+    },
+    {
+      "id": "P0069",
+      "text": "The 16 checklist fields in stage 5 are specific to packaging; other templates need their own fields.",
+      "page": null
+    },
+    {
+      "id": "P0070",
+      "text": "Stage 2 shared folders must come from the template (e.g. Exhibition: Organiser Manual, Contractors, Logistics).",
+      "page": null
+    },
+    {
+      "id": "P0071",
+      "text": "Stage 1 fields \"Date\" and \"Deadline\" are unclear; rename to \"Request date\" and \"Required by / Market launch date\". Add Budget, SKU and Format fields.",
+      "page": null
+    },
+    {
+      "id": "P0072",
+      "text": "Stage 7 currently assumes physical samples only; add acceptance variants (installation report, execution photo report, user acceptance test, event report).",
+      "page": null
+    },
+    {
+      "id": "P0073",
+      "text": "3. Template 1 – Packaging (8 stages)",
+      "page": null
+    },
+    {
+      "id": "P0074",
+      "text": "The most regulated template and the model for the current Flux. Collaboration with an agency is either Direct (one agency, exclusive) or Pitch (several agencies); the switch is set in stage 1 and changes stages 2–3.",
+      "page": null
+    },
+    {
+      "id": "P0075",
+      "text": "Stage 1 – Project Inquiry (Brief)",
+      "page": null
+    },
+    {
+      "id": "P0076",
+      "text": "Goal: capture what is being made, for whom, by when and for how much.",
+      "page": null
+    },
+    {
+      "id": "P0077",
+      "text": "Data: client and final beneficiaries; brand, sub-brand, variants / SKUs; stick format (KS, Slims, Super Slims, Queens, Nano, HnB) and pack type; components (primary pack, inner frame, inner bundle foil, tipping paper, outer carton, mastercarton); target market(s); external / internal execution; Direct or Pitch; budget; request date; market launch date; priority; initial brief; key business objectives; legal notes.",
+      "page": null
+    },
+    {
+      "id": "P0078",
+      "text": "Actions: fill the form; draft Creative Brief – Packaging from the template.",
+      "page": null
+    },
+    {
+      "id": "P0079",
+      "text": "Done when: all required fields filled; brief draft exists.",
+      "page": null
+    },
+    {
+      "id": "P0080",
+      "text": "Stage 2 – Research & Planning",
+      "page": null
+    },
+    {
+      "id": "P0081",
+      "text": "Goal: know the rules and the resources before any design starts.",
+      "page": null
+    },
+    {
+      "id": "P0082",
+      "text": "Data: market regulations (health warning type and size, languages, tax stamp, track & trace, bans on fruit imagery or flavour names, tar/nicotine declaration position); competitor packs; printer capabilities and finishes; technical drawings (dielines); previous projects of the brand.",
+      "page": null
+    },
+    {
+      "id": "P0083",
+      "text": "Actions: complete the \"Market regulatory requirements\" document; collect dielines; Pitch only: Director selects participants, brief and Pitch Terms sent after Director approval, Q&A, Outline Proposals received and compared (section 13).",
+      "page": null
+    },
+    {
+      "id": "P0084",
+      "text": "Done when: regulatory document complete; brief approved by the Director and sent; Pitch: agency selected and Framework Agreement signed.",
+      "page": null
+    },
+    {
+      "id": "P0085",
+      "text": "Stage 3 – Initial Concept",
+      "page": null
+    },
+    {
+      "id": "P0086",
+      "text": "Goal: get several distinct creative directions.",
+      "page": null
+    },
+    {
+      "id": "P0087",
+      "text": "Data: numbered concepts (e.g. min. 4–6); for each: closed pack front, opened pack or HW variant as required, tipping paper; one summary page; horizontal multipage PDF.",
+      "page": null
+    },
+    {
+      "id": "P0088",
+      "text": "Actions: concept tasks per executor or agency; brief acceptance by assignee; revisions (min. 2 rounds per stage in the agency contract); shortlist.",
+      "page": null
+    },
+    {
+      "id": "P0089",
+      "text": "Done when: one or more concepts approved for development. Skippable only with Director approval.",
+      "page": null
+    },
+    {
+      "id": "P0090",
+      "text": "Stage 4 – Final Concept",
+      "page": null
+    },
+    {
+      "id": "P0091",
+      "text": "Goal: refine the chosen direction into a production-ready design.",
+      "page": null
+    },
+    {
+      "id": "P0092",
+      "text": "Data: approved concept imported from stage 3; colour variants; 3D mock-ups; all components designed.",
+      "page": null
+    },
+    {
+      "id": "P0093",
+      "text": "Done when: final concept approved. Skippable only with Director approval.",
+      "page": null
+    },
+    {
+      "id": "P0094",
+      "text": "Stage 5 – File Checklist (Specification)",
+      "page": null
+    },
+    {
+      "id": "P0095",
+      "text": "Goal: collect every piece of technical and legal information per final file.",
+      "page": null
+    },
+    {
+      "id": "P0096",
+      "text": "Data per final file: Output Name, Technical Drawing, Health Warning, Tar (mg), Nicotine (mg), Compulsory Text, Marketing Copy, Related Graphics, Printing Technology, Finishes, Barcode, Track & Trace, 3D's, Tax Stamp, QR Code, Invoice; plus dieline, colour standard (Pantone / CMYK), substrate.",
+      "page": null
+    },
+    {
+      "id": "P0097",
+      "text": "Actions: fill or \"Request\" each field from the responsible person (creates a task); check the files against the Final Artwork standard.",
+      "page": null
+    },
+    {
+      "id": "P0098",
+      "text": "Done when: all fields filled or marked \"not applicable\" with a reason.",
+      "page": null
+    },
+    {
+      "id": "P0099",
+      "text": "Stage 6 – Production & Handover",
+      "page": null
+    },
+    {
+      "id": "P0100",
+      "text": "Goal: approve the Final Artwork and hand it to production.",
+      "page": null
+    },
+    {
+      "id": "P0101",
+      "text": "Final Artwork approval chain (fixed order):",
+      "page": null
+    },
+    {
+      "id": "P0102",
+      "text": "Stakeholders approve the PDF preview, in the order set by the PM. Purchase is always in this group; Client representatives (e.g. Sales Director, NPD Lead, GM) and any other stakeholders are added as needed.",
+      "page": null
+    },
+    {
+      "id": "P0103",
+      "text": "CEO.",
+      "page": null
+    },
+    {
+      "id": "P0104",
+      "text": "All Executors of the project: technical and print check of the files.",
+      "page": null
+    },
+    {
+      "id": "P0105",
+      "text": "Director: final approval.",
+      "page": null
+    },
+    {
+      "id": "P0106",
+      "text": "On rejection, the PM chooses from which step the chain restarts after the correction; the Director sees and can change this choice.",
+      "page": null
+    },
+    {
+      "id": "P0107",
+      "text": "Final Artwork from an external vendor cannot be accepted without a signed Copyright Transfer Agreement or Framework Agreement; only the Director can override this.",
+      "page": null
+    },
+    {
+      "id": "P0108",
+      "text": "Actions: production units per final file; production files; handover (internal or external, external only to CERBER-approved vendors, Director approval for production orders).",
+      "page": null
+    },
+    {
+      "id": "P0109",
+      "text": "Done when: every production unit approved and handed over.",
+      "page": null
+    },
+    {
+      "id": "P0110",
+      "text": "Stage 7 – Implementation & Supervision",
+      "page": null
+    },
+    {
+      "id": "P0111",
+      "text": "Goal: confirm that what was produced matches what was approved.",
+      "page": null
+    },
+    {
+      "id": "P0112",
+      "text": "Data: sample rounds per production unit (pre-production sample, press check, first production sample); provider; deadline; outcome; photos.",
+      "page": null
+    },
+    {
+      "id": "P0113",
+      "text": "Actions: request samples, record outcome, sign the Acceptance Protocol.",
+      "page": null
+    },
+    {
+      "id": "P0114",
+      "text": "Done when: every production unit sample accepted.",
+      "page": null
+    },
+    {
+      "id": "P0115",
+      "text": "Stage 8 – Commercialisation (starts after stage 7 is closed)",
+      "page": null
+    },
+    {
+      "id": "P0116",
+      "text": "Goal: equip Sales with product data and a marketing toolkit.",
+      "page": null
+    },
+    {
+      "id": "P0117",
+      "text": "Product Card for Toolio (mostly pre-filled from stages 1 and 5): brand, variant, SKU, EAN codes (pack, outer, mastercarton), markets and registrations; stick length, diameter, filter type, tar / nicotine / CO per market, sticks per pack; pack type, packs per outer, outers per mastercarton, dimensions, weights, pallet configuration; price category, launch date; short description, USP, target group (adult smokers of legal age only), slogan; packshots of pack, stick, outer, mastercarton. Approved by the Owner only. Entered into Toolio manually by the Digital Lead (currently Vinu Vinayan) via a task, confirmed with \"Entered in Toolio\".",
+      "page": null
+    },
+    {
+      "id": "P0118",
+      "text": "Product Marketing Toolkit (Keynote / PowerPoint / PDF): cover; moodboard and product slogan; primary pack visualisation (front, back, sides, 3D); single tobacco stick; outer and mastercarton; 1–2 pages of concept promotional materials (Key Visual, T-shirt, plastic bag, mini stand, poster, etc.); short specification page. Concept pages carry the default note \"Concept visualisation – internal / trade use only\", which only the Director can remove. Approved by the Director only.",
+      "page": null
+    },
+    {
+      "id": "P0119",
+      "text": "Questions shown to the PM when the stage opens: new SKU or refresh (new card or update)? Full or short toolkit? Formats and languages? Deadline (e.g. distributor meeting)? Made internally or by an agency (then brief, RFP and copyright transfer apply)?",
+      "page": null
+    },
+    {
+      "id": "P0120",
+      "text": "Each concept promotional item in the toolkit can start a new project from the POSM & Promo template.",
+      "page": null
+    },
+    {
+      "id": "P0121",
+      "text": "Done when: Product Card approved and entered in Toolio; Toolkit approved by the Director. The project closes when stages 7 and 8 are complete.",
+      "page": null
+    },
+    {
+      "id": "P0122",
+      "text": "4. Template 2 – POSM & Promotional Materials (6 stages)",
+      "page": null
+    },
+    {
+      "id": "P0123",
+      "text": "One template for printed point-of-sale materials (posters, leaflets, wobblers, shelf talkers, stickers) and branded merchandise (lighters, pens, bags, ashtrays, T-shirts). A \"Material type\" switch in stage 1 changes the checklist fields and makes Sourcing mandatory for merchandise.",
+      "page": null
+    },
+    {
+      "id": "P0124",
+      "text": "Brief",
+      "page": null
+    },
+    {
+      "id": "P0125",
+      "text": "Data: material type; items and formats; languages; quantities per format / size; number of outlets; channel (duty free, retail, HoReCa, trade, event); market; purpose (campaign, event, trade gift); unit and total budget; date needed.",
+      "page": null
+    },
+    {
+      "id": "P0126",
+      "text": "Done when: brief approved; Creative Brief – General drafted.",
+      "page": null
+    },
+    {
+      "id": "P0127",
+      "text": "Research / Sourcing",
+      "page": null
+    },
+    {
+      "id": "P0128",
+      "text": "Printed POSM (optional, skippable with Director approval): outlet photos, local tobacco advertising restrictions, benchmark.",
+      "page": null
+    },
+    {
+      "id": "P0129",
+      "text": "Merchandise (mandatory): supplier catalogues, min. 3 quotes via RFP, MOQ, lead time, unit cost, sample availability; supplier chosen by the Director from CERBER-approved vendors.",
+      "page": null
+    },
+    {
+      "id": "P0130",
+      "text": "Done when: restrictions documented; for merchandise, supplier selected and order conditions agreed.",
+      "page": null
+    },
+    {
+      "id": "P0131",
+      "text": "Concept & Design (concept and development in one stage)",
+      "page": null
+    },
+    {
+      "id": "P0132",
+      "text": "Data: key visual and its adaptations to all formats; for merchandise, logo placement on the item, colours, 1–2 revision rounds.",
+      "page": null
+    },
+    {
+      "id": "P0133",
+      "text": "Done when: design approved.",
+      "page": null
+    },
+    {
+      "id": "P0134",
+      "text": "Specification",
+      "page": null
+    },
+    {
+      "id": "P0135",
+      "text": "Printed POSM: final sizes, bleed, material / substrate, finishes, quantity, mandatory texts, distribution list (how many pieces to which outlet).",
+      "page": null
+    },
+    {
+      "id": "P0136",
+      "text": "Merchandise: branding method (engraving, pad print, embroidery, sublimation, screen print), Pantone, print area, unit packaging, size split for apparel (S / M / L / XL).",
+      "page": null
+    },
+    {
+      "id": "P0137",
+      "text": "Done when: all fields filled; files meet the Final Artwork standard (print variant).",
+      "page": null
+    },
+    {
+      "id": "P0138",
+      "text": "Production & Approval",
+      "page": null
+    },
+    {
+      "id": "P0139",
+      "text": "Printed POSM: printer proof, approval chain, handover to printer.",
+      "page": null
+    },
+    {
+      "id": "P0140",
+      "text": "Merchandise: supplier visual, golden sample, approval, mass production.",
+      "page": null
+    },
+    {
+      "id": "P0141",
+      "text": "Production orders need Director approval.",
+      "page": null
+    },
+    {
+      "id": "P0142",
+      "text": "Done when: proof or golden sample approved and production ordered.",
+      "page": null
+    },
+    {
+      "id": "P0143",
+      "text": "Delivery & Execution",
+      "page": null
+    },
+    {
+      "id": "P0144",
+      "text": "Printed POSM: delivery, distribution to outlets, execution photo report (minimum number of outlet photos set in the brief).",
+      "page": null
+    },
+    {
+      "id": "P0145",
+      "text": "Merchandise: quality check of the batch, warehouse intake, issue to departments or events.",
+      "page": null
+    },
+    {
+      "id": "P0146",
+      "text": "Done when: Acceptance Protocol signed; execution report complete.",
+      "page": null
+    },
+    {
+      "id": "P0147",
+      "text": "5. Template 3 – Retail Display (7 stages)",
+      "page": null
+    },
+    {
+      "id": "P0148",
+      "text": "For shelf units and cabinets with headers, side panels, shelf talkers and shutters. Each component (structure, header, side panels, shelf talkers, shutters, lighting) is a separate production unit, and installation is tracked per outlet.",
+      "page": null
+    },
+    {
+      "id": "P0149",
+      "text": "Brief",
+      "page": null
+    },
+    {
+      "id": "P0150",
+      "text": "Data: outlet type; number of outlets; available space (W × H × D); number of shelves and facings; SKUs to display; lighting; locking / shutters; budget; market rules (e.g. product display bans); installation deadline.",
+      "page": null
+    },
+    {
+      "id": "P0151",
+      "text": "Site survey",
+      "page": null
+    },
+    {
+      "id": "P0152",
+      "text": "Data: measurements and photos per outlet; drawings of existing furniture; retailer requirements; electrical access.",
+      "page": null
+    },
+    {
+      "id": "P0153",
+      "text": "Done when: survey complete for all outlets or a representative sample approved by the Owner.",
+      "page": null
+    },
+    {
+      "id": "P0154",
+      "text": "Concept",
+      "page": null
+    },
+    {
+      "id": "P0155",
+      "text": "Data: 3D visualisations; planogram layout.",
+      "page": null
+    },
+    {
+      "id": "P0156",
+      "text": "Technical design",
+      "page": null
+    },
+    {
+      "id": "P0157",
+      "text": "Data: technical drawings, materials, construction, weight and safety, assembly method.",
+      "page": null
+    },
+    {
+      "id": "P0158",
+      "text": "Specification & graphics per component",
+      "page": null
+    },
+    {
+      "id": "P0159",
+      "text": "Data per component: graphic files, dimensions, materials, finishes, quantity; checklist per component; files meet the Final Artwork standard (large-format / display variant).",
+      "page": null
+    },
+    {
+      "id": "P0160",
+      "text": "Prototype & production",
+      "page": null
+    },
+    {
+      "id": "P0161",
+      "text": "Mandatory physical prototype, assembly test, approval chain, series production. Production order needs Director approval.",
+      "page": null
+    },
+    {
+      "id": "P0162",
+      "text": "Logistics & installation",
+      "page": null
+    },
+    {
+      "id": "P0163",
+      "text": "Data: installation schedule per outlet; outlet list with status (planned / installed / accepted / issue); installation photo report; Acceptance Protocol per outlet; warranty and service contact.",
+      "page": null
+    },
+    {
+      "id": "P0164",
+      "text": "Done when: every outlet installed and accepted, or open issues assigned as tasks.",
+      "page": null
+    },
+    {
+      "id": "P0165",
+      "text": "6. Template 4 – Exhibition Stand (8 stages)",
+      "page": null
+    },
+    {
+      "id": "P0166",
+      "text": "Driven by a fixed event date (e.g. World Tobacco Middle East, every year). The organiser's deadlines are entered as fixed milestones and the plan is built backwards from them. Related projects (merchandise, staff apparel, POSM, catering) run as separate projects linked to the stand project, with separate budgets.",
+      "page": null
+    },
+    {
+      "id": "P0167",
+      "text": "Brief",
+      "page": null
+    },
+    {
+      "id": "P0168",
+      "text": "Data: event name, dates, hall and stand number, area (m²), number of open sides, budget, objectives (leads, meetings, launches), products to display, meeting room, hospitality, staff on stand.",
+      "page": null
+    },
+    {
+      "id": "P0169",
+      "text": "Planning & organiser manual",
+      "page": null
+    },
+    {
+      "id": "P0170",
+      "text": "Data: organiser manual; organiser deadlines (stand design submission, electricity, rigging, badges, catering, freight); backward plan from the event date; last year's wrap-up report (automatically placed in the Research folder).",
+      "page": null
+    },
+    {
+      "id": "P0171",
+      "text": "Contractor selection",
+      "page": null
+    },
+    {
+      "id": "P0172",
+      "text": "Director selects the stand builders invited; RFP sent after Director approval; min. 3 offers; comparison; contract after Director approval.",
+      "page": null
+    },
+    {
+      "id": "P0173",
+      "text": "Concept & design",
+      "page": null
+    },
+    {
+      "id": "P0174",
+      "text": "Data: 3D renders, revisions, final design, technical drawings, submission to the organiser and organiser approval.",
+      "page": null
+    },
+    {
+      "id": "P0175",
+      "text": "Graphics, content & linked projects",
+      "page": null
+    },
+    {
+      "id": "P0176",
+      "text": "Data: large-format graphic files, AV content, product display plan; links to related projects.",
+      "page": null
+    },
+    {
+      "id": "P0177",
+      "text": "Build-up",
+      "page": null
+    },
+    {
+      "id": "P0178",
+      "text": "Data: on-site supervision, snag list with tasks, stand acceptance (Acceptance Protocol).",
+      "page": null
+    },
+    {
+      "id": "P0179",
+      "text": "Event",
+      "page": null
+    },
+    {
+      "id": "P0180",
+      "text": "Data: leads collected, meetings held, photo documentation, issues log.",
+      "page": null
+    },
+    {
+      "id": "P0181",
+      "text": "Dismantling & wrap-up report",
+      "page": null
+    },
+    {
+      "id": "P0182",
+      "text": "Data: dismantling, storage of reusable elements, report (cost vs budget, leads, meetings, lessons learned for next edition), vendor rating.",
+      "page": null
+    },
+    {
+      "id": "P0183",
+      "text": "Done when: report approved; it becomes input for next year's project.",
+      "page": null
+    },
+    {
+      "id": "P0184",
+      "text": "7. Template 5 – Digital (7 stages + maintenance)",
+      "page": null
+    },
+    {
+      "id": "P0185",
+      "text": "For websites and apps (e.g. tools for the Sales department). The equivalent of a physical sample is a test version, and after go-live the project continues in maintenance mode with no end date.",
+      "page": null
+    },
+    {
+      "id": "P0186",
+      "text": "Brief",
+      "page": null
+    },
+    {
+      "id": "P0187",
+      "text": "Data: purpose, users, platform (web / iOS / Android), languages, integrations, budget, compliance needs (age verification, data privacy, cookies), launch date.",
+      "page": null
+    },
+    {
+      "id": "P0188",
+      "text": "Discovery",
+      "page": null
+    },
+    {
+      "id": "P0189",
+      "text": "Data: requirements, user stories, site map, vendor selection (Director selects, RFP after Director approval).",
+      "page": null
+    },
+    {
+      "id": "P0190",
+      "text": "UX concept",
+      "page": null
+    },
+    {
+      "id": "P0191",
+      "text": "Data: wireframes, user flows.",
+      "page": null
+    },
+    {
+      "id": "P0192",
+      "text": "UI design",
+      "page": null
+    },
+    {
+      "id": "P0193",
+      "text": "Data: screen designs, design system / visual style.",
+      "page": null
+    },
+    {
+      "id": "P0194",
+      "text": "Specification & content",
+      "page": null
+    },
+    {
+      "id": "P0195",
+      "text": "Data: content inventory, texts, SEO, legal pages (privacy, terms, cookies), accounts and domains, file standard (digital variant: export formats, resolutions, asset naming).",
+      "page": null
+    },
+    {
+      "id": "P0196",
+      "text": "Build & testing",
+      "page": null
+    },
+    {
+      "id": "P0197",
+      "text": "Data: build rounds, test version, user acceptance testing with bug list as tasks, approval; the stage can repeat test rounds.",
+      "page": null
+    },
+    {
+      "id": "P0198",
+      "text": "Launch & handover",
+      "page": null
+    },
+    {
+      "id": "P0199",
+      "text": "Data: go-live, handover of accesses and documentation to IT, user training, post-launch support period.",
+      "page": null
+    },
+    {
+      "id": "P0200",
+      "text": "Done when: go-live accepted (Acceptance Protocol).",
+      "page": null
+    },
+    {
+      "id": "P0201",
+      "text": "Maintenance mode",
+      "page": null
+    },
+    {
+      "id": "P0202",
+      "text": "The project stays open without an end date; change requests and fixes are tasks; costs continue to be tracked.",
+      "page": null
+    },
+    {
+      "id": "P0203",
+      "text": "8. Template 6 – Custom",
+      "page": null
+    },
+    {
+      "id": "P0204",
+      "text": "For projects that fit none of the five templates. Any PM builds the stage list from the standard stage types (form, folders, concept tasks, checklist, approval chain and handover, samples / acceptance, event, testing, final report), with a short justification. The project starts only after Director approval. All global rules (Tasker, Director approvals, CERBER, budget, leave, vendor rating, archiving) apply unchanged.",
+      "page": null
+    },
+    {
+      "id": "P0205",
+      "text": "9. Similarities and differences",
+      "page": null
+    },
+    {
+      "id": "P0206",
+      "text": "All templates share the brief, concept, specification, approval and acceptance logic; they differ in what drives the timeline, how research is done and what \"acceptance\" means.",
+      "page": null
+    },
+    {
+      "id": "P0207",
+      "text": "Skeleton stage",
+      "page": null
+    },
+    {
+      "id": "P0208",
+      "text": "Packaging",
+      "page": null
+    },
+    {
+      "id": "P0209",
+      "text": "POSM & Promo",
+      "page": null
+    },
+    {
+      "id": "P0210",
+      "text": "Retail Display",
+      "page": null
+    },
+    {
+      "id": "P0211",
+      "text": "Exhibition Stand",
+      "page": null
+    },
+    {
+      "id": "P0212",
+      "text": "Digital",
+      "page": null
+    },
+    {
+      "id": "P0213",
+      "text": "1 Brief",
+      "page": null
+    },
+    {
+      "id": "P0214",
+      "text": "Full form",
+      "page": null
+    },
+    {
+      "id": "P0215",
+      "text": "Material-type switch",
+      "page": null
+    },
+    {
+      "id": "P0216",
+      "text": "Space and outlets",
+      "page": null
+    },
+    {
+      "id": "P0217",
+      "text": "Event data",
+      "page": null
+    },
+    {
+      "id": "P0218",
+      "text": "Users and platform",
+      "page": null
+    },
+    {
+      "id": "P0219",
+      "text": "2 Research",
+      "page": null
+    },
+    {
+      "id": "P0220",
+      "text": "Regulations; pitch if chosen",
+      "page": null
+    },
+    {
+      "id": "P0221",
+      "text": "Optional (POSM) / Sourcing mandatory (merch)",
+      "page": null
+    },
+    {
+      "id": "P0222",
+      "text": "Site survey",
+      "page": null
+    },
+    {
+      "id": "P0223",
+      "text": "Organiser manual + contractor tender",
+      "page": null
+    },
+    {
+      "id": "P0224",
+      "text": "Discovery + vendor",
+      "page": null
+    },
+    {
+      "id": "P0225",
+      "text": "3 Concept",
+      "page": null
+    },
+    {
+      "id": "P0226",
+      "text": "Initial concepts",
+      "page": null
+    },
+    {
+      "id": "P0227",
+      "text": "Concept and design merged",
+      "page": null
+    },
+    {
+      "id": "P0228",
+      "text": "3D + planogram",
+      "page": null
+    },
+    {
+      "id": "P0229",
+      "text": "3D renders",
+      "page": null
+    },
+    {
+      "id": "P0230",
+      "text": "UX",
+      "page": null
+    },
+    {
+      "id": "P0231",
+      "text": "4 Development",
+      "page": null
+    },
+    {
+      "id": "P0232",
+      "text": "Final concept",
+      "page": null
+    },
+    {
+      "id": "P0233",
+      "text": "—",
+      "page": null
+    },
+    {
+      "id": "P0234",
+      "text": "Technical drawings",
+      "page": null
+    },
+    {
+      "id": "P0235",
+      "text": "Design + organiser approval",
+      "page": null
+    },
+    {
+      "id": "P0236",
+      "text": "UI",
+      "page": null
+    },
+    {
+      "id": "P0237",
+      "text": "5 Specification",
+      "page": null
+    },
+    {
+      "id": "P0238",
+      "text": "16 tobacco-specific fields",
+      "page": null
+    },
+    {
+      "id": "P0239",
+      "text": "Formats + distribution / branding method",
+      "page": null
+    },
+    {
+      "id": "P0240",
+      "text": "Per component",
+      "page": null
+    },
+    {
+      "id": "P0241",
+      "text": "Graphics + linked projects",
+      "page": null
+    },
+    {
+      "id": "P0242",
+      "text": "Content + legal pages",
+      "page": null
+    },
+    {
+      "id": "P0243",
+      "text": "6 Production / approval",
+      "page": null
+    },
+    {
+      "id": "P0244",
+      "text": "FA chain, printer handover",
+      "page": null
+    },
+    {
+      "id": "P0245",
+      "text": "Proof / golden sample",
+      "page": null
+    },
+    {
+      "id": "P0246",
+      "text": "Prototype",
+      "page": null
+    },
+    {
+      "id": "P0247",
+      "text": "Build-up",
+      "page": null
+    },
+    {
+      "id": "P0248",
+      "text": "Testing (UAT)",
+      "page": null
+    },
+    {
+      "id": "P0249",
+      "text": "7 Acceptance",
+      "page": null
+    },
+    {
+      "id": "P0250",
+      "text": "Production samples",
+      "page": null
+    },
+    {
+      "id": "P0251",
+      "text": "Outlet photos / batch QC",
+      "page": null
+    },
+    {
+      "id": "P0252",
+      "text": "Installation per outlet",
+      "page": null
+    },
+    {
+      "id": "P0253",
+      "text": "Event + wrap-up report",
+      "page": null
+    },
+    {
+      "id": "P0254",
+      "text": "Go-live, then maintenance",
+      "page": null
+    },
+    {
+      "id": "P0255",
+      "text": "Extra",
+      "page": null
+    },
+    {
+      "id": "P0256",
+      "text": "Stage 8 Commercialisation",
+      "page": null
+    },
+    {
+      "id": "P0257",
+      "text": "—",
+      "page": null
+    },
+    {
+      "id": "P0258",
+      "text": "—",
+      "page": null
+    },
+    {
+      "id": "P0259",
+      "text": "Event and dismantling stages",
+      "page": null
+    },
+    {
+      "id": "P0260",
+      "text": "Maintenance mode",
+      "page": null
+    },
+    {
+      "id": "P0261",
+      "text": "Many components",
+      "page": null
+    },
+    {
+      "id": "P0262",
+      "text": "Sometimes",
+      "page": null
+    },
+    {
+      "id": "P0263",
+      "text": "Yes (formats)",
+      "page": null
+    },
+    {
+      "id": "P0264",
+      "text": "Yes",
+      "page": null
+    },
+    {
+      "id": "P0265",
+      "text": "Yes",
+      "page": null
+    },
+    {
+      "id": "P0266",
+      "text": "No",
+      "page": null
+    },
+    {
+      "id": "P0267",
+      "text": "Timeline driven by",
+      "page": null
+    },
+    {
+      "id": "P0268",
+      "text": "Approvals and regulation",
+      "page": null
+    },
+    {
+      "id": "P0269",
+      "text": "Campaign date / supplier lead time",
+      "page": null
+    },
+    {
+      "id": "P0270",
+      "text": "Number of outlets",
+      "page": null
+    },
+    {
+      "id": "P0271",
+      "text": "Event date",
+      "page": null
+    },
+    {
+      "id": "P0272",
+      "text": "Test rounds",
+      "page": null
+    },
+    {
+      "id": "P0273",
+      "text": "Regulatory weight",
+      "page": null
+    },
+    {
+      "id": "P0274",
+      "text": "Very high",
+      "page": null
+    },
+    {
+      "id": "P0275",
+      "text": "High",
+      "page": null
+    },
+    {
+      "id": "P0276",
+      "text": "High",
+      "page": null
+    },
+    {
+      "id": "P0277",
+      "text": "Medium",
+      "page": null
+    },
+    {
+      "id": "P0278",
+      "text": "Medium",
+      "page": null
+    },
+    {
+      "id": "P0279",
+      "text": "10. Tasker",
+      "page": null
+    },
+    {
+      "id": "P0280",
+      "text": "Tasker is available on every stage of every project. Every task is linked to a project and a stage at the moment it is created, and stays in that stage's history and in the archive forever.",
+      "page": null
+    },
+    {
+      "id": "P0281",
+      "text": "Who may assign tasks to whom (row = assigns, column = receives)",
+      "page": null
+    },
+    {
+      "id": "P0282",
+      "text": "Assigns ↓ / Receives →",
+      "page": null
+    },
+    {
+      "id": "P0283",
+      "text": "Owner",
+      "page": null
+    },
+    {
+      "id": "P0284",
+      "text": "Co-owner",
+      "page": null
+    },
+    {
+      "id": "P0285",
+      "text": "Executor",
+      "page": null
+    },
+    {
+      "id": "P0286",
+      "text": "Collaborator",
+      "page": null
+    },
+    {
+      "id": "P0287",
+      "text": "Owner",
+      "page": null
+    },
+    {
+      "id": "P0288",
+      "text": "Yes",
+      "page": null
+    },
+    {
+      "id": "P0289",
+      "text": "Yes",
+      "page": null
+    },
+    {
+      "id": "P0290",
+      "text": "Yes",
+      "page": null
+    },
+    {
+      "id": "P0291",
+      "text": "Yes",
+      "page": null
+    },
+    {
+      "id": "P0292",
+      "text": "Co-owner",
+      "page": null
+    },
+    {
+      "id": "P0293",
+      "text": "Yes",
+      "page": null
+    },
+    {
+      "id": "P0294",
+      "text": "Yes",
+      "page": null
+    },
+    {
+      "id": "P0295",
+      "text": "Yes",
+      "page": null
+    },
+    {
+      "id": "P0296",
+      "text": "Yes",
+      "page": null
+    },
+    {
+      "id": "P0297",
+      "text": "Executor",
+      "page": null
+    },
+    {
+      "id": "P0298",
+      "text": "Yes",
+      "page": null
+    },
+    {
+      "id": "P0299",
+      "text": "Yes",
+      "page": null
+    },
+    {
+      "id": "P0300",
+      "text": "Yes, with automatic copy to all Owners and Co-owners",
+      "page": null
+    },
+    {
+      "id": "P0301",
+      "text": "No",
+      "page": null
+    },
+    {
+      "id": "P0302",
+      "text": "Collaborator",
+      "page": null
+    },
+    {
+      "id": "P0303",
+      "text": "Yes",
+      "page": null
+    },
+    {
+      "id": "P0304",
+      "text": "Yes",
+      "page": null
+    },
+    {
+      "id": "P0305",
+      "text": "No",
+      "page": null
+    },
+    {
+      "id": "P0306",
+      "text": "No",
+      "page": null
+    },
+    {
+      "id": "P0307",
+      "text": "The Director can assign to anyone. Assigning upwards in the hierarchy is allowed.",
+      "page": null
+    },
+    {
+      "id": "P0308",
+      "text": "Task content",
+      "page": null
+    },
+    {
+      "id": "P0309",
+      "text": "Required: title, assignee, project, stage, deadline.",
+      "page": null
+    },
+    {
+      "id": "P0310",
+      "text": "Optional: description, unlimited attachments and images, link to a specific item in the stage (a checklist field, a production unit, a sample, a folder, an approval step), flag \"Blocks the stage\".",
+      "page": null
+    },
+    {
+      "id": "P0311",
+      "text": "Created inside a stage: stage is set automatically. Created from \"My tasks\" or Project Tracker: project and stage must be chosen.",
+      "page": null
+    },
+    {
+      "id": "P0312",
+      "text": "Tasks may be created for future, still-locked stages; they wait as \"Planned\" and activate when the stage opens.",
+      "page": null
+    },
+    {
+      "id": "P0313",
+      "text": "Task types (one task engine, one \"My tasks\" list, one set of notifications)",
+      "page": null
+    },
+    {
+      "id": "P0314",
+      "text": "Standard task.",
+      "page": null
+    },
+    {
+      "id": "P0315",
+      "text": "Creative task (concept): brief, brief acceptance, revisions, files, history.",
+      "page": null
+    },
+    {
+      "id": "P0316",
+      "text": "Data or file request: created by the \"Request\" button on a checklist field; closes when the field is filled.",
+      "page": null
+    },
+    {
+      "id": "P0317",
+      "text": "Approval task: yes / no decision in an approval chain.",
+      "page": null
+    },
+    {
+      "id": "P0318",
+      "text": "Sample / acceptance task.",
+      "page": null
+    },
+    {
+      "id": "P0319",
+      "text": "Lifecycle",
+      "page": null
+    },
+    {
+      "id": "P0320",
+      "text": "New: assignee is notified.",
+      "page": null
+    },
+    {
+      "id": "P0321",
+      "text": "In progress: comments and files.",
+      "page": null
+    },
+    {
+      "id": "P0322",
+      "text": "Done: marked by the assignee.",
+      "page": null
+    },
+    {
+      "id": "P0323",
+      "text": "Verified (optional): the assigner confirms or sends back.",
+      "page": null
+    },
+    {
+      "id": "P0324",
+      "text": "A task cannot be refused. The assignee can only comment or request a new deadline. Forwarding is allowed only within the matrix above, and the full path is kept. Overdue tasks change colour and the Owner is notified.",
+      "page": null
+    },
+    {
+      "id": "P0325",
+      "text": "Tasks and stage completion",
+      "page": null
+    },
+    {
+      "id": "P0326",
+      "text": "\"Next Stage\" shows open tasks of the stage.",
+      "page": null
+    },
+    {
+      "id": "P0327",
+      "text": "A task flagged \"Blocks the stage\" must be done before the stage closes, unless Owner or Co-owner overrides with a reason.",
+      "page": null
+    },
+    {
+      "id": "P0328",
+      "text": "Other open tasks can be closed, moved to the next stage or left open with a warning.",
+      "page": null
+    },
+    {
+      "id": "P0329",
+      "text": "Visibility and calendar",
+      "page": null
+    },
+    {
+      "id": "P0330",
+      "text": "A task is visible to the assigner, the assignee, the Owner and the Co-owners; Collaborators see only their own tasks.",
+      "page": null
+    },
+    {
+      "id": "P0331",
+      "text": "Notifications on assignment, approaching deadline, overdue and completion.",
+      "page": null
+    },
+    {
+      "id": "P0332",
+      "text": "Deadlines appear automatically in Calendar.",
+      "page": null
+    },
+    {
+      "id": "P0333",
+      "text": "11. Attachments and images",
+      "page": null
+    },
+    {
+      "id": "P0334",
+      "text": "Images and files can be attached without limit on the number of files, everywhere: every stage, every form and checklist field, every approval step, every task, every comment, every revision, sample, handover and acceptance protocol.",
+      "page": null
+    },
+    {
+      "id": "P0335",
+      "text": "Viewed directly: JPG, PNG, WEBP, GIF, SVG, HEIC (phone photos), PDF.",
+      "page": null
+    },
+    {
+      "id": "P0336",
+      "text": "Viewed through an automatic preview image: TIFF, PSD, AI, EPS, RAW camera files.",
+      "page": null
+    },
+    {
+      "id": "P0337",
+      "text": "All other files: accepted and downloadable.",
+      "page": null
+    },
+    {
+      "id": "P0338",
+      "text": "Adding files: drag and drop, several files or whole folders at once, paste from clipboard (e.g. a screenshot into a comment), photo from a phone camera (installation, stand build-up, sample acceptance).",
+      "page": null
+    },
+    {
+      "id": "P0339",
+      "text": "Working with images: full-screen gallery; comments pinned to a spot on the image (\"move the logo here\"); side-by-side and slider comparison of versions; a new file with the same name becomes a new version, not a duplicate.",
+      "page": null
+    },
+    {
+      "id": "P0340",
+      "text": "Order and security: every file records project, stage, task, author and date; everything goes to Archives on closure; search \"all images of this project\"; access only via time-limited links; private-folder files visible only to their owner.",
+      "page": null
+    },
+    {
+      "id": "P0341",
+      "text": "Very large single files (open packaging files, stand videos) must be supported; the exact size limit is to be agreed with the development team.",
+      "page": null
+    },
+    {
+      "id": "P0342",
+      "text": "12. External communication and Director approval",
+      "page": null
+    },
+    {
+      "id": "P0343",
+      "text": "A junior cannot send a brief, an RFP or any commitment to a vendor. Flux only sends such items after the Director approves the exact version.",
+      "page": null
+    },
+    {
+      "id": "P0344",
+      "text": "Needs Director approval before it leaves Flux",
+      "page": null
+    },
+    {
+      "id": "P0345",
+      "text": "Opening documents: Creative Briefs (Direct and Pitch), RFPs, Pitch Terms, invitations, and every new version of them.",
+      "page": null
+    },
+    {
+      "id": "P0346",
+      "text": "Contracts and money: Framework Agreements, Copyright Transfer Agreements, acceptance of an offer, production orders, handover to printer / producer, invoice approval.",
+      "page": null
+    },
+    {
+      "id": "P0347",
+      "text": "Handled by the Owner without Director approval",
+      "page": null
+    },
+    {
+      "id": "P0348",
+      "text": "Day-to-day communication in a running project: feedback, revision comments, sample requests, questions.",
+      "page": null
+    },
+    {
+      "id": "P0349",
+      "text": "How it works",
+      "page": null
+    },
+    {
+      "id": "P0350",
+      "text": "The PM prepares the item and clicks \"Send for approval\". The PM never sees a \"Send to vendor\" button.",
+      "page": null
+    },
+    {
+      "id": "P0351",
+      "text": "The Director receives an approval task with the document, the recipient list and the attachments, and chooses: Approve and send / Return with comments / Reject.",
+      "page": null
+    },
+    {
+      "id": "P0352",
+      "text": "Approval covers one exact version. Any change to text, recipients or attachments cancels it.",
+      "page": null
+    },
+    {
+      "id": "P0353",
+      "text": "On approval Flux sends the item to the approved recipients via time-limited links.",
+      "page": null
+    },
+    {
+      "id": "P0354",
+      "text": "History records who prepared, who approved, when, which version and to whom it went.",
+      "page": null
+    },
+    {
+      "id": "P0355",
+      "text": "Until approved, the document carries a \"DRAFT – NOT APPROVED\" watermark and cannot be downloaded in its vendor version.",
+      "page": null
+    },
+    {
+      "id": "P0356",
+      "text": "If the Director is absent, the deputy named in the Leave module (section 16) approves instead for the absence period.",
+      "page": null
+    },
+    {
+      "id": "P0357",
+      "text": "13. Creative pitch process",
+      "page": null
+    },
+    {
+      "id": "P0358",
+      "text": "The pitch is a creative competition, not a commercial tender: the main criterion is the uniqueness of the concepts against the brief's objectives. It runs inside stages 2–3 of the Packaging template and can be used by any template.",
+      "page": null
+    },
+    {
+      "id": "P0359",
+      "text": "Participant selection: the Director decides how many and which vendors, manually. Only vendors with CERBER status \"Approved\". A junior may suggest names; the list is frozen after Director approval.",
+      "page": null
+    },
+    {
+      "id": "P0360",
+      "text": "Brief + Pitch Terms sent after Director approval of the exact version. Each vendor confirms acceptance of the Pitch Terms (date and document version recorded).",
+      "page": null
+    },
+    {
+      "id": "P0361",
+      "text": "Q&A: optional 30-minute session per vendor; notes stored in the Pitch folder.",
+      "page": null
+    },
+    {
+      "id": "P0362",
+      "text": "Outline Proposal submitted as a structured form, not a free PDF: process and budget per stage; deliverables per stage; revision rounds per stage (min. 2); copyright fee as % of total (max. 5%); timeline per stage in working days from GTI debrief; Rejection Fee (max. 0.5% of total, or a lower declared amount); currency (USD). Flux checks these limits and builds a side-by-side comparison of all proposals.",
+      "page": null
+    },
+    {
+      "id": "P0363",
+      "text": "Preliminary acceptance of proposals. Only then are graphic assets and reference materials released to that vendor.",
+      "page": null
+    },
+    {
+      "id": "P0364",
+      "text": "Concepts delivered per the Stage 01 Deliverables checklist of the brief; PDF by email and/or a 45-minute live presentation (online or at GTI Dubai office, travel at vendor's cost).",
+      "page": null
+    },
+    {
+      "id": "P0365",
+      "text": "One revision round before the decision, covered by the Rejection Fee.",
+      "page": null
+    },
+    {
+      "id": "P0366",
+      "text": "Winner decision is taken outside Flux by 4–5 GTI stakeholders; the Director records the winner and the justification in Flux.",
+      "page": null
+    },
+    {
+      "id": "P0367",
+      "text": "Winner: Framework Agreement to be signed within 5 days; this blocks the exclusive phase. Other vendors get a task to settle their Rejection Fee.",
+      "page": null
+    },
+    {
+      "id": "P0368",
+      "text": "Exclusive phase: stages 4–5 continue as in a Direct project.",
+      "page": null
+    },
+    {
+      "id": "P0369",
+      "text": "The default values (5%, 0.5%, 21 days, USD, 30 min, 45 min, 5 days) are set in the template; the PM may change them only with Director approval.",
+      "page": null
+    },
+    {
+      "id": "P0370",
+      "text": "14. Vendors, CERBER and databases",
+      "page": null
+    },
+    {
+      "id": "P0371",
+      "text": "Flux works only with vendors approved in CERBER, GTI's self-service vendor registration and verification platform. Without status \"Approved\" Flux sends no document to a vendor.",
+      "page": null
+    },
+    {
+      "id": "P0372",
+      "text": "CERBER flow",
+      "page": null
+    },
+    {
+      "id": "P0373",
+      "text": "Vendor registers in CERBER: company data, registration documents, trade licence, service categories, portfolio, references.",
+      "page": null
+    },
+    {
+      "id": "P0374",
+      "text": "CERBER checks automatically: completeness, licence validity, sanctions and compliance checks, acceptance of General Pitch Terms and NDA.",
+      "page": null
+    },
+    {
+      "id": "P0375",
+      "text": "Status \"Approved\" is granted by the Director after the automatic checks. Other statuses: Registered, Verified, Rejected, Suspended (e.g. expired licence).",
+      "page": null
+    },
+    {
+      "id": "P0376",
+      "text": "The vendor record appears in the Flux Vendors database.",
+      "page": null
+    },
+    {
+      "id": "P0377",
+      "text": "A vendor not yet in CERBER can be invited from Flux; the project can continue, but no document can be sent to that vendor until approved.",
+      "page": null
+    },
+    {
+      "id": "P0378",
+      "text": "Databases (project fields Client, Vendor and Collaborator are chosen only from these; \"Add manually\" creates a new record)",
+      "page": null
+    },
+    {
+      "id": "P0379",
+      "text": "Database",
+      "page": null
+    },
+    {
+      "id": "P0380",
+      "text": "Content",
+      "page": null
+    },
+    {
+      "id": "P0381",
+      "text": "Clients",
+      "page": null
+    },
+    {
+      "id": "P0382",
+      "text": "Name; type (internal market, distributor, retail chain, other); country / market; contact persons; registration data; brands and SKUs concerned; project history; documents (contracts, NDA)",
+      "page": null
+    },
+    {
+      "id": "P0383",
+      "text": "Vendors",
+      "page": null
+    },
+    {
+      "id": "P0384",
+      "text": "CERBER data and status; service categories (matching the templates); markets served; contacts; certificates; commercial terms; signed documents with dates and versions (Pitch Terms, NDA, Framework Agreement, Copyright Transfer); project, RFP and offer history; ratings",
+      "page": null
+    },
+    {
+      "id": "P0385",
+      "text": "Internal Collaborators",
+      "page": null
+    },
+    {
+      "id": "P0386",
+      "text": "Department; role; competence (e.g. \"approves GCC regulations\"); deputies; availability from the Leave module; link to user account",
+      "page": null
+    },
+    {
+      "id": "P0387",
+      "text": "Mandatory vendor rating at project closure",
+      "page": null
+    },
+    {
+      "id": "P0388",
+      "text": "Given separately by the Owner, the Co-owner and the Director.",
+      "page": null
+    },
+    {
+      "id": "P0389",
+      "text": "Criteria: quality, timeliness, price, communication.",
+      "page": null
+    },
+    {
+      "id": "P0390",
+      "text": "The project cannot be closed without all three ratings for every vendor involved.",
+      "page": null
+    },
+    {
+      "id": "P0391",
+      "text": "15. Budget and costs",
+      "page": null
+    },
+    {
+      "id": "P0392",
+      "text": "Every project has a planned budget and tracks actual costs per vendor. Amounts are visible only to the Owner and Co-owner of that project; the Director sees all costs in all projects. CEO, Purchase, Executors, Collaborators and vendors do not see amounts in Flux.",
+      "page": null
+    },
+    {
+      "id": "P0393",
+      "text": "Planned budget: entered in stage 1 (total, optionally split per stage or component).",
+      "page": null
+    },
+    {
+      "id": "P0394",
+      "text": "Offers: amounts from Outline Proposals and RFP answers, per vendor.",
+      "page": null
+    },
+    {
+      "id": "P0395",
+      "text": "Commitments: accepted offers and production orders (each approved by the Director).",
+      "page": null
+    },
+    {
+      "id": "P0396",
+      "text": "Actual costs: invoices per vendor (approved by the Director), including Rejection Fees in pitches.",
+      "page": null
+    },
+    {
+      "id": "P0397",
+      "text": "Alerts: to Owner, Co-owner and Director when commitments or actual costs exceed the budget.",
+      "page": null
+    },
+    {
+      "id": "P0398",
+      "text": "Closure: cost vs budget summary stored with the project in Archives.",
+      "page": null
+    },
+    {
+      "id": "P0399",
+      "text": "Linked projects (e.g. stand and its merchandise) keep separate budgets.",
+      "page": null
+    },
+    {
+      "id": "P0400",
+      "text": "16. Leave and absence module",
+      "page": null
+    },
+    {
+      "id": "P0401",
+      "text": "Every participant (GTI staff and vendors with an active project) keeps their planned absences in Flux, so deadlines, approvals and deputies can be planned.",
+      "page": null
+    },
+    {
+      "id": "P0402",
+      "text": "Two absence types: main leave (1–2 weeks) and short leave (1–3 days), each with exact start and end dates.",
+      "page": null
+    },
+    {
+      "id": "P0403",
+      "text": "Automatic request: on the 1st and the 15th of every month; if that day is a weekend, on the next working day (Monday–Friday). Question: \"Please enter your planned absences or confirm you have none.\"",
+      "page": null
+    },
+    {
+      "id": "P0404",
+      "text": "No reply is not tolerated: a daily reminder for 3 working days; after that the user cannot work in Flux until they answer. Access returns immediately after a valid answer (dates entered, or \"No planned absence\" confirmed).",
+      "page": null
+    },
+    {
+      "id": "P0405",
+      "text": "Director absence: the Director must name a deputy for the absence period; the deputy holds the Director's approval rights only for those dates, and every approval shows \"approved as deputy\".",
+      "page": null
+    },
+    {
+      "id": "P0406",
+      "text": "Use in projects: absences are shown in Calendar and when assigning tasks, approvers or deadlines; Flux warns when a deadline or approval step falls in someone's absence.",
+      "page": null
+    },
+    {
+      "id": "P0407",
+      "text": "17. Document library",
+      "page": null
+    },
+    {
+      "id": "P0408",
+      "text": "Every standard document is a template pre-filled with project data (name, owner, market, dates, budget, vendor from the database). The PM completes only what Flux does not know. Each document has versions and a status (Draft → For approval → Approved → Signed) and is stored in the stage folder. The legal documents (Pitch Terms, Framework Agreement, Copyright Transfer Agreement) must be finalised by GTI's lawyer.",
+      "page": null
+    },
+    {
+      "id": "P0409",
+      "text": "Document",
+      "page": null
+    },
+    {
+      "id": "P0410",
+      "text": "Used in",
+      "page": null
+    },
+    {
+      "id": "P0411",
+      "text": "Stage",
+      "page": null
+    },
+    {
+      "id": "P0412",
+      "text": "Creative Brief – General",
+      "page": null
+    },
+    {
+      "id": "P0413",
+      "text": "POSM & Promo, Display, Stand, Digital",
+      "page": null
+    },
+    {
+      "id": "P0414",
+      "text": "1, sent in 2–3",
+      "page": null
+    },
+    {
+      "id": "P0415",
+      "text": "Creative Brief – Packaging (Direct / Pitch)",
+      "page": null
+    },
+    {
+      "id": "P0416",
+      "text": "Packaging",
+      "page": null
+    },
+    {
+      "id": "P0417",
+      "text": "1, sent in 2",
+      "page": null
+    },
+    {
+      "id": "P0418",
+      "text": "RFP to Vendor",
+      "page": null
+    },
+    {
+      "id": "P0419",
+      "text": "All",
+      "page": null
+    },
+    {
+      "id": "P0420",
+      "text": "2",
+      "page": null
+    },
+    {
+      "id": "P0421",
+      "text": "General Pitch Terms",
+      "page": null
+    },
+    {
+      "id": "P0422",
+      "text": "Any pitch",
+      "page": null
+    },
+    {
+      "id": "P0423",
+      "text": "2",
+      "page": null
+    },
+    {
+      "id": "P0424",
+      "text": "Framework Agreement / Copyright Transfer Agreement",
+      "page": null
+    },
+    {
+      "id": "P0425",
+      "text": "Any external creative work",
+      "page": null
+    },
+    {
+      "id": "P0426",
+      "text": "Before exclusive work; checked before FA acceptance",
+      "page": null
+    },
+    {
+      "id": "P0427",
+      "text": "Acceptance Protocol",
+      "page": null
+    },
+    {
+      "id": "P0428",
+      "text": "All",
+      "page": null
+    },
+    {
+      "id": "P0429",
+      "text": "7",
+      "page": null
+    },
+    {
+      "id": "P0430",
+      "text": "Final Artwork File Standard",
+      "page": null
+    },
+    {
+      "id": "P0431",
+      "text": "Packaging, POSM & Promo, Display, Stand, Digital",
+      "page": null
+    },
+    {
+      "id": "P0432",
+      "text": "Attached to brief and RFP; checked in 5",
+      "page": null
+    },
+    {
+      "id": "P0433",
+      "text": "Product Card (Toolio) and Product Marketing Toolkit",
+      "page": null
+    },
+    {
+      "id": "P0434",
+      "text": "Packaging",
+      "page": null
+    },
+    {
+      "id": "P0435",
+      "text": "8",
+      "page": null
+    },
+    {
+      "id": "P0436",
+      "text": "Creative Brief – General",
+      "page": null
+    },
+    {
+      "id": "P0437",
+      "text": "Header: date, brand, project, client.",
+      "page": null
+    },
+    {
+      "id": "P0438",
+      "text": "Background and business problem.",
+      "page": null
+    },
+    {
+      "id": "P0439",
+      "text": "Objective and success measures.",
+      "page": null
+    },
+    {
+      "id": "P0440",
+      "text": "Target group (adult smokers of legal age only), market, channel.",
+      "page": null
+    },
+    {
+      "id": "P0441",
+      "text": "Deliverables with formats and quantities.",
+      "page": null
+    },
+    {
+      "id": "P0442",
+      "text": "Mandatory elements: brand rules, compulsory texts, local tobacco advertising restrictions.",
+      "page": null
+    },
+    {
+      "id": "P0443",
+      "text": "Budget range, timeline, milestones.",
+      "page": null
+    },
+    {
+      "id": "P0444",
+      "text": "Expected presentation format and number of concepts.",
+      "page": null
+    },
+    {
+      "id": "P0445",
+      "text": "Collaboration mode: Direct (scope and quotation) or Pitch (Pitch Terms attached).",
+      "page": null
+    },
+    {
+      "id": "P0446",
+      "text": "Legal note on licensed elements (fixed text).",
+      "page": null
+    },
+    {
+      "id": "P0447",
+      "text": "Final Artwork File Standard (attached).",
+      "page": null
+    },
+    {
+      "id": "P0448",
+      "text": "Contacts and approval rules.",
+      "page": null
+    },
+    {
+      "id": "P0449",
+      "text": "Creative Brief – Packaging (Direct / Pitch)",
+      "page": null
+    },
+    {
+      "id": "P0450",
+      "text": "One template; the Direct / Pitch switch changes section 10 and attaches the Pitch Terms.",
+      "page": null
+    },
+    {
+      "id": "P0451",
+      "text": "Header: date, brand, sub-brand, format, products / SKUs, client.",
+      "page": null
+    },
+    {
+      "id": "P0452",
+      "text": "Project overview: business background, market, reason for the project.",
+      "page": null
+    },
+    {
+      "id": "P0453",
+      "text": "Packaging and stick format: stick size, pack type and dimensions, list of components (from the GTI format library).",
+      "page": null
+    },
+    {
+      "id": "P0454",
+      "text": "Big idea / positioning: communication platform (e.g. inside or outside Milano Travelling), price segment, competitors.",
+      "page": null
+    },
+    {
+      "id": "P0455",
+      "text": "The product: blend, filter, capsule or infused flavour, allowed icons per SKU (e.g. Aroma Protect™ on flavoured variants only).",
+      "page": null
+    },
+    {
+      "id": "P0456",
+      "text": "Future portfolio: possible later variants; the quotation covers the current scope only.",
+      "page": null
+    },
+    {
+      "id": "P0457",
+      "text": "Consumer insight: adult smokers of legal age only.",
+      "page": null
+    },
+    {
+      "id": "P0458",
+      "text": "Key design considerations: logotype use, colour guidelines, naming structure, flavour visualisation, tipping paper, finishes.",
+      "page": null
+    },
+    {
+      "id": "P0459",
+      "text": "Regulatory block per market: health warning types (e.g. British side HW, 50% bottom front HW), tar / nicotine position, banned elements (fruit imagery, full flavour names, capsule-like shapes).",
+      "page": null
+    },
+    {
+      "id": "P0460",
+      "text": "Stage 01 deliverables: number of concepts, views per concept, numbering, summary page, horizontal multipage PDF, product shown large enough for laptop full-screen review. Written once only.",
+      "page": null
+    },
+    {
+      "id": "P0461",
+      "text": "Direct: scope, stages, quotation, timeline. Pitch: Creative Pitch Approach + Pitch Terms.",
+      "page": null
+    },
+    {
+      "id": "P0462",
+      "text": "Legal note: no licensed, sublicensed or rented visual or typographic elements.",
+      "page": null
+    },
+    {
+      "id": "P0463",
+      "text": "Final Artwork requirements (reference to the File Standard).",
+      "page": null
+    },
+    {
+      "id": "P0464",
+      "text": "Optional annex: stick and pack formats overview with dimensions.",
+      "page": null
+    },
+    {
+      "id": "P0465",
+      "text": "Contacts.",
+      "page": null
+    },
+    {
+      "id": "P0466",
+      "text": "Automatic checks before the brief goes for approval: SKU list in the header matches the deliverables list; variant names chosen from the SKU list (no typos); format data taken from one library (no conflicting dimensions); file name built from the send date; deliverables appear once; a Direct brief contains no pitch clause and vice versa.",
+      "page": null
+    },
+    {
+      "id": "P0467",
+      "text": "RFP to Vendor",
+      "page": null
+    },
+    {
+      "id": "P0468",
+      "text": "Description of the order and specification (from stage 5 or the brief).",
+      "page": null
+    },
+    {
+      "id": "P0469",
+      "text": "Quantities, deadlines, delivery address.",
+      "page": null
+    },
+    {
+      "id": "P0470",
+      "text": "Required in the offer: unit and total price, MOQ, lead time, payment terms, samples, warranty.",
+      "page": null
+    },
+    {
+      "id": "P0471",
+      "text": "Selection criteria and their weights.",
+      "page": null
+    },
+    {
+      "id": "P0472",
+      "text": "Deadline for offers and Q&A channel.",
+      "page": null
+    },
+    {
+      "id": "P0473",
+      "text": "Reference to General Pitch Terms and to the CERBER approval requirement.",
+      "page": null
+    },
+    {
+      "id": "P0474",
+      "text": "Offers are entered into Flux as a structured comparison table.",
+      "page": null
+    },
+    {
+      "id": "P0475",
+      "text": "General Pitch Terms",
+      "page": null
+    },
+    {
+      "id": "P0476",
+      "text": "Values in brackets are template defaults; the PM may change them only with Director approval.",
+      "page": null
+    },
+    {
+      "id": "P0477",
+      "text": "A. Outline Proposal must include: process and budget per stage; deliverables per stage; min. [2] revision rounds per stage; copyright fee max. [5%] of total budget, the rest being design fee, with copyright granted without restriction (territory, time, circulation, right to modify); timeline per stage in working days from each GTI debrief; Rejection Fee max. [0.5%] of total budget or a lower declared amount; all prices in [USD].",
+      "page": null
+    },
+    {
+      "id": "P0478",
+      "text": "B. Access to creative materials: assets shared only after the proposal is accepted.",
+      "page": null
+    },
+    {
+      "id": "P0479",
+      "text": "C. Right to reject: GTI may reject any proposal, price, condition or concept without justification.",
+      "page": null
+    },
+    {
+      "id": "P0480",
+      "text": "D. Pitch-phase revisions: [1] round before the decision, within the Rejection Fee.",
+      "page": null
+    },
+    {
+      "id": "P0481",
+      "text": "E. Winner selection: group decision of [4–5] GTI stakeholders; only the winner receives full Stage 01 compensation.",
+      "page": null
+    },
+    {
+      "id": "P0482",
+      "text": "F. Compliance with deliverables: incomplete work must be completed or revised at no extra cost.",
+      "page": null
+    },
+    {
+      "id": "P0483",
+      "text": "G. Changes or cancellation: GTI may change the announcement date or declare the pitch void.",
+      "page": null
+    },
+    {
+      "id": "P0484",
+      "text": "H. Invoicing and payment: [21] calendar days from a correct invoice; bank charges split 50/50; GTI does not cover the agency's local charges.",
+      "page": null
+    },
+    {
+      "id": "P0485",
+      "text": "I. Legal documentation: company registration and authorised representatives, no later than the Outline Proposal (fulfilled through CERBER).",
+      "page": null
+    },
+    {
+      "id": "P0486",
+      "text": "J. Q&A: optional [30]-minute session.",
+      "page": null
+    },
+    {
+      "id": "P0487",
+      "text": "K. Creative work timing: no creative work before preliminary acceptance of the proposal.",
+      "page": null
+    },
+    {
+      "id": "P0488",
+      "text": "L. Submission format: PDF by email and/or a [45]-minute live presentation, online or at GTI Dubai office, travel at the agency's cost.",
+      "page": null
+    },
+    {
+      "id": "P0489",
+      "text": "M. Final note: GTI may add requirements during negotiations.",
+      "page": null
+    },
+    {
+      "id": "P0490",
+      "text": "N. Winning agency: signs the Framework Agreement within [5] days of selection, before the exclusive phase; is added to the GTI Vendors Shortlist; transfers full, unlimited copyrights including the right to modify.",
+      "page": null
+    },
+    {
+      "id": "P0491",
+      "text": "O. Licensed items: such elements must be replaced by original work owned outright; no licence, sublicence or rental of visual or typographic elements (GTI protects the packaging as a whole under international trademark law and the Madrid Protocol); the agency may not buy licences itself; a breach is a breach of the Pitch Terms and the Framework Agreement.",
+      "page": null
+    },
+    {
+      "id": "P0492",
+      "text": "Framework Agreement / Copyright Transfer Agreement",
+      "page": null
+    },
+    {
+      "id": "P0493",
+      "text": "Parties.",
+      "page": null
+    },
+    {
+      "id": "P0494",
+      "text": "List of works (generated from files approved in Flux).",
+      "page": null
+    },
+    {
+      "id": "P0495",
+      "text": "Fields of use, territory, duration, exclusivity, right to modify, derivative rights.",
+      "page": null
+    },
+    {
+      "id": "P0496",
+      "text": "Fee (copyright share per Pitch Terms), waiver of moral rights where the law allows.",
+      "page": null
+    },
+    {
+      "id": "P0497",
+      "text": "Author's warranties: no third-party rights infringed, no licensed fonts or stock images.",
+      "page": null
+    },
+    {
+      "id": "P0498",
+      "text": "Final Artwork from an external vendor cannot be accepted until this is signed; only the Director can override.",
+      "page": null
+    },
+    {
+      "id": "P0499",
+      "text": "Acceptance Protocol",
+      "page": null
+    },
+    {
+      "id": "P0500",
+      "text": "Project, stage, production unit or outlet.",
+      "page": null
+    },
+    {
+      "id": "P0501",
+      "text": "What was received, with quantities.",
+      "page": null
+    },
+    {
+      "id": "P0502",
+      "text": "Compliance with the specification (checklist generated from stage 5).",
+      "page": null
+    },
+    {
+      "id": "P0503",
+      "text": "Remarks and defects.",
+      "page": null
+    },
+    {
+      "id": "P0504",
+      "text": "Decision: accepted / accepted with remarks (with a fix deadline) / rejected.",
+      "page": null
+    },
+    {
+      "id": "P0505",
+      "text": "Photos; confirmation by both parties in Flux.",
+      "page": null
+    },
+    {
+      "id": "P0506",
+      "text": "Variants: production sample (Packaging), batch QC (Promo), outlet installation (Display), stand acceptance (Stand), go-live (Digital).",
+      "page": null
+    },
+    {
+      "id": "P0507",
+      "text": "Final Artwork File Standard (base + variants)",
+      "page": null
+    },
+    {
+      "id": "P0508",
+      "text": "Base (all printed work):",
+      "page": null
+    },
+    {
+      "id": "P0509",
+      "text": "Fully layered, editable files; images embedded in the AI file, not linked, checked by the agency before submission.",
+      "page": null
+    },
+    {
+      "id": "P0510",
+      "text": "Min. 300 dpi; key visual scalable to min. A3 at 300 dpi.",
+      "page": null
+    },
+    {
+      "id": "P0511",
+      "text": "Image components in PSD only (no JPG or PNG); every image element and every drop shadow on its own layer.",
+      "page": null
+    },
+    {
+      "id": "P0512",
+      "text": "All typefaces editable, not outlined, including variant names, sub-brands, straplines and mandatory legal texts.",
+      "page": null
+    },
+    {
+      "id": "P0513",
+      "text": "Colour specification in CMYK and Pantone, with finishes described so that any printer can reproduce them; white and varnish on separate layers.",
+      "page": null
+    },
+    {
+      "id": "P0514",
+      "text": "Bleed, safety margins and dieline on its own layer.",
+      "page": null
+    },
+    {
+      "id": "P0515",
+      "text": "File naming: PROJECT_SKU_MARKET_ELEMENT_vXX_DATE; defined hand-over folder structure with a PDF preview.",
+      "page": null
+    },
+    {
+      "id": "P0516",
+      "text": "Variants: Packaging (dieline per component, tipping paper height, foil distance from edges); Large-format / Display / Stand (scale, material-specific resolution, component naming); Merchandise (vector logo per branding method, print-area template from supplier); Digital (export formats, resolutions, asset naming).",
+      "page": null
+    },
+    {
+      "id": "P0517",
+      "text": "18. Open points",
+      "page": null
+    },
+    {
+      "id": "P0518",
+      "text": "☐ Field lists, checklists and \"What now?\" texts for every stage of templates 2–5 at the same level of detail as Packaging.",
+      "page": null
+    },
+    {
+      "id": "P0519",
+      "text": "☐ Typical stage durations per template, for backward scheduling.",
+      "page": null
+    },
+    {
+      "id": "P0520",
+      "text": "☐ Starter tasks per stage and template.",
+      "page": null
+    },
+    {
+      "id": "P0521",
+      "text": "☐ Legal review of Pitch Terms, Framework Agreement and Copyright Transfer Agreement.",
+      "page": null
+    },
+    {
+      "id": "P0522",
+      "text": "☐ CERBER: re-verification frequency, and which system holds the master vendor data.",
+      "page": null
+    },
+    {
+      "id": "P0523",
+      "text": "☐ Maximum single file size, agreed with the development team.",
+      "page": null
+    },
+    {
+      "id": "P0524",
+      "text": "☐ Product Marketing Toolkit master layout (Keynote / PowerPoint).",
+      "page": null
+    }
+  ]
+}

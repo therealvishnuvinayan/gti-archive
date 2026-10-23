@@ -120,7 +120,11 @@
     "stage-builder:publication-browser-check": "node scripts/workflow-publication-browser-check.mjs",
     "runtime-integration:check": "node scripts/run-universal-tasker-isolated.mjs --stage-runtime --runtime-integration",
     "stage-runtime:check": "node scripts/run-universal-tasker-isolated.mjs --stage-runtime",
-    "stage-runtime:browser-check": "node scripts/stage-runtime-browser-check.mjs"
+    "stage-runtime:browser-check": "node scripts/stage-runtime-browser-check.mjs",
+    "standard-templates:source-check": "python3 scripts/extract-gti-template-source.py --check",
+    "standard-templates:check": "python3 scripts/extract-gti-template-source.py --check && node scripts/run-universal-tasker-isolated.mjs --stage-runtime --runtime-integration --standard-templates",
+    "standard-templates:browser-check": "FLUX_BROWSER_RUNTIME_INTEGRATION=1 FLUX_BROWSER_STANDARD_TEMPLATES=1 node scripts/stage-runtime-browser-check.mjs",
+    "standard-templates:spec-check": "python3 scripts/extract-gti-template-source.py --check && tsc --project scripts/tsconfig.standard-templates.json && node .tmp/standard-template-spec/scripts/standard-template-spec-check.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1053.0",

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { PackagingBlueprintCard } from "./packaging-blueprint";
 import { DraftPublicationPanel } from "./workflow-publication";
 import type { getDraftPublication } from "@/lib/stage-builder/publication";
 import { useRouter } from "next/navigation";
@@ -46,6 +47,7 @@ export function WorkflowDraftList({ initial }: { initial: Listing }) {
     <Link href="/projects" className="text-sm text-blue-700 underline">Back to Projects</Link>
     <header className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-widest text-blue-700">Projects / Management</p><h1 className="mt-2 text-3xl font-semibold text-slate-900">Workflow drafts</h1><p className="mt-2 text-sm text-slate-600">Build reusable stages, define required inputs, and review the sequence.</p></div><button type="button" className={primary} disabled={busy} onClick={create}><Plus size={16} />Create New Workflow Draft</button></header>
     <Notice />{error && <p role="alert" className="text-red-700">{error}</p>}
+    <PackagingBlueprintCard />
     {data.drafts.length === 0 ? <Panel><h2 className="font-semibold">Start with a stage</h2><p className="text-sm text-slate-600">Add information, file requirements, checklists, and draft approval requirements. Every workflow stays a draft.</p></Panel> : <div className="grid gap-4 sm:grid-cols-2">{data.drafts.map(d => <Link key={d.id} href={`/projects/workflow-drafts/${d.id}`} className="rounded-xl border border-slate-200 bg-white p-5 hover:border-blue-500"><h2 className="break-words font-semibold text-slate-900">{d.name || "Untitled workflow"}</h2><p className="mt-2 text-sm text-slate-600">Revision {d.revision} · {d.validationStatus === "VALID" ? "Configuration valid" : "Needs configuration"}</p><p className="mt-3 text-xs text-slate-500">Updated {new Date(d.updatedAt).toLocaleDateString()}</p></Link>)}</div>}
     {data.hasMore && <button className={button} disabled={busy} onClick={async () => { setBusy(true); try { const next = await api<Listing>(`/api/workflow-drafts?offset=${data.drafts.length}`); setData({ drafts: [...data.drafts, ...next.drafts], hasMore: next.hasMore }); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }}>Load more drafts</button>}
   </main>;

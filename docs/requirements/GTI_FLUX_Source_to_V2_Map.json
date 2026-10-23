@@ -1,0 +1,3188 @@
+{
+  "source": {
+    "title": "Flux – Project Process Templates & Content Specification",
+    "version": "2026-09-29",
+    "sha256": "4d86f90d173a406ad9f3a5ffbba7ce55776b5d209f4bc2a0e4653f299d61b944",
+    "pagination": "Unverified: supplied as 19 pages; OOXML contains no page count, page breaks or rendered page markers. Section/paragraph locators are authoritative for this binary."
+  },
+  "interpretation": "Mixed source paragraphs are retained verbatim; supported entries mean internal data/evidence representation only, not full business-rule enforcement. The requirement-level cross-cutting matrix separates external integrations, policy supersession and business decisions. All page numbers are unverified, never invented.",
+  "processes": [
+    {
+      "category": "ARTWORK_PACKAGING",
+      "name": "Packaging / Artwork",
+      "sourceSection": 3,
+      "sourcePage": null,
+      "processStageCount": 8,
+      "maintenanceAdditional": false,
+      "choices": "Direct/Pitch changes research and creative procurement. Format, pack components and target-market choices are recorded. Executable V2 scope is internal evidence only.",
+      "standardDocumentParagraphs": [
+        415,
+        416,
+        417,
+        421,
+        422,
+        423,
+        424,
+        425,
+        426,
+        427,
+        428,
+        429,
+        430,
+        431,
+        432,
+        433,
+        434,
+        435
+      ],
+      "stages": [
+        {
+          "name": "Stage 1 – Project Inquiry (Brief)",
+          "section": 3,
+          "page": null,
+          "sourceRange": [
+            75,
+            79
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 75,
+              "text": "Stage 1 – Project Inquiry (Brief)"
+            },
+            {
+              "paragraph": 76,
+              "text": "Goal: capture what is being made, for whom, by when and for how much."
+            },
+            {
+              "paragraph": 77,
+              "text": "Data: client and final beneficiaries; brand, sub-brand, variants / SKUs; stick format (KS, Slims, Super Slims, Queens, Nano, HnB) and pack type; components (primary pack, inner frame, inner bundle foil, tipping paper, outer carton, mastercarton); target market(s); external / internal execution; Direct or Pitch; budget; request date; market launch date; priority; initial brief; key business objectives; legal notes."
+            },
+            {
+              "paragraph": 78,
+              "text": "Actions: fill the form; draft Creative Brief – Packaging from the template."
+            },
+            {
+              "paragraph": 79,
+              "text": "Done when: all required fields filled; brief draft exists."
+            }
+          ],
+          "goal": "capture what is being made, for whom, by when and for how much.",
+          "fields": [
+            "Data: client and final beneficiaries; brand, sub-brand, variants / SKUs; stick format (KS, Slims, Super Slims, Queens, Nano, HnB) and pack type; components (primary pack, inner frame, inner bundle foil, tipping paper, outer carton, mastercarton); target market(s); external / internal execution; Direct or Pitch; budget; request date; market launch date; priority; initial brief; key business objectives; legal notes."
+          ],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [
+            "Done when: all required fields filled; brief draft exists."
+          ],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_NOW",
+              "scope": "Typed brief, dates and numeric budget; uploaded draft with independent file review.",
+              "implementedHere": true
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "Cross-field SKU/format consistency, document generation and field-requiredness confirmation.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [
+            77,
+            78
+          ],
+          "checklistParagraphs": [
+            78
+          ],
+          "approvalAndAcceptanceParagraphs": [
+            79
+          ],
+          "vendorExternalCommunicationParagraphs": [],
+          "standardDocumentRequirements": [
+            415,
+            416,
+            417,
+            421,
+            422,
+            423,
+            424,
+            425,
+            426,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432,
+            433,
+            434,
+            435
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": false
+        },
+        {
+          "name": "Stage 2 – Research & Planning",
+          "section": 3,
+          "page": null,
+          "sourceRange": [
+            80,
+            84
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 80,
+              "text": "Stage 2 – Research & Planning"
+            },
+            {
+              "paragraph": 81,
+              "text": "Goal: know the rules and the resources before any design starts."
+            },
+            {
+              "paragraph": 82,
+              "text": "Data: market regulations (health warning type and size, languages, tax stamp, track & trace, bans on fruit imagery or flavour names, tar/nicotine declaration position); competitor packs; printer capabilities and finishes; technical drawings (dielines); previous projects of the brand."
+            },
+            {
+              "paragraph": 83,
+              "text": "Actions: complete the \"Market regulatory requirements\" document; collect dielines; Pitch only: Director selects participants, brief and Pitch Terms sent after Director approval, Q&A, Outline Proposals received and compared (section 13)."
+            },
+            {
+              "paragraph": 84,
+              "text": "Done when: regulatory document complete; brief approved by the Director and sent; Pitch: agency selected and Framework Agreement signed."
+            }
+          ],
+          "goal": "know the rules and the resources before any design starts.",
+          "fields": [
+            "Data: market regulations (health warning type and size, languages, tax stamp, track & trace, bans on fruit imagery or flavour names, tar/nicotine declaration position); competitor packs; printer capabilities and finishes; technical drawings (dielines); previous projects of the brand."
+          ],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [
+            "Done when: regulatory document complete; brief approved by the Director and sent; Pitch: agency selected and Framework Agreement signed."
+          ],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_NOW",
+              "scope": "Market rules captured in fields/files; explicit Director internal review.",
+              "implementedHere": true
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "CERBER, pitch selection/comparison, signed agreements, approved vendor dispatch; no compliance engine.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [
+            82,
+            83
+          ],
+          "checklistParagraphs": [
+            83
+          ],
+          "approvalAndAcceptanceParagraphs": [
+            84
+          ],
+          "vendorExternalCommunicationParagraphs": [
+            83,
+            84
+          ],
+          "standardDocumentRequirements": [
+            415,
+            416,
+            417,
+            421,
+            422,
+            423,
+            424,
+            425,
+            426,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432,
+            433,
+            434,
+            435
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": false
+        },
+        {
+          "name": "Stage 3 – Initial Concept",
+          "section": 3,
+          "page": null,
+          "sourceRange": [
+            85,
+            89
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 85,
+              "text": "Stage 3 – Initial Concept"
+            },
+            {
+              "paragraph": 86,
+              "text": "Goal: get several distinct creative directions."
+            },
+            {
+              "paragraph": 87,
+              "text": "Data: numbered concepts (e.g. min. 4–6); for each: closed pack front, opened pack or HW variant as required, tipping paper; one summary page; horizontal multipage PDF."
+            },
+            {
+              "paragraph": 88,
+              "text": "Actions: concept tasks per executor or agency; brief acceptance by assignee; revisions (min. 2 rounds per stage in the agency contract); shortlist."
+            },
+            {
+              "paragraph": 89,
+              "text": "Done when: one or more concepts approved for development. Skippable only with Director approval."
+            }
+          ],
+          "goal": "get several distinct creative directions.",
+          "fields": [
+            "Data: numbered concepts (e.g. min. 4–6); for each: closed pack front, opened pack or HW variant as required, tipping paper; one summary page; horizontal multipage PDF."
+          ],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [
+            "Done when: one or more concepts approved for development. Skippable only with Director approval."
+          ],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_WITH_EXISTING_ADAPTER",
+              "scope": "Existing Initial Concept Universal Tasker and exact submitted/reviewed evidence.",
+              "implementedHere": true
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "No mandatory stage, automatic task, count/round enforcement or task completion gate.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [
+            87
+          ],
+          "checklistParagraphs": [
+            87
+          ],
+          "approvalAndAcceptanceParagraphs": [
+            89
+          ],
+          "vendorExternalCommunicationParagraphs": [
+            88
+          ],
+          "standardDocumentRequirements": [
+            415,
+            416,
+            417,
+            421,
+            422,
+            423,
+            424,
+            425,
+            426,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432,
+            433,
+            434,
+            435
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": false
+        },
+        {
+          "name": "Stage 4 – Final Concept",
+          "section": 3,
+          "page": null,
+          "sourceRange": [
+            90,
+            93
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 90,
+              "text": "Stage 4 – Final Concept"
+            },
+            {
+              "paragraph": 91,
+              "text": "Goal: refine the chosen direction into a production-ready design."
+            },
+            {
+              "paragraph": 92,
+              "text": "Data: approved concept imported from stage 3; colour variants; 3D mock-ups; all components designed."
+            },
+            {
+              "paragraph": 93,
+              "text": "Done when: final concept approved. Skippable only with Director approval."
+            }
+          ],
+          "goal": "refine the chosen direction into a production-ready design.",
+          "fields": [
+            "Data: approved concept imported from stage 3; colour variants; 3D mock-ups; all components designed."
+          ],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [
+            "Done when: final concept approved. Skippable only with Director approval."
+          ],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_WITH_EXISTING_ADAPTER",
+              "scope": "Existing Final Concept Tasker with eligible exact Initial inspiration.",
+              "implementedHere": true
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "No legacy stage, automatic dependency or task-to-stage gate.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [
+            92
+          ],
+          "checklistParagraphs": [
+            92
+          ],
+          "approvalAndAcceptanceParagraphs": [
+            93
+          ],
+          "vendorExternalCommunicationParagraphs": [],
+          "standardDocumentRequirements": [
+            415,
+            416,
+            417,
+            421,
+            422,
+            423,
+            424,
+            425,
+            426,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432,
+            433,
+            434,
+            435
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": false
+        },
+        {
+          "name": "Stage 5 – File Checklist (Specification)",
+          "section": 3,
+          "page": null,
+          "sourceRange": [
+            94,
+            98
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 94,
+              "text": "Stage 5 – File Checklist (Specification)"
+            },
+            {
+              "paragraph": 95,
+              "text": "Goal: collect every piece of technical and legal information per final file."
+            },
+            {
+              "paragraph": 96,
+              "text": "Data per final file: Output Name, Technical Drawing, Health Warning, Tar (mg), Nicotine (mg), Compulsory Text, Marketing Copy, Related Graphics, Printing Technology, Finishes, Barcode, Track & Trace, 3D's, Tax Stamp, QR Code, Invoice; plus dieline, colour standard (Pantone / CMYK), substrate."
+            },
+            {
+              "paragraph": 97,
+              "text": "Actions: fill or \"Request\" each field from the responsible person (creates a task); check the files against the Final Artwork standard."
+            },
+            {
+              "paragraph": 98,
+              "text": "Done when: all fields filled or marked \"not applicable\" with a reason."
+            }
+          ],
+          "goal": "collect every piece of technical and legal information per final file.",
+          "fields": [
+            "Data per final file: Output Name, Technical Drawing, Health Warning, Tar (mg), Nicotine (mg), Compulsory Text, Marketing Copy, Related Graphics, Printing Technology, Finishes, Barcode, Track & Trace, 3D's, Tax Stamp, QR Code, Invoice; plus dieline, colour standard (Pantone / CMYK), substrate."
+          ],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [
+            "Done when: all fields filled or marked \"not applicable\" with a reason."
+          ],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_NOW",
+              "scope": "Typed project summary, file register, exact artwork uploads and human review checklist.",
+              "implementedHere": true
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "Repeating per-file schema, conditional N/A reasons, binary preflight, automatic Request tasks.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [
+            96
+          ],
+          "checklistParagraphs": [
+            96,
+            97
+          ],
+          "approvalAndAcceptanceParagraphs": [
+            98
+          ],
+          "vendorExternalCommunicationParagraphs": [],
+          "standardDocumentRequirements": [
+            415,
+            416,
+            417,
+            421,
+            422,
+            423,
+            424,
+            425,
+            426,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432,
+            433,
+            434,
+            435
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": false
+        },
+        {
+          "name": "Stage 6 – Production & Handover",
+          "section": 3,
+          "page": null,
+          "sourceRange": [
+            99,
+            109
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 99,
+              "text": "Stage 6 – Production & Handover"
+            },
+            {
+              "paragraph": 100,
+              "text": "Goal: approve the Final Artwork and hand it to production."
+            },
+            {
+              "paragraph": 101,
+              "text": "Final Artwork approval chain (fixed order):"
+            },
+            {
+              "paragraph": 102,
+              "text": "Stakeholders approve the PDF preview, in the order set by the PM. Purchase is always in this group; Client representatives (e.g. Sales Director, NPD Lead, GM) and any other stakeholders are added as needed."
+            },
+            {
+              "paragraph": 103,
+              "text": "CEO."
+            },
+            {
+              "paragraph": 104,
+              "text": "All Executors of the project: technical and print check of the files."
+            },
+            {
+              "paragraph": 105,
+              "text": "Director: final approval."
+            },
+            {
+              "paragraph": 106,
+              "text": "On rejection, the PM chooses from which step the chain restarts after the correction; the Director sees and can change this choice."
+            },
+            {
+              "paragraph": 107,
+              "text": "Final Artwork from an external vendor cannot be accepted without a signed Copyright Transfer Agreement or Framework Agreement; only the Director can override this."
+            },
+            {
+              "paragraph": 108,
+              "text": "Actions: production units per final file; production files; handover (internal or external, external only to CERBER-approved vendors, Director approval for production orders)."
+            },
+            {
+              "paragraph": 109,
+              "text": "Done when: every production unit approved and handed over."
+            }
+          ],
+          "goal": "approve the Final Artwork and hand it to production.",
+          "fields": [],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [
+            "Done when: every production unit approved and handed over."
+          ],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_NOW",
+              "scope": "Independent configured internal Director review and uploaded production/handover register.",
+              "implementedHere": true
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "Purchase/CEO/all Executors, arbitrary restart step, signed external-contract guard, production-unit engine and vendor handover.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [
+            108
+          ],
+          "checklistParagraphs": [
+            101,
+            102,
+            103,
+            104,
+            105,
+            106,
+            107
+          ],
+          "approvalAndAcceptanceParagraphs": [
+            109
+          ],
+          "vendorExternalCommunicationParagraphs": [
+            107,
+            108
+          ],
+          "standardDocumentRequirements": [
+            415,
+            416,
+            417,
+            421,
+            422,
+            423,
+            424,
+            425,
+            426,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432,
+            433,
+            434,
+            435
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": false
+        },
+        {
+          "name": "Stage 7 – Implementation & Supervision",
+          "section": 3,
+          "page": null,
+          "sourceRange": [
+            110,
+            114
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 110,
+              "text": "Stage 7 – Implementation & Supervision"
+            },
+            {
+              "paragraph": 111,
+              "text": "Goal: confirm that what was produced matches what was approved."
+            },
+            {
+              "paragraph": 112,
+              "text": "Data: sample rounds per production unit (pre-production sample, press check, first production sample); provider; deadline; outcome; photos."
+            },
+            {
+              "paragraph": 113,
+              "text": "Actions: request samples, record outcome, sign the Acceptance Protocol."
+            },
+            {
+              "paragraph": 114,
+              "text": "Done when: every production unit sample accepted."
+            }
+          ],
+          "goal": "confirm that what was produced matches what was approved.",
+          "fields": [
+            "Data: sample rounds per production unit (pre-production sample, press check, first production sample); provider; deadline; outcome; photos."
+          ],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [
+            "Done when: every production unit sample accepted."
+          ],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_NOW",
+              "scope": "Sample data summary, reviewed evidence/photos and human checklist.",
+              "implementedHere": true
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "Per-unit sample rounds, bilateral protocol signatures and real-world acceptance validation.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [
+            112,
+            113
+          ],
+          "checklistParagraphs": [
+            113
+          ],
+          "approvalAndAcceptanceParagraphs": [
+            114
+          ],
+          "vendorExternalCommunicationParagraphs": [
+            112,
+            113
+          ],
+          "standardDocumentRequirements": [
+            415,
+            416,
+            417,
+            421,
+            422,
+            423,
+            424,
+            425,
+            426,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432,
+            433,
+            434,
+            435
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": false
+        },
+        {
+          "name": "Stage 8 – Commercialisation (starts after stage 7 is closed)",
+          "section": 3,
+          "page": null,
+          "sourceRange": [
+            115,
+            121
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 115,
+              "text": "Stage 8 – Commercialisation (starts after stage 7 is closed)"
+            },
+            {
+              "paragraph": 116,
+              "text": "Goal: equip Sales with product data and a marketing toolkit."
+            },
+            {
+              "paragraph": 117,
+              "text": "Product Card for Toolio (mostly pre-filled from stages 1 and 5): brand, variant, SKU, EAN codes (pack, outer, mastercarton), markets and registrations; stick length, diameter, filter type, tar / nicotine / CO per market, sticks per pack; pack type, packs per outer, outers per mastercarton, dimensions, weights, pallet configuration; price category, launch date; short description, USP, target group (adult smokers of legal age only), slogan; packshots of pack, stick, outer, mastercarton. Approved by the Owner only. Entered into Toolio manually by the Digital Lead (currently Vinu Vinayan) via a task, confirmed with \"Entered in Toolio\"."
+            },
+            {
+              "paragraph": 118,
+              "text": "Product Marketing Toolkit (Keynote / PowerPoint / PDF): cover; moodboard and product slogan; primary pack visualisation (front, back, sides, 3D); single tobacco stick; outer and mastercarton; 1–2 pages of concept promotional materials (Key Visual, T-shirt, plastic bag, mini stand, poster, etc.); short specification page. Concept pages carry the default note \"Concept visualisation – internal / trade use only\", which only the Director can remove. Approved by the Director only."
+            },
+            {
+              "paragraph": 119,
+              "text": "Questions shown to the PM when the stage opens: new SKU or refresh (new card or update)? Full or short toolkit? Formats and languages? Deadline (e.g. distributor meeting)? Made internally or by an agency (then brief, RFP and copyright transfer apply)?"
+            },
+            {
+              "paragraph": 120,
+              "text": "Each concept promotional item in the toolkit can start a new project from the POSM & Promo template."
+            },
+            {
+              "paragraph": 121,
+              "text": "Done when: Product Card approved and entered in Toolio; Toolkit approved by the Director. The project closes when stages 7 and 8 are complete."
+            }
+          ],
+          "goal": "equip Sales with product data and a marketing toolkit.",
+          "fields": [
+            "Product Card for Toolio (mostly pre-filled from stages 1 and 5): brand, variant, SKU, EAN codes (pack, outer, mastercarton), markets and registrations; stick length, diameter, filter type, tar / nicotine / CO per market, sticks per pack; pack type, packs per outer, outers per mastercarton, dimensions, weights, pallet configuration; price category, launch date; short description, USP, target group (adult smokers of legal age only), slogan; packshots of pack, stick, outer, mastercarton. Approved by the Owner only. Entered into Toolio manually by the Digital Lead (currently Vinu Vinayan) via a task, confirmed with \"Entered in Toolio\"."
+          ],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [
+            "Done when: Product Card approved and entered in Toolio; Toolkit approved by the Director. The project closes when stages 7 and 8 are complete."
+          ],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_NOW",
+              "scope": "Typed Product Card and toolkit choice fields, uploaded outputs, Owner and Director internal reviews.",
+              "implementedHere": true
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "Toolio verified entry, page-note removal control, generated packshots/toolkit, linked POSM project launch.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [
+            117,
+            118
+          ],
+          "checklistParagraphs": [
+            118
+          ],
+          "approvalAndAcceptanceParagraphs": [
+            117,
+            118,
+            121
+          ],
+          "vendorExternalCommunicationParagraphs": [
+            117,
+            119,
+            120
+          ],
+          "standardDocumentRequirements": [
+            415,
+            416,
+            417,
+            421,
+            422,
+            423,
+            424,
+            425,
+            426,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432,
+            433,
+            434,
+            435
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": false
+        }
+      ],
+      "implementation": "Packaging internal candidate only"
+    },
+    {
+      "category": "POSM",
+      "name": "POSM & Promotional Materials",
+      "sourceSection": 4,
+      "sourcePage": null,
+      "processStageCount": 6,
+      "maintenanceAdditional": false,
+      "choices": "Printed POSM versus merchandise changes fields and makes sourcing mandatory for merchandise. Printed research skip requires source Director approval, unavailable in V2.",
+      "standardDocumentParagraphs": [
+        412,
+        413,
+        414,
+        418,
+        419,
+        420,
+        427,
+        428,
+        429,
+        430,
+        431,
+        432
+      ],
+      "stages": [
+        {
+          "name": "Brief",
+          "section": 4,
+          "page": null,
+          "sourceRange": [
+            124,
+            126
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 124,
+              "text": "Brief"
+            },
+            {
+              "paragraph": 125,
+              "text": "Data: material type; items and formats; languages; quantities per format / size; number of outlets; channel (duty free, retail, HoReCa, trade, event); market; purpose (campaign, event, trade gift); unit and total budget; date needed."
+            },
+            {
+              "paragraph": 126,
+              "text": "Done when: brief approved; Creative Brief – General drafted."
+            }
+          ],
+          "goal": "Not explicitly stated; stage title indicates purpose only.",
+          "fields": [
+            "Data: material type; items and formats; languages; quantities per format / size; number of outlets; channel (duty free, retail, HoReCa, trade, event); market; purpose (campaign, event, trade gift); unit and total budget; date needed."
+          ],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [
+            "Done when: brief approved; Creative Brief – General drafted."
+          ],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_NOW",
+              "scope": "INFORMATION can record material, format, quantities, channel, market, budget, date; FILE_REQUIREMENT can hold brief.",
+              "implementedHere": false
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "Material-dependent schemas/branching; approver unspecified; detailed fields open in section 18.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [
+            125,
+            126
+          ],
+          "checklistParagraphs": [],
+          "approvalAndAcceptanceParagraphs": [
+            126
+          ],
+          "vendorExternalCommunicationParagraphs": [],
+          "standardDocumentRequirements": [
+            412,
+            413,
+            414,
+            418,
+            419,
+            420,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": false
+        },
+        {
+          "name": "Research / Sourcing",
+          "section": 4,
+          "page": null,
+          "sourceRange": [
+            127,
+            130
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 127,
+              "text": "Research / Sourcing"
+            },
+            {
+              "paragraph": 128,
+              "text": "Printed POSM (optional, skippable with Director approval): outlet photos, local tobacco advertising restrictions, benchmark."
+            },
+            {
+              "paragraph": 129,
+              "text": "Merchandise (mandatory): supplier catalogues, min. 3 quotes via RFP, MOQ, lead time, unit cost, sample availability; supplier chosen by the Director from CERBER-approved vendors."
+            },
+            {
+              "paragraph": 130,
+              "text": "Done when: restrictions documented; for merchandise, supplier selected and order conditions agreed."
+            }
+          ],
+          "goal": "Not explicitly stated; stage title indicates purpose only.",
+          "fields": [],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [
+            "Done when: restrictions documented; for merchandise, supplier selected and order conditions agreed."
+          ],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_NOW",
+              "scope": "Files and information can retain restrictions, catalogues, quotations and sample facts.",
+              "implementedHere": false
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "Conditional mandatory sourcing, allowed skips, minimum three structured offers, Director vendor selection/CERBER/procurement.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [
+            128,
+            129
+          ],
+          "checklistParagraphs": [],
+          "approvalAndAcceptanceParagraphs": [
+            129,
+            130
+          ],
+          "vendorExternalCommunicationParagraphs": [
+            129
+          ],
+          "standardDocumentRequirements": [
+            412,
+            413,
+            414,
+            418,
+            419,
+            420,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": false
+        },
+        {
+          "name": "Concept & Design (concept and development in one stage)",
+          "section": 4,
+          "page": null,
+          "sourceRange": [
+            131,
+            133
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 131,
+              "text": "Concept & Design (concept and development in one stage)"
+            },
+            {
+              "paragraph": 132,
+              "text": "Data: key visual and its adaptations to all formats; for merchandise, logo placement on the item, colours, 1–2 revision rounds."
+            },
+            {
+              "paragraph": 133,
+              "text": "Done when: design approved."
+            }
+          ],
+          "goal": "Not explicitly stated; stage title indicates purpose only.",
+          "fields": [
+            "Data: key visual and its adaptations to all formats; for merchandise, logo placement on the item, colours, 1–2 revision rounds."
+          ],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [
+            "Done when: design approved."
+          ],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_WITH_EXISTING_ADAPTER",
+              "scope": "Initial/Final Concept Tasker can host creative work and independent review.",
+              "implementedHere": false
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "Revision-round enforcement; exact design approver and detailed field list not specified.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [
+            132
+          ],
+          "checklistParagraphs": [],
+          "approvalAndAcceptanceParagraphs": [
+            133
+          ],
+          "vendorExternalCommunicationParagraphs": [],
+          "standardDocumentRequirements": [
+            412,
+            413,
+            414,
+            418,
+            419,
+            420,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": false
+        },
+        {
+          "name": "Specification",
+          "section": 4,
+          "page": null,
+          "sourceRange": [
+            134,
+            137
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 134,
+              "text": "Specification"
+            },
+            {
+              "paragraph": 135,
+              "text": "Printed POSM: final sizes, bleed, material / substrate, finishes, quantity, mandatory texts, distribution list (how many pieces to which outlet)."
+            },
+            {
+              "paragraph": 136,
+              "text": "Merchandise: branding method (engraving, pad print, embroidery, sublimation, screen print), Pantone, print area, unit packaging, size split for apparel (S / M / L / XL)."
+            },
+            {
+              "paragraph": 137,
+              "text": "Done when: all fields filled; files meet the Final Artwork standard (print variant)."
+            }
+          ],
+          "goal": "Not explicitly stated; stage title indicates purpose only.",
+          "fields": [],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [
+            "Done when: all fields filled; files meet the Final Artwork standard (print variant)."
+          ],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_NOW",
+              "scope": "Typed specification summaries and checked evidence are possible.",
+              "implementedHere": false
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "Per-format/size/branding-method rows and outlet distribution matrix; detailed requiredness absent.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [
+            135,
+            136
+          ],
+          "checklistParagraphs": [
+            137
+          ],
+          "approvalAndAcceptanceParagraphs": [
+            137
+          ],
+          "vendorExternalCommunicationParagraphs": [],
+          "standardDocumentRequirements": [
+            412,
+            413,
+            414,
+            418,
+            419,
+            420,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": false
+        },
+        {
+          "name": "Production & Approval",
+          "section": 4,
+          "page": null,
+          "sourceRange": [
+            138,
+            142
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 138,
+              "text": "Production & Approval"
+            },
+            {
+              "paragraph": 139,
+              "text": "Printed POSM: printer proof, approval chain, handover to printer."
+            },
+            {
+              "paragraph": 140,
+              "text": "Merchandise: supplier visual, golden sample, approval, mass production."
+            },
+            {
+              "paragraph": 141,
+              "text": "Production orders need Director approval."
+            },
+            {
+              "paragraph": 142,
+              "text": "Done when: proof or golden sample approved and production ordered."
+            }
+          ],
+          "goal": "Not explicitly stated; stage title indicates purpose only.",
+          "fields": [],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [
+            "Done when: proof or golden sample approved and production ordered."
+          ],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_NOW",
+              "scope": "Proof/golden-sample files and supported internal approval roles can be configured.",
+              "implementedHere": false
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "Production order dispatch/procurement; supplier sample lifecycle and exact chain unspecified.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [
+            139,
+            140
+          ],
+          "checklistParagraphs": [],
+          "approvalAndAcceptanceParagraphs": [
+            139,
+            140,
+            141,
+            142
+          ],
+          "vendorExternalCommunicationParagraphs": [
+            139,
+            140,
+            141
+          ],
+          "standardDocumentRequirements": [
+            412,
+            413,
+            414,
+            418,
+            419,
+            420,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": false
+        },
+        {
+          "name": "Delivery & Execution",
+          "section": 4,
+          "page": null,
+          "sourceRange": [
+            143,
+            146
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 143,
+              "text": "Delivery & Execution"
+            },
+            {
+              "paragraph": 144,
+              "text": "Printed POSM: delivery, distribution to outlets, execution photo report (minimum number of outlet photos set in the brief)."
+            },
+            {
+              "paragraph": 145,
+              "text": "Merchandise: quality check of the batch, warehouse intake, issue to departments or events."
+            },
+            {
+              "paragraph": 146,
+              "text": "Done when: Acceptance Protocol signed; execution report complete."
+            }
+          ],
+          "goal": "Not explicitly stated; stage title indicates purpose only.",
+          "fields": [],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [
+            "Done when: Acceptance Protocol signed; execution report complete."
+          ],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_NOW",
+              "scope": "Files/checklists can capture execution photos, batch evidence and protocol.",
+              "implementedHere": false
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "Brief-derived minimum outlet photo counts, inventory intake, distribution records and two-party signatures.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [
+            144,
+            146
+          ],
+          "checklistParagraphs": [],
+          "approvalAndAcceptanceParagraphs": [
+            146
+          ],
+          "vendorExternalCommunicationParagraphs": [
+            145
+          ],
+          "standardDocumentRequirements": [
+            412,
+            413,
+            414,
+            418,
+            419,
+            420,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": false
+        }
+      ],
+      "implementation": "Source/coverage map only; no blueprint implementation"
+    },
+    {
+      "category": "RETAIL_DISPLAY",
+      "name": "Retail Display",
+      "sourceSection": 5,
+      "sourcePage": null,
+      "processStageCount": 7,
+      "maintenanceAdditional": false,
+      "choices": "Per-component production units and per-outlet installation; full survey or Owner-approved representative sample.",
+      "standardDocumentParagraphs": [
+        412,
+        413,
+        414,
+        418,
+        419,
+        420,
+        427,
+        428,
+        429,
+        430,
+        431,
+        432
+      ],
+      "stages": [
+        {
+          "name": "Brief",
+          "section": 5,
+          "page": null,
+          "sourceRange": [
+            149,
+            150
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 149,
+              "text": "Brief"
+            },
+            {
+              "paragraph": 150,
+              "text": "Data: outlet type; number of outlets; available space (W × H × D); number of shelves and facings; SKUs to display; lighting; locking / shutters; budget; market rules (e.g. product display bans); installation deadline."
+            }
+          ],
+          "goal": "Not explicitly stated; stage title indicates purpose only.",
+          "fields": [
+            "Data: outlet type; number of outlets; available space (W × H × D); number of shelves and facings; SKUs to display; lighting; locking / shutters; budget; market rules (e.g. product display bans); installation deadline."
+          ],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_NOW",
+              "scope": "Typed space dimensions, shelves/facings, SKU list, lighting, budget/rules/date.",
+              "implementedHere": false
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "Repeating outlet records and field list/checklist requiredness await business confirmation.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [],
+          "checklistParagraphs": [],
+          "approvalAndAcceptanceParagraphs": [],
+          "vendorExternalCommunicationParagraphs": [],
+          "standardDocumentRequirements": [
+            412,
+            413,
+            414,
+            418,
+            419,
+            420,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": true
+        },
+        {
+          "name": "Site survey",
+          "section": 5,
+          "page": null,
+          "sourceRange": [
+            151,
+            153
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 151,
+              "text": "Site survey"
+            },
+            {
+              "paragraph": 152,
+              "text": "Data: measurements and photos per outlet; drawings of existing furniture; retailer requirements; electrical access."
+            },
+            {
+              "paragraph": 153,
+              "text": "Done when: survey complete for all outlets or a representative sample approved by the Owner."
+            }
+          ],
+          "goal": "Not explicitly stated; stage title indicates purpose only.",
+          "fields": [
+            "Data: measurements and photos per outlet; drawings of existing furniture; retailer requirements; electrical access."
+          ],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [
+            "Done when: survey complete for all outlets or a representative sample approved by the Owner."
+          ],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_NOW",
+              "scope": "Survey files and manual Owner review can be configured.",
+              "implementedHere": false
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "Per-outlet completeness or representative-sample approval branching.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [
+            152
+          ],
+          "checklistParagraphs": [],
+          "approvalAndAcceptanceParagraphs": [
+            153
+          ],
+          "vendorExternalCommunicationParagraphs": [],
+          "standardDocumentRequirements": [
+            412,
+            413,
+            414,
+            418,
+            419,
+            420,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": false
+        },
+        {
+          "name": "Concept",
+          "section": 5,
+          "page": null,
+          "sourceRange": [
+            154,
+            155
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 154,
+              "text": "Concept"
+            },
+            {
+              "paragraph": 155,
+              "text": "Data: 3D visualisations; planogram layout."
+            }
+          ],
+          "goal": "Not explicitly stated; stage title indicates purpose only.",
+          "fields": [
+            "Data: 3D visualisations; planogram layout."
+          ],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_WITH_EXISTING_ADAPTER",
+              "scope": "Concept Tasker can retain renders and planogram evidence.",
+              "implementedHere": false
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "No source-specific approval or definition of done stated; detailed fields open.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [
+            155
+          ],
+          "checklistParagraphs": [],
+          "approvalAndAcceptanceParagraphs": [],
+          "vendorExternalCommunicationParagraphs": [],
+          "standardDocumentRequirements": [
+            412,
+            413,
+            414,
+            418,
+            419,
+            420,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": true
+        },
+        {
+          "name": "Technical design",
+          "section": 5,
+          "page": null,
+          "sourceRange": [
+            156,
+            157
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 156,
+              "text": "Technical design"
+            },
+            {
+              "paragraph": 157,
+              "text": "Data: technical drawings, materials, construction, weight and safety, assembly method."
+            }
+          ],
+          "goal": "Not explicitly stated; stage title indicates purpose only.",
+          "fields": [
+            "Data: technical drawings, materials, construction, weight and safety, assembly method."
+          ],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_NOW",
+              "scope": "Drawings and material/weight/safety/assembly information.",
+              "implementedHere": false
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "Engineering safety checks not implemented; acceptance and review routing unspecified.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [
+            157
+          ],
+          "checklistParagraphs": [],
+          "approvalAndAcceptanceParagraphs": [],
+          "vendorExternalCommunicationParagraphs": [],
+          "standardDocumentRequirements": [
+            412,
+            413,
+            414,
+            418,
+            419,
+            420,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": true
+        },
+        {
+          "name": "Specification & graphics per component",
+          "section": 5,
+          "page": null,
+          "sourceRange": [
+            158,
+            159
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 158,
+              "text": "Specification & graphics per component"
+            },
+            {
+              "paragraph": 159,
+              "text": "Data per component: graphic files, dimensions, materials, finishes, quantity; checklist per component; files meet the Final Artwork standard (large-format / display variant)."
+            }
+          ],
+          "goal": "Not explicitly stated; stage title indicates purpose only.",
+          "fields": [
+            "Data per component: graphic files, dimensions, materials, finishes, quantity; checklist per component; files meet the Final Artwork standard (large-format / display variant)."
+          ],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_NOW",
+              "scope": "Files/typed summaries/checklists for component specifications.",
+              "implementedHere": false
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "Repeating component units and variants, automatic large-format file preflight.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [
+            159
+          ],
+          "checklistParagraphs": [
+            159
+          ],
+          "approvalAndAcceptanceParagraphs": [],
+          "vendorExternalCommunicationParagraphs": [],
+          "standardDocumentRequirements": [
+            412,
+            413,
+            414,
+            418,
+            419,
+            420,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": true
+        },
+        {
+          "name": "Prototype & production",
+          "section": 5,
+          "page": null,
+          "sourceRange": [
+            160,
+            161
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 160,
+              "text": "Prototype & production"
+            },
+            {
+              "paragraph": 161,
+              "text": "Mandatory physical prototype, assembly test, approval chain, series production. Production order needs Director approval."
+            }
+          ],
+          "goal": "Not explicitly stated; stage title indicates purpose only.",
+          "fields": [],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_NOW",
+              "scope": "Prototype/test evidence, configured supported approval roles.",
+              "implementedHere": false
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "Physical prototype/unit engine, series production order and Director-approved external dispatch.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [
+            161
+          ],
+          "checklistParagraphs": [],
+          "approvalAndAcceptanceParagraphs": [
+            161
+          ],
+          "vendorExternalCommunicationParagraphs": [
+            161
+          ],
+          "standardDocumentRequirements": [
+            412,
+            413,
+            414,
+            418,
+            419,
+            420,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": true
+        },
+        {
+          "name": "Logistics & installation",
+          "section": 5,
+          "page": null,
+          "sourceRange": [
+            162,
+            164
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 162,
+              "text": "Logistics & installation"
+            },
+            {
+              "paragraph": 163,
+              "text": "Data: installation schedule per outlet; outlet list with status (planned / installed / accepted / issue); installation photo report; Acceptance Protocol per outlet; warranty and service contact."
+            },
+            {
+              "paragraph": 164,
+              "text": "Done when: every outlet installed and accepted, or open issues assigned as tasks."
+            }
+          ],
+          "goal": "Not explicitly stated; stage title indicates purpose only.",
+          "fields": [
+            "Data: installation schedule per outlet; outlet list with status (planned / installed / accepted / issue); installation photo report; Acceptance Protocol per outlet; warranty and service contact."
+          ],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [
+            "Done when: every outlet installed and accepted, or open issues assigned as tasks."
+          ],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_NOW",
+              "scope": "Installation/photo/protocol files and manually assigned General Tasks.",
+              "implementedHere": false
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "Per-outlet states, installation scheduling, all-outlets-or-open-issue-task gate, warranties/service tracking.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [
+            163
+          ],
+          "checklistParagraphs": [],
+          "approvalAndAcceptanceParagraphs": [
+            164
+          ],
+          "vendorExternalCommunicationParagraphs": [
+            163
+          ],
+          "standardDocumentRequirements": [
+            412,
+            413,
+            414,
+            418,
+            419,
+            420,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": false
+        }
+      ],
+      "implementation": "Source/coverage map only; no blueprint implementation"
+    },
+    {
+      "category": "EXHIBITION_STAND",
+      "name": "Exhibition Stand",
+      "sourceSection": 6,
+      "sourcePage": null,
+      "processStageCount": 8,
+      "maintenanceAdditional": false,
+      "choices": "Fixed event date and organiser milestones; linked projects with separate budgets; annual wrap-up reuse.",
+      "standardDocumentParagraphs": [
+        412,
+        413,
+        414,
+        418,
+        419,
+        420,
+        427,
+        428,
+        429,
+        430,
+        431,
+        432
+      ],
+      "stages": [
+        {
+          "name": "Brief",
+          "section": 6,
+          "page": null,
+          "sourceRange": [
+            167,
+            168
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 167,
+              "text": "Brief"
+            },
+            {
+              "paragraph": 168,
+              "text": "Data: event name, dates, hall and stand number, area (m²), number of open sides, budget, objectives (leads, meetings, launches), products to display, meeting room, hospitality, staff on stand."
+            }
+          ],
+          "goal": "Not explicitly stated; stage title indicates purpose only.",
+          "fields": [
+            "Data: event name, dates, hall and stand number, area (m²), number of open sides, budget, objectives (leads, meetings, launches), products to display, meeting room, hospitality, staff on stand."
+          ],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_NOW",
+              "scope": "Event identity/date/location/area/budget/objectives and staff summary fields.",
+              "implementedHere": false
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "Detailed requiredness/checklists and event-specific planning not defined.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [],
+          "checklistParagraphs": [],
+          "approvalAndAcceptanceParagraphs": [],
+          "vendorExternalCommunicationParagraphs": [],
+          "standardDocumentRequirements": [
+            412,
+            413,
+            414,
+            418,
+            419,
+            420,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": true
+        },
+        {
+          "name": "Planning & organiser manual",
+          "section": 6,
+          "page": null,
+          "sourceRange": [
+            169,
+            170
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 169,
+              "text": "Planning & organiser manual"
+            },
+            {
+              "paragraph": 170,
+              "text": "Data: organiser manual; organiser deadlines (stand design submission, electricity, rigging, badges, catering, freight); backward plan from the event date; last year's wrap-up report (automatically placed in the Research folder)."
+            }
+          ],
+          "goal": "Not explicitly stated; stage title indicates purpose only.",
+          "fields": [
+            "Data: organiser manual; organiser deadlines (stand design submission, electricity, rigging, badges, catering, freight); backward plan from the event date; last year's wrap-up report (automatically placed in the Research folder)."
+          ],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_NOW",
+              "scope": "Organiser manual and previous report can be uploaded.",
+              "implementedHere": false
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "Backward planning, fixed organiser milestone constraints and automatic prior-year folder import.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [
+            170
+          ],
+          "checklistParagraphs": [],
+          "approvalAndAcceptanceParagraphs": [],
+          "vendorExternalCommunicationParagraphs": [
+            170
+          ],
+          "standardDocumentRequirements": [
+            412,
+            413,
+            414,
+            418,
+            419,
+            420,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": true
+        },
+        {
+          "name": "Contractor selection",
+          "section": 6,
+          "page": null,
+          "sourceRange": [
+            171,
+            172
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 171,
+              "text": "Contractor selection"
+            },
+            {
+              "paragraph": 172,
+              "text": "Director selects the stand builders invited; RFP sent after Director approval; min. 3 offers; comparison; contract after Director approval."
+            }
+          ],
+          "goal": "Not explicitly stated; stage title indicates purpose only.",
+          "fields": [],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_NOW",
+              "scope": "Offers/comparison documents can be retained for human review.",
+              "implementedHere": false
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "Director participant selection, structured minimum-three offers, RFP dispatch, contracts and CERBER.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [
+            172
+          ],
+          "checklistParagraphs": [],
+          "approvalAndAcceptanceParagraphs": [
+            172
+          ],
+          "vendorExternalCommunicationParagraphs": [
+            172
+          ],
+          "standardDocumentRequirements": [
+            412,
+            413,
+            414,
+            418,
+            419,
+            420,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": true
+        },
+        {
+          "name": "Concept & design",
+          "section": 6,
+          "page": null,
+          "sourceRange": [
+            173,
+            174
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 173,
+              "text": "Concept & design"
+            },
+            {
+              "paragraph": 174,
+              "text": "Data: 3D renders, revisions, final design, technical drawings, submission to the organiser and organiser approval."
+            }
+          ],
+          "goal": "Not explicitly stated; stage title indicates purpose only.",
+          "fields": [
+            "Data: 3D renders, revisions, final design, technical drawings, submission to the organiser and organiser approval."
+          ],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_WITH_EXISTING_ADAPTER",
+              "scope": "Concept Tasker, exact renders/drawings, internal approval roles.",
+              "implementedHere": false
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "External organiser submission/approval and arbitrary revision loops.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [
+            174
+          ],
+          "checklistParagraphs": [],
+          "approvalAndAcceptanceParagraphs": [
+            174
+          ],
+          "vendorExternalCommunicationParagraphs": [
+            174
+          ],
+          "standardDocumentRequirements": [
+            412,
+            413,
+            414,
+            418,
+            419,
+            420,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": true
+        },
+        {
+          "name": "Graphics, content & linked projects",
+          "section": 6,
+          "page": null,
+          "sourceRange": [
+            175,
+            176
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 175,
+              "text": "Graphics, content & linked projects"
+            },
+            {
+              "paragraph": 176,
+              "text": "Data: large-format graphic files, AV content, product display plan; links to related projects."
+            }
+          ],
+          "goal": "Not explicitly stated; stage title indicates purpose only.",
+          "fields": [
+            "Data: large-format graphic files, AV content, product display plan; links to related projects."
+          ],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_NOW",
+              "scope": "Graphics/AV/display-plan file requirements.",
+              "implementedHere": false
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "Related-project typed links, separate budget aggregation and binary variant preflight.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [
+            176
+          ],
+          "checklistParagraphs": [],
+          "approvalAndAcceptanceParagraphs": [],
+          "vendorExternalCommunicationParagraphs": [],
+          "standardDocumentRequirements": [
+            412,
+            413,
+            414,
+            418,
+            419,
+            420,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": true
+        },
+        {
+          "name": "Build-up",
+          "section": 6,
+          "page": null,
+          "sourceRange": [
+            177,
+            178
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 177,
+              "text": "Build-up"
+            },
+            {
+              "paragraph": 178,
+              "text": "Data: on-site supervision, snag list with tasks, stand acceptance (Acceptance Protocol)."
+            }
+          ],
+          "goal": "Not explicitly stated; stage title indicates purpose only.",
+          "fields": [
+            "Data: on-site supervision, snag list with tasks, stand acceptance (Acceptance Protocol)."
+          ],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_NOW",
+              "scope": "Snag evidence and manually created General Tasks.",
+              "implementedHere": false
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "Onsite snag tracking linked to completion and bilateral stand acceptance.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [
+            178
+          ],
+          "checklistParagraphs": [
+            178
+          ],
+          "approvalAndAcceptanceParagraphs": [
+            178
+          ],
+          "vendorExternalCommunicationParagraphs": [],
+          "standardDocumentRequirements": [
+            412,
+            413,
+            414,
+            418,
+            419,
+            420,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": true
+        },
+        {
+          "name": "Event",
+          "section": 6,
+          "page": null,
+          "sourceRange": [
+            179,
+            180
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 179,
+              "text": "Event"
+            },
+            {
+              "paragraph": 180,
+              "text": "Data: leads collected, meetings held, photo documentation, issues log."
+            }
+          ],
+          "goal": "Not explicitly stated; stage title indicates purpose only.",
+          "fields": [
+            "Data: leads collected, meetings held, photo documentation, issues log."
+          ],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_NOW",
+              "scope": "Counts/notes/photos can be captured.",
+              "implementedHere": false
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "Lead/meeting entities, integrations and detailed definitions of done unspecified.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [
+            180
+          ],
+          "checklistParagraphs": [],
+          "approvalAndAcceptanceParagraphs": [],
+          "vendorExternalCommunicationParagraphs": [],
+          "standardDocumentRequirements": [
+            412,
+            413,
+            414,
+            418,
+            419,
+            420,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": true
+        },
+        {
+          "name": "Dismantling & wrap-up report",
+          "section": 6,
+          "page": null,
+          "sourceRange": [
+            181,
+            183
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 181,
+              "text": "Dismantling & wrap-up report"
+            },
+            {
+              "paragraph": 182,
+              "text": "Data: dismantling, storage of reusable elements, report (cost vs budget, leads, meetings, lessons learned for next edition), vendor rating."
+            },
+            {
+              "paragraph": 183,
+              "text": "Done when: report approved; it becomes input for next year's project."
+            }
+          ],
+          "goal": "Not explicitly stated; stage title indicates purpose only.",
+          "fields": [
+            "Data: dismantling, storage of reusable elements, report (cost vs budget, leads, meetings, lessons learned for next edition), vendor rating."
+          ],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [
+            "Done when: report approved; it becomes input for next year's project."
+          ],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_NOW",
+              "scope": "Wrap-up report/cost summary files with configured review.",
+              "implementedHere": false
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "Storage inventory, per-vendor ratings, annual report reuse and source report approver unspecified.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [
+            182,
+            183
+          ],
+          "checklistParagraphs": [],
+          "approvalAndAcceptanceParagraphs": [
+            183
+          ],
+          "vendorExternalCommunicationParagraphs": [
+            182
+          ],
+          "standardDocumentRequirements": [
+            412,
+            413,
+            414,
+            418,
+            419,
+            420,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": false
+        }
+      ],
+      "implementation": "Source/coverage map only; no blueprint implementation"
+    },
+    {
+      "category": "DIGITAL",
+      "name": "Digital",
+      "sourceSection": 7,
+      "sourcePage": null,
+      "processStageCount": 7,
+      "maintenanceAdditional": true,
+      "choices": "Seven stages plus maintenance, web/iOS/Android; UAT rounds, post-launch support and no-end-date maintenance.",
+      "standardDocumentParagraphs": [
+        412,
+        413,
+        414,
+        418,
+        419,
+        420,
+        427,
+        428,
+        429,
+        430,
+        431,
+        432
+      ],
+      "stages": [
+        {
+          "name": "Brief",
+          "section": 7,
+          "page": null,
+          "sourceRange": [
+            186,
+            187
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 186,
+              "text": "Brief"
+            },
+            {
+              "paragraph": 187,
+              "text": "Data: purpose, users, platform (web / iOS / Android), languages, integrations, budget, compliance needs (age verification, data privacy, cookies), launch date."
+            }
+          ],
+          "goal": "Not explicitly stated; stage title indicates purpose only.",
+          "fields": [
+            "Data: purpose, users, platform (web / iOS / Android), languages, integrations, budget, compliance needs (age verification, data privacy, cookies), launch date."
+          ],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_NOW",
+              "scope": "Purpose/users/platform/languages/integration/compliance/date summaries.",
+              "implementedHere": false
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "No compliance certification, detailed fields and approvals remain open.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [],
+          "checklistParagraphs": [],
+          "approvalAndAcceptanceParagraphs": [],
+          "vendorExternalCommunicationParagraphs": [],
+          "standardDocumentRequirements": [
+            412,
+            413,
+            414,
+            418,
+            419,
+            420,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": true
+        },
+        {
+          "name": "Discovery",
+          "section": 7,
+          "page": null,
+          "sourceRange": [
+            188,
+            189
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 188,
+              "text": "Discovery"
+            },
+            {
+              "paragraph": 189,
+              "text": "Data: requirements, user stories, site map, vendor selection (Director selects, RFP after Director approval)."
+            }
+          ],
+          "goal": "Not explicitly stated; stage title indicates purpose only.",
+          "fields": [
+            "Data: requirements, user stories, site map, vendor selection (Director selects, RFP after Director approval)."
+          ],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_NOW",
+              "scope": "Requirements, user stories, sitemap files and concept tasks.",
+              "implementedHere": false
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "Vendor selection/CERBER/RFP and detailed acceptance criteria.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [
+            189
+          ],
+          "checklistParagraphs": [],
+          "approvalAndAcceptanceParagraphs": [
+            189
+          ],
+          "vendorExternalCommunicationParagraphs": [
+            189
+          ],
+          "standardDocumentRequirements": [
+            412,
+            413,
+            414,
+            418,
+            419,
+            420,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": true
+        },
+        {
+          "name": "UX concept",
+          "section": 7,
+          "page": null,
+          "sourceRange": [
+            190,
+            191
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 190,
+              "text": "UX concept"
+            },
+            {
+              "paragraph": 191,
+              "text": "Data: wireframes, user flows."
+            }
+          ],
+          "goal": "Not explicitly stated; stage title indicates purpose only.",
+          "fields": [
+            "Data: wireframes, user flows."
+          ],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_WITH_EXISTING_ADAPTER",
+              "scope": "Initial Concept Tasker for wireframes/user flows.",
+              "implementedHere": false
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "Exact UX approval/criteria not provided.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [
+            191
+          ],
+          "checklistParagraphs": [],
+          "approvalAndAcceptanceParagraphs": [],
+          "vendorExternalCommunicationParagraphs": [],
+          "standardDocumentRequirements": [
+            412,
+            413,
+            414,
+            418,
+            419,
+            420,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": true
+        },
+        {
+          "name": "UI design",
+          "section": 7,
+          "page": null,
+          "sourceRange": [
+            192,
+            193
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 192,
+              "text": "UI design"
+            },
+            {
+              "paragraph": 193,
+              "text": "Data: screen designs, design system / visual style."
+            }
+          ],
+          "goal": "Not explicitly stated; stage title indicates purpose only.",
+          "fields": [
+            "Data: screen designs, design system / visual style."
+          ],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_WITH_EXISTING_ADAPTER",
+              "scope": "Final Concept Tasker for designs/style evidence.",
+              "implementedHere": false
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "Exact UI approval/criteria not provided.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [
+            193
+          ],
+          "checklistParagraphs": [],
+          "approvalAndAcceptanceParagraphs": [],
+          "vendorExternalCommunicationParagraphs": [],
+          "standardDocumentRequirements": [
+            412,
+            413,
+            414,
+            418,
+            419,
+            420,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": true
+        },
+        {
+          "name": "Specification & content",
+          "section": 7,
+          "page": null,
+          "sourceRange": [
+            194,
+            195
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 194,
+              "text": "Specification & content"
+            },
+            {
+              "paragraph": 195,
+              "text": "Data: content inventory, texts, SEO, legal pages (privacy, terms, cookies), accounts and domains, file standard (digital variant: export formats, resolutions, asset naming)."
+            }
+          ],
+          "goal": "Not explicitly stated; stage title indicates purpose only.",
+          "fields": [
+            "Data: content inventory, texts, SEO, legal pages (privacy, terms, cookies), accounts and domains, file standard (digital variant: export formats, resolutions, asset naming)."
+          ],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_NOW",
+              "scope": "Typed content inventory and files for texts, SEO/legal/export requirements.",
+              "implementedHere": false
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "Legal checks, secure credential vault/account/domain inventory and binary asset validation.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [
+            195
+          ],
+          "checklistParagraphs": [],
+          "approvalAndAcceptanceParagraphs": [],
+          "vendorExternalCommunicationParagraphs": [
+            195
+          ],
+          "standardDocumentRequirements": [
+            412,
+            413,
+            414,
+            418,
+            419,
+            420,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": true
+        },
+        {
+          "name": "Build & testing",
+          "section": 7,
+          "page": null,
+          "sourceRange": [
+            196,
+            197
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 196,
+              "text": "Build & testing"
+            },
+            {
+              "paragraph": 197,
+              "text": "Data: build rounds, test version, user acceptance testing with bug list as tasks, approval; the stage can repeat test rounds."
+            }
+          ],
+          "goal": "Not explicitly stated; stage title indicates purpose only.",
+          "fields": [
+            "Data: build rounds, test version, user acceptance testing with bug list as tasks, approval; the stage can repeat test rounds."
+          ],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_NOW",
+              "scope": "Test evidence, manually created bug tasks and internal approval review.",
+              "implementedHere": false
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "UAT test-case engine, repeated test-round lifecycle and bug-to-stage blocking; reviewer unspecified.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [
+            197
+          ],
+          "checklistParagraphs": [
+            197
+          ],
+          "approvalAndAcceptanceParagraphs": [
+            197
+          ],
+          "vendorExternalCommunicationParagraphs": [],
+          "standardDocumentRequirements": [
+            412,
+            413,
+            414,
+            418,
+            419,
+            420,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": true
+        },
+        {
+          "name": "Launch & handover",
+          "section": 7,
+          "page": null,
+          "sourceRange": [
+            198,
+            200
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 198,
+              "text": "Launch & handover"
+            },
+            {
+              "paragraph": 199,
+              "text": "Data: go-live, handover of accesses and documentation to IT, user training, post-launch support period."
+            },
+            {
+              "paragraph": 200,
+              "text": "Done when: go-live accepted (Acceptance Protocol)."
+            }
+          ],
+          "goal": "Not explicitly stated; stage title indicates purpose only.",
+          "fields": [
+            "Data: go-live, handover of accesses and documentation to IT, user training, post-launch support period."
+          ],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [
+            "Done when: go-live accepted (Acceptance Protocol)."
+          ],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_NOW",
+              "scope": "Go-live evidence, access-handover record, documentation and training notes.",
+              "implementedHere": false
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "Deployment, actual credential transfer, support scheduling and signed acceptance.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [
+            199,
+            200
+          ],
+          "checklistParagraphs": [],
+          "approvalAndAcceptanceParagraphs": [
+            200
+          ],
+          "vendorExternalCommunicationParagraphs": [
+            199
+          ],
+          "standardDocumentRequirements": [
+            412,
+            413,
+            414,
+            418,
+            419,
+            420,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": false
+        },
+        {
+          "name": "Maintenance mode",
+          "section": 7,
+          "page": null,
+          "sourceRange": [
+            201,
+            202
+          ],
+          "sourceRequirements": [
+            {
+              "paragraph": 201,
+              "text": "Maintenance mode"
+            },
+            {
+              "paragraph": 202,
+              "text": "The project stays open without an end date; change requests and fixes are tasks; costs continue to be tracked."
+            }
+          ],
+          "goal": "Not explicitly stated; stage title indicates purpose only.",
+          "fields": [],
+          "requiredOptional": "Only explicit source required/optional wording is authoritative. Unspecified per-field flags require business confirmation.",
+          "completionConditions": [],
+          "capabilityCoverage": [
+            {
+              "classification": "SUPPORTED_NOW",
+              "scope": "General Tasks can retain change/fix work while RuntimeProject is ACTIVE.",
+              "implementedHere": false
+            },
+            {
+              "classification": "REQUIRES_NEW_CAPABILITY",
+              "scope": "Maintenance mode, indefinite budget/cost ledger and source close-versus-maintain governance need explicit decision.",
+              "implementedHere": false
+            }
+          ],
+          "businessConfirmation": "Exact requiredness, approvals and acceptance criteria where unstated; section 18 remains open.",
+          "fileRequirementParagraphs": [],
+          "checklistParagraphs": [],
+          "approvalAndAcceptanceParagraphs": [],
+          "vendorExternalCommunicationParagraphs": [],
+          "standardDocumentRequirements": [
+            412,
+            413,
+            414,
+            418,
+            419,
+            420,
+            427,
+            428,
+            429,
+            430,
+            431,
+            432
+          ],
+          "taskerOpportunities": "Manual General, File Upload, Data Input, Inspect File, Initial Concept or Final Concept tasks where current target/authority contracts allow. No starter tasks, automatic completion, stage-block flag or new task type.",
+          "sourceAcceptanceUnspecified": true
+        }
+      ],
+      "implementation": "Source/coverage map only; no blueprint implementation"
+    }
+  ],
+  "crossCuttingCoverage": [
+    {
+      "capability": "INFORMATION",
+      "paragraphs": [
+        40,
+        77,
+        96,
+        117
+      ],
+      "classification": "SUPPORTED_NOW",
+      "coverageAndLimits": "Six scalar types, requiredness/defaults/bounds/select/date validation. No repeated rows, conditional rules, cross-field consistency or master SKU/format library."
+    },
+    {
+      "capability": "FILE_REQUIREMENT",
+      "paragraphs": [
+        333,
+        334,
+        340,
+        341
+      ],
+      "classification": "SUPPORTED_NOW",
+      "coverageAndLimits": "Bounded count and MIME/extension declarations, sealed exact versions, independent review. Unlimited uploads/all formats, automatic previews and arbitrary-field attachments are not available."
+    },
+    {
+      "capability": "CHECKLIST",
+      "paragraphs": [
+        59,
+        97,
+        502,
+        509,
+        510,
+        511,
+        512,
+        513,
+        514,
+        515,
+        516
+      ],
+      "classification": "SUPPORTED_NOW",
+      "coverageAndLimits": "Required human attestations plus text or stage-file evidence. Does not inspect artwork internals, legal compliance or real-world acceptance."
+    },
+    {
+      "capability": "APPROVAL",
+      "paragraphs": [
+        63,
+        101,
+        102,
+        103,
+        104,
+        105,
+        106
+      ],
+      "classification": "SUPPORTED_NOW",
+      "coverageAndLimits": "Fixed ordered Director/SPM/Owner/Co-owner eligibility and evidence snapshots. Purchase/CEO/arbitrary stakeholders/all Executors and chosen-step restart need new capabilities."
+    },
+    {
+      "capability": "Configured stage gates",
+      "paragraphs": [
+        60,
+        121,
+        327
+      ],
+      "classification": "SUPPORTED_NOW",
+      "coverageAndLimits": "AND of required fields/checklists, accepted files, approvals and explicit predecessor stages. No task, external-state, conditional branch, skip or override gate."
+    },
+    {
+      "capability": "PublishedWorkflowVersion",
+      "paragraphs": [
+        33
+      ],
+      "classification": "SUPPORTED_NOW",
+      "coverageAndLimits": "Genuine Director publication, immutable definition/hash/history, future revisions cannot retarget existing projects. No official standard catalog designation exists."
+    },
+    {
+      "capability": "RuntimeProject/RuntimeStage",
+      "paragraphs": [
+        40,
+        48,
+        56
+      ],
+      "classification": "SUPPORTED_NOW",
+      "coverageAndLimits": "Real version-pinned identity, typed evidence, explicit stage completion and immutable completed history; no hardcoded template stage count."
+    },
+    {
+      "capability": "Universal Tasker",
+      "paragraphs": [
+        85,
+        90,
+        279,
+        309,
+        310,
+        313,
+        314,
+        315,
+        316,
+        317,
+        318,
+        319,
+        320,
+        321,
+        322,
+        323,
+        324,
+        325,
+        326,
+        327,
+        328,
+        329,
+        330,
+        331,
+        332
+      ],
+      "classification": "SUPPORTED_WITH_EXISTING_ADAPTER",
+      "coverageAndLimits": "All six existing types and Sisters in real runtime context; file/data target adapters with reauthorization and exact provenance; concept inspiration. Source forwarding/planned tasks/mandatory stage link, automatic approval/sample tasks, notifications/calendar and blockers are not implemented."
+    },
+    {
+      "capability": "Completion-document policy",
+      "paragraphs": [
+        107,
+        121,
+        424,
+        425,
+        426,
+        498
+      ],
+      "classification": "SUPPORTED_WITH_EXISTING_ADAPTER",
+      "coverageAndLimits": "Explicit Director per-project REQUIRED/OPTIONAL/NOT_APPLICABLE policy for Approval Proof/Copyright Transfer/Invoice; internal exact-version review and final completion. No automatic source-derived requirements, external links or pre-production contract gate."
+    },
+    {
+      "capability": "Shared File Identity",
+      "paragraphs": [
+        334,
+        339,
+        340
+      ],
+      "classification": "SUPPORTED_WITH_EXISTING_ADAPTER",
+      "coverageAndLimits": "Native version references, provenance and reauthorized conditional reads; no automatic archive, same-name revision matching or unlimited storage policy."
+    },
+    {
+      "capability": "Reusable Approval Engine",
+      "paragraphs": [
+        352,
+        354
+      ],
+      "classification": "SUPPORTED_WITH_EXISTING_ADAPTER",
+      "coverageAndLimits": "Typed internal subjects and exact evidence, immutable decisions. No external dispatch subject/token/recipient adapter."
+    },
+    {
+      "capability": "Shared Audit and Events",
+      "paragraphs": [
+        354
+      ],
+      "classification": "SUPPORTED_WITH_EXISTING_ADAPTER",
+      "coverageAndLimits": "Actual actor/session, native audit and atomic outbox; no external worker/notification delivery implied."
+    },
+    {
+      "capability": "Business roles and governance",
+      "paragraphs": [
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        32,
+        34,
+        37,
+        38,
+        60,
+        307,
+        330,
+        405
+      ],
+      "classification": "SUPERSEDED_BY_APPROVED_V2_RULE",
+      "coverageAndLimits": "Five V2 roles; no general Collaborator; technical privileges separate; global Director without membership; JPM requires Director plus eligible SPM Co-owner; SPM approved executable version; no skips/overrides/delegation; no task visibility solely from project management."
+    },
+    {
+      "capability": "Concept stages",
+      "paragraphs": [
+        85,
+        89,
+        90,
+        93
+      ],
+      "classification": "SUPERSEDED_BY_APPROVED_V2_RULE",
+      "coverageAndLimits": "Initial/Final Concept are Universal Tasker types, not mandatory legacy fixed stages. Source skip rules do not introduce new bypasses."
+    },
+    {
+      "capability": "Closing",
+      "paragraphs": [
+        56,
+        121,
+        340,
+        398
+      ],
+      "classification": "SUPERSEDED_BY_APPROVED_V2_RULE",
+      "coverageAndLimits": "Owner request and separate Director final decision after approved document policy. No automatic closing/archiving."
+    },
+    {
+      "capability": "Vendor/dispatch/CERBER",
+      "paragraphs": [
+        35,
+        36,
+        83,
+        84,
+        108,
+        129,
+        141,
+        161,
+        172,
+        189,
+        342,
+        343,
+        344,
+        345,
+        346,
+        347,
+        348,
+        349,
+        350,
+        351,
+        352,
+        353,
+        354,
+        355,
+        359,
+        360,
+        371,
+        372,
+        373,
+        374,
+        375,
+        376,
+        377
+      ],
+      "classification": "REQUIRES_EXTERNAL_INTEGRATION",
+      "coverageAndLimits": "Typed vendor identity/status synchronization, approved recipient/version dispatch, contract and order workflow, genuine external actor/access-token/provenance model."
+    },
+    {
+      "capability": "Toolio",
+      "paragraphs": [
+        117,
+        121
+      ],
+      "classification": "REQUIRES_EXTERNAL_INTEGRATION",
+      "coverageAndLimits": "Source calls for manual Digital Lead entry via task. Existing General Tasks can record work; verified Toolio state/completion gate is absent. No automatic integration invented."
+    },
+    {
+      "capability": "Pitch",
+      "paragraphs": [
+        358,
+        359,
+        360,
+        361,
+        362,
+        363,
+        364,
+        365,
+        366,
+        367,
+        368,
+        369,
+        475,
+        476,
+        477,
+        478,
+        479,
+        480,
+        481,
+        482,
+        483,
+        484,
+        485,
+        486,
+        487,
+        488,
+        489,
+        490,
+        491
+      ],
+      "classification": "REQUIRES_NEW_CAPABILITY",
+      "coverageAndLimits": "Structured comparison, Director-controlled defaults/participants, exact terms acceptance, release sequencing, fees and five-day signed-agreement gate. Source defaults 2 rounds, 5%, 0.5%, USD, 21 days, 30/45 minutes, 4–5 stakeholders and 5 days are recorded, not operational."
+    },
+    {
+      "capability": "Documents and standards",
+      "paragraphs": [
+        408,
+        436,
+        449,
+        466,
+        467,
+        474,
+        492,
+        493,
+        494,
+        495,
+        496,
+        497,
+        498,
+        499,
+        500,
+        501,
+        502,
+        503,
+        504,
+        505,
+        506,
+        507,
+        508,
+        509,
+        510,
+        511,
+        512,
+        513,
+        514,
+        515,
+        516
+      ],
+      "classification": "REQUIRES_NEW_CAPABILITY",
+      "coverageAndLimits": "Prefilled structured documents, Draft/For approval/Approved/Signed lifecycle, signatures, legal templates and binary preflight. File storage is not document generation or legal approval."
+    },
+    {
+      "capability": "Production/sample/outlet/event/UAT",
+      "paragraphs": [
+        108,
+        112,
+        114,
+        129,
+        144,
+        148,
+        153,
+        159,
+        163,
+        164,
+        166,
+        170,
+        178,
+        180,
+        182,
+        197,
+        199,
+        201,
+        202
+      ],
+      "classification": "REQUIRES_NEW_CAPABILITY",
+      "coverageAndLimits": "Repeating relational units/rounds/outlets, conditional acceptance, inventory, linked projects, scheduling, test/bug lifecycles and maintenance mode."
+    },
+    {
+      "capability": "Budget",
+      "paragraphs": [
+        391,
+        392,
+        393,
+        394,
+        395,
+        396,
+        397,
+        398,
+        399
+      ],
+      "classification": "REQUIRES_NEW_CAPABILITY",
+      "coverageAndLimits": "Per-vendor offers/commitments/invoices, calculations, visibility-specific ledger, alerts and archive summary; a numeric budget field is capture only."
+    },
+    {
+      "capability": "Scheduling and leave",
+      "paragraphs": [
+        62,
+        64,
+        65,
+        312,
+        331,
+        332,
+        400,
+        401,
+        402,
+        403,
+        404,
+        405,
+        406
+      ],
+      "classification": "REQUIRES_NEW_CAPABILITY",
+      "coverageAndLimits": "Backward planning, availability calendars, reminders, account lockouts, delegation, escalation and automatic tasks; no operational service inferred."
+    },
+    {
+      "capability": "Vendor ratings",
+      "paragraphs": [
+        387,
+        388,
+        389,
+        390
+      ],
+      "classification": "REQUIRES_NEW_CAPABILITY",
+      "coverageAndLimits": "Three genuine role-specific ratings per vendor and completion gate; generic checklist cannot enforce."
+    },
+    {
+      "capability": "Open business requirements",
+      "paragraphs": [
+        518,
+        519,
+        520,
+        521,
+        522,
+        523,
+        524
+      ],
+      "classification": "REQUIRES_BUSINESS_DECISION",
+      "coverageAndLimits": "Detailed types 2–5 fields/checklists/guidance; durations; starter tasks; legal review; CERBER master data/reverification; file-size policy; toolkit master layout. Keep all open."
+    },
+    {
+      "capability": "Source ambiguity",
+      "paragraphs": [
+        56,
+        121,
+        184,
+        185,
+        201,
+        202,
+        427,
+        428,
+        429
+      ],
+      "classification": "REQUIRES_BUSINESS_DECISION",
+      "coverageAndLimits": "Global close/archive versus Digital indefinite maintenance; section 17 Acceptance Protocol stage 7 versus six-stage POSM and eight-stage Stand; Packaging stages 7/8 closure versus common ratings. Use business-purpose mapping and V2 final authority, never an invented fixed index."
+    }
+  ]
+}

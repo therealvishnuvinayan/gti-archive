@@ -1,0 +1,3015 @@
+{
+  "blueprint": {
+    "blueprintSchemaVersion": 1,
+    "id": "gti-packaging-artwork",
+    "revision": 1,
+    "category": "ARTWORK_PACKAGING",
+    "designation": "UNAPPROVED_CANDIDATE",
+    "source": {
+      "title": "Flux – Project Process Templates & Content Specification",
+      "version": "2026-09-29",
+      "sha256": "4d86f90d173a406ad9f3a5ffbba7ce55776b5d209f4bc2a0e4653f299d61b944",
+      "pagination": "Supplied as 19 pages; page numbers unverified. Use exact OOXML section/paragraph locators."
+    },
+    "definitionSchemaVersion": 1,
+    "definition": {
+      "schemaVersion": 1,
+      "name": "Packaging / Artwork · internal candidate v1",
+      "intendedProjectType": "ARTWORK_PACKAGING",
+      "description": "GTI Packaging blueprint gti-packaging-artwork revision 1; source 2026-09-29 SHA-256 4d86f90d173a406ad9f3a5ffbba7ce55776b5d209f4bc2a0e4653f299d61b944. UNAPPROVED CANDIDATE. Internal evidence review only. Official rollout blocked: repeated per-file/market/unit validation, mandatory concept-task gates, Purchase/CEO/all-Executor approvals, vendor/CERBER/contract/dispatch services, verified Toolio entry and document automation are unavailable. Initial and Final Concept work uses manually created Universal Tasks. Requiredness and routing are proposed. Stage completion is not project completion: Director-approved per-project document policy, actual Owner request and separate Director final decision remain mandatory. No automatic archive or official designation.",
+      "stages": [
+        {
+          "id": "pkg_brief",
+          "title": "Project Inquiry / Brief",
+          "description": "Goal: Capture what is being made, for whom, by when and the proposed budget. What now: complete the configured forms, review evidence and record checklist notes. Move on: all explicit gates must pass. This internal pilot does not certify the excluded official-source requirements.",
+          "position": 0,
+          "capabilities": [
+            {
+              "id": "pkg_brief_fields",
+              "type": "INFORMATION",
+              "title": "Project and packaging brief",
+              "instructions": "Capture the project summary. Use the attached register for multiple SKUs, markets or units; row-level rules are not automated.",
+              "fields": [
+                {
+                  "id": "pkg_scope",
+                  "label": "Candidate scope",
+                  "type": "READ_ONLY",
+                  "required": false,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": "Internal evidence pilot only. Not an approved official GTI standard. No vendor dispatch, procurement, Toolio verification or automatic task gates.",
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "pkg_client",
+                  "label": "Client and final beneficiaries",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_brand",
+                  "label": "Brand and sub-brand",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_skus",
+                  "label": "Variants / SKU register",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_pack_type",
+                  "label": "Pack type and dimensions",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_components",
+                  "label": "Components: primary pack, inner frame, inner foil, tipping paper, outer and mastercarton",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_markets",
+                  "label": "Target markets",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_initial_brief",
+                  "label": "Initial brief",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_objectives",
+                  "label": "Business objectives",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_stick_format",
+                  "label": "Stick format",
+                  "type": "SELECT",
+                  "required": true,
+                  "options": [
+                    "KS",
+                    "Slims",
+                    "Super Slims",
+                    "Queens",
+                    "Nano",
+                    "HnB"
+                  ],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "pkg_execution",
+                  "label": "Source execution context",
+                  "type": "SELECT",
+                  "required": true,
+                  "options": [
+                    "Internal",
+                    "External (record only; unsupported)"
+                  ],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "pkg_mode",
+                  "label": "Agency collaboration context",
+                  "type": "SELECT",
+                  "required": true,
+                  "options": [
+                    "Direct",
+                    "Pitch"
+                  ],
+                  "help": "Records context; no branching, vendor selection or dispatch occurs.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "pkg_budget",
+                  "label": "Planned budget amount",
+                  "type": "NUMBER",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 0,
+                  "max": null
+                },
+                {
+                  "id": "pkg_budget_currency",
+                  "label": "Budget currency",
+                  "type": "SHORT_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Currency is not prescribed for all project budgets; enter the agreed unit.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 500
+                },
+                {
+                  "id": "pkg_request_date",
+                  "label": "Request date",
+                  "type": "DATE",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "pkg_launch_date",
+                  "label": "Required by / Market launch date",
+                  "type": "DATE",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "pkg_priority",
+                  "label": "Priority",
+                  "type": "SHORT_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 500
+                },
+                {
+                  "id": "pkg_legal_notes",
+                  "label": "Legal notes",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "pkg_creative_brief",
+              "type": "INFORMATION",
+              "title": "Creative Brief – Packaging content",
+              "instructions": "Capture the project summary. Use the attached register for multiple SKUs, markets or units; row-level rules are not automated.",
+              "fields": [
+                {
+                  "id": "pkg_cb_positioning",
+                  "label": "Big idea, positioning, price segment and competitors",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_cb_product",
+                  "label": "Blend, filter, capsule/flavour and permitted icons per SKU",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_cb_portfolio",
+                  "label": "Future portfolio and current quotation scope",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_cb_consumer",
+                  "label": "Consumer insight: adult smokers of legal age only",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_cb_design",
+                  "label": "Logotype, colour, naming, tipping paper and finishes",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_cb_deliverables",
+                  "label": "Concept count, views, numbering, summary page and horizontal PDF",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_cb_scope_timeline",
+                  "label": "Direct scope/timeline or Pitch approach (record only)",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_cb_contacts",
+                  "label": "Contacts and approval intentions",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_cb_annex",
+                  "label": "Optional stick/pack formats annex",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "pkg_brief_draft",
+              "type": "FILE_REQUIREMENT",
+              "title": "Creative Brief – Packaging draft",
+              "instructions": "Upload a manually prepared brief. No automatic document generation or vendor release.",
+              "acceptedTypes": [
+                ".pdf"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "pkg_brief_checks",
+              "type": "CHECKLIST",
+              "title": "Brief review",
+              "instructions": "Human attestations require a written review note. These do not validate binary files, regulations or external systems.",
+              "items": [
+                {
+                  "id": "pkg_brief_consistency",
+                  "label": "SKU, format and deliverable consistency manually reviewed",
+                  "description": "Record what was checked and any limitations; no automated compliance certification.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "pkg_brief_licensed",
+                  "label": "Source restriction on licensed visual and typographic elements reviewed",
+                  "description": "Record what was checked and any limitations; no automated compliance certification.",
+                  "required": true,
+                  "evidence": "TEXT"
+                }
+              ]
+            }
+          ],
+          "gates": [
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "pkg_brief_fields"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "pkg_creative_brief"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "pkg_brief_draft"
+            },
+            {
+              "type": "REQUIRED_CHECKLIST",
+              "capabilityId": "pkg_brief_checks"
+            }
+          ]
+        },
+        {
+          "id": "pkg_research",
+          "title": "Research and regulatory planning",
+          "description": "Goal: Record supplied market rules and technical resources before design. What now: complete the configured forms, review evidence and record checklist notes. Move on: all explicit gates must pass. This internal pilot does not certify the excluded official-source requirements.",
+          "position": 1,
+          "capabilities": [
+            {
+              "id": "pkg_regulations",
+              "type": "INFORMATION",
+              "title": "Market regulatory requirements",
+              "instructions": "Record requirements supplied for each target market; upload the full market register. This is not legal advice or automated regulatory verification.",
+              "fields": [
+                {
+                  "id": "pkg_reg_hw",
+                  "label": "Health-warning type, size and position",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_reg_languages",
+                  "label": "Required languages",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_reg_tax",
+                  "label": "Tax stamp requirements",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_reg_trace",
+                  "label": "Track & trace requirements",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_reg_bans",
+                  "label": "Restrictions on fruit imagery and flavour names",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_reg_declarations",
+                  "label": "Tar/nicotine declaration position",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_reg_competitors",
+                  "label": "Competitor packs",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_reg_printer",
+                  "label": "Printer capabilities and finishes",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_reg_previous",
+                  "label": "Previous brand projects",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "pkg_regulatory_document",
+              "type": "FILE_REQUIREMENT",
+              "title": "Market regulatory requirements document",
+              "instructions": "Complete and upload the internal market register; no certification implied.",
+              "acceptedTypes": [
+                ".pdf"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "pkg_dielines",
+              "type": "FILE_REQUIREMENT",
+              "title": "Technical drawings / dielines",
+              "instructions": "Provide drawings and reference PDFs.",
+              "acceptedTypes": [
+                ".pdf",
+                ".ai",
+                ".eps",
+                ".dxf"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "pkg_brief_approval",
+              "type": "APPROVAL",
+              "title": "Director internal brief approval",
+              "instructions": "Internal evidence approval only. The reviewer must not be the requester or an evidence contributor. This does not authorize vendor dispatch or substitute for the source stakeholder chain.",
+              "steps": [
+                {
+                  "id": "pkg_brief_approval_decision",
+                  "label": "Director internal brief approval",
+                  "approver": "DIRECTOR",
+                  "evidence": "CONFIGURED_INPUTS",
+                  "decision": "APPROVE_REQUIRED"
+                }
+              ],
+              "rejection": "RETURN_FOR_CHANGES",
+              "gatesProgression": true
+            }
+          ],
+          "gates": [
+            {
+              "type": "PRECEDING_STAGE",
+              "stageId": "pkg_brief"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "pkg_regulations"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "pkg_regulatory_document"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "pkg_dielines"
+            },
+            {
+              "type": "APPROVAL_COMPLETE",
+              "capabilityId": "pkg_brief_approval"
+            }
+          ]
+        },
+        {
+          "id": "pkg_specification",
+          "title": "Final Artwork specification",
+          "description": "Goal: Collect technical and legal evidence for the final artwork. What now: complete the configured forms, review evidence and record checklist notes. Move on: all explicit gates must pass. This internal pilot does not certify the excluded official-source requirements.",
+          "position": 2,
+          "capabilities": [
+            {
+              "id": "pkg_artwork_fields",
+              "type": "INFORMATION",
+              "title": "Final Artwork summary (attach per-file register)",
+              "instructions": "Capture the project summary. Use the attached register for multiple SKUs, markets or units; row-level rules are not automated.",
+              "fields": [
+                {
+                  "id": "pkg_fa_output_name",
+                  "label": "Output Name",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Summary only. For an inapplicable item record the reason; row-level applicability is not automatically validated.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_fa_technical_drawing",
+                  "label": "Technical Drawing",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Summary only. For an inapplicable item record the reason; row-level applicability is not automatically validated.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_fa_health_warning",
+                  "label": "Health Warning",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Summary only. For an inapplicable item record the reason; row-level applicability is not automatically validated.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_fa_compulsory_text",
+                  "label": "Compulsory Text",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Summary only. For an inapplicable item record the reason; row-level applicability is not automatically validated.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_fa_marketing_copy",
+                  "label": "Marketing Copy",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Summary only. For an inapplicable item record the reason; row-level applicability is not automatically validated.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_fa_related_graphics",
+                  "label": "Related Graphics",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Summary only. For an inapplicable item record the reason; row-level applicability is not automatically validated.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_fa_printing",
+                  "label": "Printing Technology",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Summary only. For an inapplicable item record the reason; row-level applicability is not automatically validated.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_fa_finishes",
+                  "label": "Finishes",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Summary only. For an inapplicable item record the reason; row-level applicability is not automatically validated.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_fa_barcode",
+                  "label": "Barcode",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Summary only. For an inapplicable item record the reason; row-level applicability is not automatically validated.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_fa_track_trace",
+                  "label": "Track & Trace",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Summary only. For an inapplicable item record the reason; row-level applicability is not automatically validated.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_fa_three_d",
+                  "label": "3D's",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Summary only. For an inapplicable item record the reason; row-level applicability is not automatically validated.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_fa_tax_stamp",
+                  "label": "Tax Stamp",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Summary only. For an inapplicable item record the reason; row-level applicability is not automatically validated.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_fa_qr",
+                  "label": "QR Code",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Summary only. For an inapplicable item record the reason; row-level applicability is not automatically validated.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_fa_invoice",
+                  "label": "Invoice reference",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Summary only. For an inapplicable item record the reason; row-level applicability is not automatically validated.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_fa_colour",
+                  "label": "Colour standard: Pantone / CMYK",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Summary only. For an inapplicable item record the reason; row-level applicability is not automatically validated.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_fa_substrate",
+                  "label": "Substrate",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Summary only. For an inapplicable item record the reason; row-level applicability is not automatically validated.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_fa_dieline",
+                  "label": "Dieline and component details",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Summary only. For an inapplicable item record the reason; row-level applicability is not automatically validated.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_fa_tar",
+                  "label": "Tar (mg) – representative value",
+                  "type": "NUMBER",
+                  "required": false,
+                  "options": [],
+                  "help": "Per-market values and applicability belong in the register; no regulatory limit is inferred.",
+                  "defaultValue": null,
+                  "min": 0,
+                  "max": null
+                },
+                {
+                  "id": "pkg_fa_nicotine",
+                  "label": "Nicotine (mg) – representative value",
+                  "type": "NUMBER",
+                  "required": false,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 0,
+                  "max": null
+                },
+                {
+                  "id": "pkg_fa_applicability",
+                  "label": "Per-file applicability and omission reasons",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "pkg_creative_evidence",
+              "type": "FILE_REQUIREMENT",
+              "title": "Reviewed creative development evidence",
+              "instructions": "Manually create Initial Concept and Final Concept Universal Tasks. Upload the reviewed outcome with task references; this requirement does not prove Tasker completion or enforce rounds/counts.",
+              "acceptedTypes": [
+                ".pdf"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "pkg_spec_register",
+              "type": "FILE_REQUIREMENT",
+              "title": "Per-file specification and applicability register",
+              "instructions": "List every final file, component and market, including reasoned non-applicability.",
+              "acceptedTypes": [
+                ".pdf",
+                ".xlsx",
+                ".csv"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "pkg_final_artwork",
+              "type": "FILE_REQUIREMENT",
+              "title": "Final Artwork files and PDF previews",
+              "instructions": "Provide layered editable artwork and preview; binary preflight is manual.",
+              "acceptedTypes": [
+                ".pdf",
+                ".ai",
+                ".psd",
+                ".eps",
+                ".zip"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "pkg_artwork_checks",
+              "type": "CHECKLIST",
+              "title": "Final Artwork File Standard – human review",
+              "instructions": "Human attestations require a written review note. These do not validate binary files, regulations or external systems.",
+              "items": [
+                {
+                  "id": "pkg_fa_layers",
+                  "label": "Layered editable files; images embedded, not linked",
+                  "description": "Record what was checked and any limitations; no automated compliance certification.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "pkg_fa_resolution",
+                  "label": "300 dpi and A3 scalability reviewed",
+                  "description": "Record what was checked and any limitations; no automated compliance certification.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "pkg_fa_psd",
+                  "label": "PSD image components and separate shadow layers reviewed",
+                  "description": "Record what was checked and any limitations; no automated compliance certification.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "pkg_fa_type",
+                  "label": "Editable typefaces and legal texts reviewed",
+                  "description": "Record what was checked and any limitations; no automated compliance certification.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "pkg_fa_colours",
+                  "label": "CMYK/Pantone, finishes, separate white/varnish layers reviewed",
+                  "description": "Record what was checked and any limitations; no automated compliance certification.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "pkg_fa_bleed",
+                  "label": "Bleed, safety margins and separate dieline layer reviewed",
+                  "description": "Record what was checked and any limitations; no automated compliance certification.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "pkg_fa_naming",
+                  "label": "PROJECT_SKU_MARKET_ELEMENT_vXX_DATE and PDF handover structure reviewed",
+                  "description": "Record what was checked and any limitations; no automated compliance certification.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "pkg_fa_packaging",
+                  "label": "Component dielines, tipping height and foil edge distances reviewed",
+                  "description": "Record what was checked and any limitations; no automated compliance certification.",
+                  "required": true,
+                  "evidence": "TEXT"
+                }
+              ]
+            }
+          ],
+          "gates": [
+            {
+              "type": "PRECEDING_STAGE",
+              "stageId": "pkg_research"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "pkg_artwork_fields"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "pkg_creative_evidence"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "pkg_spec_register"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "pkg_final_artwork"
+            },
+            {
+              "type": "REQUIRED_CHECKLIST",
+              "capabilityId": "pkg_artwork_checks"
+            }
+          ]
+        },
+        {
+          "id": "pkg_production",
+          "title": "Production approval and handover evidence",
+          "description": "Goal: Review internal production evidence; no external release or production order. What now: complete the configured forms, review evidence and record checklist notes. Move on: all explicit gates must pass. This internal pilot does not certify the excluded official-source requirements.",
+          "position": 3,
+          "capabilities": [
+            {
+              "id": "pkg_production_fields",
+              "type": "INFORMATION",
+              "title": "Production register summary",
+              "instructions": "Capture the project summary. Use the attached register for multiple SKUs, markets or units; row-level rules are not automated.",
+              "fields": [
+                {
+                  "id": "pkg_units",
+                  "label": "Production units and final-file references",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_handover",
+                  "label": "Internal handover record",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "pkg_production_evidence",
+              "type": "FILE_REQUIREMENT",
+              "title": "Production and internal handover evidence",
+              "instructions": "Attach the unit register, production-file references and internal handover evidence. This does not enforce unit-level lifecycle or authorize external production.",
+              "acceptedTypes": [
+                ".pdf",
+                ".xlsx",
+                ".zip"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "pkg_production_checks",
+              "type": "CHECKLIST",
+              "title": "Internal production review",
+              "instructions": "Human attestations require a written review note. These do not validate binary files, regulations or external systems.",
+              "items": [
+                {
+                  "id": "pkg_unit_review",
+                  "label": "Every listed unit and internal handover reviewed",
+                  "description": "Record what was checked and any limitations; no automated compliance certification.",
+                  "required": true,
+                  "evidence": "TEXT"
+                }
+              ]
+            },
+            {
+              "id": "pkg_production_approval",
+              "type": "APPROVAL",
+              "title": "Director internal production-evidence approval",
+              "instructions": "Internal evidence approval only. The reviewer must not be the requester or an evidence contributor. This does not authorize vendor dispatch or substitute for the source stakeholder chain.",
+              "steps": [
+                {
+                  "id": "pkg_production_approval_decision",
+                  "label": "Director internal production-evidence approval",
+                  "approver": "DIRECTOR",
+                  "evidence": "CONFIGURED_INPUTS",
+                  "decision": "APPROVE_REQUIRED"
+                }
+              ],
+              "rejection": "RETURN_FOR_CHANGES",
+              "gatesProgression": true
+            }
+          ],
+          "gates": [
+            {
+              "type": "PRECEDING_STAGE",
+              "stageId": "pkg_specification"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "pkg_production_fields"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "pkg_production_evidence"
+            },
+            {
+              "type": "REQUIRED_CHECKLIST",
+              "capabilityId": "pkg_production_checks"
+            },
+            {
+              "type": "APPROVAL_COMPLETE",
+              "capabilityId": "pkg_production_approval"
+            }
+          ]
+        },
+        {
+          "id": "pkg_implementation",
+          "title": "Implementation and supervision",
+          "description": "Goal: Review evidence that produced samples match approved specifications. What now: complete the configured forms, review evidence and record checklist notes. Move on: all explicit gates must pass. This internal pilot does not certify the excluded official-source requirements.",
+          "position": 4,
+          "capabilities": [
+            {
+              "id": "pkg_sample_fields",
+              "type": "INFORMATION",
+              "title": "Sample and acceptance summary",
+              "instructions": "Capture the project summary. Use the attached register for multiple SKUs, markets or units; row-level rules are not automated.",
+              "fields": [
+                {
+                  "id": "pkg_sample_round",
+                  "label": "Sample round",
+                  "type": "SELECT",
+                  "required": true,
+                  "options": [
+                    "Pre-production sample",
+                    "Press check",
+                    "First production sample"
+                  ],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "pkg_sample_provider",
+                  "label": "Provider",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_sample_deadline",
+                  "label": "Sample deadline",
+                  "type": "DATE",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "pkg_sample_outcome",
+                  "label": "Sample outcome and defects",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_sample_quantity",
+                  "label": "What was received and quantities",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_sample_fixes",
+                  "label": "Remarks and fix deadlines",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "pkg_acceptance_evidence",
+              "type": "FILE_REQUIREMENT",
+              "title": "Sample register, photos and Acceptance Protocol",
+              "instructions": "Upload accepted-sample evidence for every unit. No two-party signature workflow or per-unit sample engine is implemented.",
+              "acceptedTypes": [
+                ".pdf",
+                ".jpg",
+                ".jpeg",
+                ".png",
+                ".xlsx"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "pkg_sample_checks",
+              "type": "CHECKLIST",
+              "title": "Sample acceptance review",
+              "instructions": "Human attestations require a written review note. These do not validate binary files, regulations or external systems.",
+              "items": [
+                {
+                  "id": "pkg_samples_reviewed",
+                  "label": "All listed unit samples manually reviewed against specifications",
+                  "description": "Record what was checked and any limitations; no automated compliance certification.",
+                  "required": true,
+                  "evidence": "TEXT"
+                }
+              ]
+            }
+          ],
+          "gates": [
+            {
+              "type": "PRECEDING_STAGE",
+              "stageId": "pkg_production"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "pkg_sample_fields"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "pkg_acceptance_evidence"
+            },
+            {
+              "type": "REQUIRED_CHECKLIST",
+              "capabilityId": "pkg_sample_checks"
+            }
+          ]
+        },
+        {
+          "id": "pkg_commercialisation",
+          "title": "Commercialisation preparation",
+          "description": "Goal: Prepare the Product Card and marketing toolkit for internal review. What now: complete the configured forms, review evidence and record checklist notes. Move on: all explicit gates must pass. This internal pilot does not certify the excluded official-source requirements.",
+          "position": 5,
+          "capabilities": [
+            {
+              "id": "pkg_card_fields",
+              "type": "INFORMATION",
+              "title": "Product Card data",
+              "instructions": "Capture the project summary. Use the attached register for multiple SKUs, markets or units; row-level rules are not automated.",
+              "fields": [
+                {
+                  "id": "pkg_card_identity",
+                  "label": "Brand, variant and SKU",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_card_ean",
+                  "label": "EAN codes: pack, outer, mastercarton",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_card_markets",
+                  "label": "Markets and registrations",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_card_stick",
+                  "label": "Stick length, diameter and filter type",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_card_emissions",
+                  "label": "Tar / nicotine / CO per market",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_card_configuration",
+                  "label": "Sticks per pack, pack type, packs per outer and outers per mastercarton",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_card_logistics",
+                  "label": "Dimensions, weights and pallet configuration",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_card_price",
+                  "label": "Price category",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_card_description",
+                  "label": "Short description, USP and slogan",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_card_target",
+                  "label": "Target group: adult smokers of legal age only",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_card_launch",
+                  "label": "Product launch date",
+                  "type": "DATE",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                }
+              ]
+            },
+            {
+              "id": "pkg_toolkit_fields",
+              "type": "INFORMATION",
+              "title": "Commercialisation choices",
+              "instructions": "Capture the project summary. Use the attached register for multiple SKUs, markets or units; row-level rules are not automated.",
+              "fields": [
+                {
+                  "id": "pkg_card_action",
+                  "label": "New SKU or refresh",
+                  "type": "SELECT",
+                  "required": true,
+                  "options": [
+                    "New card",
+                    "Update card"
+                  ],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "pkg_toolkit_length",
+                  "label": "Toolkit scope",
+                  "type": "SELECT",
+                  "required": true,
+                  "options": [
+                    "Full",
+                    "Short"
+                  ],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "pkg_toolkit_formats",
+                  "label": "Formats and languages",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "pkg_toolkit_deadline",
+                  "label": "Toolkit deadline",
+                  "type": "DATE",
+                  "required": true,
+                  "options": [],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "pkg_toolkit_execution",
+                  "label": "Toolkit production context",
+                  "type": "SELECT",
+                  "required": true,
+                  "options": [
+                    "Internal",
+                    "Agency (external workflow deferred)"
+                  ],
+                  "help": "",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "pkg_toolkit_note",
+                  "label": "Default concept-page note",
+                  "type": "READ_ONLY",
+                  "required": false,
+                  "options": [],
+                  "help": "This displays guidance; uploaded document contents cannot be automatically enforced.",
+                  "defaultValue": "Concept visualisation – internal / trade use only",
+                  "min": null,
+                  "max": null
+                }
+              ]
+            },
+            {
+              "id": "pkg_product_card",
+              "type": "FILE_REQUIREMENT",
+              "title": "Product Card and packshots",
+              "instructions": "Prepared data and pack/stick/outer/mastercarton packshots. Toolio entry remains outside this internal workflow.",
+              "acceptedTypes": [
+                ".pdf",
+                ".xlsx",
+                ".jpg",
+                ".png",
+                ".zip"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "pkg_toolkit",
+              "type": "FILE_REQUIREMENT",
+              "title": "Product Marketing Toolkit",
+              "instructions": "Cover, moodboard/slogan, pack views and 3D, stick, outer/mastercarton, 1–2 promotional concept pages and short specification. Retain the internal/trade note.",
+              "acceptedTypes": [
+                ".pdf",
+                ".pptx",
+                ".key"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "pkg_toolkit_checks",
+              "type": "CHECKLIST",
+              "title": "Toolkit human review",
+              "instructions": "Human attestations require a written review note. These do not validate binary files, regulations or external systems.",
+              "items": [
+                {
+                  "id": "pkg_toolkit_contents",
+                  "label": "Toolkit contents and default concept-page note reviewed",
+                  "description": "Record what was checked and any limitations; no automated compliance certification.",
+                  "required": true,
+                  "evidence": "TEXT"
+                }
+              ]
+            },
+            {
+              "id": "pkg_card_approval",
+              "type": "APPROVAL",
+              "title": "Owner Product Card approval",
+              "instructions": "Internal evidence approval only. The reviewer must not be the requester or an evidence contributor. This does not authorize vendor dispatch or substitute for the source stakeholder chain.",
+              "steps": [
+                {
+                  "id": "pkg_card_approval_decision",
+                  "label": "Owner Product Card approval",
+                  "approver": "PROJECT_OWNER",
+                  "evidence": "CONFIGURED_INPUTS",
+                  "decision": "APPROVE_REQUIRED"
+                }
+              ],
+              "rejection": "RETURN_FOR_CHANGES",
+              "gatesProgression": true
+            },
+            {
+              "id": "pkg_toolkit_approval",
+              "type": "APPROVAL",
+              "title": "Director toolkit approval",
+              "instructions": "Internal evidence approval only. The reviewer must not be the requester or an evidence contributor. This does not authorize vendor dispatch or substitute for the source stakeholder chain.",
+              "steps": [
+                {
+                  "id": "pkg_toolkit_approval_decision",
+                  "label": "Director toolkit approval",
+                  "approver": "DIRECTOR",
+                  "evidence": "CONFIGURED_INPUTS",
+                  "decision": "APPROVE_REQUIRED"
+                }
+              ],
+              "rejection": "RETURN_FOR_CHANGES",
+              "gatesProgression": true
+            }
+          ],
+          "gates": [
+            {
+              "type": "PRECEDING_STAGE",
+              "stageId": "pkg_implementation"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "pkg_card_fields"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "pkg_toolkit_fields"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "pkg_product_card"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "pkg_toolkit"
+            },
+            {
+              "type": "REQUIRED_CHECKLIST",
+              "capabilityId": "pkg_toolkit_checks"
+            },
+            {
+              "type": "APPROVAL_COMPLETE",
+              "capabilityId": "pkg_card_approval"
+            },
+            {
+              "type": "APPROVAL_COMPLETE",
+              "capabilityId": "pkg_toolkit_approval"
+            }
+          ]
+        }
+      ]
+    },
+    "scope": "INTERNAL_EVIDENCE_PILOT",
+    "trace": {
+      "pkg_scope": {
+        "paragraphs": [
+          33,
+          34,
+          77
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_client": {
+        "paragraphs": [
+          77
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_brand": {
+        "paragraphs": [
+          77
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_skus": {
+        "paragraphs": [
+          77
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_pack_type": {
+        "paragraphs": [
+          77
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_components": {
+        "paragraphs": [
+          77
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_markets": {
+        "paragraphs": [
+          77
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_initial_brief": {
+        "paragraphs": [
+          77
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_objectives": {
+        "paragraphs": [
+          77
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_stick_format": {
+        "paragraphs": [
+          77
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_execution": {
+        "paragraphs": [
+          77
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_mode": {
+        "paragraphs": [
+          74,
+          77
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_budget": {
+        "paragraphs": [
+          77,
+          393
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_budget_currency": {
+        "paragraphs": [
+          77,
+          393
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_request_date": {
+        "paragraphs": [
+          71,
+          77
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_launch_date": {
+        "paragraphs": [
+          71,
+          77
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_priority": {
+        "paragraphs": [
+          77
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_legal_notes": {
+        "paragraphs": [
+          77
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_brief_fields": {
+        "paragraphs": [
+          77
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_cb_positioning": {
+        "paragraphs": [
+          454
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_cb_product": {
+        "paragraphs": [
+          455
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_cb_portfolio": {
+        "paragraphs": [
+          456
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_cb_consumer": {
+        "paragraphs": [
+          457
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_cb_design": {
+        "paragraphs": [
+          458
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_cb_deliverables": {
+        "paragraphs": [
+          460
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_cb_scope_timeline": {
+        "paragraphs": [
+          461
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_cb_contacts": {
+        "paragraphs": [
+          465
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_cb_annex": {
+        "paragraphs": [
+          464
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_creative_brief": {
+        "paragraphs": [
+          449,
+          450,
+          451,
+          452,
+          453,
+          454,
+          455,
+          456,
+          457,
+          458,
+          459,
+          460,
+          461,
+          462,
+          463,
+          464,
+          465,
+          466
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_brief_draft": {
+        "paragraphs": [
+          78,
+          79,
+          449
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_brief_checks": {
+        "paragraphs": [
+          79,
+          466
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_brief_consistency": {
+        "paragraphs": [
+          466
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_brief_licensed": {
+        "paragraphs": [
+          462
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_brief.gate.0": {
+        "paragraphs": [
+          75,
+          76,
+          77,
+          78,
+          79
+        ],
+        "interpretation": "Proposed internal AND gate using the existing fixed registry; no stage skip or override."
+      },
+      "pkg_brief.gate.1": {
+        "paragraphs": [
+          75,
+          76,
+          77,
+          78,
+          79
+        ],
+        "interpretation": "Proposed internal AND gate using the existing fixed registry; no stage skip or override."
+      },
+      "pkg_brief.gate.2": {
+        "paragraphs": [
+          75,
+          76,
+          77,
+          78,
+          79
+        ],
+        "interpretation": "Proposed internal AND gate using the existing fixed registry; no stage skip or override."
+      },
+      "pkg_brief.gate.3": {
+        "paragraphs": [
+          75,
+          76,
+          77,
+          78,
+          79
+        ],
+        "interpretation": "Proposed internal AND gate using the existing fixed registry; no stage skip or override."
+      },
+      "pkg_brief": {
+        "paragraphs": [
+          75,
+          76,
+          77,
+          78,
+          79
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_reg_hw": {
+        "paragraphs": [
+          82
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_reg_languages": {
+        "paragraphs": [
+          82
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_reg_tax": {
+        "paragraphs": [
+          82
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_reg_trace": {
+        "paragraphs": [
+          82
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_reg_bans": {
+        "paragraphs": [
+          82
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_reg_declarations": {
+        "paragraphs": [
+          82
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_reg_competitors": {
+        "paragraphs": [
+          82
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_reg_printer": {
+        "paragraphs": [
+          82
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_reg_previous": {
+        "paragraphs": [
+          82
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_regulations": {
+        "paragraphs": [
+          82
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_regulatory_document": {
+        "paragraphs": [
+          83,
+          84
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_dielines": {
+        "paragraphs": [
+          82,
+          83
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_brief_approval": {
+        "paragraphs": [
+          84
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_brief_approval_decision": {
+        "paragraphs": [
+          84
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_research.gate.0": {
+        "paragraphs": [
+          80,
+          81,
+          82,
+          83,
+          84
+        ],
+        "interpretation": "Proposed internal AND gate using the existing fixed registry; no stage skip or override."
+      },
+      "pkg_research.gate.1": {
+        "paragraphs": [
+          80,
+          81,
+          82,
+          83,
+          84
+        ],
+        "interpretation": "Proposed internal AND gate using the existing fixed registry; no stage skip or override."
+      },
+      "pkg_research.gate.2": {
+        "paragraphs": [
+          80,
+          81,
+          82,
+          83,
+          84
+        ],
+        "interpretation": "Proposed internal AND gate using the existing fixed registry; no stage skip or override."
+      },
+      "pkg_research.gate.3": {
+        "paragraphs": [
+          80,
+          81,
+          82,
+          83,
+          84
+        ],
+        "interpretation": "Proposed internal AND gate using the existing fixed registry; no stage skip or override."
+      },
+      "pkg_research.gate.4": {
+        "paragraphs": [
+          80,
+          81,
+          82,
+          83,
+          84
+        ],
+        "interpretation": "Proposed internal AND gate using the existing fixed registry; no stage skip or override."
+      },
+      "pkg_research": {
+        "paragraphs": [
+          80,
+          81,
+          82,
+          83,
+          84
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_fa_output_name": {
+        "paragraphs": [
+          96
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_fa_technical_drawing": {
+        "paragraphs": [
+          96
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_fa_health_warning": {
+        "paragraphs": [
+          96
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_fa_compulsory_text": {
+        "paragraphs": [
+          96
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_fa_marketing_copy": {
+        "paragraphs": [
+          96
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_fa_related_graphics": {
+        "paragraphs": [
+          96
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_fa_printing": {
+        "paragraphs": [
+          96
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_fa_finishes": {
+        "paragraphs": [
+          96
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_fa_barcode": {
+        "paragraphs": [
+          96
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_fa_track_trace": {
+        "paragraphs": [
+          96
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_fa_three_d": {
+        "paragraphs": [
+          96
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_fa_tax_stamp": {
+        "paragraphs": [
+          96
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_fa_qr": {
+        "paragraphs": [
+          96
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_fa_invoice": {
+        "paragraphs": [
+          96
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_fa_colour": {
+        "paragraphs": [
+          96
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_fa_substrate": {
+        "paragraphs": [
+          96
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_fa_dieline": {
+        "paragraphs": [
+          96
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_fa_tar": {
+        "paragraphs": [
+          96
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_fa_nicotine": {
+        "paragraphs": [
+          96
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_fa_applicability": {
+        "paragraphs": [
+          98
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_artwork_fields": {
+        "paragraphs": [
+          96,
+          98
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_creative_evidence": {
+        "paragraphs": [
+          87,
+          89,
+          92,
+          93
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_spec_register": {
+        "paragraphs": [
+          95,
+          96,
+          98
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_final_artwork": {
+        "paragraphs": [
+          97,
+          509,
+          515
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_artwork_checks": {
+        "paragraphs": [
+          507,
+          508,
+          516
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_fa_layers": {
+        "paragraphs": [
+          509
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_fa_resolution": {
+        "paragraphs": [
+          510
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_fa_psd": {
+        "paragraphs": [
+          511
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_fa_type": {
+        "paragraphs": [
+          512
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_fa_colours": {
+        "paragraphs": [
+          513
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_fa_bleed": {
+        "paragraphs": [
+          514
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_fa_naming": {
+        "paragraphs": [
+          515
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_fa_packaging": {
+        "paragraphs": [
+          516
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_specification.gate.0": {
+        "paragraphs": [
+          94,
+          95,
+          96,
+          97,
+          98
+        ],
+        "interpretation": "Proposed internal AND gate using the existing fixed registry; no stage skip or override."
+      },
+      "pkg_specification.gate.1": {
+        "paragraphs": [
+          94,
+          95,
+          96,
+          97,
+          98
+        ],
+        "interpretation": "Proposed internal AND gate using the existing fixed registry; no stage skip or override."
+      },
+      "pkg_specification.gate.2": {
+        "paragraphs": [
+          94,
+          95,
+          96,
+          97,
+          98
+        ],
+        "interpretation": "Proposed internal AND gate using the existing fixed registry; no stage skip or override."
+      },
+      "pkg_specification.gate.3": {
+        "paragraphs": [
+          94,
+          95,
+          96,
+          97,
+          98
+        ],
+        "interpretation": "Proposed internal AND gate using the existing fixed registry; no stage skip or override."
+      },
+      "pkg_specification.gate.4": {
+        "paragraphs": [
+          94,
+          95,
+          96,
+          97,
+          98
+        ],
+        "interpretation": "Proposed internal AND gate using the existing fixed registry; no stage skip or override."
+      },
+      "pkg_specification.gate.5": {
+        "paragraphs": [
+          94,
+          95,
+          96,
+          97,
+          98
+        ],
+        "interpretation": "Proposed internal AND gate using the existing fixed registry; no stage skip or override."
+      },
+      "pkg_specification": {
+        "paragraphs": [
+          94,
+          95,
+          96,
+          97,
+          98
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_units": {
+        "paragraphs": [
+          108
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_handover": {
+        "paragraphs": [
+          108,
+          109
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_production_fields": {
+        "paragraphs": [
+          108,
+          109
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_production_evidence": {
+        "paragraphs": [
+          108,
+          109
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_production_checks": {
+        "paragraphs": [
+          109
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_unit_review": {
+        "paragraphs": [
+          109
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_production_approval": {
+        "paragraphs": [
+          105
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_production_approval_decision": {
+        "paragraphs": [
+          105
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_production.gate.0": {
+        "paragraphs": [
+          99,
+          100,
+          101,
+          108,
+          109
+        ],
+        "interpretation": "Proposed internal AND gate using the existing fixed registry; no stage skip or override."
+      },
+      "pkg_production.gate.1": {
+        "paragraphs": [
+          99,
+          100,
+          101,
+          108,
+          109
+        ],
+        "interpretation": "Proposed internal AND gate using the existing fixed registry; no stage skip or override."
+      },
+      "pkg_production.gate.2": {
+        "paragraphs": [
+          99,
+          100,
+          101,
+          108,
+          109
+        ],
+        "interpretation": "Proposed internal AND gate using the existing fixed registry; no stage skip or override."
+      },
+      "pkg_production.gate.3": {
+        "paragraphs": [
+          99,
+          100,
+          101,
+          108,
+          109
+        ],
+        "interpretation": "Proposed internal AND gate using the existing fixed registry; no stage skip or override."
+      },
+      "pkg_production.gate.4": {
+        "paragraphs": [
+          99,
+          100,
+          101,
+          108,
+          109
+        ],
+        "interpretation": "Proposed internal AND gate using the existing fixed registry; no stage skip or override."
+      },
+      "pkg_production": {
+        "paragraphs": [
+          99,
+          100,
+          101,
+          108,
+          109
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_sample_round": {
+        "paragraphs": [
+          112
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_sample_provider": {
+        "paragraphs": [
+          112
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_sample_deadline": {
+        "paragraphs": [
+          112
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_sample_outcome": {
+        "paragraphs": [
+          112,
+          503,
+          504
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_sample_quantity": {
+        "paragraphs": [
+          500,
+          501
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_sample_fixes": {
+        "paragraphs": [
+          503,
+          504
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_sample_fields": {
+        "paragraphs": [
+          112,
+          499,
+          500,
+          501,
+          502,
+          503,
+          504,
+          505
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_acceptance_evidence": {
+        "paragraphs": [
+          112,
+          113,
+          114
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_sample_checks": {
+        "paragraphs": [
+          114
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_samples_reviewed": {
+        "paragraphs": [
+          114,
+          502
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_implementation.gate.0": {
+        "paragraphs": [
+          110,
+          111,
+          112,
+          113,
+          114
+        ],
+        "interpretation": "Proposed internal AND gate using the existing fixed registry; no stage skip or override."
+      },
+      "pkg_implementation.gate.1": {
+        "paragraphs": [
+          110,
+          111,
+          112,
+          113,
+          114
+        ],
+        "interpretation": "Proposed internal AND gate using the existing fixed registry; no stage skip or override."
+      },
+      "pkg_implementation.gate.2": {
+        "paragraphs": [
+          110,
+          111,
+          112,
+          113,
+          114
+        ],
+        "interpretation": "Proposed internal AND gate using the existing fixed registry; no stage skip or override."
+      },
+      "pkg_implementation.gate.3": {
+        "paragraphs": [
+          110,
+          111,
+          112,
+          113,
+          114
+        ],
+        "interpretation": "Proposed internal AND gate using the existing fixed registry; no stage skip or override."
+      },
+      "pkg_implementation": {
+        "paragraphs": [
+          110,
+          111,
+          112,
+          113,
+          114
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_card_identity": {
+        "paragraphs": [
+          117
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_card_ean": {
+        "paragraphs": [
+          117
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_card_markets": {
+        "paragraphs": [
+          117
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_card_stick": {
+        "paragraphs": [
+          117
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_card_emissions": {
+        "paragraphs": [
+          117
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_card_configuration": {
+        "paragraphs": [
+          117
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_card_logistics": {
+        "paragraphs": [
+          117
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_card_price": {
+        "paragraphs": [
+          117
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_card_description": {
+        "paragraphs": [
+          117
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_card_target": {
+        "paragraphs": [
+          117
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_card_launch": {
+        "paragraphs": [
+          117
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_card_fields": {
+        "paragraphs": [
+          117
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_card_action": {
+        "paragraphs": [
+          119
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_toolkit_length": {
+        "paragraphs": [
+          119
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_toolkit_formats": {
+        "paragraphs": [
+          119
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_toolkit_deadline": {
+        "paragraphs": [
+          119
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_toolkit_execution": {
+        "paragraphs": [
+          119
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_toolkit_note": {
+        "paragraphs": [
+          118
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_toolkit_fields": {
+        "paragraphs": [
+          118,
+          119
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_product_card": {
+        "paragraphs": [
+          117
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_toolkit": {
+        "paragraphs": [
+          118
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_toolkit_checks": {
+        "paragraphs": [
+          118
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_toolkit_contents": {
+        "paragraphs": [
+          118
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_card_approval": {
+        "paragraphs": [
+          117
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_card_approval_decision": {
+        "paragraphs": [
+          117
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_toolkit_approval": {
+        "paragraphs": [
+          118
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_toolkit_approval_decision": {
+        "paragraphs": [
+          118
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "pkg_commercialisation.gate.0": {
+        "paragraphs": [
+          115,
+          116,
+          117,
+          118,
+          119,
+          121
+        ],
+        "interpretation": "Proposed internal AND gate using the existing fixed registry; no stage skip or override."
+      },
+      "pkg_commercialisation.gate.1": {
+        "paragraphs": [
+          115,
+          116,
+          117,
+          118,
+          119,
+          121
+        ],
+        "interpretation": "Proposed internal AND gate using the existing fixed registry; no stage skip or override."
+      },
+      "pkg_commercialisation.gate.2": {
+        "paragraphs": [
+          115,
+          116,
+          117,
+          118,
+          119,
+          121
+        ],
+        "interpretation": "Proposed internal AND gate using the existing fixed registry; no stage skip or override."
+      },
+      "pkg_commercialisation.gate.3": {
+        "paragraphs": [
+          115,
+          116,
+          117,
+          118,
+          119,
+          121
+        ],
+        "interpretation": "Proposed internal AND gate using the existing fixed registry; no stage skip or override."
+      },
+      "pkg_commercialisation.gate.4": {
+        "paragraphs": [
+          115,
+          116,
+          117,
+          118,
+          119,
+          121
+        ],
+        "interpretation": "Proposed internal AND gate using the existing fixed registry; no stage skip or override."
+      },
+      "pkg_commercialisation.gate.5": {
+        "paragraphs": [
+          115,
+          116,
+          117,
+          118,
+          119,
+          121
+        ],
+        "interpretation": "Proposed internal AND gate using the existing fixed registry; no stage skip or override."
+      },
+      "pkg_commercialisation.gate.6": {
+        "paragraphs": [
+          115,
+          116,
+          117,
+          118,
+          119,
+          121
+        ],
+        "interpretation": "Proposed internal AND gate using the existing fixed registry; no stage skip or override."
+      },
+      "pkg_commercialisation.gate.7": {
+        "paragraphs": [
+          115,
+          116,
+          117,
+          118,
+          119,
+          121
+        ],
+        "interpretation": "Proposed internal AND gate using the existing fixed registry; no stage skip or override."
+      },
+      "pkg_commercialisation": {
+        "paragraphs": [
+          115,
+          116,
+          117,
+          118,
+          119,
+          121
+        ],
+        "interpretation": "Source content represented as internal evidence; requiredness and limits are proposed candidate choices."
+      },
+      "workflow": {
+        "paragraphs": [
+          73,
+          74,
+          121
+        ],
+        "interpretation": "Eight source purposes map to six configurable evidence stages and two Universal Tasker types; no legacy concept stages restored."
+      }
+    },
+    "gaps": [
+      {
+        "id": "requiredness",
+        "paragraphs": [
+          77,
+          79,
+          96,
+          98,
+          518
+        ],
+        "classification": "REQUIRES_BUSINESS_DECISION",
+        "missing": "Source does not enumerate required/optional flags for every field. Candidate requiredness, file allowlists/count limits and review routing need business confirmation.",
+        "internalPilotTreatment": "Proposed internal validation choices are explicit; none is an approved GTI standard."
+      },
+      {
+        "id": "repeating-records",
+        "paragraphs": [
+          77,
+          82,
+          96,
+          108,
+          112,
+          117
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No repeatable SKU/market/final-file/production-unit/sample matrix or per-row conditional applicability and reason validation.",
+        "internalPilotTreatment": "Project-level typed summary plus attached detailed registers; internal review of registers does not enforce every row."
+      },
+      {
+        "id": "concept-gates",
+        "paragraphs": [
+          85,
+          86,
+          87,
+          88,
+          89,
+          90,
+          91,
+          92,
+          93,
+          327
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "Initial/Final Concept Tasker exists, but no configured task-to-stage completion gate, concept minimum count or revision-round contract enforcement.",
+        "internalPilotTreatment": "Create concept tasks manually through existing Tasker. Reviewed creative evidence is a stage-file requirement; task status never masquerades as a gate."
+      },
+      {
+        "id": "external-approval-chain",
+        "paragraphs": [
+          102,
+          103,
+          104,
+          105,
+          106
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "Configured approval eligibility cannot represent Purchase, CEO, every Executor, arbitrary stakeholders or selected-step restart.",
+        "internalPilotTreatment": "Internal evidence review ends with an independent Director decision. It is explicitly not the source Final Artwork release chain; corrections restart normal configured review."
+      },
+      {
+        "id": "vendor-dispatch",
+        "paragraphs": [
+          83,
+          84,
+          107,
+          108,
+          343,
+          344,
+          345,
+          346,
+          350,
+          351,
+          352,
+          353,
+          354,
+          355,
+          359,
+          362,
+          367,
+          371,
+          390
+        ],
+        "classification": "REQUIRES_EXTERNAL_INTEGRATION",
+        "missing": "CERBER, pitch/tender comparison, contracts/signatures, vendor selection, external recipients, approved dispatch, production orders and vendor ratings have no runtime adapter.",
+        "internalPilotTreatment": "No vendor action, external acceptance, procurement, signature or dispatch is performed or certified. Direct/Pitch is recorded context only."
+      },
+      {
+        "id": "regulatory-validation",
+        "paragraphs": [
+          82,
+          96,
+          459,
+          466,
+          509,
+          510,
+          511,
+          512,
+          513,
+          514,
+          515,
+          516
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No jurisdiction rules engine, SKU/format-library consistency checks, automatic naming, or binary artwork preflight.",
+        "internalPilotTreatment": "Store supplied requirements and human review evidence. No legal-compliance certification or automatic binary validation."
+      },
+      {
+        "id": "toolio",
+        "paragraphs": [
+          117,
+          121
+        ],
+        "classification": "REQUIRES_EXTERNAL_INTEGRATION",
+        "missing": "No Toolio integration or verified external-entry gate; a task note cannot prove entry.",
+        "internalPilotTreatment": "Prepare and review the Product Card internally. Manual Toolio work may be assigned through Tasker but cannot satisfy an external completion assertion here."
+      },
+      {
+        "id": "toolkit-controls",
+        "paragraphs": [
+          118,
+          119,
+          120,
+          524
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No toolkit rendering, Director-only removal of an embedded document note, linked-project launch or approved master layout.",
+        "internalPilotTreatment": "Retain the default note in guidance; independently review an uploaded toolkit. Its contents are human-reviewed, not automatically inspected."
+      },
+      {
+        "id": "documents",
+        "paragraphs": [
+          66,
+          107,
+          408,
+          424,
+          425,
+          426,
+          466,
+          498,
+          505,
+          521
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No prefilled document generation, signing, two-party acceptance or runtime external submission. Legal wording still needs counsel review.",
+        "internalPilotTreatment": "Upload internal evidence; use the existing separately Director-approved per-project completion-document policy. Stage files never replace that policy."
+      },
+      {
+        "id": "scheduling",
+        "paragraphs": [
+          62,
+          64,
+          65,
+          312,
+          331,
+          332,
+          397,
+          403,
+          404,
+          405,
+          406,
+          519,
+          520
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No template durations, backward scheduling, automatic starter tasks, stage-blocking tasks, budget ledger/alerts, leave delegation or operational external notifications.",
+        "internalPilotTreatment": "Dates and budget are captured values. Tasks are manually created; no automation or delegated Director rights are claimed."
+      },
+      {
+        "id": "completion",
+        "paragraphs": [
+          56,
+          121,
+          340,
+          390,
+          398
+        ],
+        "classification": "SUPERSEDED_BY_APPROVED_V2_RULE",
+        "missing": "Source automatic closing/archiving and gate overrides cannot replace approved V2 governance; ratings/archive publication remain unsupported.",
+        "internalPilotTreatment": "All stages completed still requires explicit document policy, actual Owner request and separate Director final decision. No automatic archive."
+      }
+    ],
+    "tasker": [
+      {
+        "type": "INITIAL_CONCEPT",
+        "paragraphs": [
+          85,
+          86,
+          87,
+          88,
+          89
+        ],
+        "instructions": "Manually create manager-owned Initial Concept tasks; request distinct numbered directions, pack views, tipping paper, summary page and horizontal PDF. Use existing independent review and retained revisions. Minimum counts/rounds and brief acceptance are not automated."
+      },
+      {
+        "type": "FINAL_CONCEPT",
+        "paragraphs": [
+          90,
+          91,
+          92,
+          93
+        ],
+        "instructions": "Manually create Final Concept tasks, selecting eligible exact Initial Concept evidence where authorized; develop colour variants, 3D and all components. Existing Tasker independent review applies. No automatic stage gate or mandatory legacy stage."
+      }
+    ],
+    "revisionPolicy": "Increment blueprint revision for any content/policy change; retain semantic IDs for unchanged meaning. Renamed meanings require new IDs and an explicit source migration map. Drafts are copies; published versions and existing runtime pins are never overwritten."
+  },
+  "definitionHash": "1f1e33373d711b1e8e0669f65c898fe8bd055e4f6dcd3c124823c57f717b58d7",
+  "validation": {
+    "internalCandidate": [],
+    "officialStandard": [
+      {
+        "path": "gaps.requiredness",
+        "message": "Source does not enumerate required/optional flags for every field. Candidate requiredness, file allowlists/count limits and review routing need business confirmation."
+      },
+      {
+        "path": "gaps.repeating-records",
+        "message": "No repeatable SKU/market/final-file/production-unit/sample matrix or per-row conditional applicability and reason validation."
+      },
+      {
+        "path": "gaps.concept-gates",
+        "message": "Initial/Final Concept Tasker exists, but no configured task-to-stage completion gate, concept minimum count or revision-round contract enforcement."
+      },
+      {
+        "path": "gaps.external-approval-chain",
+        "message": "Configured approval eligibility cannot represent Purchase, CEO, every Executor, arbitrary stakeholders or selected-step restart."
+      },
+      {
+        "path": "gaps.vendor-dispatch",
+        "message": "CERBER, pitch/tender comparison, contracts/signatures, vendor selection, external recipients, approved dispatch, production orders and vendor ratings have no runtime adapter."
+      },
+      {
+        "path": "gaps.regulatory-validation",
+        "message": "No jurisdiction rules engine, SKU/format-library consistency checks, automatic naming, or binary artwork preflight."
+      },
+      {
+        "path": "gaps.toolio",
+        "message": "No Toolio integration or verified external-entry gate; a task note cannot prove entry."
+      },
+      {
+        "path": "gaps.toolkit-controls",
+        "message": "No toolkit rendering, Director-only removal of an embedded document note, linked-project launch or approved master layout."
+      },
+      {
+        "path": "gaps.documents",
+        "message": "No prefilled document generation, signing, two-party acceptance or runtime external submission. Legal wording still needs counsel review."
+      },
+      {
+        "path": "gaps.scheduling",
+        "message": "No template durations, backward scheduling, automatic starter tasks, stage-blocking tasks, budget ledger/alerts, leave delegation or operational external notifications."
+      },
+      {
+        "path": "gaps.completion",
+        "message": "Source automatic closing/archiving and gate overrides cannot replace approved V2 governance; ratings/archive publication remain unsupported."
+      }
+    ]
+  }
+}
