@@ -14,6 +14,7 @@ import {
 } from "./definitions";
 
 const directorOnlyCapabilities = [
+  "archive.revokeVerification",
   "project.runtimeDecideCreation",
   "project.runtimeCreate",
   "template.decideProposal",

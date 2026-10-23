@@ -499,3 +499,13 @@ export async function deleteObjectIfNeeded(
   if (mutation) { mutation.afterCommit.push(async () => { try { await remove(); } catch (error) { console.error("[project-storage-cleanup]", error); } }); return; }
   await remove();
 }
+
+/** Observe the selected immutable object without transferring its full body. */
+export async function observePinnedStoredObject(input: {
+  bucket: string; storageKey: string; objectVersionId: string | null; objectETag: string; checksumSha256: string | null;
+}) {
+  if (!input.objectETag.trim() || input.objectVersionId === "null") throw new Error("Invalid pinned object reference.");
+  return getS3Client().send(new HeadObjectCommand({ Bucket: input.bucket, Key: input.storageKey,
+    VersionId: input.objectVersionId ?? undefined, IfMatch: input.objectETag,
+    ChecksumMode: input.checksumSha256 ? "ENABLED" : undefined }));
+}

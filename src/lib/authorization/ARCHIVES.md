@@ -23,7 +23,7 @@ An empty category ACL retains its established unrestricted-category meaning. It 
 
 `runtimeAuthorization` registers Archive policies in the existing V2 evaluator. Canonical actions are `archive.view`, `archive.download`, `archive.upload`, `archive.editMetadata`, `archive.shareExternal`, `archive.category.create/update/delete`, `archive.manageAccess`, `archive.delete`, and `archive.publishFromProject`. The previous `archive.share` name uses the same file policy. Unknown actions and target/action mismatches deny.
 
-The role eligibility contract includes `archive.verify` for Director/Digital Lead only. Its runtime policy stays unregistered until verification storage/audit transitions exist. The old coarse category capability is not a generic mutation grant; actual operations use granular category capabilities.
+The role eligibility contract includes `archive.verify` for Director/Digital Lead only. Phase 6.2 now registers its exact-file policy only when `FLUX_ARCHIVE_VERIFICATION=1`; otherwise it remains denied. `archive.revokeVerification` is Director-only, with the same current-session and exact-file resource checks. See [Phase 6.2](../archive-verification/PHASE-6.2.md) for immutable decisions, storage observations and deletion retention. The old coarse category capability is not a generic mutation grant; actual operations use granular category capabilities.
 
 Services authenticate again and check the actual resource inside a Serializable transaction. Nested native queries/transactions join that transaction; native error results roll back, and partial transactions are not retried. Identity/session and ACL locks protect checks. File policies resolve stored category/source associations and reject mismatched projects, revisions or storage references, including for Director. Storage cleanup after an authorized deletion runs after database commit.
 
@@ -106,7 +106,7 @@ No migration or schema change is required. No Neon connection, existing account/
 
 Deferred intentionally:
 
-- Verified/Unverified storage, immutable decisions/reasons/revocations and verification audit history. A future migration should introduce versioned verification evidence tied to exact Archive file/source versions; existing artwork `approvedBy` metadata must not be reused as verification.
+- Historical Phase 1.5F deferral, now implemented separately by Phase 6.2 behind its default-off flag: exact-version verification, immutable decisions/reasons/revocations and audit history. Existing artwork `approvedBy` metadata is never reused as verification.
 - Nested folders and folder-level sharing.
 - A comprehensive append-only Archive mutation/access audit ledger. Existing publisher/metadata/share/grant attribution is retained; grant revocations are logged to the application log, not a new durable event table.
 - Changes to the existing upload/storage protocol. This phase preserves its mechanics rather than introducing sealed object versions or a new content-validation subsystem.

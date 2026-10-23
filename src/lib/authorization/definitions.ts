@@ -95,6 +95,7 @@ export const businessCapabilityCatalog = {
     "archive.manageAccess",
     "archive.publishFromProject",
     "archive.verify",
+    "archive.revokeVerification",
     "archive.delete",
   ],
 } as const;

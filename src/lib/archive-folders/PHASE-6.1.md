@@ -1,5 +1,7 @@
 # FLUX V2 — Phase 6.1: Archive categories, folders and navigation
 
+**Historical Phase 6.1 report.** The unapplied candidate was extended by [Phase 6.2](../archive-verification/PHASE-6.2.md) on 24 October 2026. Its current combined SHA-256 is `d31232757d4d53465a5dd7ce925ba672c501e110e42b56742bd5519b5bb2a81b`, with **117 migrations / 155 public tables** after application. The original checksum and 153-table result below describe the Phase 6.1-only rehearsal and are no longer the current candidate. Both flags remain off/unset.
+
 Implemented locally on 23 October 2026. This package extends the existing Archive, preserves the reviewed Phase 1.5F permission contract, and remains disabled by default. No Neon migration, live storage operation, environment change, deployment, push, Phase 6.2 or Phase 7 work was performed.
 
 ## Architecture reviewed and retained
@@ -51,9 +53,9 @@ An independent business role on a technical account still follows that role. Dir
 
 Candidate: `prisma/migrations/20261025010000_archive_folders/migration.sql`
 
-SHA-256: `66053e6d7d5de17a9c68e4f3d70db4a1180e56da587e68543ab99a0b59a11f59`
+Historical Phase 6.1-only SHA-256 (superseded): `66053e6d7d5de17a9c68e4f3d70db4a1180e56da587e68543ab99a0b59a11f59`
 
-Expected result: **117 successful migrations / 153 public tables**, from the reported **116 / 150** baseline. Table totals include `_prisma_migrations`.
+Historical Phase 6.1-only result: **117 successful migrations / 153 public tables**, from the reported **116 / 150** baseline. Table totals include `_prisma_migrations`.
 
 The candidate was rehearsed on populated disposable PostgreSQL **14.19**, with every original table, row and migration ledger checksum unchanged. The three added tables initially contained zero records; Prisma schema drift was empty. This does not claim an independent PostgreSQL 18.6/Neon rehearsal or live record inventory. Neon was not contacted.
 
@@ -105,4 +107,4 @@ Created:
 
 Detailed per-file/per-version verification and revocation, redesigned sharing/access grants, RuntimeProject-to-Archive integration, complete cross-project search/filtering and final Archive acceptance remain deferred. Existing working sharing, grants, native publication and search stay intact. Phase 5 candidate definitions, hashes and approval status are unchanged. No Tasker-to-stage gates or Phase 7 work was added.
 
-Recommended Phase 6.2: define and implement verification/revocation against exact SharedFileVersion/native-source evidence, with immutable decisions/reasons, current central authorization and permission-safe UI. Preserve the reviewed Director/Digital Lead eligibility and SPM denial; do not reinterpret artwork `approvedBy` metadata as verification. Schema adoption and activation remain separate, explicit decisions. Phase 6.2 has not been started.
+Recommended Phase 6.2: define and implement verification/revocation against exact SharedFileVersion/native-source evidence, with immutable decisions/reasons, current central authorization and permission-safe UI. Preserve the reviewed Director/Digital Lead eligibility and SPM denial; do not reinterpret artwork `approvedBy` metadata as verification. Schema adoption and activation remain separate, explicit decisions. At the time of this original report, Phase 6.2 had not been started; see the superseding report linked above.

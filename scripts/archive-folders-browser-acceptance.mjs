@@ -9,7 +9,7 @@ export async function archiveFolderAcceptance({pageFor,db,origin,shot,pass}) {
   const response=page.waitForResponse(r=>r.url().endsWith("/api/archives/organization")&&r.request().method()==="POST");
   await page.getByRole("button",{name:button,exact:true}).click();
   const saved=await response;assert.equal(saved.status(),200,await saved.text());
-  await page.locator("dialog").waitFor({state:"hidden"});await page.getByRole("status").filter({hasText:/saved|deleted/i}).waitFor();
+  await page.locator('dialog[aria-labelledby="archive-folder-dialog-title"]').waitFor({state:"hidden"});await page.getByRole("status").filter({hasText:/saved|deleted/i}).waitFor();
  }
  async function create(page,name,description="") {
   await page.getByRole("button",{name:"New folder",exact:true}).click();
@@ -51,7 +51,7 @@ export async function archiveFolderAcceptance({pageFor,db,origin,shot,pass}) {
  await page.getByLabel("Destination folder").focus();for(let i=0;i<8;i++)await page.keyboard.press("ArrowUp");await page.keyboard.press("Tab");
  assert.equal(await page.getByLabel("Destination folder").inputValue(),"");
  await page.getByRole("button",{name:"Confirm move",exact:true}).focus();await page.keyboard.press("Enter");
- await page.locator("dialog").waitFor({state:"hidden"});await page.getByRole("status").filter({hasText:"Move saved"}).waitFor();
+ await page.locator('dialog[aria-labelledby="archive-folder-dialog-title"]').waitFor({state:"hidden"});await page.getByRole("status").filter({hasText:"Move saved"}).waitFor();
  assert.equal((await db.archiveFilePlacement.findUniqueOrThrow({where:{id:"manual:artwork-file"}})).folderId,null);
  await page.goto(path);await page.getByRole("button",{name:"Move approved-artwork.pdf",exact:true}).click();await page.getByLabel("Destination folder").selectOption(print.id);await waitSaved(page,"Confirm move");
  pass("Real persisted creation, nesting, descriptions/icons, rename, folder and file drag/drop, confirmation before commit, refresh persistence, breadcrumbs, list/search/empty states and keyboard movement");
@@ -66,7 +66,7 @@ export async function archiveFolderAcceptance({pageFor,db,origin,shot,pass}) {
  const privateFolder=await folder("Private planning");assert.equal(await designer.evaluate(async id=>(await fetch('/api/archives/organization?categoryId=artwork&folderId='+id)).status,privateFolder.id),404);
  // Failure feedback is based on a genuine server conflict, preserving the original folder.
  await page.goto(path);await page.getByRole("button",{name:"New folder",exact:true}).click();await page.getByLabel("Folder name",{exact:true}).fill("Campaigns");
- const conflict=page.waitForResponse(r=>r.url().endsWith('/api/archives/organization')&&r.request().method()==='POST');await page.getByRole("button",{name:"Save folder",exact:true}).click();assert.equal((await conflict).status(),409);await page.locator("dialog").getByRole("alert").waitFor();await shot(page,"folders-conflict-feedback");await page.getByRole("button",{name:"Cancel",exact:true}).click();
+ const conflict=page.waitForResponse(r=>r.url().endsWith('/api/archives/organization')&&r.request().method()==='POST');await page.getByRole("button",{name:"Save folder",exact:true}).click();assert.equal((await conflict).status(),409);await page.locator('dialog[aria-labelledby="archive-folder-dialog-title"]').getByRole("alert").waitFor();await shot(page,"folders-conflict-feedback");await page.getByRole("button",{name:"Cancel",exact:true}).click();
  // Existing category service is used for creation; Digital Lead can enter its empty workspace.
  await digital.goto(origin+"/archives/settings/categories");await digital.getByRole("button",{name:/Add.*category/i}).click();
  await digital.getByPlaceholder(/Enter archive category name/i).fill("Digital navigation category");await digital.getByRole("button",{name:/Save archive category/i}).click();

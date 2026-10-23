@@ -26,6 +26,7 @@ const roles: Array<[string, BusinessRole | null]> = [["director","DIRECTOR"],["s
 const tokens = new Map<string,string>();
 let signed = 0;
 let deleted = 0;
+let storageMode = "ok";
 async function as(id:string) { token = tokens.get(id)!; }
 
 
@@ -62,6 +63,7 @@ async function main(){
   if(name==="@/lib/s3"||name==="@/lib/storage/s3")return {
     ...original.call(this, join(compiledRoot,"src/lib/storage/s3.js"), ...args) as typeof import("../src/lib/storage/s3"),
     getS3BucketName:()=>"fixture-no-network",
+    observePinnedStoredObject:async(input:{objectVersionId:string|null;objectETag:string})=>{ if(storageMode === "missing")throw new Error("NoSuchKey"); return {ContentLength:100,ContentType:"application/pdf",ETag:storageMode === "changed" ? '"changed"' : input.objectETag,VersionId:input.objectVersionId??undefined}; },
     createPresignedUploadUrl:async()=>{signed++;return "http://fixture.invalid/upload";},
     createPresignedDownloadUrl:async()=>{signed++;return "http://fixture.invalid/download";},
     createPresignedPreviewUrl:async()=>{signed++;return "http://fixture.invalid/preview";},
@@ -109,6 +111,8 @@ async function main(){
     await archives.getArchivedFileDownloadUrlForUser(director,"ungranted");
     await denied(()=>folders.readArchiveFolder(director,{categoryId:"open"}));
     await denied(()=>folders.organizeArchive(director,{commandId:randomUUID(),categoryId:"open",action:"create",parentId:null,name:"Disabled",description:"",icon:"folder"}));
+    const verification = localRequire(join(compiledRoot,"src/lib/archive-verification/service.js")) as typeof import("../src/lib/archive-verification/service");
+    await denied(()=>verification.readArchiveVerification(director,{sourceKind:"manual",sourceId:"manual",categoryId:"open"}));
     console.log("PASS 116-migration compatibility: current client, legacy Archive reads/downloads, disabled new services; populated native and exact-version fixtures.");
     return;
   }
@@ -211,6 +215,10 @@ async function main(){
   token=null;assert.equal((await route.GET(new Request(endpoint+"?categoryId=open"))).status,401);
   assert.equal(deleted,0);assert.ok(signed===0,"Organization itself must never touch S3");
   console.log("PASS competing moves and replay, stale revisions, forced rollback, DB constraint attacks, HTTP origin/session checks and retained command history; every original file/version/reference/user/grant row unchanged; zero S3 organization operations.");
+  if(process.argv.includes("--verification")) {
+    const check = localRequire(join(compiledRoot,"scripts/archive-verification-integration-check.js")) as typeof import("./archive-verification-integration-check");
+    await check.runVerificationChecks({db,user,require:localRequire,compiledRoot,setStorageMode:(value:string)=>{storageMode=value;}});
+  }
  } finally { moduleApi._load=original; }
 }
 main().catch(error=>{console.error(error);process.exitCode=1;}).finally(()=>db.$disconnect());

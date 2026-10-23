@@ -35,12 +35,27 @@ try {
  const test=join(output,"scripts/archive-folders-integration-check.js");console.log(run(process.execPath,[test,"--seed"],{env:localEnv}));
  const tables=sql("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename").split("\n");
  const snapshot=()=>tables.map(t=>sql(`SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text)::text,'[]') FROM "${t}" t ${t==="_prisma_migrations"?`WHERE migration_name <> '${archiveFoldersMigration}'`:""}`));
+ const catalog=()=>JSON.parse(sql(`SELECT coalesce(jsonb_object_agg(kind||':'||name,definition),'{}') FROM (
+ SELECT 'table' AS kind,tablename::text AS name,tablename::text AS definition FROM pg_tables WHERE schemaname='public'
+ UNION ALL SELECT 'index',indexname,indexdef FROM pg_indexes WHERE schemaname='public'
+ UNION ALL SELECT 'constraint',conrelid::regclass::text||'.'||conname,pg_get_constraintdef(oid) FROM pg_constraint WHERE connamespace='public'::regnamespace AND conrelid<>0
+ UNION ALL SELECT 'function',oid::regprocedure::text,pg_get_functiondef(oid) FROM pg_proc WHERE pronamespace='public'::regnamespace AND prokind='f'
+ UNION ALL SELECT 'trigger',tgrelid::regclass::text||'.'||tgname,pg_get_triggerdef(oid) FROM pg_trigger WHERE NOT tgisinternal AND tgrelid IN (SELECT oid FROM pg_class WHERE relnamespace='public'::regnamespace)
+ UNION ALL SELECT 'enum',typname,string_agg(enumlabel,',' ORDER BY enumsortorder) FROM pg_type JOIN pg_enum ON enumtypid=pg_type.oid WHERE typnamespace='public'::regnamespace GROUP BY typname
+ ) objects`));
+ const catalogBefore=catalog();
  const before=snapshot();copy(archiveFoldersMigration);writeFileSync(schemaPath,schema);prisma(["migrate","deploy","--schema",schemaPath]);assert.deepEqual(snapshot(),before);
- assert.equal(sql('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL'),"117");assert.equal(sql("SELECT count(*) FROM pg_tables WHERE schemaname='public'"),"153");
- for(const table of ["ArchiveFolder","ArchiveFilePlacement","ArchiveOrganizationCommand"])assert.equal(sql(`SELECT count(*) FROM "${table}"`),"0");
- console.log("PASS populated additive migration: 116/150 → 117/153. Every original table/row/ledger checksum unchanged; zero relocation/backfill.");
+ const catalogAfter=catalog();
+ const inventory={added:Object.fromEntries(Object.entries(catalogAfter).filter(([key])=>!(key in catalogBefore))),changed:Object.fromEntries(Object.entries(catalogAfter).filter(([key,value])=>key in catalogBefore && catalogBefore[key]!==value).map(([key,value])=>[key,{before:catalogBefore[key],after:value}])),removed:Object.keys(catalogBefore).filter(key=>!(key in catalogAfter))};
+ assert.deepEqual(inventory.removed,[]);
+ assert.deepEqual(Object.keys(inventory.changed).sort(),['constraint:"BusinessEvent".BusinessEvent_contract_check','enum:BusinessEventType','function:flux_event_write_guard()','function:flux_shared_file_reference_guard()'].sort());
+ assert.equal(Object.keys(inventory.added).filter(key=>key.startsWith('table:')).length,5);
+ writeFileSync('/private/tmp/flux-phase62-migration-inventory.json',JSON.stringify(inventory,null,2));
+ assert.equal(sql('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL'),"117");assert.equal(sql("SELECT count(*) FROM pg_tables WHERE schemaname='public'"),"155");
+ for(const table of ["ArchiveFolder","ArchiveFilePlacement","ArchiveOrganizationCommand","ArchiveVerificationDecision","RetainedArchiveSource"])assert.equal(sql(`SELECT count(*) FROM "${table}"`),"0");
+ console.log("PASS populated additive migration: 116/150 → 117/155. Every original table/row/ledger checksum unchanged; zero relocation/backfill.");
  console.log("Candidate "+archiveFoldersMigration+"/migration.sql SHA-256 "+createHash("sha256").update(readFileSync(join(migrations,archiveFoldersMigration,"migration.sql"))).digest("hex"));
- console.log(run(process.execPath,[test],{env:localEnv}));
+ console.log(run(process.execPath,[test,...(process.argv.includes("--verification")?["--verification"]:[])],{env:localEnv}));
  assert.match(prisma(["migrate","diff","--from-url",url,"--to-schema-datamodel",schemaPath,"--script"]),/empty migration/);
  console.log("PASS schema drift empty. No remote database or storage used.");
 } finally {if(started)run("pg_ctl",["-D",data,"-m","fast","-w","stop"]);rmSync(root,{recursive:true,force:true});console.log("Disposable Phase 6.1 cluster removed.");}

@@ -453,6 +453,8 @@ enum FluxAiMessageRole {
 }
 
 model User {
+  archiveVerificationDecisions ArchiveVerificationDecision[]
+  retainedArchiveSources RetainedArchiveSource[]
   archiveOrganizationCommands ArchiveOrganizationCommand[]
   completionActors RuntimeCompletionActivity[]
   runtimeCreationRequests RuntimeCreationRequest[] @relation("RuntimeCreationRequester")
@@ -2913,6 +2915,7 @@ model SharedFile {
 }
 
 model SharedFileVersion {
+  archiveVerificationDecisions ArchiveVerificationDecision[]
   completionRuntimeSubmission RuntimeDocumentSubmission?
   runtimeSubmission RuntimeFileSubmission?
   inheritedEvidence UniversalTaskInheritedEvidence[]
@@ -2956,6 +2959,8 @@ model SharedFileVersion {
 }
 
 model SharedFileReference {
+  archiveVerificationDecisions ArchiveVerificationDecision[]
+  retainedArchiveSource RetainedArchiveSource?
   completionRuntimeReference RuntimeDocumentReference?
   runtimeSubmissionId String? @unique
   runtimeSubmission RuntimeFileSubmission? @relation(fields: [runtimeSubmissionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
@@ -3143,6 +3148,7 @@ model ApprovalEvent {
 
 // Phase 2.3: native history remains authoritative; SQL guards own event production.
 enum BusinessEventType {
+  ARCHIVE_VERIFICATION_DECIDED
   RUNTIME_COMPLETION_ACTIVITY
   RUNTIME_CREATION_REQUESTED
   RUNTIME_CREATION_DECIDED
@@ -3172,6 +3178,7 @@ enum EventAttemptOutcome {
 }
 
 model BusinessEvent {
+  archiveVerificationDecision ArchiveVerificationDecision?
   completionRuntimeActivity RuntimeCompletionActivity?
   runtimeTaskContext RuntimeTaskEventContext?
   runtimeCreationRequest RuntimeCreationRequest?
@@ -4057,4 +4064,55 @@ model ArchiveOrganizationCommand {
   createdAt DateTime @default(now())
 
   @@index([categoryId, createdAt])
+}
+
+// Exact review decisions retain their shared reference even after native deletion.
+model ArchiveVerificationDecision {
+  id String @id
+  referenceId String
+  reference SharedFileReference @relation(fields: [referenceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  versionId String
+  version SharedFileVersion @relation(fields: [versionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sourceKind String
+  sourceId String
+  categoryId String
+  projectId String?
+  sourceRevisionId String?
+  action String
+  sequence Int
+  previousId String? @unique
+  previous ArchiveVerificationDecision? @relation("ArchiveVerificationChain", fields: [previousId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  next ArchiveVerificationDecision? @relation("ArchiveVerificationChain")
+  actorId String
+  actor User @relation(fields: [actorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actorRole String
+  actorVersion Int
+  sessionId String
+  reason String
+  commandId String
+  commandHash String
+  storageEvidence Json
+  eventId String @unique
+  event BusinessEvent @relation(fields: [eventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdAt DateTime @default(now())
+
+  @@unique([referenceId, sequence])
+  @@unique([actorId, commandId])
+  @@index([sourceKind, sourceId, versionId])
+}
+
+// Created only by the existing authorized native DELETE, never a backfill.
+// Original typed IDs become historical identifiers once their row is removed.
+model RetainedArchiveSource {
+  id String @id
+  reference SharedFileReference @relation(fields: [id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  manualSourceId String? @unique
+  projectSourceId String? @unique
+  sourceSnapshot Json
+  referenceSnapshot Json
+  actorId String
+  actor User @relation(fields: [actorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actorVersion Int
+  sessionId String
+  createdAt DateTime @default(now())
 }

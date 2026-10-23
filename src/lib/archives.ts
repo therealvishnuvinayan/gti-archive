@@ -1,3 +1,4 @@
+import { prepareArchiveSourceDeletion } from "@/lib/archive-verification/service";
 import { withArchiveShare } from "@/lib/authorization/archive-share";
 import { runArchiveOperation } from "@/lib/authorization/archive";
 import { activeArchiveOperation } from "@/lib/authorization/archive-transaction";
@@ -5167,6 +5168,7 @@ async function deleteArchivedFileForUserNative(
 ) {
   assertCanUseArchives(user);
   const file = await getArchiveDownloadFileForUser(user, archivedFileId);
+  await prepareArchiveSourceDeletion(user, archivedFileId);
   await withPrismaRetry(async () => {
     if (file.recordType === "FINAL_ARCHIVE_FILE") {
       await prisma.archivedProjectFile.delete({ where: { id: file.id } });
@@ -5183,6 +5185,7 @@ async function deleteArchivedFileForUserNative(
   const where = { bucket: file.bucket, storageKey: file.storageKey };
   try {
     const references = await withPrismaRetry(() => Promise.all([
+      prisma.sharedFileVersion.count({ where }),
       prisma.projectAttachment.count({ where }),
       prisma.archivedProjectFile.count({ where }),
       prisma.manualArchiveFile.count({ where }),

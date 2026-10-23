@@ -42,12 +42,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ArchiveVerification } from "./archive-verification";
 import type {
   ArchivedFileInformationUpdate,
   ArchivedProjectFileRecord,
 } from "@/lib/archives";
 
 type ArchiveCategoryWorkspaceProps = {
+  verificationEnabled?: boolean;
   categoryId: string;
   categoryTitle: string;
   categoryDescription: string;
@@ -199,7 +201,7 @@ export function ArchiveCategoryWorkspace({
   items,
   initialSearch = "",
   canUploadArchives, canEdit, canDelete, canShare,
-  currentUserDisplayName,
+  currentUserDisplayName, verificationEnabled = false,
 }: ArchiveCategoryWorkspaceProps) {
   const router = useRouter();
   const [deleteTarget, setDeleteTarget] = useState<ArchivedProjectFileRecord | null>(null);
@@ -551,6 +553,7 @@ export function ArchiveCategoryWorkspace({
                             <span>{item.fileSizeLabel}</span>
                             <span>{item.sourceLabel}</span>
                           </div>
+                          {verificationEnabled && <ArchiveVerification sourceId={item.id} sourceKind={item.recordType === "FINAL_ARCHIVE_FILE" ? "project" : "manual"} categoryId={categoryId} />}
                           {item.assetTags.length > 0 ? (
                             <div className="mt-2 flex flex-wrap gap-1.5">
                               {item.assetTags.slice(0, 3).map((tag) => (

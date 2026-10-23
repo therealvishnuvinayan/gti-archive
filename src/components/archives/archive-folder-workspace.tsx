@@ -1,5 +1,6 @@
 "use client";
 
+import { ArchiveVerification } from "./archive-verification";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent } from "react";
@@ -15,7 +16,7 @@ type Target = { kind: "folder"; item: FolderRecord } | { kind: "file"; item: Fol
 type Editor = { kind: "create" } | { kind: "rename"; item: FolderRecord } | { kind: "move"; target: Target } | { kind: "delete"; item: FolderRecord };
 const dragType = "application/x-flux-archive-organization";
 
-export function ArchiveFolderWorkspace({ categoryId, categoryName, slug, folderId }: { categoryId: string; categoryName: string; slug: string; folderId: string | null }) {
+export function ArchiveFolderWorkspace({ categoryId, categoryName, slug, folderId, verificationEnabled = false }: { verificationEnabled?: boolean; categoryId: string; categoryName: string; slug: string; folderId: string | null }) {
   const router = useRouter();
   const [data, setData] = useState<FolderWorkspace | null>(null);
   const [error, setError] = useState("");
@@ -163,6 +164,7 @@ export function ArchiveFolderWorkspace({ categoryId, categoryName, slug, folderI
             {data.files.map(file => <article key={file.key} data-file-card={file.name} draggable={data.canMoveFiles && !busy} onDragStart={e => drag(e, { kind: "file", item: file })} className="rounded-2xl border border-line bg-white p-4">
               <h3 className="break-words text-sm font-semibold">{file.name}</h3><p className="mt-1 text-xs text-[#647267]">{file.projectName || "Direct upload"}{file.sourceRevision !== null ? ` · Revision ${file.sourceRevision}` : ""} · {Math.max(1, Math.ceil(file.fileSize / 1024))} KB</p>
               <div className="mt-3 flex flex-wrap items-center gap-3"><AssetPreviewButton fileName={file.name} mimeType={file.mimeType} previewPath={`/api/archives/files/${file.id}/preview`} /><a className="flex items-center gap-1 text-xs text-brand" href={`/api/archives/files/${file.id}/download`}><Download className="h-3 w-3" />Download</a>{data.canMoveFiles && <button className="flex items-center gap-1 text-xs text-brand" aria-label={`Move ${file.name}`} onClick={() => openEditor({ kind: "move", target: { kind: "file", item: file } }, file.folderId ?? "")}><Move className="h-3 w-3" />Move</button>}<Link className="text-xs text-brand" href={`/archives/${slug}?view=all&search=${encodeURIComponent(file.name)}`}>Details</Link></div>
+              {verificationEnabled && <ArchiveVerification sourceId={file.id} sourceKind={file.kind} categoryId={categoryId} />}
             </article>)}
           </div>
           {!children.length && !data.files.length && <div className="py-16 text-center text-[#647267]"><Folder className="mx-auto mb-3 h-10 w-10 text-[#a9bbaf]" /><h3 className="text-lg font-semibold">{search ? "No matching files" : "This folder is empty"}</h3><p className="mt-1 text-sm">{search ? "Try another filename." : data.canManage ? "Create a folder or move files here from the category root." : "There are no files available to you here."}</p></div>}
