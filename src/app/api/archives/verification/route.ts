@@ -21,7 +21,7 @@ export async function GET(request: Request) {
   if (!user) return NextResponse.json({ error: "Unauthorized." }, { status: 401, headers });
   const query = new URL(request.url).searchParams;
   try {
-    return NextResponse.json(await readArchiveVerification(user, { categoryId: query.get("categoryId") ?? "", sourceKind: query.get("sourceKind") as "manual" | "project", sourceId: query.get("sourceId") ?? "" }, query.has("before") ? Number(query.get("before")) : null), { headers });
+    return NextResponse.json(await readArchiveVerification(user, { categoryId: query.get("categoryId") ?? "", sourceKind: query.get("sourceKind") as "manual" | "project" | "runtime", sourceId: query.get("sourceId") ?? "" }, query.has("before") ? Number(query.get("before")) : null), { headers });
   } catch (error) { return errorResponse(error); }
 }
 

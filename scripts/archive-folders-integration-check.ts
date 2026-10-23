@@ -27,6 +27,7 @@ const tokens = new Map<string,string>();
 let signed = 0;
 let deleted = 0;
 let storageMode = "ok";
+const runtimeObjects = new Map<string, { ContentLength: number; ContentType: string; ETag: string; VersionId: string }>();
 async function as(id:string) { token = tokens.get(id)!; }
 
 
@@ -60,9 +61,12 @@ async function main(){
   if(name==="react")return{cache:(fn:unknown)=>fn};
   if(name==="@/lib/prisma"||name==="../prisma"||name==="./prisma")return{prisma:projectTransactionClient(db),withPrismaRetry:(fn:()=>unknown)=>fn()};
   if(name==="@/lib/permissions/profiles")return{getPermissionProfileSnapshotForUser:async()=>({effectivePermissions:new Set(allPermissionKeys),rolePermissions:new Set(allPermissionKeys),archiveAccessGranted:true,archiveAccessLevel:"FULL"})};
-  if(name==="@/lib/s3"||name==="@/lib/storage/s3")return {
+  if(name==="@/lib/s3"||name.endsWith("storage/s3"))return {
     ...original.call(this, join(compiledRoot,"src/lib/storage/s3.js"), ...args) as typeof import("../src/lib/storage/s3"),
     getS3BucketName:()=>"fixture-no-network",
+    getObjectMetadata:async(key:string)=>{ const o=runtimeObjects.get(key); if(!o)throw new Error("Missing synthetic object");return {...o}; },
+    copyStoredObject:async(input:{sourceKey:string;storageKey:string;sourceETag:string})=>{ const o=runtimeObjects.get(input.sourceKey);assert.equal(o?.ETag,input.sourceETag);runtimeObjects.set(input.storageKey,{...o!}); },
+
     observePinnedStoredObject:async(input:{objectVersionId:string|null;objectETag:string})=>{ if(storageMode === "missing")throw new Error("NoSuchKey"); return {ContentLength:100,ContentType:"application/pdf",ETag:storageMode === "changed" ? '"changed"' : input.objectETag,VersionId:input.objectVersionId??undefined}; },
     readPinnedStoredObject:async(input:{objectVersionId:string|null;objectETag:string})=>({ContentLength:100,ContentType:"application/pdf",ETag:input.objectETag,VersionId:input.objectVersionId??undefined,Body:{transformToWebStream:()=>new ReadableStream({start(controller){controller.enqueue(new Uint8Array(100));controller.close();}})}}),
     createPresignedUploadUrl:async()=>{signed++;return "http://fixture.invalid/upload";},
@@ -114,6 +118,8 @@ async function main(){
     await denied(()=>folders.organizeArchive(director,{commandId:randomUUID(),categoryId:"open",action:"create",parentId:null,name:"Disabled",description:"",icon:"folder"}));
     const verification = localRequire(join(compiledRoot,"src/lib/archive-verification/service.js")) as typeof import("../src/lib/archive-verification/service");
     await denied(()=>verification.readArchiveVerification(director,{sourceKind:"manual",sourceId:"manual",categoryId:"open"}));
+    const runtimeArchive = localRequire(join(compiledRoot,"src/lib/archive-runtime/service.js")) as typeof import("../src/lib/archive-runtime/service");
+    await denied(()=>runtimeArchive.readRuntimeArchivePublication(director,"not-a-runtime-project"));
     console.log("PASS 116-migration compatibility: current client, legacy Archive reads/downloads, disabled new services; populated native and exact-version fixtures.");
     return;
   }
@@ -223,6 +229,10 @@ async function main(){
   if(process.argv.includes("--sharing")) {
     const check = localRequire(join(compiledRoot,"scripts/archive-sharing-integration-check.js")) as typeof import("./archive-sharing-integration-check");
     await check.runSharingChecks({db,user,require:localRequire,compiledRoot});
+  }
+  if(process.argv.includes("--runtime")) {
+    const check = localRequire(join(compiledRoot,"scripts/archive-runtime-integration-check.js")) as typeof import("./archive-runtime-integration-check");
+    await check.runRuntimeArchiveChecks({db,user,require:localRequire,compiledRoot,seedObject:(key:string)=>runtimeObjects.set(key,{ContentLength:100,ContentType:"application/pdf",ETag:'"runtime-artwork"',VersionId:"runtime-exact-object"})});
   }
  } finally { moduleApi._load=original; }
 }

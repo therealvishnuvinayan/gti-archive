@@ -1,3 +1,5 @@
+import { archiveRuntimeEnabled } from "../archive-runtime/activation";
+import { runtimeArchiveFiles } from "../archive-runtime/sources";
 import "server-only";
 import { prepareArchiveScope, hasArchiveVerificationGrant } from "./archive-grants";
 import type { Prisma } from "@prisma/client";
@@ -19,7 +21,9 @@ export async function resolveArchiveFile(tx: Prisma.TransactionClient, id: strin
     return { kind: "project" as const, file };
   }
   const manual = await tx.manualArchiveFile.findFirst({ where: { AND: [{ id }, manualArchiveFileWhere(scope)] } });
-  return manual ? { kind: "manual" as const, file: manual } : null;
+  if (manual) return { kind: "manual" as const, file: manual };
+  const [runtime] = await runtimeArchiveFiles(tx, scope, undefined, id);
+  return runtime ? { kind: "runtime" as const, file: runtime } : null;
 }
 
 async function loadArchiveContext({ tx, actor, request }: Parameters<NonNullable<ResourcePolicies["archive.view"]>>[0]): Promise<AuthorizationContext | null> {
@@ -39,13 +43,20 @@ async function loadArchiveContext({ tx, actor, request }: Parameters<NonNullable
   if (kind === "file" && id && ["archive.verify", "archive.revokeVerification", "archive.view", "archive.download", "archive.editMetadata", "archive.share", "archive.shareExternal", "archive.delete", "archive.manageAccess"].includes(cap)) {
     await tx.$queryRaw`SELECT id FROM "ArchivedProjectFile" WHERE id = ${id} FOR UPDATE`;
     await tx.$queryRaw`SELECT id FROM "ManualArchiveFile" WHERE id = ${id} FOR UPDATE`;
-    allowed = !!await resolveArchiveFile(tx, id, scope);
+    if (archiveRuntimeEnabled()) await tx.$queryRaw`SELECT id FROM "RuntimeArchiveFile" WHERE id = ${id} FOR UPDATE`;
+    const resolved = await resolveArchiveFile(tx, id, scope);
+    allowed = !!resolved && !(resolved.kind === "runtime" && ["archive.shareExternal", "archive.share"].includes(cap));
     if (allowed && cap === "archive.verify") allowed = await hasArchiveVerificationGrant(tx, scope, id);
   }
   if (kind === "upload" && id && cap === "archive.upload") {
     await tx.$queryRaw`SELECT id FROM "ManualArchiveFile" WHERE id = ${id} FOR UPDATE`;
     allowed = !!await tx.manualArchiveFile.findFirst({ where: { id, uploadedById: actor.userId,
       status: { in: ["UPLOADING", "READY"] }, archiveCategory: { is: archiveCategoryWhere(scope) } } });
+  }
+  if (kind === "publish-runtime" && id && cap === "archive.publishFromProject" && archiveRuntimeEnabled() && actor.businessRole === "DIRECTOR") {
+    await tx.$queryRaw`SELECT id FROM "RuntimeProject" WHERE id=${id} FOR UPDATE`;
+    const [row] = await tx.$queryRaw<Array<{ eligible: boolean }>>`SELECT flux_archive_runtime_completion(${id}) IS NOT NULL AS eligible`;
+    allowed = row.eligible;
   }
   if (kind === "publish" && id && cap === "archive.publishFromProject") {
     await tx.$queryRaw`SELECT id FROM "Project" WHERE id = ${id} FOR UPDATE`;

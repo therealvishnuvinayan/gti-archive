@@ -12,16 +12,16 @@ import { captureFileIntegrity } from "@/lib/files/contracts";
 import { archiveVerificationEnabled } from "./activation";
 import { ArchiveVerificationError, parseVerificationCommand, type VerificationView } from "./contracts";
 
-type Source = { sourceKind: "manual" | "project"; sourceId: string; categoryId: string };
+type Source = { sourceKind: "manual" | "project" | "runtime"; sourceId: string; categoryId: string };
 type Binding = Source & { projectId: string | null; sourceRevisionId: string | null };
 function enabled() { if (!archiveVerificationEnabled()) throw new ArchiveVerificationError("Archive verification is unavailable.", 404); }
 function sourceInput(input: Source) {
-  if (!["manual", "project"].includes(input.sourceKind) || ![input.sourceId, input.categoryId].every(v => /^[a-zA-Z0-9_-]{1,128}$/.test(v))) throw new ArchiveVerificationError("Invalid Archive source.");
+  if (!["manual", "project", "runtime"].includes(input.sourceKind) || ![input.sourceId, input.categoryId].every(v => /^[a-zA-Z0-9_-]{1,128}$/.test(v))) throw new ArchiveVerificationError("Invalid Archive source.");
 }
 async function identity(tx: Prisma.TransactionClient, source: Source, user: object) {
   const native = await resolveArchiveFile(tx, source.sourceId, archiveScopeForUser(user)!);
-  if (!native || native.kind !== source.sourceKind || (native.kind === "manual" ? native.file.archiveCategoryId : native.file.archive.archiveCategoryId) !== source.categoryId) throw new ArchiveVerificationError("Archive access denied.", 403);
-  const reference = await tx.sharedFileReference.findUnique({ where: source.sourceKind === "manual" ? { manualArchiveFileId: source.sourceId } : { archivedProjectFileId: source.sourceId }, include: { version: true } });
+  if (!native || native.kind !== source.sourceKind || (native.kind === "runtime" ? native.file.categoryId : native.kind === "manual" ? native.file.archiveCategoryId : native.file.archive.archiveCategoryId) !== source.categoryId) throw new ArchiveVerificationError("Archive access denied.", 403);
+  const reference = await tx.sharedFileReference.findUnique({ where: native.kind === "runtime" ? { id: native.file.referenceId } : source.sourceKind === "manual" ? { manualArchiveFileId: source.sourceId } : { archivedProjectFileId: source.sourceId }, include: { version: true } });
   if (!reference) return null;
   const [row] = await tx.$queryRaw<Array<{ binding: Binding | null }>>`SELECT flux_archive_review_source(${reference.id}) AS binding`;
   if (!row.binding || row.binding.sourceKind !== source.sourceKind || row.binding.sourceId !== source.sourceId || row.binding.categoryId !== source.categoryId) return null;

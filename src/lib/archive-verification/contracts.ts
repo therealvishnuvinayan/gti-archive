@@ -2,7 +2,7 @@ export class ArchiveVerificationError extends Error {
   constructor(message: string, readonly status = 400) { super(message); }
 }
 export type VerificationCommand = {
-  commandId: string; sourceKind: "manual" | "project"; sourceId: string; categoryId: string;
+  commandId: string; sourceKind: "manual" | "project" | "runtime"; sourceId: string; categoryId: string;
   versionId: string; expectedRevision: number; expectedDecisionId: string | null;
   action: "VERIFY" | "REVOKE"; reason: string; confirmed: true;
 };
@@ -11,7 +11,7 @@ export function parseVerificationCommand(raw: unknown): VerificationCommand {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return fail();
   const p = raw as Record<string, unknown>;
   if (Object.keys(p).sort().join() !== "action,categoryId,commandId,confirmed,expectedDecisionId,expectedRevision,reason,sourceId,sourceKind,versionId" ||
-    !["manual", "project"].includes(String(p.sourceKind)) || !["VERIFY", "REVOKE"].includes(String(p.action)) || p.confirmed !== true ||
+    !["manual", "project", "runtime"].includes(String(p.sourceKind)) || !["VERIFY", "REVOKE"].includes(String(p.action)) || p.confirmed !== true ||
     !Number.isSafeInteger(p.expectedRevision) || Number(p.expectedRevision) < 0 || Number(p.expectedRevision) > 2147483646 ||
     typeof p.reason !== "string" || !p.reason.trim() || p.reason.trim().length > 2000 ||
     ![p.commandId, p.sourceId, p.categoryId, p.versionId].every(v => typeof v === "string" && /^[a-zA-Z0-9_-]{1,128}$/.test(v)) ||

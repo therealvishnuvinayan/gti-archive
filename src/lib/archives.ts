@@ -1,3 +1,4 @@
+import { runtimeArchiveFiles, runtimeArchiveDownloadPath } from "./archive-runtime/sources";
 import { AuthorizationDeniedError } from "./authorization/policy";
 import { archiveGrantWhere } from "./authorization/archive-rules";
 import { scopedArchiveDownloadPath } from "./authorization/archive-grants";
@@ -126,7 +127,7 @@ export type ArchiveCategorySummary = {
 
 export type ArchiveSearchResult = {
   id: string;
-  recordType: "PROJECT_ARCHIVE" | "MANUAL_ARCHIVE_FILE";
+  recordType: "PROJECT_ARCHIVE" | "MANUAL_ARCHIVE_FILE" | "RUNTIME_ARCHIVE_FILE";
   name: string;
   projectName: string | null;
   archiveCategory: string;
@@ -145,9 +146,11 @@ export type ArchiveSearchResponse = {
 };
 
 export type ArchivedProjectFileRecord = {
+  runtimeSource?: { projectId: string; stageId: string; submissionId: string; referenceId: string; versionId: string; versionNumber: number; submitter: string; finalDecisionId: string; publishedVersionId: string; publicationId: string };
   id: string;
   recordType:
     | "FINAL_ARCHIVE_FILE"
+    | "RUNTIME_ARCHIVE_FILE"
     | "MANUAL_ARCHIVE_FILE"
     | "AUTHORITY_APPROVAL_PROOF"
     | "COPYRIGHT_TRANSFER"
@@ -490,7 +493,7 @@ async function canAccessArchiveCategoryForUserNative(
     ]),
   );
 
-  return projectFileCount + manualFileCount > 0;
+  return projectFileCount + manualFileCount > 0 || (await runtimeArchiveFiles(activeArchiveOperation()!.tx, archiveScopeForUser(user), category.id)).length > 0;
 }
 
 export async function assertCanAccessArchiveCategory(
@@ -2134,6 +2137,7 @@ async function listArchiveCategorySummariesNative(user: ArchiveAccessUser) {
     isArchiveTimestampVisibleToUser(user, file.project, file.archivedAt),
   );
 
+  const runtimeFiles = await runtimeArchiveFiles(activeArchiveOperation()!.tx, archiveScopeForUser(user));
   const summaries = categories.map<ArchiveCategorySummary>((category) => {
     const categoryFiles = visibleArchivedFiles.filter(
       (file) => file.archive.archiveCategoryId === category.id,
@@ -2141,13 +2145,16 @@ async function listArchiveCategorySummariesNative(user: ArchiveAccessUser) {
     const categoryManualFiles = manualArchiveFiles.filter(
       (file) => file.archiveCategoryId === category.id,
     );
+    const categoryRuntimeFiles = runtimeFiles.filter(f => f.categoryId === category.id);
     const uniqueProjectIds = new Set([
+      ...categoryRuntimeFiles.map(f => `runtime:${f.publication.projectId}`),
       ...categoryFiles.map((file) => file.projectId),
       ...categoryManualFiles
         .map((file) => file.projectName?.trim())
         .filter((projectName): projectName is string => Boolean(projectName)),
     ]);
     const latestArchivedAt = [
+      ...categoryRuntimeFiles.map(f => f.publication.createdAt),
       ...categoryFiles.map((file) => file.archivedAt),
       ...categoryManualFiles.map((file) => file.uploadedAt),
     ].sort((left, right) => right.getTime() - left.getTime())[0];
@@ -2165,7 +2172,7 @@ async function listArchiveCategorySummariesNative(user: ArchiveAccessUser) {
       parentName: category.parent?.name ?? null,
       childCount: category.children.length,
       fileCount:
-        categoryFiles.length + categoryManualFiles.length,
+        categoryFiles.length + categoryManualFiles.length + categoryRuntimeFiles.length,
       projectCount: uniqueProjectIds.size,
       latestArchivedAt: formatArchiveTimestamp(latestArchivedAt),
     };
@@ -3311,6 +3318,13 @@ input = { ...input, user: await refreshProjectReader(input.user) };
     }
   }
 
+  for (const file of await runtimeArchiveFiles(activeArchiveOperation()!.tx, archiveScopeForUser(input.user))) {
+    const name = file.version.originalFileName;
+    if (!parsedQuery.recent && !name.toLowerCase().includes(parsedQuery.query.toLowerCase())) continue;
+    rankedResults.push({ rank: 1, result: { id: file.id, recordType: "RUNTIME_ARCHIVE_FILE", name, projectName: file.publication.project.title,
+      archiveCategory: file.category.name, archivedAt: file.publication.createdAt.toISOString(), matchedOn: "FILE_METADATA", matchedFileName: name, matchedField: "Filename", matchedValue: name,
+      href: `/archives/${file.category.slug}?view=all&search=${encodeURIComponent(name)}` } });
+  }
   rankedResults.sort((left, right) => {
     if (parsedQuery.recent) {
       return (
@@ -3801,7 +3815,17 @@ async function listArchivedFilesByCategoryNative(
     isArchiveTimestampVisibleToUser(user, file.project, file.archivedAt),
   );
 
+  const runtimeFiles = await runtimeArchiveFiles(activeArchiveOperation()!.tx, archiveScopeForUser(user), category.id);
   return [
+    ...runtimeFiles.map(file => ({ sortDate: file.publication.createdAt, record: {
+      id: file.id, recordType: "RUNTIME_ARCHIVE_FILE", recordTypeLabel: "Completed runtime project", finalArchiveFileName: file.version.originalFileName, originalFileName: file.version.originalFileName,
+      projectId: file.publication.projectId, projectName: file.publication.project.title, projectCategory: "Runtime project", projectTag: "", projectTags: [], assetTags: [],
+      archiveCategoryId: category.id, archiveCategorySlug: category.slug, archiveCategoryLabel: category.name, sourceLabel: `Stage evidence · v${file.version.number}`, fileTypeLabel: file.version.mimeType,
+      mimeType: file.version.mimeType, fileSizeLabel: formatArchiveFileSize(file.version.fileSize), archivedAt: file.publication.createdAt.toISOString(), archivedBy: file.publication.actor.name ?? "", artworkMetadata: null,
+      previewPath: `/api/archives/files/${file.id}/preview`, downloadPath: `/api/archives/files/${file.id}/download`,
+      runtimeSource: { projectId: file.publication.projectId, stageId: file.submission.stageId, submissionId: file.submissionId, referenceId: file.referenceId, versionId: file.versionId, versionNumber: file.version.number,
+        submitter: file.submission.submittedBy.name ?? "", finalDecisionId: file.publication.finalDecisionId, publishedVersionId: file.publication.publishedVersionId, publicationId: file.publicationId },
+    } satisfies ArchivedProjectFileRecord })),
     ...visibleFiles.map((file) => ({
       sortDate: file.archivedAt,
       record: mapArchivedFileRecord({
@@ -5138,6 +5162,12 @@ async function deleteArchivedFileForUserNative(
   archivedFileId: string,
 ) {
   assertCanUseArchives(user);
+  const [runtime] = await runtimeArchiveFiles(activeArchiveOperation()!.tx, archiveScopeForUser(user), undefined, archivedFileId);
+  if (runtime) {
+    await prepareArchiveSourceDeletion(user, archivedFileId);
+    await activeArchiveOperation()!.tx.runtimeArchiveFile.delete({ where: { id: archivedFileId } });
+    return { archivedFileId, storageCleanupPending: false };
+  }
   const file = await getArchiveDownloadFileForUser(user, archivedFileId);
   await prepareArchiveSourceDeletion(user, archivedFileId);
   await withPrismaRetry(async () => {
@@ -5646,7 +5676,10 @@ export async function deleteArchivedFileForUser(user: ArchiveAccessUser, archive
 }
 
 export async function getArchivedFileDownloadUrlForUser(user: ArchiveAccessUser, archivedFileId: string) {
-  return runArchiveOperation(user, "archive.download", `file:${archivedFileId}`, fresh => getArchivedFileDownloadUrlForUserNative(fresh, archivedFileId));
+  return runArchiveOperation(user, "archive.download", `file:${archivedFileId}`, async fresh => {
+    const [file] = await runtimeArchiveFiles(activeArchiveOperation()!.tx, archiveScopeForUser(fresh), undefined, archivedFileId);
+    return file ? runtimeArchiveDownloadPath(file) : getArchivedFileDownloadUrlForUserNative(fresh, archivedFileId);
+  });
 }
 
 export async function createArchiveFileShareLink(user: ArchiveAccessUser, input: { archivedFileId: string; expiryDays: number }) {
@@ -5654,7 +5687,10 @@ export async function createArchiveFileShareLink(user: ArchiveAccessUser, input:
 }
 
 export async function getArchivedFilePreviewUrlForUser(user: ArchiveAccessUser, archivedFileId: string) {
-  return runArchiveOperation(user, "archive.download", `file:${archivedFileId}`, fresh => getArchivedFilePreviewUrlForUserNative(fresh, archivedFileId));
+  return runArchiveOperation(user, "archive.download", `file:${archivedFileId}`, async fresh => {
+    const [file] = await runtimeArchiveFiles(activeArchiveOperation()!.tx, archiveScopeForUser(fresh), undefined, archivedFileId);
+    return file ? runtimeArchiveDownloadPath(file, true) : getArchivedFilePreviewUrlForUserNative(fresh, archivedFileId);
+  });
 }
 
 export async function getSharedArchiveFilePageData(token: string): Promise<SharedArchiveFilePageData> {

@@ -9,12 +9,13 @@ import { captureFileIntegrity, fileCondition, parseFileSource, type FileSource }
 
 type DB = Prisma.TransactionClient;
 const objectSelect = { id: true, bucket: true, storageKey: true, originalFileName: true, mimeType: true, fileSize: true } as const;
-function referenceWhere(source: FileSource): Prisma.SharedFileReferenceWhereUniqueInput {
+async function referenceWhere(tx: DB, source: FileSource): Promise<Prisma.SharedFileReferenceWhereUniqueInput> {
   switch (source.kind) {
     case "project-attachment": case "library-attachment": return { projectAttachmentId: source.id };
     case "flexible-attachment": return { flexibleAttachmentId: source.id };
     case "archived-project-file": return { archivedProjectFileId: source.id };
     case "manual-archive-file": return { manualArchiveFileId: source.id };
+    case "runtime-archive-file": return { id: (await tx.runtimeArchiveFile.findUniqueOrThrow({ where: { id: source.id }, select: { referenceId: true } })).referenceId };
     case "manual-library-asset": return { manualLibraryAssetId: source.id };
     case "completion-submission": return { completionSubmissionId: source.id };
     case "completion-document": return { completionDocumentId: source.id };
@@ -26,6 +27,10 @@ async function sourceRecord(tx: DB, source: FileSource) {
       return tx.projectAttachment.findUniqueOrThrow({ where: { id: source.id }, select: { ...objectSelect, status: true, projectId: true, stageId: true } });
     case "flexible-attachment":
       return tx.flexibleProjectAttachment.findUniqueOrThrow({ where: { id: source.id }, select: { ...objectSelect, status: true, projectId: true, milestoneId: true } });
+    case "runtime-archive-file": {
+      const file = await tx.runtimeArchiveFile.findUniqueOrThrow({ where: { id: source.id }, include: { version: true } });
+      return { ...file.version, id: file.id, status: "READY" as const };
+    }
     case "manual-archive-file":
       return tx.manualArchiveFile.findUniqueOrThrow({ where: { id: source.id }, select: { ...objectSelect, status: true } });
     case "manual-library-asset":
@@ -64,7 +69,7 @@ async function withSource<T>(raw: unknown, download: boolean, execute: (tx: DB, 
     case "flexible-attachment": return authorize({ capability: "project.viewFile", targetId: `flexible-file:${source.id}` });
     case "library-attachment": return authorize({ capability: download ? "library.download" : "library.view", targetId: `attachment:${source.id}` });
     case "manual-library-asset": return authorize({ capability: download ? "library.download" : "library.view", targetId: `manual:${source.id}` });
-    case "archived-project-file": case "manual-archive-file":
+    case "runtime-archive-file": case "archived-project-file": case "manual-archive-file":
       return authorize({ capability: download ? "archive.download" : "archive.view", targetId: `file:${source.id}` });
     case "completion-document": case "completion-submission": {
       // Only the resource's project ID is resolved before policy evaluation. No
@@ -79,11 +84,13 @@ async function withSource<T>(raw: unknown, download: boolean, execute: (tx: DB, 
 
 async function adoptedReference(tx: DB, source: FileSource, record: Awaited<ReturnType<typeof sourceRecord>>) {
   if (!await sharedFileIdentityAvailable(tx)) return null;
-  const reference = await tx.sharedFileReference.findUnique({ where: referenceWhere(source), select: { ...nativeReferenceSelect, version: { include: { file: { select: nativeFileSelect } } } } });
+  const reference = await tx.sharedFileReference.findUnique({ where: await referenceWhere(tx, source), select: { ...nativeReferenceSelect, version: { include: { file: { select: nativeFileSelect } } } } });
   if (!reference) return null;
   const version = reference.version;
   fileCondition(version.status === "READY" && version.bucket === record.bucket && version.storageKey === record.storageKey &&
     version.fileSize === record.fileSize && version.mimeType === record.mimeType, "FILE_REFERENCE_CHANGED");
+  // The runtime Archive policy validated its typed submission/stage/version graph.
+  if (source.kind === "runtime-archive-file") return reference;
   const projectId = "projectId" in record ? record.projectId : null;
   fileCondition((source.kind === "flexible-attachment" ? version.file.flexibleProjectId : version.file.projectId) === projectId &&
     (reference.role !== "SOURCE" || !("stageId" in record) || record.stageId === version.file.stageId) &&

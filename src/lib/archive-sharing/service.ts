@@ -12,7 +12,7 @@ import { ArchiveSharingError, parseAccessCommand, type AccessView } from "./cont
 const unavailable = () => new ArchiveSharingError("Archive sharing is unavailable.", 404);
 const stale = () => new ArchiveSharingError("Access changed. Refresh before confirming again.", 409);
 const userSelect = { id: true, name: true, email: true } as const;
-type Source = { sourceKind: "manual" | "project"; sourceId: string; categoryId: string; referenceId: string | null; versionId: string | null };
+type Source = { sourceKind: "manual" | "project" | "runtime"; sourceId: string; categoryId: string; referenceId: string | null; versionId: string | null };
 async function source(tx: Prisma.TransactionClient, user: object, fileId: string) {
   const native = await resolveArchiveFile(tx, fileId, archiveScopeForUser(user)!);
   if (!native) throw unavailable();
@@ -28,7 +28,7 @@ export async function readArchiveAccess(expected: { id: string }, fileId: string
   return runArchiveOperation(expected, "archive.manageAccess", `file:${fileId}`, async user => {
     const tx = activeArchiveOperation()!.tx, binding = await source(tx, user, fileId);
     const { sourceKind, sourceId, categoryId, referenceId, versionId } = binding;
-    const target = sourceKind === "manual" ? { manualArchiveFileId: fileId } : { archivedProjectFileId: fileId };
+    const target = sourceKind === "runtime" ? { archiveScope: { is: { decision: { sourceKind: "runtime", sourceId: fileId } } } } : sourceKind === "manual" ? { manualArchiveFileId: fileId } : { archivedProjectFileId: fileId };
     const categoryUsers = await tx.archiveCategoryAccess.findMany({ where: { archiveCategoryId: categoryId }, select: { userId: true } });
     const users = await tx.user.findMany({ where: { authorization: { is: { accountStatus: "ACTIVE", businessRole: { in: ["DESIGNER", "DIGITAL_LEAD"] } } },
       ...(categoryUsers.length ? { id: { in: categoryUsers.map(r => r.userId) } } : {}),
@@ -38,7 +38,7 @@ export async function readArchiveAccess(expected: { id: string }, fileId: string
     const revision = (id: string) => { const d = decisions.find(d => d.recipientId === id); return { revision: d?.sequence ?? 0, decisionId: d?.id ?? null }; };
     if (before && !await tx.archiveAccessDecision.findFirst({ where: { id: before, sourceKind, sourceId }, select: { id: true } })) throw new ArchiveSharingError("Invalid history cursor.");
     const history = await tx.archiveAccessDecision.findMany({ where: { sourceKind, sourceId }, ...(before ? { cursor: { id: before }, skip: 1 } : {}), orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 51, include: { actor: { select: { name: true } }, recipient: { select: { name: true } } } });
-    const effective = await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM "UserArchiveAssetAccess" WHERE ("manualArchiveFileId"=${fileId} OR "archivedProjectFileId"=${fileId}) AND flux_archive_grant_effective(id)`;
+    const effective = await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM "UserArchiveAssetAccess" WHERE ("manualArchiveFileId"=${fileId} OR "archivedProjectFileId"=${fileId} OR id IN (SELECT s."grantId" FROM "ArchiveGrantScope" s JOIN "ArchiveAccessDecision" d ON d.id=s."decisionId" WHERE d."sourceKind"='runtime' AND d."sourceId"=${fileId})) AND flux_archive_grant_effective(id)`;
     return { sourceKind, sourceId, categoryId, referenceId, versionId, users: users.slice(0,50).map(u => ({ ...u, ...revision(u.id) })), moreUsers: users.length > 50,
       grants: grants.map(g => ({ id: g.userId, name: g.user.name, email: g.user.email, ...revision(g.userId), grantId: g.id, createdAt: g.createdAt.toISOString(), grantedBy: g.grantedBy?.name ?? null,
         scope: g.archiveScope ? g.archiveScope.decision.versionId ? "VERSION" : "LEGACY_NATIVE" : "NATIVE", expiresAt: g.archiveScope?.decision.expiresAt?.toISOString() ?? null,
@@ -58,7 +58,7 @@ export async function decideArchiveAccess(expected: { id: string }, raw: unknown
     const result = (d: { id: string; sequence: number; action: string }) => ({ decisionId: d.id, revision: d.sequence, action: d.action });
     if (replay) { if (replay.commandHash !== commandHash) throw stale(); return result(replay); }
     const previous = await tx.archiveAccessDecision.findFirst({ where: { sourceKind: binding.sourceKind, sourceId: binding.sourceId, recipientId: command.recipientId }, orderBy: { sequence: "desc" } });
-    const existing = await tx.userArchiveAssetAccess.findFirst({ where: { userId: command.recipientId, ...(binding.sourceKind === "manual" ? { manualArchiveFileId: binding.sourceId } : { archivedProjectFileId: binding.sourceId }) }, select: { id: true } });
+    const existing = await tx.userArchiveAssetAccess.findFirst({ where: { userId: command.recipientId, ...(binding.sourceKind === "runtime" ? { archiveScope: { is: { decision: { sourceKind: "runtime", sourceId: binding.sourceId } } } } : binding.sourceKind === "manual" ? { manualArchiveFileId: binding.sourceId } : { archivedProjectFileId: binding.sourceId }) }, select: { id: true } });
     if ((previous?.sequence ?? 0) !== command.expectedRevision || (previous?.id ?? null) !== command.expectedDecisionId || (existing?.id ?? null) !== command.expectedGrantId ||
       (command.action === "GRANT" ? !!existing : !existing)) throw stale();
     if (command.action === "GRANT") {

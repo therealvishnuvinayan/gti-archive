@@ -48,14 +48,14 @@ try {
  const catalogAfter=catalog();
  const inventory={added:Object.fromEntries(Object.entries(catalogAfter).filter(([key])=>!(key in catalogBefore))),changed:Object.fromEntries(Object.entries(catalogAfter).filter(([key,value])=>key in catalogBefore && catalogBefore[key]!==value).map(([key,value])=>[key,{before:catalogBefore[key],after:value}])),removed:Object.keys(catalogBefore).filter(key=>!(key in catalogAfter))};
  assert.deepEqual(inventory.removed,[]);
- assert.deepEqual(Object.keys(inventory.changed).sort(),['constraint:"BusinessEvent".BusinessEvent_contract_check','enum:BusinessEventType','function:flux_event_write_guard()','function:flux_shared_file_reference_guard()'].sort());
- assert.equal(Object.keys(inventory.added).filter(key=>key.startsWith('table:')).length,7);
- writeFileSync('/private/tmp/flux-phase63-migration-inventory.json',JSON.stringify(inventory,null,2));
- assert.equal(sql('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL'),"117");assert.equal(sql("SELECT count(*) FROM pg_tables WHERE schemaname='public'"),"157");
- for(const table of ["ArchiveFolder","ArchiveFilePlacement","ArchiveOrganizationCommand","ArchiveVerificationDecision","RetainedArchiveSource","ArchiveGrantScope","ArchiveAccessDecision"])assert.equal(sql(`SELECT count(*) FROM "${table}"`),"0");
- console.log("PASS populated additive migration: 116/150 → 117/157. Every original table/row/ledger checksum unchanged; zero relocation/backfill.");
+ assert.deepEqual(Object.keys(inventory.changed).sort(),['constraint:"UserArchiveAssetAccess".UserArchiveAssetAccess_single_asset_check','constraint:"BusinessEvent".BusinessEvent_contract_check','enum:BusinessEventType','function:flux_event_write_guard()','function:flux_shared_file_reference_guard()'].sort());
+ assert.equal(Object.keys(inventory.added).filter(key=>key.startsWith('table:')).length,9);
+ writeFileSync('/private/tmp/flux-phase64-migration-inventory.json',JSON.stringify(inventory,null,2));
+ assert.equal(sql('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL'),"117");assert.equal(sql("SELECT count(*) FROM pg_tables WHERE schemaname='public'"),"159");
+ for(const table of ["ArchiveFolder","ArchiveFilePlacement","ArchiveOrganizationCommand","ArchiveVerificationDecision","RetainedArchiveSource","ArchiveGrantScope","ArchiveAccessDecision","RuntimeArchivePublication","RuntimeArchiveFile"])assert.equal(sql(`SELECT count(*) FROM "${table}"`),"0");
+ console.log("PASS populated additive migration: 116/150 → 117/159. Every original table/row/ledger checksum unchanged; zero relocation/backfill.");
  console.log("Candidate "+archiveFoldersMigration+"/migration.sql SHA-256 "+createHash("sha256").update(readFileSync(join(migrations,archiveFoldersMigration,"migration.sql"))).digest("hex"));
- console.log(run(process.execPath,[test,...process.argv.slice(2).filter(arg=>["--verification","--sharing"].includes(arg))],{env:localEnv}));
+ console.log(run(process.execPath,[test,...process.argv.slice(2).filter(arg=>["--verification","--sharing","--runtime"].includes(arg))],{env:localEnv}));
  assert.match(prisma(["migrate","diff","--from-url",url,"--to-schema-datamodel",schemaPath,"--script"]),/empty migration/);
  console.log("PASS schema drift empty. No remote database or storage used.");
 } finally {if(started)run("pg_ctl",["-D",data,"-m","fast","-w","stop"]);rmSync(root,{recursive:true,force:true});console.log("Disposable Phase 6.1 cluster removed.");}

@@ -10,7 +10,7 @@ export type OrganizationCommand = { commandId: string; categoryId: string } & (
   | { action: "rename"; folderId: string; expectedRevision: number; name: string; description: string; icon: ArchiveFolderIcon }
   | { action: "move-folder"; folderId: string; expectedRevision: number; parentId: string | null }
   | { action: "delete-folder"; folderId: string; expectedRevision: number }
-  | { action: "move-file"; fileId: string; fileKind: "project" | "manual"; expectedRevision: number; folderId: string | null }
+  | { action: "move-file"; fileId: string; fileKind: "project" | "manual" | "runtime"; expectedRevision: number; folderId: string | null }
 );
 export type OrganizationResult = { id: string; revision: number };
 export class ArchiveOrganizationError extends Error {
@@ -43,6 +43,6 @@ export function parseOrganizationCommand(value: unknown): OrganizationCommand {
   if (v.action === "rename" && id("folderId") && revision()) return { ...base, action: "rename", folderId: v.folderId as string, expectedRevision: v.expectedRevision as number, ...metadata() };
   if (v.action === "move-folder" && id("folderId") && nullableId("parentId") && revision()) return { ...base, action: "move-folder", folderId: v.folderId as string, parentId: v.parentId as string | null, expectedRevision: v.expectedRevision as number };
   if (v.action === "delete-folder" && id("folderId") && revision()) return { ...base, action: "delete-folder", folderId: v.folderId as string, expectedRevision: v.expectedRevision as number };
-  if (v.action === "move-file" && id("fileId") && nullableId("folderId") && revision() && ["project", "manual"].includes(v.fileKind as string)) return { ...base, action: "move-file", fileId: v.fileId as string, fileKind: v.fileKind as "project" | "manual", folderId: v.folderId as string | null, expectedRevision: v.expectedRevision as number };
+  if (v.action === "move-file" && id("fileId") && nullableId("folderId") && revision() && ["project", "manual", "runtime"].includes(v.fileKind as string)) return { ...base, action: "move-file", fileId: v.fileId as string, fileKind: v.fileKind as "project" | "manual" | "runtime", folderId: v.folderId as string | null, expectedRevision: v.expectedRevision as number };
   return fail();
 }

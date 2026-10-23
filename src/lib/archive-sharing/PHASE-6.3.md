@@ -1,5 +1,7 @@
 # FLUX V2 — Phase 6.3: internal Archive sharing
 
+> Historical phase report. [Phase 6.4](../archive-runtime/PHASE-6.4.md) records the latest still-unapplied combined migration, checksum, 159-table rehearsal and runtime Archive integration. The implementation and evidence below retain their original phase scope.
+
 Development implementation, 2026-10-24. Phase 6.3 only. No Neon migration, live S3 use, flag activation, account changes, push, deployment, runtime Archive publication, or later package work.
 
 ## 1. Existing implementation reviewed and preserved

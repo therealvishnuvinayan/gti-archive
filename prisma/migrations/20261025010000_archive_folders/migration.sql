@@ -599,4 +599,297 @@ $branch$);
  EXECUTE definition;
 END $migration$;
 
+
+-- Phase 6.4: additive completed-runtime publication. No historical data changes.
+-- AlterEnum
+ALTER TYPE "BusinessEventType" ADD VALUE 'ARCHIVE_RUNTIME_PUBLISHED';
+
+-- AlterTable
+ALTER TABLE "ArchiveFilePlacement" ADD COLUMN     "runtimeArchiveFileId" TEXT;
+
+-- AlterTable
+ALTER TABLE "RetainedArchiveSource" ADD COLUMN     "runtimeSourceId" TEXT;
+
+-- CreateTable
+CREATE TABLE "RuntimeArchivePublication" (
+    "id" TEXT NOT NULL,
+    "projectId" TEXT NOT NULL,
+    "finalDecisionId" TEXT NOT NULL,
+    "publishedVersionId" TEXT NOT NULL,
+    "categoryId" TEXT NOT NULL,
+    "destinationFolderId" TEXT,
+    "manifest" JSONB NOT NULL,
+    "manifestHash" TEXT NOT NULL,
+    "actorId" TEXT NOT NULL,
+    "actorVersion" INTEGER NOT NULL,
+    "sessionId" TEXT NOT NULL,
+    "reason" TEXT NOT NULL,
+    "commandId" TEXT NOT NULL,
+    "commandHash" TEXT NOT NULL,
+    "eventId" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "RuntimeArchivePublication_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "RuntimeArchiveFile" (
+    "id" TEXT NOT NULL,
+    "publicationId" TEXT NOT NULL,
+    "categoryId" TEXT NOT NULL,
+    "submissionId" TEXT NOT NULL,
+    "referenceId" TEXT NOT NULL,
+    "versionId" TEXT NOT NULL,
+
+    CONSTRAINT "RuntimeArchiveFile_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE UNIQUE INDEX "RuntimeArchivePublication_manifestHash_key" ON "RuntimeArchivePublication"("manifestHash");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "RuntimeArchivePublication_eventId_key" ON "RuntimeArchivePublication"("eventId");
+
+-- CreateIndex
+CREATE INDEX "RuntimeArchivePublication_projectId_createdAt_idx" ON "RuntimeArchivePublication"("projectId", "createdAt");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "RuntimeArchivePublication_actorId_commandId_key" ON "RuntimeArchivePublication"("actorId", "commandId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "RuntimeArchiveFile_submissionId_key" ON "RuntimeArchiveFile"("submissionId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "RuntimeArchiveFile_referenceId_key" ON "RuntimeArchiveFile"("referenceId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "RuntimeArchiveFile_versionId_key" ON "RuntimeArchiveFile"("versionId");
+
+-- CreateIndex
+CREATE INDEX "RuntimeArchiveFile_categoryId_publicationId_idx" ON "RuntimeArchiveFile"("categoryId", "publicationId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "ArchiveFilePlacement_runtimeArchiveFileId_key" ON "ArchiveFilePlacement"("runtimeArchiveFileId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "RetainedArchiveSource_runtimeSourceId_key" ON "RetainedArchiveSource"("runtimeSourceId");
+
+-- AddForeignKey
+ALTER TABLE "ArchiveFilePlacement" ADD CONSTRAINT "ArchiveFilePlacement_runtimeArchiveFileId_fkey" FOREIGN KEY ("runtimeArchiveFileId") REFERENCES "RuntimeArchiveFile"("id") ON DELETE CASCADE ON UPDATE RESTRICT;
+
+-- AddForeignKey
+ALTER TABLE "RuntimeArchivePublication" ADD CONSTRAINT "RuntimeArchivePublication_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "RuntimeProject"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+-- AddForeignKey
+ALTER TABLE "RuntimeArchivePublication" ADD CONSTRAINT "RuntimeArchivePublication_finalDecisionId_fkey" FOREIGN KEY ("finalDecisionId") REFERENCES "RuntimeCompletionDecision"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+-- AddForeignKey
+ALTER TABLE "RuntimeArchivePublication" ADD CONSTRAINT "RuntimeArchivePublication_publishedVersionId_fkey" FOREIGN KEY ("publishedVersionId") REFERENCES "PublishedWorkflowVersion"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+-- AddForeignKey
+ALTER TABLE "RuntimeArchivePublication" ADD CONSTRAINT "RuntimeArchivePublication_categoryId_fkey" FOREIGN KEY ("categoryId") REFERENCES "ArchiveCategory"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+-- AddForeignKey
+ALTER TABLE "RuntimeArchivePublication" ADD CONSTRAINT "RuntimeArchivePublication_actorId_fkey" FOREIGN KEY ("actorId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+-- AddForeignKey
+ALTER TABLE "RuntimeArchivePublication" ADD CONSTRAINT "RuntimeArchivePublication_eventId_fkey" FOREIGN KEY ("eventId") REFERENCES "BusinessEvent"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+-- AddForeignKey
+ALTER TABLE "RuntimeArchiveFile" ADD CONSTRAINT "RuntimeArchiveFile_publicationId_fkey" FOREIGN KEY ("publicationId") REFERENCES "RuntimeArchivePublication"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+-- AddForeignKey
+ALTER TABLE "RuntimeArchiveFile" ADD CONSTRAINT "RuntimeArchiveFile_categoryId_fkey" FOREIGN KEY ("categoryId") REFERENCES "ArchiveCategory"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+-- AddForeignKey
+ALTER TABLE "RuntimeArchiveFile" ADD CONSTRAINT "RuntimeArchiveFile_submissionId_fkey" FOREIGN KEY ("submissionId") REFERENCES "RuntimeFileSubmission"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+-- AddForeignKey
+ALTER TABLE "RuntimeArchiveFile" ADD CONSTRAINT "RuntimeArchiveFile_referenceId_fkey" FOREIGN KEY ("referenceId") REFERENCES "SharedFileReference"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+-- AddForeignKey
+ALTER TABLE "RuntimeArchiveFile" ADD CONSTRAINT "RuntimeArchiveFile_versionId_fkey" FOREIGN KEY ("versionId") REFERENCES "SharedFileVersion"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+-- Genuine completed runtime identity, independent of legacy Project foreign keys.
+CREATE FUNCTION flux_archive_runtime_completion(pid text) RETURNS jsonb LANGUAGE sql STABLE AS $$
+ SELECT jsonb_build_object('projectId',p.id,'finalDecisionId',d.id,'publishedVersionId',v.id)
+ FROM "RuntimeProject" p JOIN "PublishedWorkflowVersion" v ON v.id=p."publishedVersionId" AND v."configurationHash"=p."definitionHash" AND v.number=p."versionNumber" AND v."workflowId"=p."workflowId"
+ JOIN "RuntimeCompletionDecision" d ON d."projectId"=p.id AND d.outcome='APPROVE'
+ JOIN "RuntimeCompletionRequest" r ON r.id=d."requestId" AND r."projectId"=p.id AND r.state='APPROVED' AND r."snapshotHash"=d."snapshotHash"
+ JOIN "RuntimeCompletionActivity" a ON a.id=d."activityId" AND a."projectId"=p.id AND a.action='COMPLETION_DECIDED' AND a."actorRole"='DIRECTOR' AND a.result->>'decisionId'=d.id AND a.snapshot->>'outcome'='APPROVE'
+ JOIN "RuntimeCompletionActivity" o ON o.id=r."activityId" AND o."projectId"=p.id AND o.action='COMPLETION_REQUESTED' AND o."actorId"=p."ownerId"
+ WHERE p.id=pid AND p.state='COMPLETED'
+$$;
+
+-- Only current sealed stage evidence in the actual completed-stage snapshot.
+-- Completion documents and all Tasker-derived material are deliberately excluded.
+CREATE FUNCTION flux_archive_runtime_evidence(sid text) RETURNS jsonb LANGUAGE sql STABLE AS $$
+ SELECT jsonb_build_object('submissionId',s.id,'referenceId',r.id,'versionId',v.id)
+ FROM "RuntimeFileSubmission" s JOIN "RuntimeStage" st ON st.id=s."stageId" AND st.state='COMPLETED'
+ JOIN "RuntimeProject" p ON p.id=st."projectId" JOIN "PublishedWorkflowVersion" pv ON pv.id=p."publishedVersionId"
+ JOIN "SharedFileVersion" v ON v.id=s."versionId" AND v.status='READY' AND v."objectETag" IS NOT NULL AND (v."applicationSealed" OR v."objectVersionId" IS NOT NULL) AND v."uploadedById"=s."submittedById"
+ JOIN "SharedFile" f ON f.id=v."fileId" AND f."runtimeStageId"=st.id AND num_nonnulls(f."projectId",f."flexibleProjectId",f."taskId",f."completionWorkflowId")=0
+ JOIN "SharedFileReference" r ON r."runtimeSubmissionId"=s.id AND r."versionId"=v.id
+ JOIN LATERAL jsonb_array_elements(st.configuration->'capabilities') c ON c->>'id'=s."capabilityId" AND c->>'type'='FILE_REQUIREMENT'
+ WHERE s.id=sid AND flux_archive_runtime_completion(p.id) IS NOT NULL
+ AND EXISTS(SELECT 1 FROM jsonb_array_elements(pv.definition->'stages') ds WHERE ds=st.configuration)
+ AND (s.state='ACCEPTED' OR (s.state='SUBMITTED' AND c->>'acceptance'='NONE'))
+ AND st."completionSnapshot"->'files' @> jsonb_build_array(jsonb_build_object('submissionId',s.id,'versionId',v.id,'state',s.state))
+ AND NOT EXISTS(SELECT 1 FROM "RuntimeFileSubmission" n WHERE n."supersedesId"=s.id)
+ AND NOT EXISTS(SELECT 1 FROM "RuntimeTaskPublication" t WHERE t."submissionId"=s.id)
+ AND NOT EXISTS(SELECT 1 FROM "RuntimeDocumentFile" d WHERE d."fileId"=f.id)
+$$;
+
+ALTER TABLE "RuntimeArchivePublication" ALTER CONSTRAINT "RuntimeArchivePublication_eventId_fkey" DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "RuntimeArchivePublication" ADD CONSTRAINT "RuntimeArchivePublication_values_check" CHECK (
+ length(btrim(reason)) BETWEEN 1 AND 2000 AND "actorVersion">0 AND length("commandId") BETWEEN 1 AND 128 AND
+ "commandHash" ~ '^[a-f0-9]{64}$' AND "manifestHash" ~ '^[a-f0-9]{64}$' AND "eventId"='archive-runtime:'||id);
+ALTER TABLE "ArchiveFilePlacement" DROP CONSTRAINT "ArchiveFilePlacement_target_check";
+ALTER TABLE "ArchiveFilePlacement" ADD CONSTRAINT "ArchiveFilePlacement_target_check" CHECK (
+ num_nonnulls("archivedProjectFileId","manualArchiveFileId","runtimeArchiveFileId")=1 AND revision>0 AND
+ id=CASE WHEN "archivedProjectFileId" IS NOT NULL THEN 'project:'||"archivedProjectFileId" WHEN "manualArchiveFileId" IS NOT NULL THEN 'manual:'||"manualArchiveFileId" ELSE 'runtime:'||"runtimeArchiveFileId" END);
+ALTER TABLE "RetainedArchiveSource" DROP CONSTRAINT "RetainedArchiveSource_typed_check";
+ALTER TABLE "RetainedArchiveSource" ADD CONSTRAINT "RetainedArchiveSource_typed_check" CHECK (num_nonnulls("manualSourceId","projectSourceId","runtimeSourceId")=1);
+
+CREATE FUNCTION flux_archive_runtime_publication_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE completion jsonb; item jsonb; previous_sid text;
+BEGIN
+ IF TG_OP<>'INSERT' THEN RAISE EXCEPTION 'Runtime Archive publication history is immutable' USING ERRCODE='23514'; END IF;
+ IF current_setting('transaction_isolation')<>'serializable' OR NEW."actorId" IS DISTINCT FROM current_setting('flux.archive_runtime_actor',true) OR
+ NEW."sessionId" IS DISTINCT FROM current_setting('flux.archive_runtime_session',true) OR current_setting('flux.archive_runtime_confirmed',true) IS DISTINCT FROM 'true' OR
+ NOT coalesce(flux_workflow_actor_current(NEW."actorId",'DIRECTOR',NEW."actorVersion",NEW."sessionId"),false) THEN RAISE EXCEPTION 'Current Director publication confirmation required' USING ERRCODE='23514'; END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended('archive-runtime:'||NEW."projectId",0));
+ PERFORM 1 FROM "RuntimeProject" WHERE id=NEW."projectId" FOR UPDATE;
+ completion:=flux_archive_runtime_completion(NEW."projectId");
+ IF completion IS DISTINCT FROM jsonb_build_object('projectId',NEW."projectId",'finalDecisionId',NEW."finalDecisionId",'publishedVersionId',NEW."publishedVersionId") OR
+ NOT EXISTS(SELECT 1 FROM "ArchiveCategory" WHERE id=NEW."categoryId" AND "isActive") OR
+ (NEW."destinationFolderId" IS NOT NULL AND NOT EXISTS(SELECT 1 FROM "ArchiveFolder" WHERE id=NEW."destinationFolderId" AND "categoryId"=NEW."categoryId")) THEN RAISE EXCEPTION 'Completed runtime project and valid destination required' USING ERRCODE='23514'; END IF;
+ IF jsonb_typeof(NEW.manifest->'files') IS DISTINCT FROM 'array' OR jsonb_array_length(NEW.manifest->'files') NOT BETWEEN 1 AND 50 OR
+ NEW.manifest IS DISTINCT FROM completion||jsonb_build_object('categoryId',NEW."categoryId",'folderId',NEW."destinationFolderId",'files',NEW.manifest->'files','nonSensitiveConfirmed',true) OR
+ NEW."manifestHash"<>encode(sha256(convert_to(NEW.manifest::text,'UTF8')),'hex') THEN RAISE EXCEPTION 'Exact bounded publication manifest required' USING ERRCODE='23514'; END IF;
+ FOR item IN SELECT value FROM jsonb_array_elements(NEW.manifest->'files') LOOP
+  IF item IS DISTINCT FROM flux_archive_runtime_evidence(item->>'submissionId') OR
+   NOT EXISTS(SELECT 1 FROM "RuntimeFileSubmission" s JOIN "RuntimeStage" st ON st.id=s."stageId" WHERE s.id=item->>'submissionId' AND st."projectId"=NEW."projectId") OR
+   (previous_sid IS NOT NULL AND previous_sid COLLATE "C">=(item->>'submissionId') COLLATE "C") OR
+   EXISTS(SELECT 1 FROM "RuntimeArchiveFile" WHERE "referenceId"=item->>'referenceId') OR
+   EXISTS(SELECT 1 FROM "RetainedArchiveSource" WHERE id=item->>'referenceId') THEN RAISE EXCEPTION 'Ineligible, duplicate or retired runtime evidence' USING ERRCODE='23514'; END IF;
+  previous_sid:=item->>'submissionId';
+ END LOOP;
+ NEW."createdAt":=clock_timestamp() AT TIME ZONE 'UTC'; RETURN NEW;
+END $$;
+CREATE TRIGGER flux_archive_runtime_publication_guard BEFORE INSERT OR UPDATE OR DELETE ON "RuntimeArchivePublication" FOR EACH ROW EXECUTE FUNCTION flux_archive_runtime_publication_guard();
+CREATE TRIGGER flux_archive_runtime_publication_truncate BEFORE TRUNCATE ON "RuntimeArchivePublication" FOR EACH STATEMENT EXECUTE FUNCTION flux_archive_runtime_publication_guard();
+
+CREATE FUNCTION flux_archive_runtime_file_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE pub "RuntimeArchivePublication"; ref "SharedFileReference"; uid text; sid text; av int;
+BEGIN
+ IF TG_OP='INSERT' THEN
+  IF EXISTS(SELECT 1 FROM "ManualArchiveFile" WHERE id=NEW.id) OR EXISTS(SELECT 1 FROM "ArchivedProjectFile" WHERE id=NEW.id) OR
+   EXISTS(SELECT 1 FROM "RetainedArchiveSource" WHERE "manualSourceId"=NEW.id OR "projectSourceId"=NEW.id OR "runtimeSourceId"=NEW.id) OR
+   EXISTS(SELECT 1 FROM "ArchiveAccessDecision" WHERE "sourceId"=NEW.id) THEN RAISE EXCEPTION 'Archive source identity collision' USING ERRCODE='23514'; END IF;
+  SELECT * INTO pub FROM "RuntimeArchivePublication" WHERE id=NEW."publicationId";
+  IF pg_trigger_depth()<>2 OR NEW."categoryId" IS DISTINCT FROM pub."categoryId" OR pub."actorId" IS DISTINCT FROM current_setting('flux.archive_runtime_actor',true) OR
+   NOT EXISTS(SELECT 1 FROM jsonb_array_elements(pub.manifest->'files') WITH ORDINALITY x(item,n) WHERE NEW.id='raf_'||pub.id||'_'||n AND item=jsonb_build_object('submissionId',NEW."submissionId",'referenceId',NEW."referenceId",'versionId',NEW."versionId")) THEN RAISE EXCEPTION 'Confirmed runtime publication required' USING ERRCODE='23514'; END IF;
+  RETURN NEW;
+ ELSIF TG_OP='DELETE' THEN
+  uid:=current_setting('flux.archive_delete_actor',true);sid:=current_setting('flux.archive_delete_session',true);
+  SELECT "authorizationVersion" INTO av FROM "UserAuthorization" WHERE "userId"=uid;
+  IF current_setting('transaction_isolation')<>'serializable' OR current_setting('flux.archive_delete_id',true) IS DISTINCT FROM OLD.id OR NOT coalesce(flux_workflow_actor_current(uid,'DIRECTOR',av,sid),false) THEN RAISE EXCEPTION 'Current Director deletion required' USING ERRCODE='23514'; END IF;
+  SELECT * INTO STRICT ref FROM "SharedFileReference" WHERE id=OLD."referenceId";
+  INSERT INTO "RetainedArchiveSource" (id,"runtimeSourceId","sourceSnapshot","referenceSnapshot","actorId","actorVersion","sessionId") VALUES(ref.id,OLD.id,to_jsonb(OLD),to_jsonb(ref),uid,av,sid);
+  DELETE FROM "UserArchiveAssetAccess" g USING "ArchiveGrantScope" s,"ArchiveAccessDecision" d WHERE s."grantId"=g.id AND d.id=s."decisionId" AND d."sourceKind"='runtime' AND d."sourceId"=OLD.id;
+  RETURN OLD;
+ END IF;
+ RAISE EXCEPTION 'Runtime Archive file identity is immutable' USING ERRCODE='23514';
+END $$;
+CREATE TRIGGER flux_archive_runtime_file_guard BEFORE INSERT OR UPDATE OR DELETE ON "RuntimeArchiveFile" FOR EACH ROW EXECUTE FUNCTION flux_archive_runtime_file_guard();
+CREATE TRIGGER flux_archive_runtime_file_truncate BEFORE TRUNCATE ON "RuntimeArchiveFile" FOR EACH STATEMENT EXECUTE FUNCTION flux_archive_runtime_file_guard();
+
+CREATE FUNCTION flux_apply_archive_runtime_publication() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE x record; fid text;
+BEGIN
+ FOR x IN SELECT value AS item,ordinality AS n FROM jsonb_array_elements(NEW.manifest->'files') WITH ORDINALITY LOOP
+  fid:='raf_'||NEW.id||'_'||x.n;
+  INSERT INTO "RuntimeArchiveFile" (id,"publicationId","categoryId","submissionId","referenceId","versionId") VALUES(fid,NEW.id,NEW."categoryId",x.item->>'submissionId',x.item->>'referenceId',x.item->>'versionId');
+  IF NEW."destinationFolderId" IS NOT NULL THEN INSERT INTO "ArchiveFilePlacement" (id,"categoryId","folderId","runtimeArchiveFileId",revision,"updatedAt") VALUES('runtime:'||fid,NEW."categoryId",NEW."destinationFolderId",fid,1,NEW."createdAt"); END IF;
+ END LOOP;
+ INSERT INTO "BusinessEvent" (id,type,"schemaVersion","aggregateType","aggregateId",sequence,"actorId","actorRole","actorVersion",operation,"correlationId","causationId","idempotencyKey","occurredAt",payload)
+ VALUES(NEW."eventId",'ARCHIVE_RUNTIME_PUBLISHED',1,'RUNTIME_ARCHIVE_PUBLICATION',NEW.id,1,NEW."actorId",'DIRECTOR',NEW."actorVersion",'archiveRuntimePublication',NEW."projectId",NEW.id,NEW."eventId",NEW."createdAt",jsonb_build_object('manifestHash',NEW."manifestHash"));
+ INSERT INTO "EventOutbox" ("eventId","consumerKey") VALUES(NEW."eventId",'internal.audit.v1'); RETURN NEW;
+END $$;
+CREATE TRIGGER flux_apply_archive_runtime_publication AFTER INSERT ON "RuntimeArchivePublication" FOR EACH ROW EXECUTE FUNCTION flux_apply_archive_runtime_publication();
+
+CREATE FUNCTION flux_archive_runtime_source(sid text) RETURNS jsonb LANGUAGE sql STABLE AS $$
+ SELECT jsonb_build_object('sourceKind','runtime','sourceId',a.id,'categoryId',a."categoryId",'projectId',NULL,'sourceRevisionId',NULL,
+ 'runtimeProjectId',p."projectId",'submissionId',a."submissionId",'bucket',v.bucket,'storageKey',v."storageKey",'fileSize',v."fileSize",'mimeType',v."mimeType",'referenceId',a."referenceId",'versionId',v.id)
+ FROM "RuntimeArchiveFile" a JOIN "RuntimeArchivePublication" p ON p.id=a."publicationId" AND p."categoryId"=a."categoryId"
+ JOIN "SharedFileVersion" v ON v.id=a."versionId" JOIN "ArchiveCategory" c ON c.id=a."categoryId" AND c."isActive"
+ WHERE a.id=sid AND flux_archive_runtime_evidence(a."submissionId")=jsonb_build_object('submissionId',a."submissionId",'referenceId',a."referenceId",'versionId',v.id)
+ AND flux_archive_runtime_completion(p."projectId")=jsonb_build_object('projectId',p."projectId",'finalDecisionId',p."finalDecisionId",'publishedVersionId',p."publishedVersionId")
+$$;
+
+-- The original native one-file check remains exact for both original sources.
+-- The only third form is a runtime grant produced by a genuine audited decision.
+CREATE FUNCTION flux_archive_runtime_grant_identity(gid text, uid text, actor text) RETURNS boolean LANGUAGE sql STABLE AS $$
+ SELECT EXISTS(SELECT 1 FROM "ArchiveAccessDecision" d JOIN "RuntimeArchiveFile" f ON f.id=d."sourceId"
+ WHERE d."grantId"=gid AND d."recipientId"=uid AND d."actorId"=actor AND d."sourceKind"='runtime' AND d.action='GRANT'
+ AND d."referenceId"=f."referenceId" AND d."versionId"=f."versionId" AND d."sourceSnapshot"=flux_archive_runtime_source(f.id))
+$$;
+ALTER TABLE "UserArchiveAssetAccess" DROP CONSTRAINT "UserArchiveAssetAccess_single_asset_check";
+ALTER TABLE "UserArchiveAssetAccess" ADD CONSTRAINT "UserArchiveAssetAccess_single_asset_check" CHECK (
+ num_nonnulls("manualArchiveFileId","archivedProjectFileId")=1 OR
+ (num_nonnulls("manualArchiveFileId","archivedProjectFileId")=0 AND flux_archive_runtime_grant_identity(id,"userId","grantedById")));
+
+-- Existing source contracts gain one typed adapter; native branches are retained.
+DO $migration$
+DECLARE definition text; existing_check text;
+BEGIN
+ SELECT pg_get_functiondef('flux_archive_placement_guard()'::regprocedure) INTO definition;
+ definition:=replace(definition,'NEW."manualArchiveFileId" IS DISTINCT FROM OLD."manualArchiveFileId" OR','NEW."manualArchiveFileId" IS DISTINCT FROM OLD."manualArchiveFileId" OR NEW."runtimeArchiveFileId" IS DISTINCT FROM OLD."runtimeArchiveFileId" OR');
+ definition:=replace(definition,'  ELSE'||chr(10)||'    SELECT "archiveCategoryId"','  ELSIF NEW."runtimeArchiveFileId" IS NOT NULL THEN SELECT flux_archive_runtime_source(NEW."runtimeArchiveFileId")->>''categoryId'' INTO source_category;'||chr(10)||'  ELSE'||chr(10)||'    SELECT "archiveCategoryId"');
+ EXECUTE definition;
+ SELECT pg_get_functiondef('flux_archive_source_retention()'::regprocedure) INTO definition;
+ definition:=replace(definition,'IF TG_OP=''INSERT'' THEN','IF TG_OP=''INSERT'' THEN
+  IF EXISTS(SELECT 1 FROM "RuntimeArchiveFile" WHERE id=NEW.id) OR EXISTS(SELECT 1 FROM "RetainedArchiveSource" WHERE "runtimeSourceId"=NEW.id) THEN RAISE EXCEPTION ''Runtime Archive source identity cannot be reused'' USING ERRCODE=''23514''; END IF;'); EXECUTE definition;
+ SELECT pg_get_functiondef('flux_archive_access_source(text,text)'::regprocedure) INTO definition;
+ definition:=regexp_replace(definition,E'BEGIN\n',$branch$BEGIN
+ IF kind='runtime' THEN RETURN flux_archive_runtime_source(sid); END IF;
+$branch$); EXECUTE definition;
+ SELECT pg_get_functiondef('flux_archive_review_source(text)'::regprocedure) INTO definition;
+ definition:=regexp_replace(definition,E'BEGIN\n',$branch$BEGIN
+ SELECT flux_archive_runtime_source(id) INTO src FROM "RuntimeArchiveFile" WHERE "referenceId"=rid;
+ IF src IS NOT NULL THEN RETURN jsonb_build_object('sourceKind','runtime','sourceId',src->>'sourceId','categoryId',src->>'categoryId','projectId',NULL,'sourceRevisionId',NULL); END IF;
+$branch$); EXECUTE definition;
+ SELECT pg_get_functiondef('flux_archive_grant_effective(text,text)'::regprocedure) INTO definition;
+ definition:=replace(definition,'((d."sourceKind"=''manual''','((d."sourceKind"=''runtime'' AND g."manualArchiveFileId" IS NULL AND g."archivedProjectFileId" IS NULL) OR (d."sourceKind"=''manual'''); EXECUTE definition;
+ SELECT pg_get_functiondef('flux_archive_access_guard()'::regprocedure) INTO definition;
+ definition:=replace(definition,'((NEW."sourceKind"=''manual''','((NEW."sourceKind"=''runtime'' AND id IN (SELECT s."grantId" FROM "ArchiveGrantScope" s JOIN "ArchiveAccessDecision" d ON d.id=s."decisionId" WHERE d."sourceKind"=''runtime'' AND d."sourceId"=NEW."sourceId")) OR (NEW."sourceKind"=''manual'''); EXECUTE definition;
+ -- Runtime grants occupy no legacy Project/Manual FK. Their existing companion
+ -- binds the exact typed source, and only the audited grant trigger creates them.
+ SELECT pg_get_functiondef('flux_archive_native_grant_guard()'::regprocedure) INTO definition;
+ definition:=replace(definition,'IF NOT EXISTS(SELECT 1 FROM "ArchiveAccessDecision"','IF num_nonnulls(g."manualArchiveFileId",g."archivedProjectFileId")>0 AND NOT EXISTS(SELECT 1 FROM "ArchiveAccessDecision"');
+ definition:=replace(definition,'((d."sourceKind"=''manual''','((d."sourceKind"=''runtime'' AND g."manualArchiveFileId" IS NULL AND g."archivedProjectFileId" IS NULL) OR (d."sourceKind"=''manual''');
+ definition:=replace(definition,' RAISE EXCEPTION ''Audited grant requires confirmed native decision''',$branch$ IF TG_OP='DELETE' AND pg_trigger_depth()=2 AND coalesce(flux_workflow_actor_current(uid,'DIRECTOR',av,sid),false) AND EXISTS(SELECT 1 FROM "ArchiveGrantScope" s JOIN "ArchiveAccessDecision" runtime_decision ON runtime_decision.id=s."decisionId" JOIN "RetainedArchiveSource" r ON r."runtimeSourceId"=runtime_decision."sourceId" WHERE s."grantId"=g.id AND runtime_decision."sourceKind"='runtime' AND r."runtimeSourceId"=current_setting('flux.archive_delete_id',true) AND r."actorId"=uid AND r."sessionId"=sid) THEN RETURN OLD; END IF;
+ RAISE EXCEPTION 'Audited grant requires confirmed native decision'$branch$); EXECUTE definition;
+ FOR existing_check IN SELECT conname FROM pg_constraint WHERE conname IN ('ArchiveAccessDecision_values_check','ArchiveVerificationDecision_values_check') LOOP
+  SELECT pg_get_constraintdef(oid) INTO definition FROM pg_constraint WHERE conname=existing_check;
+  definition:=replace(definition,'''project''::text]','''project''::text, ''runtime''::text]');
+  EXECUTE format('ALTER TABLE %I DROP CONSTRAINT %I',CASE WHEN existing_check='ArchiveAccessDecision_values_check' THEN 'ArchiveAccessDecision' ELSE 'ArchiveVerificationDecision' END,existing_check);
+  EXECUTE format('ALTER TABLE %I ADD CONSTRAINT %I %s',CASE WHEN existing_check='ArchiveAccessDecision_values_check' THEN 'ArchiveAccessDecision' ELSE 'ArchiveVerificationDecision' END,existing_check,definition);
+ END LOOP;
+ SELECT pg_get_constraintdef(oid) INTO STRICT existing_check FROM pg_constraint WHERE conrelid='"BusinessEvent"'::regclass AND conname='BusinessEvent_contract_check';
+ EXECUTE 'ALTER TABLE "BusinessEvent" DROP CONSTRAINT "BusinessEvent_contract_check"';
+ EXECUTE 'ALTER TABLE "BusinessEvent" ADD CONSTRAINT "BusinessEvent_contract_check" CHECK ('||substring(existing_check FROM 7)||$check$ OR
+ (type::text='ARCHIVE_RUNTIME_PUBLISHED' AND "schemaVersion"=1 AND "aggregateType"='RUNTIME_ARCHIVE_PUBLICATION' AND operation='archiveRuntimePublication' AND sequence=1 AND "actorVersion">0 AND "actorRole"='DIRECTOR' AND num_nonnulls("projectId","flexibleProjectId","taskId","taskEntryId","decisionId","nativeEventId","approvalEvidenceId","fileVersionId")=0))$check$;
+ SELECT pg_get_functiondef('flux_event_write_guard()'::regprocedure) INTO definition;
+ definition:=regexp_replace(definition,E'BEGIN\n',$branch$BEGIN
+ IF TG_TABLE_NAME='BusinessEvent' THEN
+ IF TG_OP='INSERT' AND NEW.type::text='ARCHIVE_RUNTIME_PUBLISHED' THEN
+  IF pg_trigger_depth()<>2 OR NOT EXISTS(SELECT 1 FROM "RuntimeArchivePublication" p WHERE NEW.id=p."eventId" AND NEW."aggregateId"=p.id AND NEW."actorId"=p."actorId" AND NEW."actorVersion"=p."actorVersion" AND NEW."occurredAt"=p."createdAt" AND NEW."causationId"=p.id AND NEW."correlationId"=p."projectId" AND NEW."idempotencyKey"=NEW.id AND NEW.payload=jsonb_build_object('manifestHash',p."manifestHash")) THEN RAISE EXCEPTION 'Exact runtime publication event required' USING ERRCODE='23514'; END IF;
+  RETURN NEW;
+ END IF;
+ END IF;
+$branch$); EXECUTE definition;
+END $migration$;
+
 COMMIT;

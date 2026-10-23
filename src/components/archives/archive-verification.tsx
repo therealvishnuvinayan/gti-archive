@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { Button } from "@/components/ui/button";
 import type { VerificationView } from "@/lib/archive-verification/contracts";
 
-export function ArchiveVerification({ sourceId, sourceKind, categoryId }: { sourceId: string; sourceKind: "manual" | "project"; categoryId: string }) {
+export function ArchiveVerification({ sourceId, sourceKind, categoryId }: { sourceId: string; sourceKind: "manual" | "project" | "runtime"; categoryId: string }) {
   const [view, setView] = useState<VerificationView | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);

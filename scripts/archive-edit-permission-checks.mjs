@@ -26,9 +26,9 @@ assert.ok(editGuardStart >= 0 && editMutationStart > editGuardStart);
 const editGuard = archives.slice(editGuardStart, editMutationStart);
 
 includes(editGuard, 'runArchiveOperation(user, "archive.editMetadata"', "Editing requires its own central capability");
-assert.ok(workspace.includes("{canEdit && <Button"));
+assert.ok(workspace.includes('{canEdit && item.recordType !== "RUNTIME_ARCHIVE_FILE" && <Button'));
 assert.ok(workspace.includes("{canDelete && <Button"));
-assert.ok(workspace.includes("{canShare && <ArchiveShareButton"));
+assert.ok(workspace.includes('{canShare && item.recordType !== "RUNTIME_ARCHIVE_FILE" && <ArchiveShareButton'));
 
 includes(
   archives,

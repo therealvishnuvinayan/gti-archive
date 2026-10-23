@@ -1,5 +1,7 @@
 # FLUX V2 — Phase 6.2: Exact-version Archive verification and revocation
 
+> Historical phase report. [Phase 6.4](../archive-runtime/PHASE-6.4.md) records the latest still-unapplied combined migration, checksum, 159-table rehearsal and runtime Archive integration. The implementation and evidence below retain their original phase scope.
+
 > Phase 6.3 extends this still-unapplied migration. The checksum and 155-table result below record the Phase 6.2 rehearsal; current checksum, 157-table inventory, and sharing evidence are in [PHASE-6.3.md](../archive-sharing/PHASE-6.3.md).
 
 Implemented and locally verified on 24 October 2026. **Not activated.** This extends the committed Phase 6.1 baseline (`23def33`). Both Phase 6 flags remain off/unset in actual environment files. Neon, live S3, real Archive reviews, real users, deployment and push were not used. Phase 6.3 and Phase 7 were not started.

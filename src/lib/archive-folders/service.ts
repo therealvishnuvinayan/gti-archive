@@ -1,3 +1,4 @@
+import { archiveRuntimeEnabled } from "../archive-runtime/activation";
 import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
@@ -29,7 +30,7 @@ export async function organizeArchive(expected: { id: string }, input: unknown):
     if (command.action === "move-file") {
       await runArchiveOperation(user, "archive.editMetadata", `file:${command.fileId}`, async () => {
         const resolved = await resolveArchiveFile(tx, command.fileId, archiveScopeForUser(user)!);
-        const categoryId = resolved?.kind === "project" ? resolved.file.archive.archiveCategoryId : resolved?.file.archiveCategoryId;
+        const categoryId = resolved?.kind === "runtime" ? resolved.file.categoryId : resolved?.kind === "project" ? resolved.file.archive.archiveCategoryId : resolved?.file.archiveCategoryId;
         if (!resolved || resolved.kind !== command.fileKind || categoryId !== command.categoryId) throw unavailable();
       });
     }
@@ -55,7 +56,7 @@ export async function organizeArchive(expected: { id: string }, input: unknown):
       before = placement ? { folderId: placement.folderId, revision: placement.revision } : { folderId: null, revision: 0 };
       const saved = placement ? await tx.archiveFilePlacement.update({ where: { id }, data: { folderId: command.folderId, revision: { increment: 1 } } }) :
         await tx.archiveFilePlacement.create({ data: { id, categoryId: command.categoryId, folderId: command.folderId,
-          ...(command.fileKind === "project" ? { archivedProjectFileId: command.fileId } : { manualArchiveFileId: command.fileId }) } });
+          ...(command.fileKind === "runtime" ? { runtimeArchiveFileId: command.fileId } : command.fileKind === "project" ? { archivedProjectFileId: command.fileId } : { manualArchiveFileId: command.fileId }) } });
       result = { id: saved.id, revision: saved.revision };
     } else if (command.action === "create") {
       if (command.parentId) await getFolder(command.parentId);
@@ -94,7 +95,7 @@ export async function organizeArchive(expected: { id: string }, input: unknown):
   });
 }
 
-export type FolderFile = { id: string; key: string; kind: "project" | "manual"; name: string; originalName: string;
+export type FolderFile = { id: string; key: string; kind: "project" | "manual" | "runtime"; name: string; originalName: string;
   projectName: string | null; mimeType: string; fileSize: number; revision: number; sourceRevision: number | null; folderId: string | null };
 export type FolderWorkspace = {
   category: { id: string; name: string; slug: string }; folders: FolderRecord[]; breadcrumbs: FolderRecord[];
@@ -116,6 +117,12 @@ export async function readArchiveFolder(expected: { id: string }, input: { categ
     const grantIds = Prisma.join(scope.grantIds?.length ? scope.grantIds : [""]);
     const projectGrant = scope.level === "FULL" ? Prisma.sql`TRUE` : Prisma.sql`EXISTS (SELECT 1 FROM "UserArchiveAssetAccess" g WHERE g."archivedProjectFileId" = f.id AND g."userId" = ${user.id} AND g.id IN (${grantIds}))`;
     const manualGrant = scope.level === "FULL" ? Prisma.sql`TRUE` : Prisma.sql`EXISTS (SELECT 1 FROM "UserArchiveAssetAccess" g WHERE g."manualArchiveFileId" = f.id AND g."userId" = ${user.id} AND g.id IN (${grantIds}))`;
+    const runtimeFiles = archiveRuntimeEnabled() ? Prisma.sql`UNION ALL
+      SELECT f.id, 'runtime:' || f.id, 'runtime', v."originalFileName", v."originalFileName", r.title, v."mimeType", v."fileSize", COALESCE(p.revision,0), v.number, p."folderId"
+      FROM "RuntimeArchiveFile" f JOIN "RuntimeArchivePublication" a ON a.id=f."publicationId" JOIN "RuntimeProject" r ON r.id=a."projectId"
+      JOIN "SharedFileVersion" v ON v.id=f."versionId" LEFT JOIN "ArchiveFilePlacement" p ON p."runtimeArchiveFileId"=f.id
+      WHERE f."categoryId"=${category.id} AND flux_archive_runtime_source(f.id) IS NOT NULL AND (${scope.level === "FULL"} OR EXISTS(
+        SELECT 1 FROM "ArchiveGrantScope" gs JOIN "ArchiveAccessDecision" d ON d.id=gs."decisionId" WHERE gs."grantId" IN (${grantIds}) AND d."sourceKind"='runtime' AND d."sourceId"=f.id AND d."recipientId"=${user.id}))` : Prisma.empty;
     const accessible = Prisma.sql`
       SELECT f.id, 'project:' || f.id AS key, 'project' AS kind, f."finalArchiveFileName" AS name, f."originalFileName" AS "originalName",
         a."projectName", f."mimeType", f."fileSize", COALESCE(p.revision, 0) AS revision, r."revisionNumber" AS "sourceRevision", p."folderId"
@@ -127,7 +134,7 @@ export async function readArchiveFolder(expected: { id: string }, input: { categ
       UNION ALL
       SELECT f.id, 'manual:' || f.id, 'manual', f."fileName", f."originalFileName", f."projectName", f."mimeType", f."fileSize", COALESCE(p.revision, 0), NULL::integer, p."folderId"
       FROM "ManualArchiveFile" f LEFT JOIN "ArchiveFilePlacement" p ON p."manualArchiveFileId" = f.id AND p."categoryId" = f."archiveCategoryId"
-      WHERE f."archiveCategoryId" = ${category.id} AND f.status = 'READY' AND ${manualGrant}`;
+      WHERE f."archiveCategoryId" = ${category.id} AND f.status = 'READY' AND ${manualGrant} ${runtimeFiles}`;
     // Management sees empty permitted folders. Download-only readers see just the
     // ancestor paths of their individually granted files, never unrelated siblings.
     const folders = await prisma.$queryRaw<FolderRecord[]>(Prisma.sql`WITH RECURSIVE accessible AS (${accessible}), visible AS (
