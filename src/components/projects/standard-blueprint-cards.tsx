@@ -4,8 +4,11 @@ import { useRouter } from "next/navigation";
 import type { TemplateBlueprint } from "@/lib/standard-templates/contracts";
 import { posmBlueprint } from "@/lib/standard-templates/posm";
 import { retailDisplayBlueprint } from "@/lib/standard-templates/retail-display";
+import { exhibitionStandBlueprint } from "@/lib/standard-templates/exhibition-stand";
+import { digitalBlueprint } from "@/lib/standard-templates/digital";
 
 const posm = posmBlueprint(), retail = retailDisplayBlueprint();
+const exhibition = exhibitionStandBlueprint(), digital = digitalBlueprint();
 function CandidateCard({ blueprint, label, description }: { blueprint: TemplateBlueprint; label: string; description: string }) {
   const router = useRouter(), command = useRef<string | null>(null);
   const [accepted, setAccepted] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState("");
@@ -37,5 +40,7 @@ export function AdditionalBlueprintCards() {
   return <>
     <CandidateCard blueprint={posm} label="POSM" description="One POSM & Promotional Materials template with Printed POSM / Merchandise choices. Branch-specific fields remain optional. Conditional sourcing, research skipping, three-offer counts and outlet photo minima are not enforced." />
     <CandidateCard blueprint={retail} label="Retail Display" description="Display brief, surveys, concept evidence, technical design, component specifications, prototype evidence and installation. Component/outlet coverage, representative-sample decisions and issue-task completion gates need additional capabilities." />
+    <CandidateCard blueprint={exhibition} label="Exhibition Stand" description="Eight source stages from event brief to wrap-up. Dates are entered manually; backward planning, vendor/organiser approvals, linked budgets, snag-task gates, inventory, ratings and annual report reuse remain unsupported." />
+    <CandidateCard blueprint={digital} label="Digital" description="Seven execution stages from brief to launch. Maintenance remains an unresolved lifecycle and closure decision; launch does not auto-close the project. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret references only." />
   </>;
 }

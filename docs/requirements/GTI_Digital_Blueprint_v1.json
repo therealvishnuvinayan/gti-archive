@@ -1,0 +1,2503 @@
+{
+  "blueprint": {
+    "blueprintSchemaVersion": 1,
+    "id": "gti-digital",
+    "revision": 1,
+    "category": "DIGITAL",
+    "designation": "UNAPPROVED_CANDIDATE",
+    "source": {
+      "title": "Flux – Project Process Templates & Content Specification",
+      "version": "2026-09-29",
+      "sha256": "4d86f90d173a406ad9f3a5ffbba7ce55776b5d209f4bc2a0e4653f299d61b944",
+      "pagination": "Supplied as 19 pages; page numbers unverified. Use exact OOXML section/paragraph locators."
+    },
+    "definitionSchemaVersion": 1,
+    "definition": {
+      "schemaVersion": 1,
+      "name": "Digital · internal candidate v1",
+      "intendedProjectType": "DIGITAL",
+      "description": "UNAPPROVED CANDIDATE · INTERNAL EVIDENCE PILOT. Human evidence capture only; not an official GTI standard. No conditional rules, skip, external dispatch, procurement, automatic tasks or archive. After all stages, project closure still requires a separately Director-approved per-project document policy, actual Owner completion request and separate Director final decision. Blueprint gti-digital revision 1; source 2026-09-29 SHA-256 4d86f90d173a406ad9f3a5ffbba7ce55776b5d209f4bc2a0e4653f299d61b944. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided. Source P0185/P0201–P0202 requires maintenance without a fixed end date, tasks and ongoing costs. This candidate has seven execution stages, no eighth maintenance stage and no MAINTENANCE status or cost ledger. Launch & Handover does not auto-close the project. Normal existing tasks may be created manually while the project genuinely remains ACTIVE. Business must decide defined or indefinite maintenance and final closure triggers; any closure still requires a Director-approved document policy, actual Owner request and separate Director decision. COMPLETED projects remain immutable. No verified deployment, UAT engine, bug-to-stage gate or external vendor workflow. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+      "stages": [
+        {
+          "id": "digital_brief",
+          "title": "Brief",
+          "position": 0,
+          "description": "Capture business and supplied compliance requirements. Information and uploaded legal evidence do not certify compliance or security. What now: record applicable information, attach evidence and obtain independent review. Move on: complete all configured fixed gates. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+          "capabilities": [
+            {
+              "id": "digital_brief_fields",
+              "type": "INFORMATION",
+              "title": "Digital project brief",
+              "instructions": "Project summary only. Attach the detailed register; individual rows and quantities are not validated. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "digital_scope",
+                  "label": "Candidate scope",
+                  "type": "READ_ONLY",
+                  "required": false,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": "UNAPPROVED CANDIDATE · INTERNAL EVIDENCE PILOT. Human evidence capture only; not an official GTI standard. No conditional rules, skip, external dispatch, procurement, automatic tasks or archive. After all stages, project closure still requires a separately Director-approved per-project document policy, actual Owner completion request and separate Director final decision.",
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "digital_secret_notice",
+                  "label": "Non-secret information only",
+                  "type": "READ_ONLY",
+                  "required": false,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": "Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "digital_purpose",
+                  "label": "Purpose and business objectives",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_users",
+                  "label": "Intended users",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_platform",
+                  "label": "Primary platform",
+                  "type": "SELECT",
+                  "required": true,
+                  "options": [
+                    "Web",
+                    "iOS",
+                    "Android"
+                  ],
+                  "help": "Source platform choices; additional in-scope platforms belong in the summary, not a new project type. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "digital_platform_scope",
+                  "label": "Additional web / iOS / Android scope",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_languages",
+                  "label": "Languages",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_integrations",
+                  "label": "Required integrations (non-secret requirements)",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_budget",
+                  "label": "Budget",
+                  "type": "NUMBER",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "digital_currency",
+                  "label": "Entered budget currency",
+                  "type": "SHORT_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "No source-prescribed currency or financial policy. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 500
+                },
+                {
+                  "id": "digital_age_verification",
+                  "label": "Age-verification requirements",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_data_privacy",
+                  "label": "Data-privacy requirements",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_cookies",
+                  "label": "Cookie requirements",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_launch_date",
+                  "label": "Planned launch date",
+                  "type": "DATE",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                }
+              ]
+            },
+            {
+              "id": "digital_creative_brief",
+              "type": "INFORMATION",
+              "title": "Creative Brief – General content",
+              "instructions": "Project summary only. Attach the detailed register; individual rows and quantities are not validated. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "digital_cb_header",
+                  "label": "Brief header: date, brand, project and client",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_cb_background",
+                  "label": "Background and business problem",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_cb_objective",
+                  "label": "Objective and success measures",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_cb_target",
+                  "label": "Target group, market and channel",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Source target group: adult smokers of legal age only. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_cb_deliverables",
+                  "label": "Deliverables, formats and quantities",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_cb_mandatory",
+                  "label": "Brand rules, compulsory texts and local restrictions",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_cb_timeline",
+                  "label": "Budget range, timeline and milestones",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_cb_presentation",
+                  "label": "Presentation format and expected concepts",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Record the agreed brief; no invented minimum or task-count gate. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_cb_mode",
+                  "label": "Collaboration context",
+                  "type": "SELECT",
+                  "required": true,
+                  "options": [
+                    "Direct",
+                    "Pitch"
+                  ],
+                  "help": "Context only; no vendor workflow or dispatch. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "digital_cb_contacts",
+                  "label": "Contacts and proposed approval rules",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "digital_brief_file",
+              "type": "FILE_REQUIREMENT",
+              "title": "Creative Brief – General evidence",
+              "instructions": "Upload a manually prepared sanitized brief and applicable digital File Standard. No document generation or external release. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            }
+          ],
+          "gates": [
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "digital_brief_fields"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "digital_creative_brief"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "digital_brief_file"
+            }
+          ]
+        },
+        {
+          "id": "digital_discovery",
+          "title": "Discovery",
+          "position": 1,
+          "description": "Capture discovery and vendor evidence. Director internal review does not qualify a vendor, send an RFP or authorize external procurement. What now: record applicable information, attach evidence and obtain independent review. Move on: complete all configured fixed gates. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+          "capabilities": [
+            {
+              "id": "digital_discovery_fields",
+              "type": "INFORMATION",
+              "title": "Discovery and vendor evaluation summary",
+              "instructions": "Project summary only. Attach the detailed register; individual rows and quantities are not validated. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "digital_requirements",
+                  "label": "Requirements",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_user_stories",
+                  "label": "User stories",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_sitemap",
+                  "label": "Site map and discovery references",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_technical_notes",
+                  "label": "Technical discovery notes (non-secret)",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_vendor_evaluation",
+                  "label": "Vendor evaluation and Director selection evidence references",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_rfp_references",
+                  "label": "RFP / selection references where applicable",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "digital_discovery_evidence",
+              "type": "FILE_REQUIREMENT",
+              "title": "Requirements, user stories and site-map evidence",
+              "instructions": "Sanitized requirements and technical discovery evidence; no automatic consistency or coverage validation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf",
+                ".xlsx",
+                ".zip"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "digital_vendor_evidence",
+              "type": "FILE_REQUIREMENT",
+              "title": "Vendor evaluation / RFP / selection evidence",
+              "instructions": "Record internal evaluation and applicability; Director approval here does not dispatch documents or verify CERBER. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "digital_vendor_review",
+              "type": "APPROVAL",
+              "title": "Director internal discovery/vendor-evidence review",
+              "instructions": "The source requires Director vendor selection and approved RFP release. This candidate decision reviews internal records only; it performs neither external action. Internal evidence decision only; never external approval, production dispatch or certification. Reviewer cannot be requester or evidence contributor. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "steps": [
+                {
+                  "id": "digital_vendor_review_decision",
+                  "label": "Director internal discovery/vendor-evidence review",
+                  "approver": "DIRECTOR",
+                  "evidence": "CONFIGURED_INPUTS",
+                  "decision": "APPROVE_REQUIRED"
+                }
+              ],
+              "rejection": "RETURN_FOR_CHANGES",
+              "gatesProgression": true
+            }
+          ],
+          "gates": [
+            {
+              "type": "PRECEDING_STAGE",
+              "stageId": "digital_brief"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "digital_discovery_fields"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "digital_discovery_evidence"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "digital_vendor_evidence"
+            },
+            {
+              "type": "APPROVAL_COMPLETE",
+              "capabilityId": "digital_vendor_review"
+            }
+          ]
+        },
+        {
+          "id": "digital_ux",
+          "title": "UX Concept",
+          "position": 2,
+          "description": "Use Initial Concept Universal Tasks for wireframes and user flows. This source stage holds evidence, with no mandatory legacy concept stage, concept count or task-completion gate. What now: record applicable information, attach evidence and obtain independent review. Move on: complete all configured fixed gates. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+          "capabilities": [
+            {
+              "id": "digital_ux_fields",
+              "type": "INFORMATION",
+              "title": "UX instructions and rationale",
+              "instructions": "Project summary only. Attach the detailed register; individual rows and quantities are not validated. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "digital_ux_rationale",
+                  "label": "UX rationale and user-flow requirements",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_initial_task_refs",
+                  "label": "Initial Concept Task references and reviewed UX outcomes",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Use actual Tasker review; these references do not verify task acceptance. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "digital_wireframes",
+              "type": "FILE_REQUIREMENT",
+              "title": "Wireframes and user-flow evidence",
+              "instructions": "Exact reviewed UX evidence. The independent file-review route is a proposed candidate choice; source UX approvers and testing thresholds are unspecified. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf",
+                ".png",
+                ".svg",
+                ".zip"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            }
+          ],
+          "gates": [
+            {
+              "type": "PRECEDING_STAGE",
+              "stageId": "digital_discovery"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "digital_ux_fields"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "digital_wireframes"
+            }
+          ]
+        },
+        {
+          "id": "digital_ui",
+          "title": "UI Design",
+          "position": 3,
+          "description": "Use Final Concept Tasks with eligible exact inspiration where appropriate. Stage-file acceptance does not automatically prove task completion or inspiration validity. What now: record applicable information, attach evidence and obtain independent review. Move on: complete all configured fixed gates. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+          "capabilities": [
+            {
+              "id": "digital_ui_fields",
+              "type": "INFORMATION",
+              "title": "Screen design and visual style",
+              "instructions": "Project summary only. Attach the detailed register; individual rows and quantities are not validated. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "digital_screens",
+                  "label": "Screen designs and visual style summary",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_design_system",
+                  "label": "Design-system references",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_inspiration",
+                  "label": "Selected concept inspiration references (record only)",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Select actual eligible exact inspiration versions in Tasker; this text field is not an inspiration adapter. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_final_task_refs",
+                  "label": "Final Concept Task references and reviewed outputs",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "digital_ui_evidence",
+              "type": "FILE_REQUIREMENT",
+              "title": "Screen designs and design-system evidence",
+              "instructions": "Exact reviewed design files. No source-unspecified UI approver or concept-count requirement is introduced. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf",
+                ".png",
+                ".svg",
+                ".zip"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            }
+          ],
+          "gates": [
+            {
+              "type": "PRECEDING_STAGE",
+              "stageId": "digital_ux"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "digital_ui_fields"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "digital_ui_evidence"
+            }
+          ]
+        },
+        {
+          "id": "digital_specification",
+          "title": "Specification & Content",
+          "position": 4,
+          "description": "Record content, legal-page evidence and non-secret account metadata only. Uploaded legal pages do not establish compliance; files and ordinary fields are not a credential vault. What now: record applicable information, attach evidence and obtain independent review. Move on: complete all configured fixed gates. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+          "capabilities": [
+            {
+              "id": "digital_content_fields",
+              "type": "INFORMATION",
+              "title": "Content and digital asset specification",
+              "instructions": "Project summary only. Attach the detailed register; individual rows and quantities are not validated. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "digital_content_inventory",
+                  "label": "Content inventory",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_approved_text",
+                  "label": "Reviewed text / content references",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_seo",
+                  "label": "SEO requirements",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_legal_pages",
+                  "label": "Privacy, terms and cookie-policy references",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_account_notice",
+                  "label": "Account metadata restriction",
+                  "type": "READ_ONLY",
+                  "required": false,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": "Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "digital_account_ownership",
+                  "label": "Non-secret account identifiers and ownership summary",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Account/service name and responsible owner only. No login credentials, secret-bearing links or tokens. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_domains",
+                  "label": "Domain names and ownership contacts (non-secret)",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_export_formats",
+                  "label": "Export formats",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_resolutions",
+                  "label": "Asset resolution requirements",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_asset_naming",
+                  "label": "Asset naming requirements",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "digital_content_evidence",
+              "type": "FILE_REQUIREMENT",
+              "title": "Content inventory, text and digital asset evidence",
+              "instructions": "Sanitized text/assets and specification register. No inventory completeness or binary preflight. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf",
+                ".xlsx",
+                ".csv",
+                ".png",
+                ".svg",
+                ".zip"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "digital_legal_evidence",
+              "type": "FILE_REQUIREMENT",
+              "title": "Privacy / terms / cookie-policy evidence",
+              "instructions": "Sanitized supplied legal-page documents for human review only; no legal approval or compliance certification. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "digital_contract_evidence",
+              "type": "FILE_REQUIREMENT",
+              "title": "Framework / Copyright evidence where applicable (optional)",
+              "instructions": "Sanitized manual evidence only; no signature verification or automatic before-artwork contract gate. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf"
+              ],
+              "minFiles": 0,
+              "maxFiles": 20,
+              "required": false,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": false
+            },
+            {
+              "id": "digital_content_checks",
+              "type": "CHECKLIST",
+              "title": "Digital File Standard · human review",
+              "instructions": "Human attestations with written evidence and limitations. No automated compliance, quantity or physical validation. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "items": [
+                {
+                  "id": "digital_export_attestation",
+                  "label": "Export formats reviewed against supplied requirements",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "digital_resolution_attestation",
+                  "label": "Asset resolutions reviewed against supplied requirements",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "digital_naming_attestation",
+                  "label": "Asset naming and inventory reviewed with limitations",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                }
+              ]
+            }
+          ],
+          "gates": [
+            {
+              "type": "PRECEDING_STAGE",
+              "stageId": "digital_ui"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "digital_content_fields"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "digital_content_evidence"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "digital_legal_evidence"
+            },
+            {
+              "type": "REQUIRED_CHECKLIST",
+              "capabilityId": "digital_content_checks"
+            }
+          ]
+        },
+        {
+          "id": "digital_testing",
+          "title": "Build & Testing",
+          "position": 5,
+          "description": "Capture test-version and UAT evidence; create actual General Tasks manually for bugs/fixes. Human round reports and checklist notes do not implement a repeatable UAT engine or unresolved-bug gate. What now: record applicable information, attach evidence and obtain independent review. Move on: complete all configured fixed gates. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+          "capabilities": [
+            {
+              "id": "digital_testing_fields",
+              "type": "INFORMATION",
+              "title": "Build rounds and UAT summary",
+              "instructions": "Project summary only. Attach the detailed register; individual rows and quantities are not validated. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "digital_build_rounds",
+                  "label": "Build/test rounds and version references",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_uat_results",
+                  "label": "User acceptance testing results and limitations",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_bugs",
+                  "label": "Bug list and unresolved issues",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_bug_tasks",
+                  "label": "Manually assigned General Task references for bugs/fixes",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "References do not enforce task assignments or resolution. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_corrective_evidence",
+                  "label": "Corrective-action and retest evidence summary",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_testing_outcome",
+                  "label": "Review and approval outcome evidence",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "digital_test_version",
+              "type": "FILE_REQUIREMENT",
+              "title": "Test-version evidence",
+              "instructions": "Sanitized version manifest, screenshots or test build evidence; no code execution, deployment or credential-bearing environment files. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf",
+                ".png",
+                ".zip"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "digital_uat_report",
+              "type": "FILE_REQUIREMENT",
+              "title": "UAT, bug-list and corrective-action reports",
+              "instructions": "Sanitized reports and manual task references. File review does not certify every test case or resolved bug. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf",
+                ".xlsx",
+                ".csv"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "digital_testing_checks",
+              "type": "CHECKLIST",
+              "title": "Testing evidence review",
+              "instructions": "Human attestations with written evidence and limitations. No automated compliance, quantity or physical validation. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "items": [
+                {
+                  "id": "digital_uat_attestation",
+                  "label": "Test rounds, UAT evidence and unresolved issues reviewed",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "digital_fix_attestation",
+                  "label": "Corrective-action evidence and manual bug-task references reviewed",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                }
+              ]
+            },
+            {
+              "id": "digital_testing_review",
+              "type": "APPROVAL",
+              "title": "Owner internal testing-evidence review · candidate choice",
+              "instructions": "Source says approval but does not name a reviewer. Independent Owner review is a proposed internal route, not enforced software acceptance or certification. Internal evidence decision only; never external approval, production dispatch or certification. Reviewer cannot be requester or evidence contributor. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "steps": [
+                {
+                  "id": "digital_testing_review_decision",
+                  "label": "Owner internal testing-evidence review · candidate choice",
+                  "approver": "PROJECT_OWNER",
+                  "evidence": "CONFIGURED_INPUTS",
+                  "decision": "APPROVE_REQUIRED"
+                }
+              ],
+              "rejection": "RETURN_FOR_CHANGES",
+              "gatesProgression": true
+            }
+          ],
+          "gates": [
+            {
+              "type": "PRECEDING_STAGE",
+              "stageId": "digital_specification"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "digital_testing_fields"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "digital_test_version"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "digital_uat_report"
+            },
+            {
+              "type": "REQUIRED_CHECKLIST",
+              "capabilityId": "digital_testing_checks"
+            },
+            {
+              "type": "APPROVAL_COMPLETE",
+              "capabilityId": "digital_testing_review"
+            }
+          ]
+        },
+        {
+          "id": "digital_launch",
+          "title": "Launch & Handover",
+          "position": 6,
+          "description": "Review sanitized launch/handover evidence. No deployment or credential transfer occurs. Completing this stage leaves the project ACTIVE; the source maintenance-versus-closure policy remains unresolved. What now: record applicable information, attach evidence and obtain independent review. Move on: complete all configured fixed gates. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+          "capabilities": [
+            {
+              "id": "digital_launch_fields",
+              "type": "INFORMATION",
+              "title": "Launch, IT handover and support",
+              "instructions": "Project summary only. Attach the detailed register; individual rows and quantities are not validated. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "digital_readiness",
+                  "label": "Launch readiness evidence and limitations",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_go_live_date",
+                  "label": "Reported go-live date",
+                  "type": "DATE",
+                  "required": true,
+                  "options": [],
+                  "help": "Manually reported date only; no verified deployment event. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "digital_go_live_outcome",
+                  "label": "Go-live outcome and acceptance references",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_it_owner",
+                  "label": "IT owner / responsible team (non-secret)",
+                  "type": "SHORT_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 500
+                },
+                {
+                  "id": "digital_access_references",
+                  "label": "Non-secret access-handover references",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Reference a responsible team and handover record only. Do not provide credentials or secret-bearing URLs; verified access transfer is unavailable. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_training",
+                  "label": "User training evidence summary",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_support_plan",
+                  "label": "Post-launch support plan and agreed period",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_support_end",
+                  "label": "Agreed support-period end (if defined)",
+                  "type": "DATE",
+                  "required": false,
+                  "options": [],
+                  "help": "No default, scheduling automation or implied end to source indefinite maintenance. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                }
+              ]
+            },
+            {
+              "id": "digital_maintenance_fields",
+              "type": "INFORMATION",
+              "title": "Maintenance requirement and unresolved closure policy",
+              "instructions": "Source P0185/P0201–P0202 requires maintenance without a fixed end date, tasks and ongoing costs. This candidate has seven execution stages, no eighth maintenance stage and no MAINTENANCE status or cost ledger. Launch & Handover does not auto-close the project. Normal existing tasks may be created manually while the project genuinely remains ACTIVE. Business must decide defined or indefinite maintenance and final closure triggers; any closure still requires a Director-approved document policy, actual Owner request and separate Director decision. COMPLETED projects remain immutable. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "digital_maintenance_notice",
+                  "label": "Maintenance lifecycle limitation",
+                  "type": "READ_ONLY",
+                  "required": false,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": "Source P0185/P0201–P0202 requires maintenance without a fixed end date, tasks and ongoing costs. This candidate has seven execution stages, no eighth maintenance stage and no MAINTENANCE status or cost ledger. Launch & Handover does not auto-close the project. Normal existing tasks may be created manually while the project genuinely remains ACTIVE. Business must decide defined or indefinite maintenance and final closure triggers; any closure still requires a Director-approved document policy, actual Owner request and separate Director decision. COMPLETED projects remain immutable.",
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "digital_maintenance_decision",
+                  "label": "Outstanding maintenance period / final closure decision",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Record unresolved decisions and proposed triggers. This field is not an authorization or new runtime policy. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_maintenance_work",
+                  "label": "Manual change-request / fix Task references",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Normal existing task eligibility and project-state rules apply. No automatic maintenance tasks. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                },
+                {
+                  "id": "digital_maintenance_costs",
+                  "label": "Ongoing cost-tracking requirement and external record references",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Non-secret references only; no ongoing budget ledger or financial-policy enforcement. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "digital_handover_evidence",
+              "type": "FILE_REQUIREMENT",
+              "title": "Launch, IT handover, documentation and training evidence",
+              "instructions": "Sanitized evidence only; no live deployment verification, secure access transfer or external action. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf",
+                ".pptx",
+                ".png",
+                ".zip"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "digital_acceptance_protocol",
+              "type": "FILE_REQUIREMENT",
+              "title": "Go-live Acceptance Protocol evidence",
+              "instructions": "Sanitized manual protocol. Independent internal review does not certify deployment, external acceptance or bilateral signatures. Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "digital_launch_checks",
+              "type": "CHECKLIST",
+              "title": "Launch and handover evidence review",
+              "instructions": "Human attestations with written evidence and limitations. No automated compliance, quantity or physical validation. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "items": [
+                {
+                  "id": "digital_handover_attestation",
+                  "label": "Launch, documentation, training and support evidence reviewed with limitations",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "digital_golive_attestation",
+                  "label": "Protocol and unresolved go-live acceptance conditions reviewed",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                }
+              ]
+            }
+          ],
+          "gates": [
+            {
+              "type": "PRECEDING_STAGE",
+              "stageId": "digital_testing"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "digital_launch_fields"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "digital_maintenance_fields"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "digital_handover_evidence"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "digital_acceptance_protocol"
+            },
+            {
+              "type": "REQUIRED_CHECKLIST",
+              "capabilityId": "digital_launch_checks"
+            }
+          ]
+        }
+      ]
+    },
+    "scope": "INTERNAL_EVIDENCE_PILOT",
+    "trace": {
+      "digital_scope": {
+        "paragraphs": [
+          184,
+          518
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_secret_notice": {
+        "paragraphs": [
+          195,
+          199
+        ],
+        "interpretation": "Source account/access purpose narrowed to non-secret metadata by the Phase 5.3 instruction. No secrets, vault, automatic detection or verified access transfer. Requiredness is a candidate choice."
+      },
+      "digital_purpose": {
+        "paragraphs": [
+          187
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_users": {
+        "paragraphs": [
+          187
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_platform": {
+        "paragraphs": [
+          187
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_platform_scope": {
+        "paragraphs": [
+          187
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_languages": {
+        "paragraphs": [
+          187
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_integrations": {
+        "paragraphs": [
+          187
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_budget": {
+        "paragraphs": [
+          187
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_currency": {
+        "paragraphs": [
+          187
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_age_verification": {
+        "paragraphs": [
+          187
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_data_privacy": {
+        "paragraphs": [
+          187
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_cookies": {
+        "paragraphs": [
+          187
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_launch_date": {
+        "paragraphs": [
+          187
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_brief_fields": {
+        "paragraphs": [
+          185,
+          187
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_cb_header": {
+        "paragraphs": [
+          437
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_cb_background": {
+        "paragraphs": [
+          438
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_cb_objective": {
+        "paragraphs": [
+          439
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_cb_target": {
+        "paragraphs": [
+          440
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_cb_deliverables": {
+        "paragraphs": [
+          441
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_cb_mandatory": {
+        "paragraphs": [
+          442
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_cb_timeline": {
+        "paragraphs": [
+          443
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_cb_presentation": {
+        "paragraphs": [
+          444
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_cb_mode": {
+        "paragraphs": [
+          445
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_cb_contacts": {
+        "paragraphs": [
+          448
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_creative_brief": {
+        "paragraphs": [
+          412,
+          413,
+          436,
+          437,
+          438,
+          439,
+          440,
+          441,
+          442,
+          443,
+          444,
+          445,
+          448
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_brief_file": {
+        "paragraphs": [
+          412,
+          413,
+          414,
+          446,
+          447
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_brief": {
+        "paragraphs": [
+          186,
+          187
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_brief.gate.0": {
+        "paragraphs": [
+          186,
+          187
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "digital_brief.gate.1": {
+        "paragraphs": [
+          186,
+          187
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "digital_brief.gate.2": {
+        "paragraphs": [
+          186,
+          187
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "digital_requirements": {
+        "paragraphs": [
+          189
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_user_stories": {
+        "paragraphs": [
+          189
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_sitemap": {
+        "paragraphs": [
+          189
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_technical_notes": {
+        "paragraphs": [
+          189
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_vendor_evaluation": {
+        "paragraphs": [
+          189
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_rfp_references": {
+        "paragraphs": [
+          189,
+          418
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_discovery_fields": {
+        "paragraphs": [
+          189
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_discovery_evidence": {
+        "paragraphs": [
+          189
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_vendor_evidence": {
+        "paragraphs": [
+          189,
+          418
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_vendor_review": {
+        "paragraphs": [
+          189
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_vendor_review_decision": {
+        "paragraphs": [
+          189
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_discovery": {
+        "paragraphs": [
+          188,
+          189
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_discovery.gate.0": {
+        "paragraphs": [
+          188,
+          189
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "digital_discovery.gate.1": {
+        "paragraphs": [
+          188,
+          189
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "digital_discovery.gate.2": {
+        "paragraphs": [
+          188,
+          189
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "digital_discovery.gate.3": {
+        "paragraphs": [
+          188,
+          189
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "digital_discovery.gate.4": {
+        "paragraphs": [
+          188,
+          189
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "digital_ux_rationale": {
+        "paragraphs": [
+          191
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_initial_task_refs": {
+        "paragraphs": [
+          191,
+          327
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_ux_fields": {
+        "paragraphs": [
+          191
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_wireframes": {
+        "paragraphs": [
+          191
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_ux": {
+        "paragraphs": [
+          190,
+          191
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_ux.gate.0": {
+        "paragraphs": [
+          190,
+          191
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "digital_ux.gate.1": {
+        "paragraphs": [
+          190,
+          191
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "digital_ux.gate.2": {
+        "paragraphs": [
+          190,
+          191
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "digital_screens": {
+        "paragraphs": [
+          193
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_design_system": {
+        "paragraphs": [
+          193
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_inspiration": {
+        "paragraphs": [
+          191,
+          193,
+          327
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_final_task_refs": {
+        "paragraphs": [
+          193,
+          327
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_ui_fields": {
+        "paragraphs": [
+          193
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_ui_evidence": {
+        "paragraphs": [
+          193
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_ui": {
+        "paragraphs": [
+          192,
+          193
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_ui.gate.0": {
+        "paragraphs": [
+          192,
+          193
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "digital_ui.gate.1": {
+        "paragraphs": [
+          192,
+          193
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "digital_ui.gate.2": {
+        "paragraphs": [
+          192,
+          193
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "digital_content_inventory": {
+        "paragraphs": [
+          195
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_approved_text": {
+        "paragraphs": [
+          195
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_seo": {
+        "paragraphs": [
+          195
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_legal_pages": {
+        "paragraphs": [
+          195
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_account_notice": {
+        "paragraphs": [
+          195,
+          199
+        ],
+        "interpretation": "Source account/access purpose narrowed to non-secret metadata by the Phase 5.3 instruction. No secrets, vault, automatic detection or verified access transfer. Requiredness is a candidate choice."
+      },
+      "digital_account_ownership": {
+        "paragraphs": [
+          195
+        ],
+        "interpretation": "Source account/access purpose narrowed to non-secret metadata by the Phase 5.3 instruction. No secrets, vault, automatic detection or verified access transfer. Requiredness is a candidate choice."
+      },
+      "digital_domains": {
+        "paragraphs": [
+          195
+        ],
+        "interpretation": "Source account/access purpose narrowed to non-secret metadata by the Phase 5.3 instruction. No secrets, vault, automatic detection or verified access transfer. Requiredness is a candidate choice."
+      },
+      "digital_export_formats": {
+        "paragraphs": [
+          195,
+          516
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_resolutions": {
+        "paragraphs": [
+          195,
+          516
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_asset_naming": {
+        "paragraphs": [
+          195,
+          516
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_content_fields": {
+        "paragraphs": [
+          195,
+          516
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_content_evidence": {
+        "paragraphs": [
+          195,
+          516
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_legal_evidence": {
+        "paragraphs": [
+          187,
+          195
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_contract_evidence": {
+        "paragraphs": [
+          424,
+          425,
+          426
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_content_checks": {
+        "paragraphs": [
+          195,
+          516
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_export_attestation": {
+        "paragraphs": [
+          195,
+          516
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_resolution_attestation": {
+        "paragraphs": [
+          195,
+          516
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_naming_attestation": {
+        "paragraphs": [
+          195,
+          516
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_specification": {
+        "paragraphs": [
+          194,
+          195
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_specification.gate.0": {
+        "paragraphs": [
+          194,
+          195
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "digital_specification.gate.1": {
+        "paragraphs": [
+          194,
+          195
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "digital_specification.gate.2": {
+        "paragraphs": [
+          194,
+          195
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "digital_specification.gate.3": {
+        "paragraphs": [
+          194,
+          195
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "digital_specification.gate.4": {
+        "paragraphs": [
+          194,
+          195
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "digital_build_rounds": {
+        "paragraphs": [
+          185,
+          197
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_uat_results": {
+        "paragraphs": [
+          197
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_bugs": {
+        "paragraphs": [
+          197
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_bug_tasks": {
+        "paragraphs": [
+          197,
+          327
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_corrective_evidence": {
+        "paragraphs": [
+          197
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_testing_outcome": {
+        "paragraphs": [
+          197
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_testing_fields": {
+        "paragraphs": [
+          185,
+          197
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_test_version": {
+        "paragraphs": [
+          185,
+          197
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_uat_report": {
+        "paragraphs": [
+          197
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_testing_checks": {
+        "paragraphs": [
+          197
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_uat_attestation": {
+        "paragraphs": [
+          197
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_fix_attestation": {
+        "paragraphs": [
+          197
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_testing_review": {
+        "paragraphs": [
+          197,
+          518
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_testing_review_decision": {
+        "paragraphs": [
+          197,
+          518
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_testing": {
+        "paragraphs": [
+          196,
+          197
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_testing.gate.0": {
+        "paragraphs": [
+          196,
+          197
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "digital_testing.gate.1": {
+        "paragraphs": [
+          196,
+          197
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "digital_testing.gate.2": {
+        "paragraphs": [
+          196,
+          197
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "digital_testing.gate.3": {
+        "paragraphs": [
+          196,
+          197
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "digital_testing.gate.4": {
+        "paragraphs": [
+          196,
+          197
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "digital_testing.gate.5": {
+        "paragraphs": [
+          196,
+          197
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "digital_readiness": {
+        "paragraphs": [
+          199,
+          200
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_go_live_date": {
+        "paragraphs": [
+          199
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_go_live_outcome": {
+        "paragraphs": [
+          199,
+          200
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_it_owner": {
+        "paragraphs": [
+          199
+        ],
+        "interpretation": "Source account/access purpose narrowed to non-secret metadata by the Phase 5.3 instruction. No secrets, vault, automatic detection or verified access transfer. Requiredness is a candidate choice."
+      },
+      "digital_access_references": {
+        "paragraphs": [
+          199
+        ],
+        "interpretation": "Source account/access purpose narrowed to non-secret metadata by the Phase 5.3 instruction. No secrets, vault, automatic detection or verified access transfer. Requiredness is a candidate choice."
+      },
+      "digital_training": {
+        "paragraphs": [
+          199
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_support_plan": {
+        "paragraphs": [
+          199
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_support_end": {
+        "paragraphs": [
+          199
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_launch_fields": {
+        "paragraphs": [
+          199,
+          200
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_maintenance_notice": {
+        "paragraphs": [
+          185,
+          201,
+          202
+        ],
+        "interpretation": "Source indefinite maintenance retained as guidance and an official blocker, not an eighth stage or a MAINTENANCE status. Current V2 ACTIVE/COMPLETED and explicit final closure remain authoritative pending a GTI maintenance/closure decision."
+      },
+      "digital_maintenance_decision": {
+        "paragraphs": [
+          185,
+          201,
+          202
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_maintenance_work": {
+        "paragraphs": [
+          202
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_maintenance_costs": {
+        "paragraphs": [
+          202
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_maintenance_fields": {
+        "paragraphs": [
+          185,
+          201,
+          202
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_handover_evidence": {
+        "paragraphs": [
+          199
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_acceptance_protocol": {
+        "paragraphs": [
+          200,
+          499,
+          505,
+          506
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_launch_checks": {
+        "paragraphs": [
+          199,
+          200
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_handover_attestation": {
+        "paragraphs": [
+          199
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_golive_attestation": {
+        "paragraphs": [
+          200
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_launch": {
+        "paragraphs": [
+          198,
+          199,
+          200,
+          201,
+          202
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "digital_launch.gate.0": {
+        "paragraphs": [
+          198,
+          199,
+          200,
+          201,
+          202
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "digital_launch.gate.1": {
+        "paragraphs": [
+          198,
+          199,
+          200,
+          201,
+          202
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "digital_launch.gate.2": {
+        "paragraphs": [
+          198,
+          199,
+          200,
+          201,
+          202
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "digital_launch.gate.3": {
+        "paragraphs": [
+          198,
+          199,
+          200,
+          201,
+          202
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "digital_launch.gate.4": {
+        "paragraphs": [
+          198,
+          199,
+          200,
+          201,
+          202
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "digital_launch.gate.5": {
+        "paragraphs": [
+          198,
+          199,
+          200,
+          201,
+          202
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "workflow": {
+        "paragraphs": [
+          184,
+          185,
+          200,
+          201,
+          202
+        ],
+        "interpretation": "Source sequence retained as configurable evidence stages. Creative work uses existing Universal Tasks; no legacy concept engine. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      }
+    },
+    "gaps": [
+      {
+        "id": "candidate-decisions",
+        "paragraphs": [
+          187,
+          189,
+          197,
+          200,
+          518,
+          523
+        ],
+        "classification": "REQUIRES_BUSINESS_DECISION",
+        "missing": "Detailed requiredness, file limits, stage completion criteria and source-unspecified reviewer assignments need confirmation; no official designation process.",
+        "internalPilotTreatment": "Typed field/file/checklist gates and fixed Owner build review are labeled proposed internal choices; no official GTI approval implied."
+      },
+      {
+        "id": "vendor-rfp-workflow",
+        "paragraphs": [
+          189,
+          343,
+          344,
+          345,
+          346,
+          384,
+          418,
+          522
+        ],
+        "classification": "REQUIRES_EXTERNAL_INTEGRATION",
+        "missing": "No CERBER/vendor qualification, Director-controlled external vendor selection, approved RFP dispatch or procurement.",
+        "internalPilotTreatment": "Director reviews uploaded internal vendor evidence; no external communication, selection action or contract is executed."
+      },
+      {
+        "id": "ux-ui-approval-definitions",
+        "paragraphs": [
+          191,
+          193,
+          444,
+          448,
+          518
+        ],
+        "classification": "REQUIRES_BUSINESS_DECISION",
+        "missing": "Source does not define UX/UI approvers, required concept counts, user-testing thresholds or detailed acceptance criteria.",
+        "internalPilotTreatment": "Exact uploaded evidence uses the existing independent REVIEWER route as a candidate choice. No source-specific approver identity or invented threshold."
+      },
+      {
+        "id": "concept-task-gates",
+        "paragraphs": [
+          191,
+          193,
+          327
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No task-to-stage gate proving Initial/Final Concept acceptance, exact inspiration selection or all design work completed.",
+        "internalPilotTreatment": "Use actual Initial/Final Concept tasks and their eligible exact inspiration workflow manually; stage references and accepted files do not prove task status."
+      },
+      {
+        "id": "security-compliance-certification",
+        "paragraphs": [
+          187,
+          195
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No age-verification, privacy, cookie, legal-page or software-security certification or jurisdictional compliance engine.",
+        "internalPilotTreatment": "Record supplied requirements and sanitized human evidence. Legal pages and testing reports are not legal or security certification."
+      },
+      {
+        "id": "credential-vault-access-transfer",
+        "paragraphs": [
+          195,
+          199
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No secure credential vault, secret scanning/redaction, account-ownership verification or verified IT access handover.",
+        "internalPilotTreatment": "Never store passwords, API keys, recovery codes or other secrets in fields, comments or files. Use non-secret account identifiers and ownership references only; no credential vault or verified access transfer is provided."
+      },
+      {
+        "id": "digital-asset-preflight",
+        "paragraphs": [
+          195,
+          516
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No automatic digital export-format, resolution, asset-naming or content-inventory completeness validation.",
+        "internalPilotTreatment": "Store sanitized exact assets and human checklist evidence; file extension/count checks are not binary preflight."
+      },
+      {
+        "id": "repeatable-uat-rounds",
+        "paragraphs": [
+          185,
+          197
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No repeatable UAT/test-case entities, round lifecycle, acceptance coverage calculation or enforced software test criteria.",
+        "internalPilotTreatment": "Test-version uploads, round summaries and human-reviewed reports only. General revision history is not a UAT engine."
+      },
+      {
+        "id": "bug-task-blocking",
+        "paragraphs": [
+          197,
+          327,
+          520
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No typed bug-to-task relationship, automatic corrective tasks or unresolved-bug-to-stage blocking adapter.",
+        "internalPilotTreatment": "Manually assign actual General Tasks and retain non-secret references; a bug list or attestation does not enforce resolution."
+      },
+      {
+        "id": "deployment-go-live",
+        "paragraphs": [
+          199,
+          200
+        ],
+        "classification": "REQUIRES_EXTERNAL_INTEGRATION",
+        "missing": "No verified deployment, live-service state, external go-live acceptance or IT transfer integration.",
+        "internalPilotTreatment": "Review sanitized launch/handover/Acceptance Protocol evidence only. Loading or completing a stage never deploys or triggers an external service."
+      },
+      {
+        "id": "support-scheduling",
+        "paragraphs": [
+          199,
+          519,
+          520
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No automatic post-launch support scheduling, reminders, service-period enforcement or starter tasks.",
+        "internalPilotTreatment": "Record agreed support dates and plan; dates are manually entered, and tasks are manually created while ACTIVE."
+      },
+      {
+        "id": "maintenance-closure-policy",
+        "paragraphs": [
+          185,
+          201,
+          202,
+          56
+        ],
+        "classification": "REQUIRES_BUSINESS_DECISION",
+        "missing": "Source indefinite maintenance conflicts with V2 ACTIVE/COMPLETED lifecycle. GTI must decide defined or indefinite ACTIVE maintenance, closure triggers and final Director-controlled closure policy.",
+        "internalPilotTreatment": "Source P0185/P0201–P0202 requires maintenance without a fixed end date, tasks and ongoing costs. This candidate has seven execution stages, no eighth maintenance stage and no MAINTENANCE status or cost ledger. Launch & Handover does not auto-close the project. Normal existing tasks may be created manually while the project genuinely remains ACTIVE. Business must decide defined or indefinite maintenance and final closure triggers; any closure still requires a Director-approved document policy, actual Owner request and separate Director decision. COMPLETED projects remain immutable."
+      },
+      {
+        "id": "maintenance-cost-ledger",
+        "paragraphs": [
+          202,
+          392,
+          393,
+          394,
+          395,
+          396,
+          397,
+          398
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No indefinite maintenance cost/commitment ledger, vendor invoice accounting, source-specific financial visibility or budget alerts.",
+        "internalPilotTreatment": "Budget and cost references are manual evidence under existing V2 access controls, not ongoing accounting or financial-policy enforcement."
+      },
+      {
+        "id": "documents-signatures",
+        "paragraphs": [
+          200,
+          408,
+          412,
+          418,
+          424,
+          426,
+          429,
+          432,
+          505,
+          506,
+          521
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No prefilled brief/RFP/legal documents, signed external contracts, bilateral go-live Acceptance Protocol or automatic document lifecycle; legal wording remains open.",
+        "internalPilotTreatment": "Sanitized manually prepared documents by purpose. Source table stage numbers do not supply new gates. Separate Director-approved completion documents, Owner request and Director decision remain mandatory; no automatic archive."
+      }
+    ],
+    "tasker": [
+      {
+        "type": "INITIAL_CONCEPT",
+        "paragraphs": [
+          190,
+          191
+        ],
+        "instructions": "Manually create Initial Concept tasks for wireframes/user flows. Source stage identity is an evidence phase; no invented count, user-test threshold or task-completion gate. Non-secret evidence only."
+      },
+      {
+        "type": "FINAL_CONCEPT",
+        "paragraphs": [
+          192,
+          193
+        ],
+        "instructions": "Use Final Concept tasks for screens/visual style, selecting eligible exact inspiration through existing Tasker. Stage-file acceptance does not automatically prove task acceptance. Non-secret evidence only."
+      }
+    ],
+    "revisionPolicy": "Increment blueprint revision for content or policy changes. Keep semantic IDs for unchanged meanings; new meanings need new IDs and a compatibility map. Imported copies are editable and edits are not automatically source-certified. Published versions and runtime pins never change."
+  },
+  "definitionHash": "f11f5a5e839b682685a771076b41a88a1e4f126ea327276ab76c56848986643c",
+  "validation": {
+    "internalCandidate": [],
+    "officialStandard": [
+      {
+        "path": "gaps.candidate-decisions",
+        "message": "Detailed requiredness, file limits, stage completion criteria and source-unspecified reviewer assignments need confirmation; no official designation process."
+      },
+      {
+        "path": "gaps.vendor-rfp-workflow",
+        "message": "No CERBER/vendor qualification, Director-controlled external vendor selection, approved RFP dispatch or procurement."
+      },
+      {
+        "path": "gaps.ux-ui-approval-definitions",
+        "message": "Source does not define UX/UI approvers, required concept counts, user-testing thresholds or detailed acceptance criteria."
+      },
+      {
+        "path": "gaps.concept-task-gates",
+        "message": "No task-to-stage gate proving Initial/Final Concept acceptance, exact inspiration selection or all design work completed."
+      },
+      {
+        "path": "gaps.security-compliance-certification",
+        "message": "No age-verification, privacy, cookie, legal-page or software-security certification or jurisdictional compliance engine."
+      },
+      {
+        "path": "gaps.credential-vault-access-transfer",
+        "message": "No secure credential vault, secret scanning/redaction, account-ownership verification or verified IT access handover."
+      },
+      {
+        "path": "gaps.digital-asset-preflight",
+        "message": "No automatic digital export-format, resolution, asset-naming or content-inventory completeness validation."
+      },
+      {
+        "path": "gaps.repeatable-uat-rounds",
+        "message": "No repeatable UAT/test-case entities, round lifecycle, acceptance coverage calculation or enforced software test criteria."
+      },
+      {
+        "path": "gaps.bug-task-blocking",
+        "message": "No typed bug-to-task relationship, automatic corrective tasks or unresolved-bug-to-stage blocking adapter."
+      },
+      {
+        "path": "gaps.deployment-go-live",
+        "message": "No verified deployment, live-service state, external go-live acceptance or IT transfer integration."
+      },
+      {
+        "path": "gaps.support-scheduling",
+        "message": "No automatic post-launch support scheduling, reminders, service-period enforcement or starter tasks."
+      },
+      {
+        "path": "gaps.maintenance-closure-policy",
+        "message": "Source indefinite maintenance conflicts with V2 ACTIVE/COMPLETED lifecycle. GTI must decide defined or indefinite ACTIVE maintenance, closure triggers and final Director-controlled closure policy."
+      },
+      {
+        "path": "gaps.maintenance-cost-ledger",
+        "message": "No indefinite maintenance cost/commitment ledger, vendor invoice accounting, source-specific financial visibility or budget alerts."
+      },
+      {
+        "path": "gaps.documents-signatures",
+        "message": "No prefilled brief/RFP/legal documents, signed external contracts, bilateral go-live Acceptance Protocol or automatic document lifecycle; legal wording remains open."
+      }
+    ]
+  }
+}

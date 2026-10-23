@@ -1,0 +1,2761 @@
+{
+  "blueprint": {
+    "blueprintSchemaVersion": 1,
+    "id": "gti-exhibition-stand",
+    "revision": 1,
+    "category": "EXHIBITION_STAND",
+    "designation": "UNAPPROVED_CANDIDATE",
+    "source": {
+      "title": "Flux – Project Process Templates & Content Specification",
+      "version": "2026-09-29",
+      "sha256": "4d86f90d173a406ad9f3a5ffbba7ce55776b5d209f4bc2a0e4653f299d61b944",
+      "pagination": "Supplied as 19 pages; page numbers unverified. Use exact OOXML section/paragraph locators."
+    },
+    "definitionSchemaVersion": 1,
+    "definition": {
+      "schemaVersion": 1,
+      "name": "Exhibition Stand · internal candidate v1",
+      "intendedProjectType": "EXHIBITION_STAND",
+      "description": "UNAPPROVED CANDIDATE · INTERNAL EVIDENCE PILOT. Human evidence capture only; not an official GTI standard. No conditional rules, skip, external dispatch, procurement, automatic tasks or archive. After all stages, project closure still requires a separately Director-approved per-project document policy, actual Owner completion request and separate Director final decision. Blueprint gti-exhibition-stand revision 1; source 2026-09-29 SHA-256 4d86f90d173a406ad9f3a5ffbba7ce55776b5d209f4bc2a0e4653f299d61b944. Eight source stages retained. Manual dates only; no backward schedule or annual report import. Contractor/organiser records do not verify external approvals. Linked-project references, separate-budget summaries, snags, storage and ratings remain evidence without typed relationships or enforcement. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+      "stages": [
+        {
+          "id": "exhibition_brief",
+          "title": "Brief",
+          "position": 0,
+          "description": "Capture the fixed-event brief without inventing budget, safety or operating rules. What now: record applicable information, attach evidence and obtain independent review. Move on: complete all configured fixed gates. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+          "capabilities": [
+            {
+              "id": "exhibition_brief_fields",
+              "type": "INFORMATION",
+              "title": "Exhibition event brief",
+              "instructions": "Project summary only. Attach the detailed register; individual rows and quantities are not validated. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "exhibition_scope",
+                  "label": "Candidate scope",
+                  "type": "READ_ONLY",
+                  "required": false,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": "UNAPPROVED CANDIDATE · INTERNAL EVIDENCE PILOT. Human evidence capture only; not an official GTI standard. No conditional rules, skip, external dispatch, procurement, automatic tasks or archive. After all stages, project closure still requires a separately Director-approved per-project document policy, actual Owner completion request and separate Director final decision.",
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "exhibition_event_name",
+                  "label": "Event name",
+                  "type": "SHORT_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 500
+                },
+                {
+                  "id": "exhibition_event_start",
+                  "label": "Event start date",
+                  "type": "DATE",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "exhibition_event_end",
+                  "label": "Event end date",
+                  "type": "DATE",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "exhibition_hall",
+                  "label": "Hall",
+                  "type": "SHORT_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 500
+                },
+                {
+                  "id": "exhibition_stand_number",
+                  "label": "Stand number",
+                  "type": "SHORT_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 500
+                },
+                {
+                  "id": "exhibition_area",
+                  "label": "Stand area (m²)",
+                  "type": "NUMBER",
+                  "required": true,
+                  "options": [],
+                  "help": "Square metres are specified by the source; no safety threshold inferred. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "exhibition_open_sides",
+                  "label": "Number of open sides",
+                  "type": "NUMBER",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "exhibition_budget",
+                  "label": "Budget",
+                  "type": "NUMBER",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "exhibition_currency",
+                  "label": "Entered budget currency",
+                  "type": "SHORT_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Record agreed currency; no default or budget policy. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 500
+                },
+                {
+                  "id": "exhibition_objectives",
+                  "label": "Objectives: leads, meetings and launches",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_products",
+                  "label": "Products to display",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_meeting_room",
+                  "label": "Meeting-room requirements",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_hospitality",
+                  "label": "Hospitality requirements",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_staff",
+                  "label": "Staff requirements",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "exhibition_creative_brief",
+              "type": "INFORMATION",
+              "title": "Creative Brief – General content",
+              "instructions": "Project summary only. Attach the detailed register; individual rows and quantities are not validated. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "exhibition_cb_header",
+                  "label": "Brief header: date, brand, project and client",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_cb_background",
+                  "label": "Background and business problem",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_cb_objective",
+                  "label": "Objective and success measures",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_cb_target",
+                  "label": "Target group, market and channel",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Source target group: adult smokers of legal age only. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_cb_deliverables",
+                  "label": "Deliverables, formats and quantities",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_cb_mandatory",
+                  "label": "Brand rules, compulsory texts and local restrictions",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_cb_timeline",
+                  "label": "Budget range, timeline and milestones",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_cb_presentation",
+                  "label": "Presentation format and expected concepts",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Record the agreed brief; no invented minimum or task-count gate. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_cb_mode",
+                  "label": "Collaboration context",
+                  "type": "SELECT",
+                  "required": true,
+                  "options": [
+                    "Direct",
+                    "Pitch"
+                  ],
+                  "help": "Context only; no vendor workflow or dispatch. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "exhibition_cb_contacts",
+                  "label": "Contacts and proposed approval rules",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "exhibition_brief_file",
+              "type": "FILE_REQUIREMENT",
+              "title": "Creative Brief – General evidence",
+              "instructions": "Manually prepare the brief, licensed-elements legal note and applicable File Standard. No generated document or vendor release. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            }
+          ],
+          "gates": [
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "exhibition_brief_fields"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "exhibition_creative_brief"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "exhibition_brief_file"
+            }
+          ]
+        },
+        {
+          "id": "exhibition_planning",
+          "title": "Planning & Organiser Manual",
+          "position": 1,
+          "description": "Record manual organiser deadlines. No backward scheduling, cross-date enforcement or automatic retrieval of last year's report occurs. What now: record applicable information, attach evidence and obtain independent review. Move on: complete all configured fixed gates. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+          "capabilities": [
+            {
+              "id": "exhibition_planning_fields",
+              "type": "INFORMATION",
+              "title": "Manual organiser milestones",
+              "instructions": "Project summary only. Attach the detailed register; individual rows and quantities are not validated. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "exhibition_planning_notice",
+                  "label": "Planning limitation",
+                  "type": "READ_ONLY",
+                  "required": false,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": "Dates are manually entered evidence. Fixed milestones, backward scheduling and automatic last-year report import are not implemented.",
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "exhibition_design_deadline",
+                  "label": "Stand-design submission deadline",
+                  "type": "DATE",
+                  "required": false,
+                  "options": [],
+                  "help": "Enter only an organiser-supplied date; no calculated/default deadline. Detailed requiredness remains a candidate decision. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "exhibition_electricity_deadline",
+                  "label": "Electricity deadline",
+                  "type": "DATE",
+                  "required": false,
+                  "options": [],
+                  "help": "Enter only an organiser-supplied date; no calculated/default deadline. Detailed requiredness remains a candidate decision. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "exhibition_rigging_deadline",
+                  "label": "Rigging deadline",
+                  "type": "DATE",
+                  "required": false,
+                  "options": [],
+                  "help": "Enter only an organiser-supplied date; no calculated/default deadline. Detailed requiredness remains a candidate decision. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "exhibition_badges_deadline",
+                  "label": "Badges deadline",
+                  "type": "DATE",
+                  "required": false,
+                  "options": [],
+                  "help": "Enter only an organiser-supplied date; no calculated/default deadline. Detailed requiredness remains a candidate decision. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "exhibition_catering_deadline",
+                  "label": "Catering deadline",
+                  "type": "DATE",
+                  "required": false,
+                  "options": [],
+                  "help": "Enter only an organiser-supplied date; no calculated/default deadline. Detailed requiredness remains a candidate decision. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "exhibition_freight_deadline",
+                  "label": "Freight deadline",
+                  "type": "DATE",
+                  "required": false,
+                  "options": [],
+                  "help": "Enter only an organiser-supplied date; no calculated/default deadline. Detailed requiredness remains a candidate decision. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "exhibition_organiser_deadlines",
+                  "label": "Organiser deadlines, applicability and conditions",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_planning_notes",
+                  "label": "Event-date planning notes and milestone references",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_badges",
+                  "label": "Badge requirements",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_catering",
+                  "label": "Catering requirements",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_freight",
+                  "label": "Freight requirements",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "exhibition_organiser_manual",
+              "type": "FILE_REQUIREMENT",
+              "title": "Organiser manual and milestone evidence",
+              "instructions": "Upload the supplied manual/deadline record. The runtime does not enforce organiser milestones. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "exhibition_previous_report",
+              "type": "FILE_REQUIREMENT",
+              "title": "Last year's wrap-up report (optional eligible reference)",
+              "instructions": "Upload manually only when authorized to use the report. No automatic retrieval, cross-project access or historical identity claim. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf",
+                ".pptx"
+              ],
+              "minFiles": 0,
+              "maxFiles": 20,
+              "required": false,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": false
+            }
+          ],
+          "gates": [
+            {
+              "type": "PRECEDING_STAGE",
+              "stageId": "exhibition_brief"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "exhibition_planning_fields"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "exhibition_organiser_manual"
+            }
+          ]
+        },
+        {
+          "id": "exhibition_contractors",
+          "title": "Contractor Selection",
+          "position": 2,
+          "description": "Capture contractor evidence; internal Director review does not send an RFP, qualify a vendor or authorize a real contract. What now: record applicable information, attach evidence and obtain independent review. Move on: complete all configured fixed gates. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+          "capabilities": [
+            {
+              "id": "exhibition_contractor_fields",
+              "type": "INFORMATION",
+              "title": "Contractor selection evidence",
+              "instructions": "Project summary only. Attach the detailed register; individual rows and quantities are not validated. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "exhibition_contractor_requirements",
+                  "label": "Contractor requirements",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_proposed_builders",
+                  "label": "Proposed stand builders",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_selected_builders",
+                  "label": "Director-selected invited builders (evidence references)",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_offers",
+                  "label": "Offers received and comparison summary",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Source minimum: three distinct offers. No structured offer count or vendor comparison is enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_selection_decision",
+                  "label": "Contractor selection decision evidence",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_contract_reference",
+                  "label": "Contract documentation and unresolved authorization conditions",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "exhibition_rfp_offers",
+              "type": "FILE_REQUIREMENT",
+              "title": "RFP, offers and comparison evidence",
+              "instructions": "Manually prepared RFP and comparison bundle. At least three source offers are not verified by upload count; no external dispatch. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf",
+                ".xlsx",
+                ".zip"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "exhibition_contract_file",
+              "type": "FILE_REQUIREMENT",
+              "title": "Contract documentation evidence",
+              "instructions": "Internal record only; neither lawyer-approved wording, signature verification nor contractual authorization is implemented. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "exhibition_contractor_review",
+              "type": "APPROVAL",
+              "title": "Director internal contractor-evidence review",
+              "instructions": "The source calls for Director selection, RFP release and contract approval. This narrower review approves submitted internal evidence only and does not perform those external actions. Internal evidence decision only; never external approval, production dispatch or certification. Reviewer cannot be requester or evidence contributor. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "steps": [
+                {
+                  "id": "exhibition_contractor_review_decision",
+                  "label": "Director internal contractor-evidence review",
+                  "approver": "DIRECTOR",
+                  "evidence": "CONFIGURED_INPUTS",
+                  "decision": "APPROVE_REQUIRED"
+                }
+              ],
+              "rejection": "RETURN_FOR_CHANGES",
+              "gatesProgression": true
+            }
+          ],
+          "gates": [
+            {
+              "type": "PRECEDING_STAGE",
+              "stageId": "exhibition_planning"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "exhibition_contractor_fields"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "exhibition_rfp_offers"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "exhibition_contract_file"
+            },
+            {
+              "type": "APPROVAL_COMPLETE",
+              "capabilityId": "exhibition_contractor_review"
+            }
+          ]
+        },
+        {
+          "id": "exhibition_design",
+          "title": "Concept & Design",
+          "position": 3,
+          "description": "Use Initial/Final Concept Universal Tasks for creative work. Design and organiser records are reviewed evidence, not automatic concept or external approval gates. What now: record applicable information, attach evidence and obtain independent review. Move on: complete all configured fixed gates. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+          "capabilities": [
+            {
+              "id": "exhibition_design_fields",
+              "type": "INFORMATION",
+              "title": "Stand design and organiser records",
+              "instructions": "Project summary only. Attach the detailed register; individual rows and quantities are not validated. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "exhibition_design_revisions",
+                  "label": "Design revisions and final stand design summary",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_concept_refs",
+                  "label": "Concept Task references and reviewed outcomes",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_organiser_submission",
+                  "label": "Organiser submission evidence references",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_organiser_approval",
+                  "label": "Organiser approval evidence and outstanding conditions",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Uploaded record only; no verified external identity or decision. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "exhibition_design_evidence",
+              "type": "FILE_REQUIREMENT",
+              "title": "3D renders, final design and technical drawings",
+              "instructions": "Reviewed creative evidence with task/revision references; no enforced concept count or unrestricted revision cycle. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf",
+                ".jpg",
+                ".png",
+                ".dxf",
+                ".dwg",
+                ".zip"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "exhibition_organiser_evidence",
+              "type": "FILE_REQUIREMENT",
+              "title": "Organiser submission / approval evidence",
+              "instructions": "Manually upload eligible organiser records. Independent file acceptance is not verified organiser approval. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            }
+          ],
+          "gates": [
+            {
+              "type": "PRECEDING_STAGE",
+              "stageId": "exhibition_contractors"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "exhibition_design_fields"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "exhibition_design_evidence"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "exhibition_organiser_evidence"
+            }
+          ]
+        },
+        {
+          "id": "exhibition_graphics",
+          "title": "Graphics, Content & Linked Projects",
+          "position": 4,
+          "description": "Review graphics, AV and product-display evidence. Related-project text does not create a relationship, grant access or aggregate separate budgets. What now: record applicable information, attach evidence and obtain independent review. Move on: complete all configured fixed gates. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+          "capabilities": [
+            {
+              "id": "exhibition_graphics_fields",
+              "type": "INFORMATION",
+              "title": "Graphics and related-work summary",
+              "instructions": "Project summary only. Attach the detailed register; individual rows and quantities are not validated. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "exhibition_links_notice",
+                  "label": "Related-project limitation",
+                  "type": "READ_ONLY",
+                  "required": false,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": "Merchandise, staff apparel, POSM and catering are separate source projects with separate budgets. References here are plain text, not typed links, foreign keys or budget aggregation.",
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "exhibition_graphics_summary",
+                  "label": "Large-format graphic inventory",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_av_summary",
+                  "label": "AV content inventory and format requirements",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_display_plan",
+                  "label": "Product display plan",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_related_refs",
+                  "label": "Related merchandise / apparel / POSM / catering references",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Record non-authoritative references only; no automatic project creation or access. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_separate_budgets",
+                  "label": "Separate-budget references and unresolved reconciliation",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "No combined budget calculation or ledger. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_format_guidance",
+                  "label": "Large-format scale, material resolution and component naming",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "exhibition_graphics_files",
+              "type": "FILE_REQUIREMENT",
+              "title": "Large-format graphics and PDF previews",
+              "instructions": "Exact editable files with previews and stand variant evidence; binary preflight remains manual. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf",
+                ".ai",
+                ".psd",
+                ".eps",
+                ".zip"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "exhibition_av_display",
+              "type": "FILE_REQUIREMENT",
+              "title": "AV content and product display-plan evidence",
+              "instructions": "Upload eligible content and display-plan evidence; no live playback or cross-project adapter. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf",
+                ".mp4",
+                ".mov",
+                ".pptx",
+                ".zip"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "exhibition_artwork_checks",
+              "type": "CHECKLIST",
+              "title": "Final Artwork File Standard · human review",
+              "instructions": "Human attestations with written evidence and limitations. No automated compliance, quantity or physical validation. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "items": [
+                {
+                  "id": "exhibition_fa_layers",
+                  "label": "Layered editable files and embedded images reviewed",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "exhibition_fa_resolution",
+                  "label": "Base 300 dpi / A3 requirement and applicable variant resolution reviewed",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "exhibition_fa_psd",
+                  "label": "PSD components and separate shadows reviewed",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "exhibition_fa_fonts",
+                  "label": "Editable typefaces and legal texts reviewed",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "exhibition_fa_colours",
+                  "label": "CMYK / Pantone, finishes and white / varnish layers reviewed",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "exhibition_fa_bleed",
+                  "label": "Bleed, safety margins and separate dieline reviewed",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "exhibition_fa_naming",
+                  "label": "PROJECT_SKU_MARKET_ELEMENT_vXX_DATE, folders and PDF preview reviewed",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "exhibition_fa_variant",
+                  "label": "Large-format scale, material-specific resolution and component naming reviewed",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                }
+              ]
+            }
+          ],
+          "gates": [
+            {
+              "type": "PRECEDING_STAGE",
+              "stageId": "exhibition_design"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "exhibition_graphics_fields"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "exhibition_graphics_files"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "exhibition_av_display"
+            },
+            {
+              "type": "REQUIRED_CHECKLIST",
+              "capabilityId": "exhibition_artwork_checks"
+            }
+          ]
+        },
+        {
+          "id": "exhibition_buildup",
+          "title": "Build-up",
+          "position": 5,
+          "description": "Record site supervision and snag evidence. Assign real General Tasks manually; uploaded records do not enforce snag closure or certify stand safety. What now: record applicable information, attach evidence and obtain independent review. Move on: complete all configured fixed gates. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+          "capabilities": [
+            {
+              "id": "exhibition_buildup_fields",
+              "type": "INFORMATION",
+              "title": "Site supervision and snags",
+              "instructions": "Project summary only. Attach the detailed register; individual rows and quantities are not validated. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "exhibition_supervision",
+                  "label": "Build-up, installation and supervision notes",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_snags",
+                  "label": "Snag list and unresolved issues",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_snag_tasks",
+                  "label": "Manually assigned General Task references",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "No verified snag/task binding or stage-blocking rule. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_corrective_actions",
+                  "label": "Corrective-action evidence and limitations",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_stand_acceptance",
+                  "label": "Stand acceptance, remarks and fix deadlines",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "exhibition_site_evidence",
+              "type": "FILE_REQUIREMENT",
+              "title": "Build-up, supervision and corrective-action evidence",
+              "instructions": "Site photographs and inspection records for human review; no physical-safety certification. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf",
+                ".jpg",
+                ".png",
+                ".zip"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "exhibition_acceptance_protocol",
+              "type": "FILE_REQUIREMENT",
+              "title": "Stand Acceptance Protocol evidence",
+              "instructions": "Manual evidence only; internal acceptance does not prove bilateral signatures or physical compliance. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "exhibition_buildup_checks",
+              "type": "CHECKLIST",
+              "title": "Site evidence review",
+              "instructions": "Human attestations with written evidence and limitations. No automated compliance, quantity or physical validation. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "items": [
+                {
+                  "id": "exhibition_site_attestation",
+                  "label": "Supervision, corrective evidence and unresolved snags reviewed",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "exhibition_acceptance_attestation",
+                  "label": "Stand protocol and acceptance limitations reviewed",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                }
+              ]
+            }
+          ],
+          "gates": [
+            {
+              "type": "PRECEDING_STAGE",
+              "stageId": "exhibition_graphics"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "exhibition_buildup_fields"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "exhibition_site_evidence"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "exhibition_acceptance_protocol"
+            },
+            {
+              "type": "REQUIRED_CHECKLIST",
+              "capabilityId": "exhibition_buildup_checks"
+            }
+          ]
+        },
+        {
+          "id": "exhibition_event",
+          "title": "Event",
+          "position": 6,
+          "description": "Record event summaries and photo evidence without creating a CRM or live event integration. What now: record applicable information, attach evidence and obtain independent review. Move on: complete all configured fixed gates. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+          "capabilities": [
+            {
+              "id": "exhibition_event_fields",
+              "type": "INFORMATION",
+              "title": "Event outcome summary",
+              "instructions": "Project summary only. Attach the detailed register; individual rows and quantities are not validated. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "exhibition_leads",
+                  "label": "Leads collected (summary count)",
+                  "type": "NUMBER",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "exhibition_meetings",
+                  "label": "Meetings held (summary count)",
+                  "type": "NUMBER",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "exhibition_observations",
+                  "label": "Event observations",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_event_issues",
+                  "label": "Event issues log",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_outcomes",
+                  "label": "Event outcome against objectives",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "exhibition_event_photos",
+              "type": "FILE_REQUIREMENT",
+              "title": "Event photo documentation",
+              "instructions": "Aggregate event evidence; no individual lead database or automatic meeting records. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf",
+                ".jpg",
+                ".png",
+                ".zip"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            }
+          ],
+          "gates": [
+            {
+              "type": "PRECEDING_STAGE",
+              "stageId": "exhibition_buildup"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "exhibition_event_fields"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "exhibition_event_photos"
+            }
+          ]
+        },
+        {
+          "id": "exhibition_wrapup",
+          "title": "Dismantling & Wrap-up Report",
+          "position": 7,
+          "description": "Review dismantling and wrap-up evidence for future use. Report review does not enforce inventory, accounting, three-party vendor ratings or automatic annual reuse. What now: record applicable information, attach evidence and obtain independent review. Move on: complete all configured fixed gates. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+          "capabilities": [
+            {
+              "id": "exhibition_wrapup_fields",
+              "type": "INFORMATION",
+              "title": "Dismantling and wrap-up summary",
+              "instructions": "Project summary only. Attach the detailed register; individual rows and quantities are not validated. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "exhibition_dismantling",
+                  "label": "Dismantling evidence summary",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_storage",
+                  "label": "Reusable elements and storage references",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_cost_report",
+                  "label": "Cost-versus-budget report summary",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_leads_meetings",
+                  "label": "Leads and meetings summary",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_lessons",
+                  "label": "Lessons learned for the next edition",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_ratings",
+                  "label": "Vendor rating evidence references (record only)",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Source requires separate Owner, Co-owner and Director ratings for every vendor. This optional summary does not enforce them. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                },
+                {
+                  "id": "exhibition_future_use",
+                  "label": "Wrap-up approval and future-event use notes",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "exhibition_dismantling_evidence",
+              "type": "FILE_REQUIREMENT",
+              "title": "Dismantling and reusable-element storage evidence",
+              "instructions": "Storage records/photos only; no typed inventory or custody validation. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf",
+                ".xlsx",
+                ".jpg",
+                ".png",
+                ".zip"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "exhibition_wrapup_report",
+              "type": "FILE_REQUIREMENT",
+              "title": "Wrap-up report: costs, outcomes and lessons",
+              "instructions": "Independent file review is a candidate choice because the source does not name the report approver. No verified annual reuse or final-project closure. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf",
+                ".pptx",
+                ".xlsx"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "exhibition_rating_evidence",
+              "type": "FILE_REQUIREMENT",
+              "title": "Vendor rating evidence (optional record)",
+              "instructions": "Does not establish three separate authoritative ratings or satisfy a source vendor-rating closure gate. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf",
+                ".xlsx"
+              ],
+              "minFiles": 0,
+              "maxFiles": 20,
+              "required": false,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": false
+            },
+            {
+              "id": "exhibition_wrapup_checks",
+              "type": "CHECKLIST",
+              "title": "Wrap-up evidence review",
+              "instructions": "Human attestations with written evidence and limitations. No automated compliance, quantity or physical validation. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "items": [
+                {
+                  "id": "exhibition_wrapup_attestation",
+                  "label": "Cost/outcome/lessons report reviewed with unresolved limitations recorded",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                }
+              ]
+            }
+          ],
+          "gates": [
+            {
+              "type": "PRECEDING_STAGE",
+              "stageId": "exhibition_event"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "exhibition_wrapup_fields"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "exhibition_dismantling_evidence"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "exhibition_wrapup_report"
+            },
+            {
+              "type": "REQUIRED_CHECKLIST",
+              "capabilityId": "exhibition_wrapup_checks"
+            }
+          ]
+        }
+      ]
+    },
+    "scope": "INTERNAL_EVIDENCE_PILOT",
+    "trace": {
+      "exhibition_scope": {
+        "paragraphs": [
+          165,
+          518
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_event_name": {
+        "paragraphs": [
+          168
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_event_start": {
+        "paragraphs": [
+          168
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_event_end": {
+        "paragraphs": [
+          168
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_hall": {
+        "paragraphs": [
+          168
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_stand_number": {
+        "paragraphs": [
+          168
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_area": {
+        "paragraphs": [
+          168
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_open_sides": {
+        "paragraphs": [
+          168
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_budget": {
+        "paragraphs": [
+          168,
+          393
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_currency": {
+        "paragraphs": [
+          168,
+          393
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_objectives": {
+        "paragraphs": [
+          168
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_products": {
+        "paragraphs": [
+          168
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_meeting_room": {
+        "paragraphs": [
+          168
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_hospitality": {
+        "paragraphs": [
+          168
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_staff": {
+        "paragraphs": [
+          168
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_brief_fields": {
+        "paragraphs": [
+          166,
+          168
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_cb_header": {
+        "paragraphs": [
+          437
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_cb_background": {
+        "paragraphs": [
+          438
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_cb_objective": {
+        "paragraphs": [
+          439
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_cb_target": {
+        "paragraphs": [
+          440
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_cb_deliverables": {
+        "paragraphs": [
+          441
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_cb_mandatory": {
+        "paragraphs": [
+          442
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_cb_timeline": {
+        "paragraphs": [
+          443
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_cb_presentation": {
+        "paragraphs": [
+          444
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_cb_mode": {
+        "paragraphs": [
+          445
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_cb_contacts": {
+        "paragraphs": [
+          448
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_creative_brief": {
+        "paragraphs": [
+          412,
+          413,
+          436,
+          437,
+          438,
+          439,
+          440,
+          441,
+          442,
+          443,
+          444,
+          445,
+          448
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_brief_file": {
+        "paragraphs": [
+          412,
+          413,
+          414,
+          446,
+          447
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_brief": {
+        "paragraphs": [
+          167,
+          168
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_brief.gate.0": {
+        "paragraphs": [
+          167,
+          168
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "exhibition_brief.gate.1": {
+        "paragraphs": [
+          167,
+          168
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "exhibition_brief.gate.2": {
+        "paragraphs": [
+          167,
+          168
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "exhibition_planning_notice": {
+        "paragraphs": [
+          166,
+          170
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_design_deadline": {
+        "paragraphs": [
+          170
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_electricity_deadline": {
+        "paragraphs": [
+          170
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_rigging_deadline": {
+        "paragraphs": [
+          170
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_badges_deadline": {
+        "paragraphs": [
+          170
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_catering_deadline": {
+        "paragraphs": [
+          170
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_freight_deadline": {
+        "paragraphs": [
+          170
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_organiser_deadlines": {
+        "paragraphs": [
+          170
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_planning_notes": {
+        "paragraphs": [
+          166,
+          170
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_badges": {
+        "paragraphs": [
+          170
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_catering": {
+        "paragraphs": [
+          170
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_freight": {
+        "paragraphs": [
+          170
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_planning_fields": {
+        "paragraphs": [
+          166,
+          170
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_organiser_manual": {
+        "paragraphs": [
+          170
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_previous_report": {
+        "paragraphs": [
+          170,
+          183
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_planning": {
+        "paragraphs": [
+          169,
+          170
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_planning.gate.0": {
+        "paragraphs": [
+          169,
+          170
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "exhibition_planning.gate.1": {
+        "paragraphs": [
+          169,
+          170
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "exhibition_planning.gate.2": {
+        "paragraphs": [
+          169,
+          170
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "exhibition_contractor_requirements": {
+        "paragraphs": [
+          172
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_proposed_builders": {
+        "paragraphs": [
+          172
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_selected_builders": {
+        "paragraphs": [
+          172
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_offers": {
+        "paragraphs": [
+          172
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_selection_decision": {
+        "paragraphs": [
+          172
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_contract_reference": {
+        "paragraphs": [
+          172,
+          424,
+          426
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_contractor_fields": {
+        "paragraphs": [
+          172
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_rfp_offers": {
+        "paragraphs": [
+          172,
+          418
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_contract_file": {
+        "paragraphs": [
+          172,
+          424,
+          426
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_contractor_review": {
+        "paragraphs": [
+          172
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_contractor_review_decision": {
+        "paragraphs": [
+          172
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_contractors": {
+        "paragraphs": [
+          171,
+          172
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_contractors.gate.0": {
+        "paragraphs": [
+          171,
+          172
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "exhibition_contractors.gate.1": {
+        "paragraphs": [
+          171,
+          172
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "exhibition_contractors.gate.2": {
+        "paragraphs": [
+          171,
+          172
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "exhibition_contractors.gate.3": {
+        "paragraphs": [
+          171,
+          172
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "exhibition_contractors.gate.4": {
+        "paragraphs": [
+          171,
+          172
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "exhibition_design_revisions": {
+        "paragraphs": [
+          174
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_concept_refs": {
+        "paragraphs": [
+          174,
+          327
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_organiser_submission": {
+        "paragraphs": [
+          174
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_organiser_approval": {
+        "paragraphs": [
+          174
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_design_fields": {
+        "paragraphs": [
+          174
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_design_evidence": {
+        "paragraphs": [
+          174
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_organiser_evidence": {
+        "paragraphs": [
+          174
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_design": {
+        "paragraphs": [
+          173,
+          174
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_design.gate.0": {
+        "paragraphs": [
+          173,
+          174
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "exhibition_design.gate.1": {
+        "paragraphs": [
+          173,
+          174
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "exhibition_design.gate.2": {
+        "paragraphs": [
+          173,
+          174
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "exhibition_design.gate.3": {
+        "paragraphs": [
+          173,
+          174
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "exhibition_links_notice": {
+        "paragraphs": [
+          166,
+          176,
+          399
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_graphics_summary": {
+        "paragraphs": [
+          176
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_av_summary": {
+        "paragraphs": [
+          176
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_display_plan": {
+        "paragraphs": [
+          176
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_related_refs": {
+        "paragraphs": [
+          166,
+          176
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_separate_budgets": {
+        "paragraphs": [
+          166,
+          399
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_format_guidance": {
+        "paragraphs": [
+          516
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_graphics_fields": {
+        "paragraphs": [
+          166,
+          176,
+          399
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_graphics_files": {
+        "paragraphs": [
+          176,
+          509,
+          515,
+          516
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_av_display": {
+        "paragraphs": [
+          176
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_artwork_checks": {
+        "paragraphs": [
+          507,
+          508,
+          516
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_fa_layers": {
+        "paragraphs": [
+          509
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_fa_resolution": {
+        "paragraphs": [
+          510,
+          516
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_fa_psd": {
+        "paragraphs": [
+          511
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_fa_fonts": {
+        "paragraphs": [
+          512
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_fa_colours": {
+        "paragraphs": [
+          513
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_fa_bleed": {
+        "paragraphs": [
+          514
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_fa_naming": {
+        "paragraphs": [
+          515
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_fa_variant": {
+        "paragraphs": [
+          516
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_graphics": {
+        "paragraphs": [
+          175,
+          176
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_graphics.gate.0": {
+        "paragraphs": [
+          175,
+          176
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "exhibition_graphics.gate.1": {
+        "paragraphs": [
+          175,
+          176
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "exhibition_graphics.gate.2": {
+        "paragraphs": [
+          175,
+          176
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "exhibition_graphics.gate.3": {
+        "paragraphs": [
+          175,
+          176
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "exhibition_graphics.gate.4": {
+        "paragraphs": [
+          175,
+          176
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "exhibition_supervision": {
+        "paragraphs": [
+          178
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_snags": {
+        "paragraphs": [
+          178
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_snag_tasks": {
+        "paragraphs": [
+          178,
+          327
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_corrective_actions": {
+        "paragraphs": [
+          178
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_stand_acceptance": {
+        "paragraphs": [
+          178,
+          503,
+          504
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_buildup_fields": {
+        "paragraphs": [
+          178
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_site_evidence": {
+        "paragraphs": [
+          178
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_acceptance_protocol": {
+        "paragraphs": [
+          178,
+          499,
+          505,
+          506
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_buildup_checks": {
+        "paragraphs": [
+          178
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_site_attestation": {
+        "paragraphs": [
+          178
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_acceptance_attestation": {
+        "paragraphs": [
+          178,
+          505
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_buildup": {
+        "paragraphs": [
+          177,
+          178
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_buildup.gate.0": {
+        "paragraphs": [
+          177,
+          178
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "exhibition_buildup.gate.1": {
+        "paragraphs": [
+          177,
+          178
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "exhibition_buildup.gate.2": {
+        "paragraphs": [
+          177,
+          178
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "exhibition_buildup.gate.3": {
+        "paragraphs": [
+          177,
+          178
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "exhibition_buildup.gate.4": {
+        "paragraphs": [
+          177,
+          178
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "exhibition_leads": {
+        "paragraphs": [
+          180
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_meetings": {
+        "paragraphs": [
+          180
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_observations": {
+        "paragraphs": [
+          180
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_event_issues": {
+        "paragraphs": [
+          180
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_outcomes": {
+        "paragraphs": [
+          168,
+          180
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_event_fields": {
+        "paragraphs": [
+          168,
+          180
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_event_photos": {
+        "paragraphs": [
+          180
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_event": {
+        "paragraphs": [
+          179,
+          180
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_event.gate.0": {
+        "paragraphs": [
+          179,
+          180
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "exhibition_event.gate.1": {
+        "paragraphs": [
+          179,
+          180
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "exhibition_event.gate.2": {
+        "paragraphs": [
+          179,
+          180
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "exhibition_dismantling": {
+        "paragraphs": [
+          182
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_storage": {
+        "paragraphs": [
+          182
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_cost_report": {
+        "paragraphs": [
+          182
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_leads_meetings": {
+        "paragraphs": [
+          182
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_lessons": {
+        "paragraphs": [
+          182
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_ratings": {
+        "paragraphs": [
+          182,
+          388,
+          389,
+          390
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_future_use": {
+        "paragraphs": [
+          183
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_wrapup_fields": {
+        "paragraphs": [
+          182,
+          183,
+          388,
+          389
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_dismantling_evidence": {
+        "paragraphs": [
+          182
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_wrapup_report": {
+        "paragraphs": [
+          182,
+          183
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_rating_evidence": {
+        "paragraphs": [
+          182,
+          388,
+          389,
+          390
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_wrapup_checks": {
+        "paragraphs": [
+          182,
+          183
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_wrapup_attestation": {
+        "paragraphs": [
+          182,
+          183
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_wrapup": {
+        "paragraphs": [
+          181,
+          182,
+          183
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "exhibition_wrapup.gate.0": {
+        "paragraphs": [
+          181,
+          182,
+          183
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "exhibition_wrapup.gate.1": {
+        "paragraphs": [
+          181,
+          182,
+          183
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "exhibition_wrapup.gate.2": {
+        "paragraphs": [
+          181,
+          182,
+          183
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "exhibition_wrapup.gate.3": {
+        "paragraphs": [
+          181,
+          182,
+          183
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "exhibition_wrapup.gate.4": {
+        "paragraphs": [
+          181,
+          182,
+          183
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "workflow": {
+        "paragraphs": [
+          165,
+          166,
+          183
+        ],
+        "interpretation": "Source sequence retained as configurable evidence stages. Creative work uses existing Universal Tasks; no legacy concept engine. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      }
+    },
+    "gaps": [
+      {
+        "id": "candidate-decisions",
+        "paragraphs": [
+          168,
+          180,
+          183,
+          518,
+          523
+        ],
+        "classification": "REQUIRES_BUSINESS_DECISION",
+        "missing": "Detailed requiredness, file limits, reviewer identities where unspecified and pilot completion gates need business confirmation; no official designation process.",
+        "internalPilotTreatment": "All helper-generated settings are labeled candidate choices. Independent report-file review is narrower than a source-approved report authorization model."
+      },
+      {
+        "id": "event-scheduling",
+        "paragraphs": [
+          166,
+          170,
+          519
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No fixed organiser milestone enforcement, cross-date constraints or backward scheduling from event dates.",
+        "internalPilotTreatment": "Manually entered DATE fields and planning records; no calculated deadlines or automatic schedule."
+      },
+      {
+        "id": "historical-report-reuse",
+        "paragraphs": [
+          170,
+          183
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No automatic last-year wrap-up retrieval into Research or verified next-year report reuse.",
+        "internalPilotTreatment": "An authorized user may upload an eligible previous report manually. Uploads do not establish cross-project provenance or retrieval rights."
+      },
+      {
+        "id": "structured-contractor-offers",
+        "paragraphs": [
+          172,
+          394
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No structured invited-contractor selection, minimum three distinct offers, offer comparison or per-vendor completeness validation.",
+        "internalPilotTreatment": "Record proposed/selected builders, offer summaries and comparison evidence; fixed file counts never mean three distinct offers."
+      },
+      {
+        "id": "vendor-communications-contracts",
+        "paragraphs": [
+          172,
+          343,
+          344,
+          345,
+          346,
+          384,
+          395,
+          522
+        ],
+        "classification": "REQUIRES_EXTERNAL_INTEGRATION",
+        "missing": "No CERBER qualification, Director-approved external RFP dispatch, contractual authorization, procurement or vendor communication.",
+        "internalPilotTreatment": "Director reviews internal contractor evidence only. No communication is sent and no actual contract or expenditure is authorized."
+      },
+      {
+        "id": "concept-task-gates",
+        "paragraphs": [
+          174,
+          327
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No concept-task-to-stage completion gate or unrestricted revision-cycle enforcement.",
+        "internalPilotTreatment": "Manually create Initial/Final Concept tasks and retain exact reviewed designs; references do not prove all creative work completed."
+      },
+      {
+        "id": "external-organiser-approval",
+        "paragraphs": [
+          174
+        ],
+        "classification": "REQUIRES_EXTERNAL_INTEGRATION",
+        "missing": "No verified organiser submission, identity, approval decision or approval-version binding.",
+        "internalPilotTreatment": "Uploaded submission/approval records are human evidence, not an external approval or automated release."
+      },
+      {
+        "id": "linked-project-budgets",
+        "paragraphs": [
+          166,
+          176,
+          399
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No typed stand-to-merchandise/apparel/POSM/catering relationships, separate linked-budget entities or aggregation.",
+        "internalPilotTreatment": "Plain references describe related work only; no foreign keys, inferred access or budget roll-up are created."
+      },
+      {
+        "id": "snag-task-binding",
+        "paragraphs": [
+          178,
+          327,
+          520
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No relational snag list, automatic corrective tasks or unresolved-snag-to-stage blocking adapter.",
+        "internalPilotTreatment": "Create actual General Tasks manually and record references. A snag summary/checklist cannot establish assignments or issue resolution."
+      },
+      {
+        "id": "physical-stand-acceptance",
+        "paragraphs": [
+          178,
+          500,
+          502,
+          505,
+          506
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No physical stand/safety certification or bilateral signed stand acceptance.",
+        "internalPilotTreatment": "Independent review of supervision, corrective-action and Acceptance Protocol evidence only; uploads do not certify physical conditions or signatures."
+      },
+      {
+        "id": "reusable-stock",
+        "paragraphs": [
+          182
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No typed reusable-element inventory, storage custody, quantities or future-event allocation.",
+        "internalPilotTreatment": "Store dismantling/storage evidence and summary only; no actual inventory reconciliation."
+      },
+      {
+        "id": "vendor-ratings",
+        "paragraphs": [
+          182,
+          387,
+          388,
+          389,
+          390
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No three separate Owner/Co-owner/Director ratings for every vendor across quality, timeliness, price and communication, or rating closure gate.",
+        "internalPilotTreatment": "Optional rating-summary evidence preserves the requirement without claiming a generic checklist satisfies it."
+      },
+      {
+        "id": "cost-and-event-records",
+        "paragraphs": [
+          180,
+          182,
+          392,
+          393,
+          394,
+          395,
+          396,
+          397,
+          398,
+          399
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No actual-cost/commitment ledger, source-specific financial visibility/alerts, individual CRM leads or meeting records.",
+        "internalPilotTreatment": "Manual numeric counts and cost-versus-budget report under existing V2 access controls; no accounting, CRM or live event integration."
+      },
+      {
+        "id": "documents-artwork",
+        "paragraphs": [
+          176,
+          408,
+          412,
+          418,
+          424,
+          426,
+          429,
+          432,
+          509,
+          510,
+          511,
+          512,
+          513,
+          514,
+          515,
+          516,
+          521
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No prefilled document/signature lifecycle, legally approved contract guard or automatic large-format/AV file preflight. Document table stage numbers do not match every process purpose.",
+        "internalPilotTreatment": "Manually prepared brief/RFP/contract/protocol files and human File Standard review by purpose. No legal or binary certification."
+      },
+      {
+        "id": "completion-governance",
+        "paragraphs": [
+          56,
+          183,
+          340,
+          390,
+          398
+        ],
+        "classification": "SUPERSEDED_BY_APPROVED_V2_RULE",
+        "missing": "Report approval and source automatic archiving cannot replace the approved V2 final-project governance or certify vendor ratings.",
+        "internalPilotTreatment": "No automatic closure or archive. Separate Director-approved document policy, actual Owner request and distinct Director final decision remain mandatory."
+      }
+    ],
+    "tasker": [
+      {
+        "type": "INITIAL_CONCEPT",
+        "paragraphs": [
+          173,
+          174
+        ],
+        "instructions": "Manually create Initial Concept tasks for stand directions and 3D renders; existing independent review applies. No minimum concept count or task-to-stage gate."
+      },
+      {
+        "type": "FINAL_CONCEPT",
+        "paragraphs": [
+          173,
+          174
+        ],
+        "instructions": "Use Final Concept tasks with eligible exact inspiration for revisions/final design and drawings. Organiser approval is separate human evidence, not a Tasker decision or verified external gate."
+      }
+    ],
+    "revisionPolicy": "Increment blueprint revision for content or policy changes. Keep semantic IDs for unchanged meanings; new meanings need new IDs and a compatibility map. Imported copies are editable and edits are not automatically source-certified. Published versions and runtime pins never change."
+  },
+  "definitionHash": "88266d16c856d7c3c9c20f7fbd5339242395443b73e9bfda11fecfb9807dbec1",
+  "validation": {
+    "internalCandidate": [],
+    "officialStandard": [
+      {
+        "path": "gaps.candidate-decisions",
+        "message": "Detailed requiredness, file limits, reviewer identities where unspecified and pilot completion gates need business confirmation; no official designation process."
+      },
+      {
+        "path": "gaps.event-scheduling",
+        "message": "No fixed organiser milestone enforcement, cross-date constraints or backward scheduling from event dates."
+      },
+      {
+        "path": "gaps.historical-report-reuse",
+        "message": "No automatic last-year wrap-up retrieval into Research or verified next-year report reuse."
+      },
+      {
+        "path": "gaps.structured-contractor-offers",
+        "message": "No structured invited-contractor selection, minimum three distinct offers, offer comparison or per-vendor completeness validation."
+      },
+      {
+        "path": "gaps.vendor-communications-contracts",
+        "message": "No CERBER qualification, Director-approved external RFP dispatch, contractual authorization, procurement or vendor communication."
+      },
+      {
+        "path": "gaps.concept-task-gates",
+        "message": "No concept-task-to-stage completion gate or unrestricted revision-cycle enforcement."
+      },
+      {
+        "path": "gaps.external-organiser-approval",
+        "message": "No verified organiser submission, identity, approval decision or approval-version binding."
+      },
+      {
+        "path": "gaps.linked-project-budgets",
+        "message": "No typed stand-to-merchandise/apparel/POSM/catering relationships, separate linked-budget entities or aggregation."
+      },
+      {
+        "path": "gaps.snag-task-binding",
+        "message": "No relational snag list, automatic corrective tasks or unresolved-snag-to-stage blocking adapter."
+      },
+      {
+        "path": "gaps.physical-stand-acceptance",
+        "message": "No physical stand/safety certification or bilateral signed stand acceptance."
+      },
+      {
+        "path": "gaps.reusable-stock",
+        "message": "No typed reusable-element inventory, storage custody, quantities or future-event allocation."
+      },
+      {
+        "path": "gaps.vendor-ratings",
+        "message": "No three separate Owner/Co-owner/Director ratings for every vendor across quality, timeliness, price and communication, or rating closure gate."
+      },
+      {
+        "path": "gaps.cost-and-event-records",
+        "message": "No actual-cost/commitment ledger, source-specific financial visibility/alerts, individual CRM leads or meeting records."
+      },
+      {
+        "path": "gaps.documents-artwork",
+        "message": "No prefilled document/signature lifecycle, legally approved contract guard or automatic large-format/AV file preflight. Document table stage numbers do not match every process purpose."
+      },
+      {
+        "path": "gaps.completion-governance",
+        "message": "Report approval and source automatic archiving cannot replace the approved V2 final-project governance or certify vendor ratings."
+      }
+    ]
+  }
+}

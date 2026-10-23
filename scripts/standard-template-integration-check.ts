@@ -10,6 +10,8 @@ import type { PrismaClient } from "@prisma/client";
 import { packagingBlueprint } from "../src/lib/standard-templates/packaging";
 import { posmBlueprint } from "../src/lib/standard-templates/posm";
 import { retailDisplayBlueprint } from "../src/lib/standard-templates/retail-display";
+import { exhibitionStandBlueprint } from "../src/lib/standard-templates/exhibition-stand";
+import { digitalBlueprint, digitalSecretGuidance, digitalMaintenanceGuidance } from "../src/lib/standard-templates/digital";
 import { validateBlueprint } from "../src/lib/standard-templates/contracts";
 import { configurationHash } from "../src/lib/stage-builder/hash";
 import source from "../docs/requirements/GTI_FLUX_Project_Process_Templates_Source.json";
@@ -50,8 +52,9 @@ async function main() {
   const importer = requireLocal(join(compiled, "src/lib/standard-templates/service.js")) as typeof import("../src/lib/standard-templates/service");
   const governance = requireLocal(join(compiled, "src/lib/runtime-integration/creation.js")) as typeof import("../src/lib/runtime-integration/creation");
   const completion = requireLocal(join(compiled, "src/lib/runtime-completion/service.js")) as typeof import("../src/lib/runtime-completion/service");
+  const tasks = requireLocal(join(compiled, "src/lib/tasker/service.js")) as typeof import("../src/lib/tasker/service");
   for (const flag of ["STAGE_BUILDER_DRAFTS", "STAGE_BUILDER_PUBLICATION", "SHARED_FILE_IDENTITY", "APPROVAL_ENGINE", "SHARED_EVENTS", "UNIVERSAL_TASKER", "TASKER_DELIVERABLES", "TASKER_CONCEPTS", "TASKER_SISTERS", "STAGE_RUNTIME", "RUNTIME_INTEGRATION"]) process.env[`FLUX_${flag}`] = "1";
-  for (const { factory, material } of [{ factory: packagingBlueprint, material: null }, { factory: posmBlueprint, material: "Printed POSM" }, { factory: posmBlueprint, material: "Merchandise" }, { factory: retailDisplayBlueprint, material: null }]) {
+  for (const { factory, material } of [{ factory: packagingBlueprint, material: null }, { factory: posmBlueprint, material: "Printed POSM" }, { factory: posmBlueprint, material: "Merchandise" }, { factory: retailDisplayBlueprint, material: null }, { factory: exhibitionStandBlueprint, material: null }, { factory: digitalBlueprint, material: null }]) {
   const startingAssertions = assertions, blueprint = factory();
   // Preserve the original Packaging entry point and also prove registry parity.
   const load = (raw: unknown) => blueprint.category === "ARTWORK_PACKAGING" ? importer.createPackagingDraft(raw) : importer.createBlueprintDraft(blueprint.id, raw);
@@ -65,7 +68,7 @@ async function main() {
   for (const gap of blueprint.gaps) for (const p of gap.paragraphs) assert.ok(paragraphs.has(p));
   assert.deepEqual(mapping.processes.map(p => p.processStageCount), [8, 6, 7, 8, 7]);
   for (const process of mapping.processes) for (const stage of process.stages) for (const requirement of stage.sourceRequirements) assert.equal(source.paragraphs.find(p => Number(p.id.slice(1)) === requirement.paragraph)?.text, requirement.text);
-  assert.equal(blueprint.definition.stages.length, blueprint.category === "RETAIL_DISPLAY" ? 7 : 6);
+  assert.equal(blueprint.definition.stages.length, blueprint.category === "EXHIBITION_STAND" ? 8 : ["RETAIL_DISPLAY", "DIGITAL"].includes(blueprint.category) ? 7 : 6);
   assert.deepEqual(blueprint.tasker.map(t => t.type), ["INITIAL_CONCEPT", "FINAL_CONCEPT"]);
   const broken = factory(); delete broken.trace.workflow;
   assert.ok(validateBlueprint(broken).some(i => i.path === "trace.workflow"));
@@ -73,12 +76,13 @@ async function main() {
   assert.throws(() => validateBlueprint(malformed), /DUPLICATE_IDENTIFIER/);
   const accounts = JSON.stringify(await db.user.findMany({ orderBy: { id: "asc" }, include: { authorization: true } }));
   const nativeCounts = [await db.project.count(), await db.projectArchive.count(), await db.projectFinalCompletionRequest.count()];
+  const taskCount = await db.universalTask.count();
   const input = { commandId: randomUUID(), blueprintRevision: 1, scopeAcknowledged: true };
   token = null; await assert.rejects(load(input));
   for (const id of ["jpm", "designer", "digital", "tech"]) { await as(id); await assert.rejects(load({ ...input, commandId: randomUUID() })); }
   await as("spm");
   for (const extra of [{ actorId: "director" }, { definition: blueprint.definition }, { designation: "OFFICIAL_STANDARD" }, { blueprintId: "gti-packaging-artwork" }]) await assert.rejects(load({ ...input, ...extra }), /UNSUPPORTED_PROPERTY/);
-  for (const id of ["unknown", "__proto__", "constructor", "../packaging", "gti-exhibition-stand", "gti-digital"]) await assert.rejects(importer.createBlueprintDraft(id, input), /BLUEPRINT_NOT_FOUND/);
+  for (const id of ["unknown", "__proto__", "constructor", "../packaging", "gti-exhibition-stand-v2", "gti-digital-maintenance"]) await assert.rejects(importer.createBlueprintDraft(id, input), /BLUEPRINT_NOT_FOUND/);
   await assert.rejects(load({ ...input, scopeAcknowledged: false }), /ACKNOWLEDGE/);
   await assert.rejects(load({ ...input, blueprintRevision: 2 }), /BLUEPRINT_REVISION_CHANGED/);
   await assert.rejects(load({ ...input, blueprintRevision: "1" }), /BLUEPRINT_REVISION_CHANGED/);
@@ -130,6 +134,7 @@ async function main() {
     await as("jpm");
     await assert.rejects(cmd(stage.id, "COMPLETED", { reason: "Incomplete gate attempt" }));
     const config = (await runtime.getRuntimeProject(projectId, stage.id)).stage.definition;
+    if (config.id === "digital_brief") await assert.rejects(cmd(stage.id, "FIELDS", { values: { digital_password: "non-secret rejected fixture" } }), /FIELD_NOT_FOUND/);
     for (const block of config.capabilities) {
       if (block.type === "INFORMATION") {
         const irrelevant = (id: string) => material === "Printed POSM" ? id.startsWith("posm_merch_") : material === "Merchandise" ? id.startsWith("posm_printed_") : false;
@@ -138,6 +143,12 @@ async function main() {
         for (const field of block.fields.filter(f => irrelevant(f.id))) assert.equal(field.required, false);
         const numeric = block.fields.find(f => f.type === "NUMBER" && !irrelevant(f.id));
         if (numeric) await assert.rejects(cmd(stage.id, "FIELDS", { values: { [numeric.id]: "invalid numeric input" } }));
+        if (["EXHIBITION_STAND", "DIGITAL"].includes(blueprint.category)) {
+          const date = block.fields.find(f => f.type === "DATE");
+          if (date) await assert.rejects(cmd(stage.id, "FIELDS", { values: { [date.id]: "2026-02-30" } }));
+          const select = block.fields.find(f => f.type === "SELECT");
+          if (select) await assert.rejects(cmd(stage.id, "FIELDS", { values: { [select.id]: "Unsupported choice" } }));
+        }
         if (block.fields.some(f => f.id === "posm_material_type")) await assert.rejects(cmd(stage.id, "FIELDS", { values: { posm_material_type: "Invented third branch" } }));
         for (const f of block.fields.filter(f => f.type === "READ_ONLY")) await assert.rejects(cmd(stage.id, "FIELDS", { values: { [f.id]: "Forged scope" } }), /READ_ONLY/);
       }
@@ -168,6 +179,29 @@ async function main() {
     assert.equal((await runtime.getRuntimeProject(projectId, stage.id)).stage.state, "COMPLETED");
   }
   assert.equal((await db.runtimeProject.findUniqueOrThrow({ where: { id: projectId } })).state, "ACTIVE");
+  assert.equal(await db.universalTask.count(), taskCount, "No automatic starter, snag or maintenance tasks");
+  if (["EXHIBITION_STAND", "DIGITAL"].includes(blueprint.category)) {
+    const before = JSON.stringify(await db.runtimeStage.findMany({ where: { projectId }, orderBy: { position: "asc" } }));
+    await as("spm");
+    const taskInput = { commandId: randomUUID(), contextTarget: `runtime:${projectId}`, type: "GENERAL", title: blueprint.category === "DIGITAL" ? "Manual post-launch change request" : "Manual stand follow-up", brief: "Synthetic non-secret task instructions", context: "No automatic stage binding", deadline: "2026-11-15T12:00:00Z", priority: "NORMAL", executorId: "designer", spectatorIds: [] };
+    const task = await tasks.createTask(taskInput);
+    const change = async (action: string) => tasks.mutateTask(task.id, { commandId: randomUUID(), expectedVersion: (await tasks.getTask(task.id)).version, action, text: "Synthetic manually assigned work" });
+    await as("designer"); await change("SUBMIT"); await change("REQUEST_COMPLETION");
+    await as("spm"); await change("APPROVE");
+    assert.equal(JSON.stringify(await db.runtimeStage.findMany({ where: { projectId }, orderBy: { position: "asc" } })), before, "Manual task does not alter or satisfy stage evidence");
+    if (blueprint.category === "DIGITAL") {
+      const launch = await runtime.getRuntimeProject(projectId, initial.stages.at(-1)!.id);
+      assert.equal(launch.stage.definition.id, "digital_launch");
+      assert.equal(launch.stages.length, 7);
+      assert.ok(blueprint.definition.description.includes(digitalMaintenanceGuidance));
+      for (const block of blueprint.definition.stages.flatMap(s => s.capabilities)) {
+        if (block.type === "INFORMATION") for (const field of block.fields) assert.ok(field.help.includes(digitalSecretGuidance));
+        if (block.type === "FILE_REQUIREMENT") assert.ok(block.instructions.includes(digitalSecretGuidance));
+      }
+      await assert.rejects(cmd(initial.stages.at(-1)!.id, "MAINTENANCE"), /INVALID_ACTION/);
+      assert.equal((await db.runtimeProject.findUniqueOrThrow({ where: { id: projectId } })).state, "ACTIVE");
+    }
+  }
   const ccmd = async (action: string, extra = {}) => { const view = await completion.getRuntimeCompletion(projectId); return completion.runtimeCompletionCommand(projectId, { commandId: randomUUID(), expectedRevision: view.revision, expectedProjectRevision: view.projectRevision, expectedPolicyRevision: view.policyRevision, action, ...extra }); };
   await as("spm"); await assert.rejects(ccmd("COMPLETION_REQUESTED", { confirmed: true, reason: "Missing policy blocks closure" }));
   const settings = { AUTHORITY_APPROVAL_PROOF: "REQUIRED", COPYRIGHT_TRANSFER: "NOT_APPLICABLE", INVOICE: "OPTIONAL" };
@@ -185,11 +219,16 @@ async function main() {
   const finish = { requestId: pending.id, requestHash: pending.hash, outcome: "APPROVE", confirmed: true, reason: "Separate final Director decision" };
   await assert.rejects(ccmd("COMPLETION_DECIDED", finish)); await as("director"); await ccmd("COMPLETION_DECIDED", finish);
   assert.equal((await db.runtimeProject.findUniqueOrThrow({ where: { id: projectId } })).state, "COMPLETED");
+  if (blueprint.category === "DIGITAL") {
+    await as("spm");
+    await assert.rejects(tasks.createTask({ commandId: randomUUID(), contextTarget: `runtime:${projectId}`, type: "GENERAL", title: "Denied after final closure", brief: "Synthetic non-secret fixture", deadline: "2026-11-15T12:00:00Z", priority: "NORMAL", executorId: "designer" }));
+    await assert.rejects(cmd(initial.stages.at(-1)!.id, "FIELDS", { values: { digital_maintenance_decision: "Cannot reopen completed evidence" } }));
+  }
   assert.deepEqual([await db.project.count(), await db.projectArchive.count(), await db.projectFinalCompletionRequest.count()], nativeCounts);
   assert.equal(JSON.stringify(await db.user.findMany({ orderBy: { id: "asc" }, include: { authorization: true } })), accounts);
   assert.equal(external, 0);
   console.log(`PASS ${blueprint.id} ${material ?? ""}: ${assertions - startingAssertions} assertions; source trace, role-safe/idempotent import, immutable edits, genuine publication, pinned governed runtime, ${blueprint.definition.stages.length} populated stages, independent exact files/approvals and Director policy/final completion; fake storage only.`);
   }
-  console.log(`PASS Phase 5.2 standard templates: ${assertions} assertions; Packaging preserved, both POSM material choices and Retail Display; zero external requests.`);
+  console.log(`PASS Phase 5.3 standard templates: ${assertions} assertions; all five candidates, both POSM material choices, eight Exhibition / seven Digital stages, manual ACTIVE tasks and immutable closure; zero external requests.`);
 }
 main().catch(error => { console.error(error); process.exitCode = 1; }).finally(() => db.$disconnect());

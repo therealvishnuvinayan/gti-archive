@@ -1717,6 +1717,15 @@
     {
       "category": "EXHIBITION_STAND",
       "name": "Exhibition Stand",
+      "implementation": {
+        "phase": "5.3",
+        "blueprintId": "gti-exhibition-stand",
+        "revision": 1,
+        "designation": "UNAPPROVED_CANDIDATE",
+        "scope": "INTERNAL_EVIDENCE_PILOT",
+        "snapshot": "GTI_Exhibition_Stand_Blueprint_v1.json",
+        "coverage": "Eight source stages retained. Snapshot traces cover every object and all P0165–P0183 source paragraphs; 15 classified groups block official readiness. Manual organiser dates do not implement backward scheduling. Vendor/organiser records, linked-project references, snags, storage, costs, ratings and annual reuse remain evidence without external or relational enforcement."
+      },
       "sourceSection": 6,
       "sourcePage": null,
       "processStageCount": 8,
@@ -2244,6 +2253,15 @@
     {
       "category": "DIGITAL",
       "name": "Digital",
+      "implementation": {
+        "phase": "5.3",
+        "blueprintId": "gti-digital",
+        "revision": 1,
+        "designation": "UNAPPROVED_CANDIDATE",
+        "scope": "INTERNAL_EVIDENCE_PILOT",
+        "snapshot": "GTI_Digital_Blueprint_v1.json",
+        "coverage": "Seven execution stages, complete object/source traces and 14 classified official blockers. Maintenance is source-backed guidance and an unresolved GTI lifecycle/closure decision, never an eighth stage or MAINTENANCE status. Projects remain ACTIVE after launch; current task and explicit final-closure rules apply. Only non-secret account/ownership references are requested; no credential vault, secret detection, UAT engine, verified deployment or access transfer is claimed."
+      },
       "sourceSection": 7,
       "sourcePage": null,
       "processStageCount": 7,

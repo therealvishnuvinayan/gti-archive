@@ -6,14 +6,20 @@ export async function packagingAcceptance({ assert, db, origin, pageFor, request
 export async function additionalBlueprintAcceptance(context) {
   await candidateAcceptance(context, { label: 'POSM', slug: 'posm', route: 'gti-posm-promotional-materials', name: 'POSM & Promotional Materials', count: 6, editor: '4. Specification', title: 'Specification', first: 'Brief', field: 'Material Type' });
   await candidateAcceptance(context, { label: 'Retail Display', slug: 'retail', route: 'gti-retail-display', name: 'Retail Display', count: 7, editor: '5. Specification & Graphics per Component', title: 'Specification & Graphics per Component', first: 'Brief', field: 'Available width' });
+  await candidateAcceptance(context, { label: 'Exhibition Stand', slug: 'exhibition', route: 'gti-exhibition-stand', name: 'Exhibition Stand', count: 8, editor: '2. Planning & Organiser Manual', title: 'Planning & Organiser Manual', first: 'Brief', field: 'Stand area (m²)' });
+  await candidateAcceptance(context, { label: 'Digital', slug: 'digital', route: 'gti-digital', name: 'Digital', count: 7, editor: '5. Specification & Content', title: 'Specification & Content', first: 'Brief', field: 'Primary platform' });
 }
 
 async function candidateAcceptance({ assert, db, origin, pageFor, request, shot, pass }, config) {
   const { label, slug } = config;
   const screenshot = (page, name, locator) => shot(page, name.replace('packaging', slug), locator);
   const owner = await pageFor('spm'), manager = await pageFor('jpm'), director = await pageFor('director');
-  for (const page of [owner, manager, director]) await page.setViewportSize({ width: 1440, height: 1100 });
+  for (const page of [owner, manager, director]) await page.setViewportSize({ width: 1440, height: config.count === 8 ? 1400 : 1100 });
   await owner.goto(origin + '/projects/workflow-drafts');
+  if (slug === 'packaging') for (const name of ['Packaging', 'POSM', 'Retail Display', 'Exhibition Stand', 'Digital']) {
+    const loadButton = owner.getByRole('button', { name: `Load ${name} draft`, exact: true });
+    await loadButton.waitFor(); assert.equal(await loadButton.count(), 1, `${name} loader rendered once`);
+  }
   const card = owner.getByRole('region', { name: `${label} blueprint` });
   assert.equal(await card.getByRole('button', { name: `Load ${label} draft` }).isDisabled(), true);
   await card.getByText('Stage coverage and outstanding requirements', { exact: true }).click();
@@ -47,6 +53,10 @@ async function candidateAcceptance({ assert, db, origin, pageFor, request, shot,
   assert.ok(await owner.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
   await owner.getByRole('heading', { name: `1. ${config.first}`, exact: true }).scrollIntoViewIfNeeded();
   await screenshot(owner, '54-packaging-mobile-preview');
+  if (['exhibition', 'digital'].includes(slug)) {
+    await owner.getByRole('region', { name: 'Workflow preview' }).getByText(`${config.field} · Required`, { exact: false }).scrollIntoViewIfNeeded();
+    await screenshot(owner, '54a-packaging-mobile-typed-field');
+  }
   await owner.setViewportSize({ width: 1440, height: 1100 });
   const draft = (await request(owner, `/api/workflow-drafts/${workflowId}`)).body;
   assert.equal(draft.createdById, 'spm'); assert.equal(draft.definition.stages.length, config.count); assert.equal(draft.validationStatus, 'VALID');
@@ -59,7 +69,7 @@ async function candidateAcceptance({ assert, db, origin, pageFor, request, shot,
   for (const extra of [{ actorId: 'director' }, { definition: draft.definition }, { designation: 'OFFICIAL_STANDARD' }]) assert.equal((await request(owner, endpoint, { ...loadInput, ...extra }, 'POST')).status, 400);
   assert.equal((await request(owner, endpoint, { ...loadInput, blueprintRevision: 2 }, 'POST')).status, 409);
   assert.equal((await request(owner, endpoint, { ...loadInput, scopeAcknowledged: false }, 'POST')).status, 400);
-  assert.equal((await request(owner, '/api/workflow-blueprints/gti-digital/draft', loadInput, 'POST')).status, 404);
+  assert.equal((await request(owner, '/api/workflow-blueprints/gti-digital-maintenance/draft', loadInput, 'POST')).status, 404);
   const directorLoad = await request(director, endpoint, loadInput, 'POST'); assert.equal(directorLoad.status, 200); assert.equal(directorLoad.body.actorId, 'director');
   assert.equal((await request(director, endpoint, loadInput, 'POST')).body.id, directorLoad.body.id);
   const sub = await request(owner, `/api/workflow-drafts/${workflowId}/submit`, { commandId: crypto.randomUUID(), expectedRevision: draft.revision, configurationHash: draft.configurationHash, changeSummary: 'Internal evidence pilot only; official rollout gaps retained.' }, 'POST');
@@ -121,6 +131,11 @@ async function candidateAcceptance({ assert, db, origin, pageFor, request, shot,
     await manager.goto(url);
     if (index === 0 && config.field) await manager.getByLabel(`${config.field} *`, { exact: true }).scrollIntoViewIfNeeded();
     await screenshot(manager, `56-packaging-stage-${index + 1}`);
+    if (slug === 'digital' && index === 6) {
+      await manager.getByText('Maintenance lifecycle limitation (optional)', { exact: true }).scrollIntoViewIfNeeded();
+      await screenshot(manager, '56a-digital-maintenance-boundary');
+      assert.equal(project.stages.length, 7);
+    }
     assert.equal(await manager.getByRole('button', { name: 'Complete stage explicitly' }).isDisabled(), false);
     await manager.getByLabel('Stage completion reason').fill('Supported internal evidence gates satisfied');
     await manager.getByRole('button', { name: 'Complete stage explicitly' }).click();

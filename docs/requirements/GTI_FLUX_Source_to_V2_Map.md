@@ -1,4 +1,4 @@
-# GTI source-to-V2 specification map — Phase 5.1 with Phase 5.2 candidates
+# GTI source-to-V2 specification map — Phases 5.1–5.3 internal candidates
 
 Source: **Flux – Project Process Templates & Content Specification**, 29 September 2026 (@Slavo); OOXML revision 20; supplied binary SHA-256 `4d86f90d173a406ad9f3a5ffbba7ce55776b5d209f4bc2a0e4653f299d61b944`.
 
@@ -71,7 +71,7 @@ Fixed event date and organiser milestones; linked projects with separate budgets
 | Event | P0179–P0180 | Counts/notes/photos can be captured. | Lead/meeting entities, integrations and detailed definitions of done unspecified. |
 | Dismantling & wrap-up report | P0181–P0183 | Wrap-up report/cost summary files with configured review. | Storage inventory, per-vendor ratings, annual report reuse and source report approver unspecified. |
 
-Source/coverage map only; no blueprint implementation.
+Phase 5.3 implements an **unapproved internal evidence candidate**, [`gti-exhibition-stand` revision 1](./GTI_Exhibition_Stand_Blueprint_v1.json), retaining all eight source stages. Its complete object-level source traces, supported definition and 15 classified official blockers distinguish manual evidence from fixed-event scheduling, external contractor/organiser approvals, typed related-project budgets, snag/task binding, reusable inventory, three-party vendor ratings and annual report retrieval. See [Phase 5.3](../../src/lib/standard-templates/PHASE-5.3.md) for the inventory and verification. Internal Director contractor review does not authorize external RFP dispatch or a contract.
 
 ### Digital — source section 7
 
@@ -88,7 +88,7 @@ Seven stages plus maintenance, web/iOS/Android; UAT rounds, post-launch support 
 | Launch & handover | P0198–P0200 | Go-live evidence, access-handover record, documentation and training notes. | Deployment, actual credential transfer, support scheduling and signed acceptance. |
 | Maintenance mode | P0201–P0202 | General Tasks can retain change/fix work while RuntimeProject is ACTIVE. | Maintenance mode, indefinite budget/cost ledger and source close-versus-maintain governance need explicit decision. |
 
-Source/coverage map only; no blueprint implementation.
+Phase 5.3 implements an **unapproved internal evidence candidate**, [`gti-digital` revision 1](./GTI_Digital_Blueprint_v1.json), with seven execution stages and 14 classified official blockers. Maintenance (P0185/P0201–P0202) is retained in read-only guidance and an unresolved GTI business decision, never an eighth stage or unsupported database state. Launch completion leaves the project ACTIVE; normal tasks can be created manually while ACTIVE, and explicit Director-controlled final closure remains mandatory. GTI must decide defined/indefinite maintenance and closure triggers. Fields and upload guidance prohibit passwords, API keys, recovery codes and other secrets; only non-secret account/ownership references are requested. This is not a credential vault, automatic secret detection, compliance certification, UAT engine, deployment or verified access handover. See [Phase 5.3](../../src/lib/standard-templates/PHASE-5.3.md) for evidence and limits.
 
 ## Capability coverage and exact boundaries
 
