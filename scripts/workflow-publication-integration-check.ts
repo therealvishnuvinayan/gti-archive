@@ -69,7 +69,7 @@ async function main() {
   const created = await service.createDraft({ commandId: randomUUID(), definition });
   assert.equal(created.validationStatus, "VALID");
   if (process.argv.includes("--baseline")) {
-    assert.equal((await db.$queryRaw<Array<{ n: bigint }>>`SELECT count(*) n FROM "_prisma_migrations"`)[0].n, 113n);
+    assert.equal((await db.$queryRaw<Array<{ n: bigint }>>`SELECT count(*) n FROM "_prisma_migrations"`)[0].n, BigInt(113));
     assert.equal((await service.getDraft(created.workflowId)).configurationHash, created.configurationHash);
     console.log("PASS publication flag off: eight flags enabled on actual 113 schema, new generated client creates/reads drafts; no new-table query."); return;
   }
