@@ -1,4 +1,4 @@
-# GTI source-to-V2 specification map — Phase 5.1
+# GTI source-to-V2 specification map — Phase 5.1 with Phase 5.2 candidates
 
 Source: **Flux – Project Process Templates & Content Specification**, 29 September 2026 (@Slavo); OOXML revision 20; supplied binary SHA-256 `4d86f90d173a406ad9f3a5ffbba7ce55776b5d209f4bc2a0e4653f299d61b944`.
 
@@ -38,7 +38,7 @@ Printed POSM versus merchandise changes fields and makes sourcing mandatory for 
 | Production & Approval | P0138–P0142 | Proof/golden-sample files and supported internal approval roles can be configured. | Production order dispatch/procurement; supplier sample lifecycle and exact chain unspecified. |
 | Delivery & Execution | P0143–P0146 | Files/checklists can capture execution photos, batch evidence and protocol. | Brief-derived minimum outlet photo counts, inventory intake, distribution records and two-party signatures. |
 
-Source/coverage map only; no blueprint implementation.
+Phase 5.2 implements one **unapproved internal evidence candidate**, [`gti-posm-promotional-materials` revision 1](./GTI_POSM_Blueprint_v1.json). The snapshot contains the complete supported definition, every object's paragraph trace, 13 classified official blockers and separate internal/official validation. Its Material Type selector records Printed POSM or Merchandise; it does not branch the schema. Branch-specific fields/files are optional and all six evidence stages remain fixed. Three-offer counts, conditional sourcing, skipping, outlet photo minima, inventory and signed acceptance are not enforced. Owner brief review is a candidate choice because the source does not name that approver; Director production review approves internal evidence only. See [Phase 5.2](../../src/lib/standard-templates/PHASE-5.2.md) for the implemented stage matrix and verification.
 
 ### Retail Display — source section 5
 
@@ -54,7 +54,7 @@ Per-component production units and per-outlet installation; full survey or Owner
 | Prototype & production | P0160–P0161 | Prototype/test evidence, configured supported approval roles. | Physical prototype/unit engine, series production order and Director-approved external dispatch. |
 | Logistics & installation | P0162–P0164 | Installation/photo/protocol files and manually assigned General Tasks. | Per-outlet states, installation scheduling, all-outlets-or-open-issue-task gate, warranties/service tracking. |
 
-Source/coverage map only; no blueprint implementation.
+Phase 5.2 implements an **unapproved internal evidence candidate**, [`gti-retail-display` revision 1](./GTI_Retail_Display_Blueprint_v1.json). The snapshot contains seven stages, all object-level source traces, 12 classified official blockers and separate internal/official validation. Survey evidence has a fixed independent Owner review, explicitly broader than the source's representative-sample case; it does not calculate coverage. Components and outlet statuses remain summaries and attached registers. No engineering/physical certification, repeatable production-unit engine, per-outlet acceptance or issue-task completion gate is implied. See [Phase 5.2](../../src/lib/standard-templates/PHASE-5.2.md) for the implemented stage matrix and verification.
 
 ### Exhibition Stand — source section 6
 

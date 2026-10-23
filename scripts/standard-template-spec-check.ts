@@ -4,6 +4,8 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createRequire } from "node:module";
 import { packagingBlueprint } from "../src/lib/standard-templates/packaging";
+import { posmBlueprint } from "../src/lib/standard-templates/posm";
+import { retailDisplayBlueprint } from "../src/lib/standard-templates/retail-display";
 import { validateBlueprint, coverageClasses } from "../src/lib/standard-templates/contracts";
 import source from "../docs/requirements/GTI_FLUX_Project_Process_Templates_Source.json";
 import mapping from "../docs/requirements/GTI_FLUX_Source_to_V2_Map.json";
@@ -31,3 +33,45 @@ const target = resolve("docs/requirements/GTI_Packaging_Blueprint_v1.json"), ser
 if (process.argv.includes("--write")) writeFileSync(target, serialized);
 else assert.equal(readFileSync(target, "utf8"), serialized, "Blueprint differs from its reviewable revision snapshot; review revision/ID compatibility before exporting.");
 console.log(JSON.stringify({ status: "PASS", sourceParagraphs: source.paragraphs.length, stages: blueprint.definition.stages.length, traceBindings: Object.keys(blueprint.trace).length, definitionBytes: Buffer.byteLength(JSON.stringify(blueprint.definition)), definitionHash: report.definitionHash, officialBlockers: report.validation.officialStandard.length }));
+assert.equal(report.definitionHash, "1f1e33373d711b1e8e0669f65c898fe8bd055e4f6dcd3c124823c57f717b58d7", "Original Packaging content must remain unchanged");
+
+for (const [factory, stem, category, stageCount] of [[posmBlueprint, "POSM", "POSM", 6], [retailDisplayBlueprint, "Retail_Display", "RETAIL_DISPLAY", 7]] as const) {
+  const b = factory();
+  assert.deepEqual(validateBlueprint(b), []);
+  assert.deepEqual(factory(), b);
+  assert.equal(b.source.sha256, source.sha256);
+  assert.equal(b.category, category);
+  assert.equal(b.definition.stages.length, stageCount);
+  const official = validateBlueprint(b, "OFFICIAL_STANDARD");
+  assert.deepEqual(official.map(i => i.path), b.gaps.map(g => `gaps.${g.id}`));
+  for (const binding of [...Object.values(b.trace), ...b.gaps, ...b.tasker]) for (const p of binding.paragraphs) assert.ok(paragraphs.has(p), `Missing source P${p}`);
+  const missing = factory(); delete missing.trace.workflow;
+  assert.ok(validateBlueprint(missing).some(i => i.path === "trace.workflow"));
+  const duplicate = factory(); duplicate.definition.stages[1].id = duplicate.definition.stages[0].id;
+  assert.throws(() => validateBlueprint(duplicate), /DUPLICATE_IDENTIFIER/);
+  const fields = b.definition.stages.flatMap(s => s.capabilities.flatMap(c => c.type === "INFORMATION" ? c.fields : []));
+  if (category === "POSM") {
+    const material = fields.find(f => f.id === "posm_material_type")!;
+    assert.deepEqual(material.options, ["Printed POSM", "Merchandise"]);
+    assert.equal(material.type, "SELECT"); assert.equal(material.required, true);
+    for (const f of fields.filter(f => /^posm_(printed|merch)_/.test(f.id))) assert.equal(f.required, false, `${f.id} must not force the irrelevant branch`);
+    const quotes = b.definition.stages[1].capabilities.find(c => c.id === "posm_merch_quotes")!;
+    assert.ok(quotes.type === "FILE_REQUIREMENT"); assert.equal(quotes.minFiles, 0); assert.equal(quotes.required, false);
+    assert.ok(b.gaps.find(g => g.id === "material-applicability-skip"));
+    assert.ok(b.gaps.find(g => g.id === "structured-offers"));
+    assert.ok(b.gaps.find(g => g.id === "outlet-photo-count"));
+  } else {
+    for (const key of ["width", "height", "depth"]) { const f = fields.find(f => f.id === `retail_${key}`)!; assert.equal(f.type, "NUMBER"); assert.equal(f.min, null); assert.equal(f.defaultValue, null); }
+    assert.equal(fields.find(f => f.id === "retail_dimension_unit")?.defaultValue, null);
+    for (const id of ["survey-coverage-sample", "component-production-units", "outlet-installation-issue-gate", "physical-prototype"]) assert.ok(b.gaps.find(g => g.id === id));
+  }
+  for (const [i, s] of b.definition.stages.entries()) {
+    if (i) assert.ok(s.gates.some(g => g.type === "PRECEDING_STAGE" && g.stageId === b.definition.stages[i - 1].id));
+    for (const c of s.capabilities) if (c.type === "FILE_REQUIREMENT") { assert.equal(c.acceptance, "REVIEWER"); assert.equal(c.acceptedVersionsGate, c.required); }
+  }
+  const snapshot = { blueprint: b, definitionHash: configurationHash(b.definition), validation: { internalCandidate: validateBlueprint(b), officialStandard: official } };
+  const file = resolve(`docs/requirements/GTI_${stem}_Blueprint_v1.json`), data = JSON.stringify(snapshot, null, 2) + "\n";
+  if (process.argv.includes("--write")) writeFileSync(file, data); else assert.equal(readFileSync(file, "utf8"), data, "Reviewed blueprint snapshot changed; review revision and ID compatibility.");
+  console.log(JSON.stringify({ status: "PASS", id: b.id, sourceParagraphs: source.paragraphs.length, traceBindings: Object.keys(b.trace).length, definitionBytes: Buffer.byteLength(JSON.stringify(b.definition)), definitionHash: snapshot.definitionHash, officialBlockers: official.length,
+    stages: b.definition.stages.map(s => ({ id: s.id, title: s.title, fields: s.capabilities.flatMap(c => c.type === "INFORMATION" ? c.fields : []).length, files: s.capabilities.filter(c => c.type === "FILE_REQUIREMENT").length, checklistItems: s.capabilities.flatMap(c => c.type === "CHECKLIST" ? c.items : []).length, reviews: s.capabilities.flatMap(c => c.type === "APPROVAL" ? c.steps : []).length, gates: s.gates.length })) }));
+}

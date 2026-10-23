@@ -768,6 +768,15 @@
     {
       "category": "POSM",
       "name": "POSM & Promotional Materials",
+      "implementation": {
+        "phase": "5.2",
+        "blueprintId": "gti-posm-promotional-materials",
+        "revision": 1,
+        "designation": "UNAPPROVED_CANDIDATE",
+        "scope": "INTERNAL_EVIDENCE_PILOT",
+        "snapshot": "GTI_POSM_Blueprint_v1.json",
+        "coverage": "The snapshot trace maps every field, block, stage, review and gate to exact source paragraphs; its gaps matrix lists 13 official blockers. Material Type is recorded in one template. Branch fields stay optional, all six stages stay fixed; conditional sourcing/skip, three-offer minimum, relational distribution and photo counts are not enforced."
+      },
       "sourceSection": 4,
       "sourcePage": null,
       "processStageCount": 6,
@@ -1233,6 +1242,15 @@
     {
       "category": "RETAIL_DISPLAY",
       "name": "Retail Display",
+      "implementation": {
+        "phase": "5.2",
+        "blueprintId": "gti-retail-display",
+        "revision": 1,
+        "designation": "UNAPPROVED_CANDIDATE",
+        "scope": "INTERNAL_EVIDENCE_PILOT",
+        "snapshot": "GTI_Retail_Display_Blueprint_v1.json",
+        "coverage": "The snapshot trace maps every field, block, stage, review and gate to exact source paragraphs; its gaps matrix lists 12 official blockers. Seven fixed evidence stages do not provide component production units, per-outlet survey/acceptance coverage, physical certification or the all-outlets-or-issue-tasks gate."
+      },
       "sourceSection": 5,
       "sourcePage": null,
       "processStageCount": 7,

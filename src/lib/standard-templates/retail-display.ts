@@ -1,0 +1,90 @@
+import type { CapabilityGap } from "./contracts";
+import { blueprintAuthoring, fileStandardChecks, generalBriefFields, internalScope } from "./authoring";
+
+export const retailDisplayGaps: CapabilityGap[] = [
+  { id: "candidate-decisions", paragraphs: [150, 155, 157, 159, 518, 523], classification: "REQUIRES_BUSINESS_DECISION", missing: "Detailed requiredness, review routing, file limits, checklists and stage completion criteria absent from the source need confirmation; no official designation process.", internalPilotTreatment: "Required fields, counts and gates are labeled candidate decisions. No measurement unit or engineering/compliance threshold is invented." },
+  { id: "survey-coverage-sample", paragraphs: [152, 153], classification: "REQUIRES_NEW_CAPABILITY", missing: "No per-outlet survey coverage calculation or conditional Owner-approved representative-sample decision.", internalPilotTreatment: "Survey-basis choice, attached outlet register and fixed independent Owner evidence review for both choices. This does not verify coverage or sample eligibility." },
+  { id: "component-production-units", paragraphs: [148, 159], classification: "REQUIRES_NEW_CAPABILITY", missing: "No relational production units, per-component dimensions/files/checklists, quantity completeness or component lifecycle.", internalPilotTreatment: "Named component summary, editable scalar fields, attached register and human checklist. Structure/header/side panels/shelf talkers/shutters/lighting are not separate runtime entities." },
+  { id: "outlet-installation-issue-gate", paragraphs: [148, 163, 164, 327], classification: "REQUIRES_NEW_CAPABILITY", missing: "No per-outlet installed/accepted state tracking or every-outlet-accepted OR open-issues-assigned-to-tasks gate; no task-to-outlet adapter.", internalPilotTreatment: "Record a register with source statuses and issue references. Manually create actual General Tasks; a reference or checklist cannot verify their assignment or satisfy the missing source gate." },
+  { id: "concept-task-gates", paragraphs: [154, 155, 327, 444], classification: "REQUIRES_NEW_CAPABILITY", missing: "No automatic concept-task completion, count or stage dependency gate; source supplies no specific concept approver or definition of done.", internalPilotTreatment: "Manually create Initial/Final Concept tasks. Independent uploaded render/planogram review is a proposed internal evidence gate only." },
+  { id: "engineering-safety", paragraphs: [150, 157], classification: "REQUIRES_NEW_CAPABILITY", missing: "No engineering certification, load/weight/safety calculation or validation of retailer, electrical or market compliance.", internalPilotTreatment: "Store supplied dimensions with explicitly entered units, drawings and human inspection notes. No certification or compliance threshold implied." },
+  { id: "physical-prototype", paragraphs: [160, 161], classification: "REQUIRES_NEW_CAPABILITY", missing: "No verified physical prototype lifecycle, assembly-test validation or series-production quality certification.", internalPilotTreatment: "Mandatory internal evidence upload and attestation record a human review only; a PDF/photo cannot prove the physical prototype is valid." },
+  { id: "vendor-production-dispatch", paragraphs: [161, 418, 522], classification: "REQUIRES_EXTERNAL_INTEGRATION", missing: "No vendor/CERBER procurement, full stakeholder approval chain or approved external series-production order dispatch.", internalPilotTreatment: "Director approves internal production evidence. No external order, vendor communication or financial action." },
+  { id: "large-format-preflight", paragraphs: [159, 509, 510, 511, 512, 513, 514, 515, 516], classification: "REQUIRES_NEW_CAPABILITY", missing: "No automatic per-component large-format artwork validation, material-specific resolution, scale or naming preflight.", internalPilotTreatment: "Exact-version uploads and human File Standard review, retaining source base and display variant requirements without certifying binary contents." },
+  { id: "documents-signatures", paragraphs: [163, 408, 412, 424, 426, 429, 432, 505, 521], classification: "REQUIRES_NEW_CAPABILITY", missing: "No prefilled documents, before-artwork signed-contract guard, per-outlet bilateral Acceptance Protocol or external signature lifecycle; legal wording remains open.", internalPilotTreatment: "Upload manually prepared brief/RFP/contract/protocol evidence by purpose. Final completion-document policy remains a separate explicit Director decision." },
+  { id: "scheduling-budget-service", paragraphs: [150, 163, 443, 519, 520], classification: "REQUIRES_NEW_CAPABILITY", missing: "No installation scheduling engine, budget accounting, warranty/service lifecycle or automatic starter/issue tasks.", internalPilotTreatment: "Record dates, currency, schedule/register and service contacts. Use existing General Tasks manually; no automatic assignment or reminders." },
+  { id: "completion-governance", paragraphs: [56, 164, 340, 398], classification: "SUPERSEDED_BY_APPROVED_V2_RULE", missing: "Source stage acceptance and automatic closure/archive cannot replace explicit V2 project completion governance.", internalPilotTreatment: "Fixed stage gates do not certify all outlets. Final completion still requires Director-approved per-project document policy, actual Owner request and separate Director decision; no auto-archive." },
+];
+
+export function retailDisplayBlueprint() {
+  const a = blueprintAuthoring("retail"), { field: f, info, file, checks, approval, stage } = a;
+  const units = "Source does not prescribe a unit or threshold. Record the agreed unit explicitly; dimensions are a summary, not per-outlet validation.";
+  stage("brief", "Brief", [149, 150], "Capture display scope, available space and supplied restrictions. Enter agreed units; no safety or regulatory threshold is inferred.", [
+    info("brief_fields", "Retail Display brief", [148, 150], [
+      f("scope", "Candidate scope", [148, 518], "READ_ONLY", false, [], "", internalScope),
+      f("outlet_type", "Outlet type", [150], "SHORT_TEXT"), f("outlet_count", "Number of outlets", [150], "NUMBER"),
+      f("width", "Available width", [150], "NUMBER", true, [], units), f("height", "Available height", [150], "NUMBER", true, [], units), f("depth", "Available depth", [150], "NUMBER", true, [], units), f("dimension_unit", "Agreed space measurement unit", [150], "SHORT_TEXT", true, [], units),
+      f("shelves", "Number of shelves", [150], "NUMBER"), f("facings", "Number of facings", [150], "NUMBER"), f("skus", "SKUs to display", [150]),
+      f("lighting", "Lighting requirements", [150]), f("locking", "Locking / shutters", [150]),
+      f("budget", "Budget", [150], "NUMBER"), f("currency", "Agreed budget currency", [150], "SHORT_TEXT", true, [], "No source-prescribed currency or accounting implied."),
+      f("market_rules", "Market rules and display restrictions", [150], "LONG_TEXT", true, [], "Record supplied rules, including display bans where applicable; no legal compliance certification."), f("installation_deadline", "Installation deadline", [150], "DATE"),
+    ]),
+    info("creative_brief", "Creative Brief – General content", [412, 413, 436, 437, 438, 439, 440, 441, 442, 443, 444, 445, 448], generalBriefFields(a)),
+    file("brief_file", "Creative Brief – General evidence", [412, 413, 414, 446, 447], "Manually prepare the brief with licensed-elements legal note and File Standard. Independent file review is a candidate choice; no source-specific brief approver is invented."),
+  ]);
+  stage("survey", "Site Survey", [151, 152, 153], "Capture survey evidence and proposed coverage basis. The source allows all outlets or an Owner-approved sample; fixed Owner review here does not calculate either condition.", [
+    info("survey_fields", "Site survey and coverage summary", [152, 153], [
+      f("survey_basis", "Survey coverage basis (record only)", [153], "SELECT", true, ["All outlets", "Representative sample proposed for Owner review"], "No conditional decision or automatic coverage check."),
+      f("survey_sites", "Outlet / site identifiers and coverage register", [148, 152, 153]), f("survey_measurements", "Survey measurements with units by outlet", [152], "LONG_TEXT", true, [], units),
+      f("survey_furniture", "Existing furniture drawings and references", [152]), f("retailer_requirements", "Retailer requirements", [152]), f("electrical_access", "Electrical access", [152]),
+      f("sample_rationale", "Representative sample rationale and excluded outlets", [153], "LONG_TEXT", false, [], "Optional for all-outlet surveys. Human review cannot enforce conditional sample eligibility."),
+    ]),
+    file("survey_evidence", "Survey register, site photographs and furniture drawings", [152, 153], "Include outlet identifiers, measurements and coverage. One bundle cannot prove every outlet was surveyed.", [".pdf", ".xlsx", ".jpg", ".png", ".dxf", ".zip"]),
+    file("rfp_evidence", "RFP evidence where applicable (optional)", [418, 419, 420], "Manually prepared RFP only; no vendor selection or dispatch.", [".pdf"], false),
+    approval("survey_review", "Owner internal survey-evidence review", [153, 518], "PROJECT_OWNER", "Source names Owner for a representative sample only. Fixed Owner review for either basis is a proposed pilot choice, not a conditional sample authorization or coverage gate."),
+  ]);
+  stage("concept", "Concept", [154, 155], "Use existing Initial/Final Concept Universal Tasks for creative work. No mandatory concept count, legacy concept engine or source-unspecified completion rule is introduced.", [
+    info("concept_fields", "Concept instructions and evidence", [155, 444], [f("concept_instructions", "3D visualisation and planogram creative instructions", [155]), f("concept_task_refs", "Concept Task references and reviewed outcomes", [155, 327], "LONG_TEXT", true, [], "References do not establish task completion or mandatory counts.")]),
+    file("renders", "3D visualisation evidence", [155], "Exact reviewed visualisation evidence; file count and independent reviewer are candidate choices.", [".pdf", ".jpg", ".png", ".zip"]),
+    file("planogram", "Planogram layout evidence", [155], "Upload the layout and relevant task references; no relational SKU/facing validation.", [".pdf", ".ai", ".zip"]),
+  ]);
+  stage("technical", "Technical Design", [156, 157], "Record technical design and inspection evidence. Human inspection is not engineering certification.", [
+    info("technical_fields", "Technical design summary", [157], [f("technical_materials", "Materials", [157]), f("construction", "Construction methods", [157]), f("weight", "Weight summary", [157], "NUMBER", false, [], "Source supplies no numerical safety limit."), f("weight_unit", "Agreed weight unit", [157], "SHORT_TEXT", false), f("weight_safety", "Weight and physical-safety considerations", [157]), f("assembly_method", "Assembly method", [157])]),
+    file("technical_drawings", "Technical drawings and supporting versions", [157], "Upload drawings, assembly and inspection evidence. Files do not certify loads, electrical safety or engineering compliance.", [".pdf", ".dxf", ".dwg", ".zip"]),
+    checks("technical_checks", "Technical evidence review", [157], [["technical_attestation", "Construction, materials, weight / safety and assembly evidence reviewed with limitations", [157]]]),
+  ]);
+  stage("specification", "Specification & Graphics per Component", [148, 158, 159], "Retain the source component list and detailed production-unit register as evidence. Scalar fields and files do not implement separate component entities or per-component gates.", [
+    info("component_fields", "Component specification summary", [148, 159], [
+      f("component_notice", "Component coverage limitation", [148, 159], "READ_ONLY", false, [], "", "Structure, header, side panels, shelf talkers, shutters and lighting are separate production units in the source. This candidate stores a summary and reviewed register only; no per-component lifecycle or checklist validation."),
+      f("components", "Applicable components and production-unit identifiers", [148]), f("graphics", "Graphic files by component", [159]), f("dimensions", "Dimensions with units by component", [159]), f("component_materials", "Materials by component", [159]), f("finishes", "Finishes by component", [159]), f("quantities", "Quantities by component", [159]), f("large_format", "Scale, material-specific resolution and component naming", [159, 516]),
+    ]),
+    file("component_register", "Component specification and checklist register", [148, 159], "List production units and individual checks in the register. Review does not enforce repeated rows, component counts or quantity completeness.", [".pdf", ".xlsx", ".csv"]),
+    file("artwork", "Component graphics and large-format Final Artwork", [159, 509, 515, 516], "Exact source files and PDF previews, with display scale/resolution/naming evidence; no binary preflight.", [".pdf", ".ai", ".psd", ".eps", ".zip"]),
+    file("contract_evidence", "Framework / Copyright evidence where applicable (optional)", [424, 425, 426], "Manual evidence only; does not enforce legal signatures or before-artwork external contract acceptance.", [".pdf"], false),
+    fileStandardChecks(a, "DISPLAY"),
+  ]);
+  stage("prototype", "Prototype & Production", [160, 161], "Capture evidence of the mandatory physical prototype, assembly test and series production. Internal evidence approval does not validate physical reality or dispatch a production order.", [
+    info("prototype_fields", "Prototype and series-production summary", [161], [f("physical_prototype", "Physical prototype identification and inspection record", [161]), f("assembly_test", "Assembly test method, result and unresolved issues", [161]), f("prototype_acceptance", "Prototype review / acceptance evidence references", [161]), f("series_production", "Series-production information", [161]), f("production_order", "Production-order approval evidence and outstanding conditions", [161])]),
+    file("prototype_evidence", "Physical prototype and assembly-test evidence", [161], "Photos, reports and test evidence for human review; upload alone never proves physical validation.", [".pdf", ".jpg", ".png", ".zip"]),
+    file("production_evidence", "Series-production and order-approval evidence", [161], "Internal records only; no approved external dispatch, vendor integration or procurement."),
+    checks("prototype_checks", "Prototype evidence review", [161], [["prototype_attestation", "Physical prototype and assembly-test evidence reviewed with limitations", [161]]]),
+    approval("production_review", "Director internal production-evidence approval", [161], "DIRECTOR", "Source production orders require Director approval. This fixed internal decision is narrower than the source approval chain and external order."),
+  ]);
+  stage("installation", "Logistics & Installation", [162, 163, 164], "Record installation evidence by outlet. Create actual General Tasks manually for open issues. General gates do not enforce every outlet accepted or every issue assigned.", [
+    info("installation_fields", "Outlet installation and issue summary", [163, 164], [
+      f("outlet_notice", "Outlet completion limitation", [163, 164], "READ_ONLY", false, [], "", "Source outlet states: planned / installed / accepted / issue. Every outlet must be accepted or open issues assigned as tasks. This candidate has no relational outlet states or task/gate adapter; records and attestations do not enforce that rule."),
+      f("schedule", "Installation schedule by outlet", [163]), f("outlet_register", "Outlet list and planned / installed / accepted / issue status register", [163]),
+      f("installation_date", "Planned installation date summary", [163], "DATE", false), f("warranty", "Warranty details", [163]), f("service_contact", "Service contact", [163], "SHORT_TEXT"),
+      f("open_issues", "Outstanding installation issues and disposition", [164]), f("issue_task_refs", "Manually assigned General Task references by outlet / issue", [164, 327], "LONG_TEXT", false, [], "Create real General Tasks via Tasker. Optional when no issues; references are not verified assignments or a completion gate."),
+      f("acceptance_summary", "Acceptance decisions, quantities, remarks and fix deadlines", [500, 501, 503, 504]),
+    ]),
+    file("installation_evidence", "Outlet schedule, status register and installation photographs", [163], "Attach per-outlet evidence; fixed file counts do not measure outlet completeness.", [".pdf", ".xlsx", ".csv", ".jpg", ".png", ".zip"]),
+    file("acceptance_protocols", "Per-outlet Acceptance Protocol evidence", [163, 499, 505, 506], "Upload the protocol register/files. Independent review is not bilateral signing or verification that every outlet has accepted."),
+    checks("installation_checks", "Installation evidence and issue review", [163, 164], [["installation_attestation", "Outlet evidence, protocols and unresolved exceptions reviewed", [163]], ["issue_attestation", "Open issues and manual General Task references reviewed, or no issues recorded", [164]]]),
+  ]);
+  return a.finish("gti-retail-display", "Retail Display", "RETAIL_DISPLAY", [147, 148, 164],
+    "Seven configurable evidence stages. No relational production units or outlet engine, sample-coverage calculation, engineering certification, physical-prototype validation or all-outlets-or-issue-tasks completion gate.", structuredClone(retailDisplayGaps), [
+      { type: "INITIAL_CONCEPT", paragraphs: [154, 155], instructions: "Manually create Initial Concept tasks for 3D directions and planogram layouts. No source-prescribed mandatory concept count or approver is inferred." },
+      { type: "FINAL_CONCEPT", paragraphs: [154, 155], instructions: "Use Final Concept tasks for development where appropriate, selecting eligible exact inspiration. Reviewed upload evidence does not prove all concept tasks completed." },
+    ]);
+}

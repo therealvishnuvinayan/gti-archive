@@ -10,7 +10,7 @@ import { createRequire } from 'node:module';
 import { cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { packagingAcceptance } from './standard-template-browser-acceptance.mjs';
+import { packagingAcceptance, additionalBlueprintAcceptance } from './standard-template-browser-acceptance.mjs';
 
 const integration=process.env.FLUX_BROWSER_RUNTIME_INTEGRATION==='1';
 const repository=process.cwd(), require=createRequire(join(repository,'package.json'));
@@ -246,7 +246,7 @@ try {
  }
 
  assert.equal(await db.runtimeProject.count(),integration?3:1);
- if(process.env.FLUX_BROWSER_STANDARD_TEMPLATES==='1') { assert.ok(integration); await packagingAcceptance({assert,db,origin,pageFor,request,shot,pass}); assert.equal(await db.runtimeProject.count(),4); }
+ if(process.env.FLUX_BROWSER_STANDARD_TEMPLATES==='1') { assert.ok(integration); const context={assert,db,origin,pageFor,request,shot,pass}; await packagingAcceptance(context); assert.equal(await db.runtimeProject.count(),4); await additionalBlueprintAcceptance(context); assert.equal(await db.runtimeProject.count(),6); }
  assert.equal(JSON.stringify(await db.userAuthorization.findMany({orderBy:{userId:'asc'},include:{user:{select:{role:true,email:true,passwordHash:true}}}})),accountSnapshot);assert.equal(result.pageErrors.length,0);assert.equal(result.blockedExternalRequests.length,0);pass('All accounts/roles/passwords unchanged; zero page errors and external attempts');result.assertions=assertions;result.status='PASS';
 } catch(error){if(browser)result.visibleErrors=await Promise.all(browser.contexts().flatMap(c=>c.pages()).map(async p=>({url:p.url(),alerts:await p.locator('[role=alert]').allTextContents().catch(()=>[])})));result.status='FAIL';result.error=String(error.stack||error);throw error;}
 finally{writeFileSync(join(artifact,'result.json'),JSON.stringify(result,null,2));writeFileSync(join(artifact,'server.log'),logs.join(''));await browser?.close();if(server){server.kill('SIGTERM');await new Promise(r=>server.once('exit',r));}if(storage)await new Promise(r=>storage.close(r));await db?.$disconnect();if(started)run('pg_ctl',['-D',data,'-m','fast','-w','stop']);rmSync(root,{recursive:true,force:true});console.log('Runtime browser evidence: '+artifact);}

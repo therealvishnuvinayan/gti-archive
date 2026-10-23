@@ -2,12 +2,12 @@ import "server-only";
 import { DraftError, commandId, ensure, record } from "../stage-builder/contracts";
 import { createDraft } from "../stage-builder/service";
 import { validateBlueprint } from "./contracts";
-import { packagingBlueprint } from "./packaging";
+import { getBlueprint } from "./registry";
 
-export async function createPackagingDraft(raw: unknown) {
+export async function createBlueprintDraft(blueprintId: string, raw: unknown) {
   const input = record(raw, ["commandId", "blueprintRevision", "scopeAcknowledged"]);
   commandId(input.commandId);
-  const blueprint = packagingBlueprint();
+  const blueprint = getBlueprint(blueprintId);
   ensure(input.blueprintRevision === blueprint.revision, "BLUEPRINT_REVISION_CHANGED", 409);
   ensure(input.scopeAcknowledged === true, "ACKNOWLEDGE_INTERNAL_CANDIDATE_SCOPE");
   const issues = validateBlueprint(blueprint);
@@ -16,3 +16,6 @@ export async function createPackagingDraft(raw: unknown) {
   // creator and appends revision/event/outbox atomically. No Prisma write here.
   return createDraft({ commandId: input.commandId, definition: blueprint.definition });
 }
+
+// Compatibility entry point: same identity, payload, definition and createDraft path.
+export const createPackagingDraft = (raw: unknown) => createBlueprintDraft("gti-packaging-artwork", raw);

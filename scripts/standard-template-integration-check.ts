@@ -8,6 +8,8 @@ import { realpathSync, statSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import type { PrismaClient } from "@prisma/client";
 import { packagingBlueprint } from "../src/lib/standard-templates/packaging";
+import { posmBlueprint } from "../src/lib/standard-templates/posm";
+import { retailDisplayBlueprint } from "../src/lib/standard-templates/retail-display";
 import { validateBlueprint } from "../src/lib/standard-templates/contracts";
 import { configurationHash } from "../src/lib/stage-builder/hash";
 import source from "../docs/requirements/GTI_FLUX_Project_Process_Templates_Source.json";
@@ -49,39 +51,51 @@ async function main() {
   const governance = requireLocal(join(compiled, "src/lib/runtime-integration/creation.js")) as typeof import("../src/lib/runtime-integration/creation");
   const completion = requireLocal(join(compiled, "src/lib/runtime-completion/service.js")) as typeof import("../src/lib/runtime-completion/service");
   for (const flag of ["STAGE_BUILDER_DRAFTS", "STAGE_BUILDER_PUBLICATION", "SHARED_FILE_IDENTITY", "APPROVAL_ENGINE", "SHARED_EVENTS", "UNIVERSAL_TASKER", "TASKER_DELIVERABLES", "TASKER_CONCEPTS", "TASKER_SISTERS", "STAGE_RUNTIME", "RUNTIME_INTEGRATION"]) process.env[`FLUX_${flag}`] = "1";
-  const blueprint = packagingBlueprint();
+  for (const { factory, material } of [{ factory: packagingBlueprint, material: null }, { factory: posmBlueprint, material: "Printed POSM" }, { factory: posmBlueprint, material: "Merchandise" }, { factory: retailDisplayBlueprint, material: null }]) {
+  const startingAssertions = assertions, blueprint = factory();
+  // Preserve the original Packaging entry point and also prove registry parity.
+  const load = (raw: unknown) => blueprint.category === "ARTWORK_PACKAGING" ? importer.createPackagingDraft(raw) : importer.createBlueprintDraft(blueprint.id, raw);
   assert.deepEqual(validateBlueprint(blueprint), []);
-  assert.ok(validateBlueprint(blueprint, "OFFICIAL_STANDARD").length >= 11);
-  assert.deepEqual(packagingBlueprint(), blueprint);
-  assert.equal(configurationHash(packagingBlueprint()), configurationHash(blueprint));
+  assert.equal(validateBlueprint(blueprint, "OFFICIAL_STANDARD").length, blueprint.gaps.length);
+  assert.deepEqual(factory(), blueprint);
+  assert.equal(configurationHash(factory()), configurationHash(blueprint));
   assert.equal(blueprint.source.sha256, source.sha256);
   const paragraphs = new Set(source.paragraphs.map(p => Number(p.id.slice(1))));
   for (const trace of Object.values(blueprint.trace)) for (const p of trace.paragraphs) assert.ok(paragraphs.has(p));
   for (const gap of blueprint.gaps) for (const p of gap.paragraphs) assert.ok(paragraphs.has(p));
   assert.deepEqual(mapping.processes.map(p => p.processStageCount), [8, 6, 7, 8, 7]);
   for (const process of mapping.processes) for (const stage of process.stages) for (const requirement of stage.sourceRequirements) assert.equal(source.paragraphs.find(p => Number(p.id.slice(1)) === requirement.paragraph)?.text, requirement.text);
-  assert.equal(blueprint.definition.stages.length, 6);
+  assert.equal(blueprint.definition.stages.length, blueprint.category === "RETAIL_DISPLAY" ? 7 : 6);
   assert.deepEqual(blueprint.tasker.map(t => t.type), ["INITIAL_CONCEPT", "FINAL_CONCEPT"]);
-  const broken = packagingBlueprint(); delete broken.trace.pkg_fa_barcode;
-  assert.ok(validateBlueprint(broken).some(i => i.path === "trace.pkg_fa_barcode"));
-  const malformed = packagingBlueprint(); malformed.definition.stages[1].id = malformed.definition.stages[0].id;
+  const broken = factory(); delete broken.trace.workflow;
+  assert.ok(validateBlueprint(broken).some(i => i.path === "trace.workflow"));
+  const malformed = factory(); malformed.definition.stages[1].id = malformed.definition.stages[0].id;
   assert.throws(() => validateBlueprint(malformed), /DUPLICATE_IDENTIFIER/);
   const accounts = JSON.stringify(await db.user.findMany({ orderBy: { id: "asc" }, include: { authorization: true } }));
   const nativeCounts = [await db.project.count(), await db.projectArchive.count(), await db.projectFinalCompletionRequest.count()];
   const input = { commandId: randomUUID(), blueprintRevision: 1, scopeAcknowledged: true };
-  for (const id of ["jpm", "designer", "digital", "tech"]) { await as(id); await assert.rejects(importer.createPackagingDraft({ ...input, commandId: randomUUID() })); }
+  token = null; await assert.rejects(load(input));
+  for (const id of ["jpm", "designer", "digital", "tech"]) { await as(id); await assert.rejects(load({ ...input, commandId: randomUUID() })); }
   await as("spm");
-  await assert.rejects(importer.createPackagingDraft({ ...input, actorId: "director" }), /UNSUPPORTED_PROPERTY/);
-  await assert.rejects(importer.createPackagingDraft({ ...input, scopeAcknowledged: false }), /ACKNOWLEDGE/);
-  await assert.rejects(importer.createPackagingDraft({ ...input, blueprintRevision: 2 }), /BLUEPRINT_REVISION_CHANGED/);
-  process.env.FLUX_STAGE_BUILDER_DRAFTS = "0"; await assert.rejects(importer.createPackagingDraft(input), /DRAFTS_DISABLED/); process.env.FLUX_STAGE_BUILDER_DRAFTS = "1";
+  for (const extra of [{ actorId: "director" }, { definition: blueprint.definition }, { designation: "OFFICIAL_STANDARD" }, { blueprintId: "gti-packaging-artwork" }]) await assert.rejects(load({ ...input, ...extra }), /UNSUPPORTED_PROPERTY/);
+  for (const id of ["unknown", "__proto__", "constructor", "../packaging", "gti-exhibition-stand", "gti-digital"]) await assert.rejects(importer.createBlueprintDraft(id, input), /BLUEPRINT_NOT_FOUND/);
+  await assert.rejects(load({ ...input, scopeAcknowledged: false }), /ACKNOWLEDGE/);
+  await assert.rejects(load({ ...input, blueprintRevision: 2 }), /BLUEPRINT_REVISION_CHANGED/);
+  await assert.rejects(load({ ...input, blueprintRevision: "1" }), /BLUEPRINT_REVISION_CHANGED/);
+  process.env.FLUX_STAGE_BUILDER_DRAFTS = "0"; await assert.rejects(load(input), /DRAFTS_DISABLED/); process.env.FLUX_STAGE_BUILDER_DRAFTS = "1";
   const versionsBefore = await db.publishedWorkflowVersion.count(), projectsBefore = await db.runtimeProject.count();
-  const draft = await importer.createPackagingDraft(input);
+  const draft = await load(input);
   assert.equal(draft.actorId, "spm"); assert.equal(draft.validationStatus, "VALID");
-  assert.equal((await importer.createPackagingDraft(input)).id, draft.id);
+  assert.equal((await load(input)).id, draft.id);
+  assert.equal((await importer.createBlueprintDraft(blueprint.id, input)).id, draft.id);
+  assert.equal(draft.configurationHash, configurationHash(blueprint.definition));
+  assert.equal(await db.eventOutbox.count({ where: { eventId: `draft:${draft.id}` } }), 1);
+  assert.equal(await db.workflowDraftRevision.count({ where: { workflowId: draft.workflowId } }), 1);
+  const otherId = blueprint.category === "POSM" ? "gti-retail-display" : "gti-posm-promotional-materials";
+  await assert.rejects(importer.createBlueprintDraft(otherId, input), /COMMAND_REUSED/);
   assert.equal(await db.publishedWorkflowVersion.count(), versionsBefore); assert.equal(await db.runtimeProject.count(), projectsBefore);
   await as("spm2"); await assert.rejects(drafts.getDraft(draft.workflowId));
-  await as("director"); const own = await importer.createPackagingDraft({ ...input, commandId: randomUUID() }); assert.equal(own.actorId, "director");
+  await as("director"); const own = await load({ ...input, commandId: randomUUID() }); assert.equal(own.actorId, "director");
   await as("spm");
   const edited = structuredClone(draft.definition); edited.name += " · isolated acceptance";
   const revision = await drafts.reviseDraft(draft.workflowId, { commandId: randomUUID(), expectedRevision: 1, definition: edited });
@@ -93,7 +107,7 @@ async function main() {
   await as("director"); const approved = await publication.decideWorkflowPublication(submitted.id, decision);
   const version = await db.publishedWorkflowVersion.findUniqueOrThrow({ where: { id: approved.publishedVersion!.id } });
   assert.equal(version.configurationHash, revision.configurationHash); assert.deepEqual(version.definition, revision.definition);
-  const create = { commandId: randomUUID(), publishedVersionId: version.id, definitionHash: version.configurationHash, title: "Synthetic Packaging internal evidence pilot", description: "No external services or official standard designation", ownerId: "spm", coOwnerIds: ["jpm"], executorIds: ["designer"] };
+  const create = { commandId: randomUUID(), publishedVersionId: version.id, definitionHash: version.configurationHash, title: `Synthetic ${blueprint.category} ${material ?? ""} internal pilot`, description: "No external services or official standard designation", ownerId: "spm", coOwnerIds: ["jpm"], executorIds: ["designer"] };
   await as("spm"); const created = await runtime.createRuntimeProject(create), projectId = created.projectId;
   await as("jpm"); await assert.rejects(runtime.createRuntimeProject({ ...create, commandId: randomUUID(), ownerId: "jpm", coOwnerIds: ["spm"] }));
   const jpmCreation = { ...create, commandId: randomUUID(), ownerId: "jpm", coOwnerIds: ["spm"] };
@@ -102,12 +116,12 @@ async function main() {
   await as("director");
   const creationRequest = await db.runtimeCreationRequest.findUniqueOrThrow({ where: { id: requested.requestId } });
   await governance.decideRuntimeCreation({ commandId: randomUUID(), requestId: creationRequest.id, snapshotHash: creationRequest.snapshotHash, outcome: "APPROVE", confirmed: true, reason: "Genuine synthetic Director approval" });
-  await runtime.createRuntimeProject({ ...create, commandId: randomUUID(), title: "Director Packaging fixture" });
+  await runtime.createRuntimeProject({ ...create, commandId: randomUUID(), title: `Director ${blueprint.category} fixture` });
   const initial = await runtime.getRuntimeProject(projectId);
   assert.equal(initial.workflow.versionId, version.id); assert.equal(initial.participants.some(p => p.id === "director"), false);
   assert.deepEqual((await db.runtimeStage.findMany({ where: { projectId }, orderBy: { position: "asc" } })).map(s => s.configuration), edited.stages);
   // A later approved version cannot retarget the existing project.
-  await as("spm"); const v3 = await drafts.reviseDraft(draft.workflowId, { commandId: randomUUID(), expectedRevision: 2, definition: { ...edited, name: "Packaging revision for future instances" } });
+  await as("spm"); const v3 = await drafts.reviseDraft(draft.workflowId, { commandId: randomUUID(), expectedRevision: 2, definition: { ...edited, name: `${blueprint.category} revision for future instances` } });
   const next = await publication.submitWorkflowDraft(draft.workflowId, { commandId: randomUUID(), expectedRevision: 3, configurationHash: v3.configurationHash, changeSummary: "Future version only" });
   await as("director"); await publication.decideWorkflowPublication(next.id, { expected: { ...next.expected, commandId: randomUUID() }, configurationHash: next.configurationHash, confirmed: true, outcome: "APPROVE", reason: "Synthetic future revision" });
   assert.equal((await runtime.getRuntimeProject(projectId)).workflow.versionId, version.id);
@@ -118,11 +132,17 @@ async function main() {
     const config = (await runtime.getRuntimeProject(projectId, stage.id)).stage.definition;
     for (const block of config.capabilities) {
       if (block.type === "INFORMATION") {
-        const values = Object.fromEntries(block.fields.filter(f => f.type !== "READ_ONLY").map(f => [f.id, f.type === "NUMBER" ? 1 : f.type === "DATE" ? "2026-11-01" : f.type === "SELECT" ? f.options[0] : `Synthetic ${f.label}`]));
-        await cmd(stage.id, "FIELDS", { values });
+        const irrelevant = (id: string) => material === "Printed POSM" ? id.startsWith("posm_merch_") : material === "Merchandise" ? id.startsWith("posm_printed_") : false;
+        const values = Object.fromEntries(block.fields.filter(f => f.type !== "READ_ONLY" && !irrelevant(f.id)).map(f => [f.id, f.id === "posm_material_type" ? material : f.type === "NUMBER" ? 1 : f.type === "DATE" ? "2026-11-01" : f.type === "SELECT" ? f.options[0] : `Synthetic ${f.label}`]));
+        if (Object.keys(values).length) await cmd(stage.id, "FIELDS", { values });
+        for (const field of block.fields.filter(f => irrelevant(f.id))) assert.equal(field.required, false);
+        const numeric = block.fields.find(f => f.type === "NUMBER" && !irrelevant(f.id));
+        if (numeric) await assert.rejects(cmd(stage.id, "FIELDS", { values: { [numeric.id]: "invalid numeric input" } }));
+        if (block.fields.some(f => f.id === "posm_material_type")) await assert.rejects(cmd(stage.id, "FIELDS", { values: { posm_material_type: "Invented third branch" } }));
         for (const f of block.fields.filter(f => f.type === "READ_ONLY")) await assert.rejects(cmd(stage.id, "FIELDS", { values: { [f.id]: "Forged scope" } }), /READ_ONLY/);
       }
       if (block.type === "FILE_REQUIREMENT") {
+        if (material && !block.required) continue; // Neither branch is forced to supply irrelevant files or three quotes.
         const upload = await cmd(stage.id, "UPLOAD_PREPARED", { capabilityId: block.id, fileName: "evidence.pdf", mimeType: "application/pdf", fileSize: 6, supersedesId: null }) as { submissionId: string; versionId: string };
         const row = await db.runtimeFileSubmission.findUniqueOrThrow({ where: { id: upload.submissionId } });
         objects.set(row.stagingKey, { ContentLength: 6, ContentType: "application/pdf", ETag: `"${row.id}"` });
@@ -168,6 +188,8 @@ async function main() {
   assert.deepEqual([await db.project.count(), await db.projectArchive.count(), await db.projectFinalCompletionRequest.count()], nativeCounts);
   assert.equal(JSON.stringify(await db.user.findMany({ orderBy: { id: "asc" }, include: { authorization: true } })), accounts);
   assert.equal(external, 0);
-  console.log(`PASS Phase 5.1 Packaging: ${assertions} assertions; source map, deterministic trace, role-safe import/edit, genuine publication, pinned version, governed creation, all six populated runtime stages, independent files/approvals and Director policy/final completion; fake storage only.`);
+  console.log(`PASS ${blueprint.id} ${material ?? ""}: ${assertions - startingAssertions} assertions; source trace, role-safe/idempotent import, immutable edits, genuine publication, pinned governed runtime, ${blueprint.definition.stages.length} populated stages, independent exact files/approvals and Director policy/final completion; fake storage only.`);
+  }
+  console.log(`PASS Phase 5.2 standard templates: ${assertions} assertions; Packaging preserved, both POSM material choices and Retail Display; zero external requests.`);
 }
 main().catch(error => { console.error(error); process.exitCode = 1; }).finally(() => db.$disconnect());
