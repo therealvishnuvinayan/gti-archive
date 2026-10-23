@@ -17,7 +17,8 @@ export async function GET(
 
   try {
     const downloadUrl = await getArchivedFileDownloadUrlForUser(user, archivedFileId);
-    return NextResponse.redirect(downloadUrl);
+    // Keep protected relative paths on the browser origin (including behind a proxy).
+    return new Response(null, { status: 307, headers: { Location: downloadUrl, "Cache-Control": "private, no-store" } });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unable to create an archive download link.";

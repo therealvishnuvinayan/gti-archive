@@ -1,3 +1,4 @@
+import { archiveSharingEnabled } from "@/lib/archive-sharing/activation";
 import { archiveVerificationEnabled } from "@/lib/archive-verification/activation";
 import { canArchive } from "@/lib/authorization/archive-rules";
 import { redirect } from "next/navigation";
@@ -79,7 +80,7 @@ export default async function ArchiveCategoryPage({
   if (archiveFoldersEnabled() && resolvedSearchParams.view !== "all" && !initialSearch) {
     const folderId = typeof resolvedSearchParams.folder === "string" ? resolvedSearchParams.folder : null;
     return <DashboardLayout topbarProps={{ searchPlaceholder: "Search archives..." }}>
-      <ArchiveFolderWorkspace verificationEnabled={archiveVerificationEnabled()} key={`${category.id}:${folderId ?? "root"}`} categoryId={category.id} categoryName={category.name} slug={category.slug} folderId={folderId} />
+      <ArchiveFolderWorkspace sharingEnabled={archiveSharingEnabled()} verificationEnabled={archiveVerificationEnabled()} key={`${category.id}:${folderId ?? "root"}`} categoryId={category.id} categoryName={category.name} slug={category.slug} folderId={folderId} />
     </DashboardLayout>;
   }
 
@@ -94,7 +95,7 @@ export default async function ArchiveCategoryPage({
     >
       {archiveFoldersEnabled() && <Link href={`/archives/${category.slug}`} className="mb-4 inline-block text-sm text-brand">← Browse folders</Link>}
       <ArchiveCategoryWorkspace
-        verificationEnabled={archiveVerificationEnabled()}
+        sharingEnabled={archiveSharingEnabled()} verificationEnabled={archiveVerificationEnabled()}
         canEdit={canArchive(user, "archive.editMetadata")}
         canDelete={canArchive(user, "archive.delete")}
         canShare={canArchive(user, "archive.shareExternal")}

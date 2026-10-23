@@ -1,6 +1,7 @@
 // Uses a disposable private PostgreSQL cluster, fictional logins and a local S3
 // protocol fixture. No .env files, live credentials, email or remote storage.
 import assert from 'node:assert/strict';
+import { archiveSharingAcceptance, confirmBrowserGrant } from './archive-sharing-browser-acceptance.mjs';
 import { archiveVerificationAcceptance } from './archive-verification-browser-acceptance.mjs';
 import { archiveFolderAcceptance } from './archive-folders-browser-acceptance.mjs';
 import { spawn, spawnSync } from 'node:child_process';
@@ -22,7 +23,7 @@ const pgArgs=['-X','-qAt','-h',socket,'-p','55437','-U','flux_browser','-v','ON_
 const run=(cmd,args,options={})=>{const r=spawnSync(cmd,args,{cwd:root,env,encoding:'utf8',timeout:60000,maxBuffer:16*1024*1024,...options});assert.equal(r.status,0,r.stderr||r.stdout);return r.stdout.trim();};
 const sql=q=>run('psql',pgArgs,{input:q});
 let started=false,server,browser,db,storage;
-const result={checks:[],screens:[],pageErrors:[],blockedExternalRequests:[],storageOperations:[],expectedDenials:[],unexpectedResponses:[]};
+const result={checks:[],screens:[],pageErrors:[],blockedExternalRequests:[],storageOperations:[],expectedDenials:[],unexpectedResponses:[],redirects:[],failedFileRequests:[]};
 const logs=[], objects=new Map(), pass=message=>{result.checks.push(message);console.log('PASS browser: '+message);};
 try {
  mkdirSync(socket,{mode:0o700});mkdirSync(app);
@@ -59,18 +60,18 @@ try {
  cpSync(join(build,'.next'),join(app,'.next'),{recursive:true,filter:source=>!source.startsWith(join(build,'.next/dev'))&&!source.startsWith(join(build,'.next/cache'))});symlinkSync(join(repository,'node_modules'),join(app,'node_modules'),'dir');
  // Guard Node's HTTP clients as well as the browser, independently of AWS endpoint configuration.
  const guard=join(root,'local-network-only.cjs');writeFileSync(guard,`for (const protocol of ['http','https']) { const module = require('node:'+protocol), original=module.request; module.request=function(...args){const arg=args[0];const host=typeof arg==='string'||arg instanceof URL?new URL(arg).hostname:arg?.hostname||arg?.host||'localhost';if(!['127.0.0.1','localhost','::1'].includes(host))throw new Error('EXTERNAL_NETWORK_FORBIDDEN:'+host);return original.apply(this,args);}; } const originalFetch=global.fetch; global.fetch=(input,...args)=>{const url=new URL(typeof input==='string'||input instanceof URL?input:input.url);if(!['127.0.0.1','localhost','::1'].includes(url.hostname))throw new Error('EXTERNAL_FETCH_FORBIDDEN:'+url.hostname);return originalFetch(input,...args);};`);
- server=spawn(process.execPath,['--require',guard,require.resolve('next/dist/bin/next'),'start','--hostname','127.0.0.1','--port','3107'],{cwd:app,env:{...env,DATABASE_URL:url,DIRECT_URL:url,APP_URL:'http://127.0.0.1:3107',NODE_ENV:'production',FLUX_ARCHIVE_FOLDERS:process.argv.includes('--without-folders')?'0':'1',FLUX_ARCHIVE_VERIFICATION:process.argv.includes('--verification')?'1':'0',NEXT_PUBLIC_REALTIME_PROVIDER:'none',AWS_REGION:'us-east-1',AWS_ACCESS_KEY_ID:'fixture-only',AWS_SECRET_ACCESS_KEY:'fixture-only',AWS_S3_BUCKET:'fixture-bucket',AWS_ENDPOINT_URL_S3:'http://127.0.0.1:3108',S3_USE_ACCELERATE_ENDPOINT:'false'},stdio:['ignore','pipe','pipe']});
+ server=spawn(process.execPath,['--require',guard,require.resolve('next/dist/bin/next'),'start','--hostname','127.0.0.1','--port','3107'],{cwd:app,env:{...env,DATABASE_URL:url,DIRECT_URL:url,APP_URL:'http://127.0.0.1:3107',NODE_ENV:'production',FLUX_ARCHIVE_FOLDERS:process.argv.includes('--without-folders')?'0':'1',FLUX_ARCHIVE_VERIFICATION:process.argv.includes('--verification')?'1':'0',FLUX_ARCHIVE_SHARING:process.argv.includes('--sharing')?'1':'0',NEXT_PUBLIC_REALTIME_PROVIDER:'none',AWS_REGION:'us-east-1',AWS_ACCESS_KEY_ID:'fixture-only',AWS_SECRET_ACCESS_KEY:'fixture-only',AWS_S3_BUCKET:'fixture-bucket',AWS_ENDPOINT_URL_S3:'http://127.0.0.1:3108',S3_USE_ACCELERATE_ENDPOINT:'false'},stdio:['ignore','pipe','pipe']});
  for(const stream of [server.stdout,server.stderr])stream.on('data',b=>logs.push(b.toString()));
  const origin='http://127.0.0.1:3107';for(let i=0;i<80;i++){try{if((await fetch(origin+'/sign-in')).status===200)break;}catch{}assert.ok(i<79,'Server did not start');await new Promise(r=>setTimeout(r,250));}
  const harness=process.env.FLUX_PLAYWRIGHT_PACKAGE||'/Users/vishnuvinayan/Projects/dinepanel/qa-harness/package.json';const {chromium}=createRequire(harness)('playwright-core');browser=await chromium.launch({headless:true,args:['--disable-background-networking']});result.chromium=browser.version();
- const pages=new Map();async function freshPage(){const context=await browser.newContext({viewport:{width:1440,height:1100}});await context.route('**/*',route=>{const u=new URL(route.request().url());if([origin,'http://127.0.0.1:3108'].includes(u.origin)||['data:','blob:'].includes(u.protocol))return route.continue();result.blockedExternalRequests.push(u.origin);return route.abort();});const page=await context.newPage();page.setDefaultTimeout(15000);page.on('pageerror',e=>result.pageErrors.push(e.message));page.on('response',response=>{if(response.status()<400)return;const path=new URL(response.url()).pathname;const expected=([403,404].includes(response.status())&&/^\/api\/archives\/(files\/[^/]+\/download|organization|verification)$/.test(path))||(response.status()===409&&path==='/api/archives/organization');(expected?result.expectedDenials:result.unexpectedResponses).push({path,status:response.status()});});return page;}
+ const pages=new Map();async function freshPage(){const context=await browser.newContext({viewport:{width:1440,height:1100}});await context.route('**/*',route=>{const u=new URL(route.request().url());if([origin,'http://127.0.0.1:3108'].includes(u.origin)||['data:','blob:'].includes(u.protocol))return route.continue();result.blockedExternalRequests.push(u.origin);return route.abort();});const page=await context.newPage();page.setDefaultTimeout(15000);page.on('pageerror',e=>result.pageErrors.push(e.message));page.on('requestfailed',request=>{if(/\/api\/(archives\/files|file-versions)\//.test(request.url()))result.failedFileRequests.push({url:request.url(),error:request.failure()});});page.on('response',response=>{if(response.status()>=300&&response.status()<400&&response.url().includes('/api/archives/files/'))result.redirects.push({url:response.url(),location:response.headers().location});if(response.status()<400)return;const path=new URL(response.url()).pathname;const expected=([403,404].includes(response.status())&&/^\/api\/archives\/(files\/[^/]+\/(download|preview)|organization|verification|access)$/.test(path))||([403,404].includes(response.status())&&path.startsWith('/api/file-versions/'))||(response.status()===409&&path==='/api/archives/organization');(expected?result.expectedDenials:result.unexpectedResponses).push({path,status:response.status()});});return page;}
  async function pageFor(id){if(pages.has(id))return pages.get(id);const page=await freshPage();await page.goto(origin+'/sign-in');await page.locator('[name=email]').fill(`${id}@browser.invalid`);await page.locator('[name=password]').fill(password);await page.locator('button[type=submit]').click();await page.waitForURL(u=>!u.pathname.startsWith('/sign-in'));pages.set(id,page);return page;}
  async function shot(page,name){await page.screenshot({path:join(artifact,name+'.png'),fullPage:true});result.screens.push(name);}
  for(const id of ['director','spm','designer','digital']){
   const page=await pageFor(id);await page.goto(origin+'/archives/fixture-artwork?view=all');await page.getByText('approved-artwork.pdf',{exact:true}).first().waitFor();
   assert.equal(await page.getByRole('button',{name:'Edit',exact:true}).count(),['director','spm'].includes(id)?1:0);
   assert.equal(await page.getByRole('button',{name:'Delete',exact:true}).count(),id==='director'?1:0);
-  assert.equal(await page.getByRole('button',{name:'File access',exact:true}).count(),['director','spm'].includes(id)?1:0);
+  assert.equal(await page.getByRole('button',{name:process.argv.includes('--sharing')?'Manage access':'File access',exact:true}).count(),['director','spm'].includes(id)?1:0);
   assert.equal(await page.getByRole('link',{name:'Download',exact:true}).count(),1);
   assert.equal(await page.getByRole('button',{name:/^Verify/}).count(),0);
   await shot(page,id+'-archive');
@@ -82,12 +83,14 @@ try {
   await page.goto(origin+'/archives/fixture-artwork?view=all');assert.equal(await page.getByRole('link',{name:'Download',exact:true}).count(),0);
  }
  pass('JPM, both technical administrators and an ungranted Designer cannot download through direct routes or the Archive UI');
- const spm=await pageFor('spm');await spm.goto(origin+'/archives/fixture-artwork?view=all');await spm.getByRole('button',{name:'File access',exact:true}).click();
+ const spm=await pageFor('spm');await spm.goto(origin+'/archives/fixture-artwork?view=all');await spm.getByRole('button',{name:process.argv.includes('--sharing')?'Manage access':'File access',exact:true}).click();
+ if(process.argv.includes('--sharing')) {const dialog=await confirmBrowserGrant(spm);await dialog.getByRole('button',{name:'Close',exact:true}).click();} else {
  const grantSaved=spm.waitForResponse(response=>response.url().endsWith('/api/archives/access')&&response.request().method()==='PUT');
  const grantReloaded=spm.waitForResponse(response=>response.url().includes('/api/archives/access?')&&response.request().method()==='GET');
  await spm.getByLabel('Fixture designer2',{exact:true}).click();assert.equal((await grantSaved).status(),200);await grantReloaded;
  await spm.waitForFunction(()=>[...document.querySelectorAll('label')].some(label=>label.textContent.includes('Fixture designer2')&&label.querySelector('input')?.checked));
  assert.equal(await spm.getByLabel('Fixture designer2',{exact:true}).isChecked(),true);
+ }
  for(let i=0;i<50;i++){if(await db.userArchiveAssetAccess.count({where:{userId:'designer2',manualArchiveFileId:'artwork-file'}}))break;await new Promise(r=>setTimeout(r,100));}
  assert.equal(await db.userArchiveAssetAccess.count({where:{userId:'designer2',manualArchiveFileId:'artwork-file',grantedById:'spm'}}),1);
  const scoped=await pageFor('designer2');await scoped.goto(origin+'/archives/fixture-artwork?view=all');await scoped.getByRole('link',{name:'Download',exact:true}).waitFor();await shot(spm,'spm-file-grants');
@@ -98,8 +101,9 @@ try {
  pass('Digital Lead category management is available without deletion; Designer cannot enter category management');
  if(!process.argv.includes('--without-folders')) await archiveFolderAcceptance({pageFor,db,origin,shot,pass});
  if(process.argv.includes('--verification')) await archiveVerificationAcceptance({pageFor,db,origin,shot,pass,objects,foldersEnabled:!process.argv.includes('--without-folders')});
+ if(process.argv.includes('--sharing')) await archiveSharingAcceptance({pageFor,db,origin,shot,pass,objects,foldersEnabled:!process.argv.includes('--without-folders')});
  assert.equal(JSON.stringify(await db.userAuthorization.findMany({orderBy:{userId:'asc'},include:{user:{select:{role:true,email:true,passwordHash:true}}}})),accountSnapshot);
- assert.equal(await db.project.count(),0);assert.deepEqual(result.pageErrors,[]);assert.deepEqual(result.unexpectedResponses,[]);assert.deepEqual(result.blockedExternalRequests,[]);assert.ok(!logs.join('').includes('EXTERNAL_NETWORK_FORBIDDEN'));
+ assert.equal(await db.project.count(),0);assert.deepEqual(result.pageErrors,[]);assert.deepEqual(result.unexpectedResponses,[]);assert.deepEqual(result.blockedExternalRequests,[]);assert.deepEqual(result.failedFileRequests,[]);assert.ok(!logs.join('').includes('EXTERNAL_NETWORK_FORBIDDEN'));
  pass('Nine account assignments preserved; no projects created; all browser/storage traffic stays on isolated loopback');
  result.status='PASS';
 } catch(error) {result.status='FAIL';result.error=error.message;console.error(error.stack);process.exitCode=1;if(browser)for(const [i,context]of browser.contexts().entries())for(const [j,page]of context.pages().entries()){await page.screenshot({path:join(artifact,`failure-${i}-${j}.png`),fullPage:true}).catch(()=>{});console.log(JSON.stringify({url:page.url().split('#')[0],text:(await page.locator('body').innerText()).slice(-3500)}));}}

@@ -300,7 +300,7 @@ function checkAssignmentServices(runtime = false) {
     const snapshot = () => tables.map(t => query(`SELECT coalesce(jsonb_agg(to_jsonb(t)-ARRAY['runtimeStageId','runtimeSubmissionId'] ORDER BY to_jsonb(t)::text)::text,'[]') FROM "${t}" t ${t === "_prisma_migrations" ? "WHERE migration_name NOT IN ('20261022010000_universal_tasker_concepts','20261022030000_universal_tasker_sisters','20261023010000_stage_builder_drafts','20261023020000_workflow_publication','20261023030000_stage_runtime','20261024010000_runtime_integration','20261025010000_archive_folders')" : ""}`));
     const before = snapshot(); run(process.execPath, [prismaCli, "migrate", "deploy", "--schema", schemaPath], { env: serviceEnv });
     assert.deepEqual(snapshot(), before); assert.equal(query('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL'), "117");
-    assert.equal(query("SELECT count(*) FROM pg_tables WHERE schemaname='public'"), "155");
+    assert.equal(query("SELECT count(*) FROM pg_tables WHERE schemaname='public'"), "157");
     console.log("PASS Phase 3.3/3.4/4.1/4.2/4.3 additional populated migrations: all 119 tables preserved, including nine accounts, accepted/rejected approvals, native document history, exact file versions, business events and delivery diagnostics.");
   }
   const drift = run(process.execPath, [prismaCli, "migrate", "diff", "--from-url", serviceUrl,

@@ -1,6 +1,6 @@
 # FLUX V2 — Phase 6.1: Archive categories, folders and navigation
 
-**Historical Phase 6.1 report.** The unapplied candidate was extended by [Phase 6.2](../archive-verification/PHASE-6.2.md) on 24 October 2026. Its current combined SHA-256 is `d31232757d4d53465a5dd7ce925ba672c501e110e42b56742bd5519b5bb2a81b`, with **117 migrations / 155 public tables** after application. The original checksum and 153-table result below describe the Phase 6.1-only rehearsal and are no longer the current candidate. Both flags remain off/unset.
+**Historical Phase 6.1 report.** The still-unapplied candidate was extended by [Phase 6.2](../archive-verification/PHASE-6.2.md) and [Phase 6.3](../archive-sharing/PHASE-6.3.md). Its current combined SHA-256 is `5b7c6cd5e7a8b98dcbd4c0235df1d50899ea17a2bbce4bce7ed1390720ef8944`, with **117 migrations / 157 public tables** after application. The original checksum and 153-table result below describe the Phase 6.1-only rehearsal. All three Phase 6 flags remain off/unset.
 
 Implemented locally on 23 October 2026. This package extends the existing Archive, preserves the reviewed Phase 1.5F permission contract, and remains disabled by default. No Neon migration, live storage operation, environment change, deployment, push, Phase 6.2 or Phase 7 work was performed.
 

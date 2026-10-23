@@ -1,10 +1,12 @@
 import "server-only";
+import { prepareArchiveScope, hasArchiveVerificationGrant } from "./archive-grants";
 import type { Prisma } from "@prisma/client";
 import type { ResourcePolicies, AuthorizationContext } from "./policy";
 import { archiveCategoryWhere, archivedFileWhere, manualArchiveFileWhere, archiveScopeForActor, type ArchiveScope } from "./archive-rules";
 
 /** Check the stored source association even for Director and bearer links. */
 export async function resolveArchiveFile(tx: Prisma.TransactionClient, id: string, scope: ArchiveScope) {
+  scope = await prepareArchiveScope(tx, scope);
   const file = await tx.archivedProjectFile.findFirst({ where: { AND: [{ id }, archivedFileWhere(scope)] }, include: {
     archive: true, sourceAttachment: true,
   } });
@@ -38,6 +40,7 @@ async function loadArchiveContext({ tx, actor, request }: Parameters<NonNullable
     await tx.$queryRaw`SELECT id FROM "ArchivedProjectFile" WHERE id = ${id} FOR UPDATE`;
     await tx.$queryRaw`SELECT id FROM "ManualArchiveFile" WHERE id = ${id} FOR UPDATE`;
     allowed = !!await resolveArchiveFile(tx, id, scope);
+    if (allowed && cap === "archive.verify") allowed = await hasArchiveVerificationGrant(tx, scope, id);
   }
   if (kind === "upload" && id && cap === "archive.upload") {
     await tx.$queryRaw`SELECT id FROM "ManualArchiveFile" WHERE id = ${id} FOR UPDATE`;

@@ -50,6 +50,7 @@ import type {
 
 type ArchiveCategoryWorkspaceProps = {
   verificationEnabled?: boolean;
+  sharingEnabled?: boolean;
   categoryId: string;
   categoryTitle: string;
   categoryDescription: string;
@@ -201,7 +202,7 @@ export function ArchiveCategoryWorkspace({
   items,
   initialSearch = "",
   canUploadArchives, canEdit, canDelete, canShare,
-  currentUserDisplayName, verificationEnabled = false,
+  currentUserDisplayName, verificationEnabled = false, sharingEnabled = false,
 }: ArchiveCategoryWorkspaceProps) {
   const router = useRouter();
   const [deleteTarget, setDeleteTarget] = useState<ArchivedProjectFileRecord | null>(null);
@@ -620,7 +621,7 @@ export function ArchiveCategoryWorkspace({
                           Download
                         </a>
                       </Button>
-                      {canShare && <ArchiveAccessButton fileId={item.id} />}
+                      {canShare && <ArchiveAccessButton fileId={item.id} sharingEnabled={sharingEnabled} />}
                       {canShare && <ArchiveShareButton
                         archivedFileId={item.id}
                         fileName={item.finalArchiveFileName}

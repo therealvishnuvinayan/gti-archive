@@ -1,3 +1,6 @@
+import { AuthorizationDeniedError } from "./authorization/policy";
+import { archiveGrantWhere } from "./authorization/archive-rules";
+import { scopedArchiveDownloadPath } from "./authorization/archive-grants";
 import { prepareArchiveSourceDeletion } from "@/lib/archive-verification/service";
 import { withArchiveShare } from "@/lib/authorization/archive-share";
 import { runArchiveOperation } from "@/lib/authorization/archive";
@@ -407,44 +410,12 @@ function getManualArchiveFileAccessWhere(user: ArchiveAccessUser): Prisma.Manual
   return manualArchiveFileWhere(archiveScopeForUser(user));
 }
   
-function getArchiveCategoryAssetGrantWhere(
-  user: ArchiveAccessUser,
-): Prisma.ArchiveCategoryWhereInput {
-  if (!hasPartialArchiveAccess(user)) {
-    return {};
-  }
-
-  return {
-    OR: [
-      {
-        projectArchives: {
-          some: {
-            files: {
-              some: {
-                userArchiveAccesses: {
-                  some: {
-                    userId: user.id,
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-      {
-        manualArchiveFiles: {
-          some: {
-            status: AttachmentStatus.READY,
-            userArchiveAccesses: {
-              some: {
-                userId: user.id,
-              },
-            },
-          },
-        },
-      },
-    ],
-  };
+function getArchiveCategoryAssetGrantWhere(user: ArchiveAccessUser): Prisma.ArchiveCategoryWhereInput {
+  if (!hasPartialArchiveAccess(user)) return {};
+  return { OR: [
+    { projectArchives: { some: { files: { some: getArchivedProjectFileAccessWhere(user) } } } },
+    { manualArchiveFiles: { some: getManualArchiveFileAccessWhere(user) } },
+  ] };
 }
 
 export function getAccessibleArchiveCategoryWhere(user: ArchiveAccessUser, options: { activeOnly?: boolean } = {}): Prisma.ArchiveCategoryWhereInput {
@@ -483,7 +454,7 @@ export async function canAccessArchivesArea(user: ArchiveAccessUser) {
   return canUseArchives(user);
 }
 
-export async function canAccessArchiveCategoryForUser(
+async function canAccessArchiveCategoryForUserNative(
   user: ArchiveAccessUser,
   category: { id: string; allowedUsers?: Array<{ userId: string }> },
 ) {
@@ -4726,7 +4697,7 @@ async function assertCanAccessArchivedProjectFileAsset(
   const accessCount = await withPrismaRetry(() =>
     prisma.userArchiveAssetAccess.count({
       where: {
-        userId: user.id,
+        ...archiveGrantWhere(archiveScopeForUser(user)),
         archivedProjectFileId: archivedFile.id,
       },
     }),
@@ -4761,7 +4732,7 @@ async function assertCanAccessManualArchiveFileAsset(
   const accessCount = await withPrismaRetry(() =>
     prisma.userArchiveAssetAccess.count({
       where: {
-        userId: user.id,
+        ...archiveGrantWhere(archiveScopeForUser(user)),
         manualArchiveFileId: manualArchiveFile.id,
       },
     }),
@@ -5211,7 +5182,8 @@ async function getArchivedFileDownloadUrlForUserNative(
   archivedFileId: string,
 ) {
   const file = await getArchiveDownloadFileForUser(user, archivedFileId);
-  return createPresignedDownloadUrl(file);
+  const pinned = await scopedArchiveDownloadPath(activeArchiveOperation()!.tx, user.id, archivedFileId);
+  return pinned ?? createPresignedDownloadUrl(file);
 }
 
 export const archiveShareExpiryDayOptions = [1, 3, 7, 14, 30] as const;
@@ -5554,6 +5526,8 @@ async function getArchivedFilePreviewUrlForUserNative(
   archivedFileId: string,
 ) {
   user = await refreshProjectReader(user);
+  const pinned = await scopedArchiveDownloadPath(activeArchiveOperation()!.tx, user.id, archivedFileId, true);
+  if (pinned) return pinned;
 
   const archivedFile = await withPrismaRetry(() =>
     prisma.archivedProjectFile.findUnique({
@@ -5693,4 +5667,9 @@ export async function getSharedArchiveFilePreview(token: string): Promise<Shared
 
 export async function getSharedArchiveFileDownload(token: string): Promise<SharedArchiveFileDownloadResult> {
   return withArchiveShare(token, () => getSharedArchiveFileDownloadNative(token));
+}
+
+export async function canAccessArchiveCategoryForUser(user: ArchiveAccessUser, category: { id: string; allowedUsers?: Array<{ userId: string }> }) {
+  try { return await runArchiveOperation(user, "archive.view", `category:${category.id}`, current => canAccessArchiveCategoryForUserNative(current, category)); }
+  catch (error) { if (error instanceof AuthorizationDeniedError) return false; throw error; }
 }

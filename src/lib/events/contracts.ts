@@ -112,8 +112,27 @@ export type ArchiveVerificationEvent = {
   operation: "archiveVerificationCommand"; correlationId: string; causationId: string; idempotencyKey: string; occurredAt: string;
   context: { fileVersionId: string }; payload: { action: "VERIFY" | "REVOKE" };
 };
-export type SharedBusinessEvent = ArchiveVerificationEvent | RuntimeCompletionEvent | RuntimeCreationEvent | RuntimeActivityEvent | ReviewDecidedEvent | TaskActivityEvent | WorkflowDraftEvent | WorkflowPublicationEvent;
+export type ArchiveAccessEvent = {
+  id: string; type: "ARCHIVE_ACCESS_DECIDED"; schemaVersion: 1;
+  aggregate: { type: "ARCHIVE_ACCESS"; id: string; sequence: number };
+  native: { type: "ArchiveAccessDecision"; id: string };
+  actor: Extract<EventActor, { kind: "INTERNAL" }>;
+  operation: "archiveAccessCommand"; correlationId: string; causationId: string; idempotencyKey: string; occurredAt: string;
+  context: { fileVersionId: string | null }; payload: { action: "GRANT" | "REVOKE"; recipientId: string };
+};
+export type SharedBusinessEvent = ArchiveAccessEvent | ArchiveVerificationEvent | RuntimeCompletionEvent | RuntimeCreationEvent | RuntimeActivityEvent | ReviewDecidedEvent | TaskActivityEvent | WorkflowDraftEvent | WorkflowPublicationEvent;
 export function decodeBusinessEvent(row: BusinessEvent & { runtimeTaskContext?: { projectId: string; taskId: string; eventId: string } | null }): SharedBusinessEvent {
+  if (row.type === "ARCHIVE_ACCESS_DECIDED") {
+    const p = row.payload;
+    if (row.schemaVersion !== 1 || row.aggregateType !== "ARCHIVE_ACCESS" || row.operation !== "archiveAccessCommand" || !row.aggregateId || !row.causationId || !row.correlationId ||
+      row.id !== `archive-access:${row.causationId}` || row.idempotencyKey !== row.id || !Number.isSafeInteger(row.sequence) || row.sequence < 1 || !Number.isSafeInteger(row.actorVersion) || row.actorVersion < 1 || !row.actorId || !Number.isFinite(row.occurredAt.getTime()) ||
+      !["DIRECTOR", "SENIOR_PROJECT_MANAGER"].includes(row.actorRole) || [row.projectId, row.flexibleProjectId, row.taskId, row.taskEntryId, row.decisionId, row.nativeEventId, row.approvalEvidenceId].some(v => v !== null) ||
+      !p || typeof p !== "object" || Array.isArray(p) || Object.keys(p).sort().join() !== "action,recipientId" || !["GRANT", "REVOKE"].includes(String(p.action)) || typeof p.recipientId !== "string" || !p.recipientId) throw new Error("UNSUPPORTED_EVENT_CONTRACT");
+    const aggregate: unknown = JSON.parse(row.aggregateId);
+    if (!Array.isArray(aggregate) || aggregate.length !== 3 || !["manual", "project"].includes(aggregate[0]) || aggregate[1] !== row.correlationId || aggregate[2] !== p.recipientId) throw new Error("UNSUPPORTED_EVENT_CONTRACT");
+    return { id: row.id, type: row.type, schemaVersion: 1, aggregate: { type: "ARCHIVE_ACCESS", id: row.aggregateId, sequence: row.sequence }, native: { type: "ArchiveAccessDecision", id: row.causationId },
+      actor: { kind: "INTERNAL", userId: row.actorId, businessRole: row.actorRole, authorizationVersion: row.actorVersion }, operation: "archiveAccessCommand", correlationId: row.correlationId, causationId: row.causationId, idempotencyKey: row.idempotencyKey, occurredAt: row.occurredAt.toISOString(), context: { fileVersionId: row.fileVersionId }, payload: p as ArchiveAccessEvent["payload"] };
+  }
   if (row.type === "ARCHIVE_VERIFICATION_DECIDED") {
     const p = row.payload;
     if (row.schemaVersion !== 1 || row.aggregateType !== "ARCHIVE_FILE_VERSION" || row.operation !== "archiveVerificationCommand" ||

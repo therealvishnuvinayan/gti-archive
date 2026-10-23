@@ -1,3 +1,4 @@
+import { hasArchiveVerificationGrant } from "@/lib/authorization/archive-grants";
 import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
@@ -50,7 +51,7 @@ export async function readArchiveVerification(expected: { id: string }, source: 
     try { await observe(version); } catch (error) { explanation = (error as Error).message; }
     return { ...empty, status: explanation ? "UNAVAILABLE" : latest?.action === "VERIFY" ? "VERIFIED" : latest ? "REVOKED" : "NOT VERIFIED", explanation,
       versionId: version.id, versionNumber: version.number, revision: latest?.sequence ?? 0, decisionId: latest?.id ?? null,
-      canVerify: !explanation && latest?.action !== "VERIFY" && canArchive(user, "archive.verify"),
+      canVerify: !explanation && latest?.action !== "VERIFY" && canArchive(user, "archive.verify") && await hasArchiveVerificationGrant(tx, archiveScopeForUser(user)!, source.sourceId),
       canRevoke: latest?.action === "VERIFY" && canArchive(user, "archive.revokeVerification"),
       integrity: { objectVersionPinned: !!version.objectVersionId, applicationSealed: version.applicationSealed, checksumEvidence: version.checksumEvidence },
       nextHistoryBefore: history.length > 50 ? history[49].sequence : null,

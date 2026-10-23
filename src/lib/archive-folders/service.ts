@@ -99,7 +99,7 @@ export type FolderFile = { id: string; key: string; kind: "project" | "manual"; 
 export type FolderWorkspace = {
   category: { id: string; name: string; slug: string }; folders: FolderRecord[]; breadcrumbs: FolderRecord[];
   files: FolderFile[]; total: number; nextCursor: string | null; folderId: string | null;
-  canManage: boolean; canMoveFiles: boolean; canDeleteFolders: boolean;
+  canManageAccess: boolean; canManage: boolean; canMoveFiles: boolean; canDeleteFolders: boolean;
 };
 
 /** Minimal file-locating DTOs; no artwork detail, raw keys, grants or provenance.
@@ -113,8 +113,9 @@ export async function readArchiveFolder(expected: { id: string }, input: { categ
     const category = await prisma.archiveCategory.findUniqueOrThrow({ where: { id: input.categoryId }, select: { id: true, name: true, slug: true } });
     const scope = archiveScopeForUser(user)!;
     const canManage = canArchive(user, "archive.category.update");
-    const projectGrant = scope.level === "FULL" ? Prisma.sql`TRUE` : Prisma.sql`EXISTS (SELECT 1 FROM "UserArchiveAssetAccess" g WHERE g."archivedProjectFileId" = f.id AND g."userId" = ${user.id})`;
-    const manualGrant = scope.level === "FULL" ? Prisma.sql`TRUE` : Prisma.sql`EXISTS (SELECT 1 FROM "UserArchiveAssetAccess" g WHERE g."manualArchiveFileId" = f.id AND g."userId" = ${user.id})`;
+    const grantIds = Prisma.join(scope.grantIds?.length ? scope.grantIds : [""]);
+    const projectGrant = scope.level === "FULL" ? Prisma.sql`TRUE` : Prisma.sql`EXISTS (SELECT 1 FROM "UserArchiveAssetAccess" g WHERE g."archivedProjectFileId" = f.id AND g."userId" = ${user.id} AND g.id IN (${grantIds}))`;
+    const manualGrant = scope.level === "FULL" ? Prisma.sql`TRUE` : Prisma.sql`EXISTS (SELECT 1 FROM "UserArchiveAssetAccess" g WHERE g."manualArchiveFileId" = f.id AND g."userId" = ${user.id} AND g.id IN (${grantIds}))`;
     const accessible = Prisma.sql`
       SELECT f.id, 'project:' || f.id AS key, 'project' AS kind, f."finalArchiveFileName" AS name, f."originalFileName" AS "originalName",
         a."projectName", f."mimeType", f."fileSize", COALESCE(p.revision, 0) AS revision, r."revisionNumber" AS "sourceRevision", p."folderId"
@@ -159,6 +160,6 @@ export async function readArchiveFolder(expected: { id: string }, input: { categ
     const files = rows.slice(0, 50);
     return { category, folders, breadcrumbs, files, total: counts[0].total, folderId,
       nextCursor: rows.length > 50 ? files.at(-1)!.key : null, canManage,
-      canMoveFiles: canManage && canArchive(user, "archive.editMetadata"), canDeleteFolders: canArchive(user, "archive.category.delete") };
+      canManageAccess: canArchive(user, "archive.manageAccess"), canMoveFiles: canManage && canArchive(user, "archive.editMetadata"), canDeleteFolders: canArchive(user, "archive.category.delete") };
   });
 }

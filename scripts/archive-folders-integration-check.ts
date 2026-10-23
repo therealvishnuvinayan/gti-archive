@@ -64,6 +64,7 @@ async function main(){
     ...original.call(this, join(compiledRoot,"src/lib/storage/s3.js"), ...args) as typeof import("../src/lib/storage/s3"),
     getS3BucketName:()=>"fixture-no-network",
     observePinnedStoredObject:async(input:{objectVersionId:string|null;objectETag:string})=>{ if(storageMode === "missing")throw new Error("NoSuchKey"); return {ContentLength:100,ContentType:"application/pdf",ETag:storageMode === "changed" ? '"changed"' : input.objectETag,VersionId:input.objectVersionId??undefined}; },
+    readPinnedStoredObject:async(input:{objectVersionId:string|null;objectETag:string})=>({ContentLength:100,ContentType:"application/pdf",ETag:input.objectETag,VersionId:input.objectVersionId??undefined,Body:{transformToWebStream:()=>new ReadableStream({start(controller){controller.enqueue(new Uint8Array(100));controller.close();}})}}),
     createPresignedUploadUrl:async()=>{signed++;return "http://fixture.invalid/upload";},
     createPresignedDownloadUrl:async()=>{signed++;return "http://fixture.invalid/download";},
     createPresignedPreviewUrl:async()=>{signed++;return "http://fixture.invalid/preview";},
@@ -218,6 +219,10 @@ async function main(){
   if(process.argv.includes("--verification")) {
     const check = localRequire(join(compiledRoot,"scripts/archive-verification-integration-check.js")) as typeof import("./archive-verification-integration-check");
     await check.runVerificationChecks({db,user,require:localRequire,compiledRoot,setStorageMode:(value:string)=>{storageMode=value;}});
+  }
+  if(process.argv.includes("--sharing")) {
+    const check = localRequire(join(compiledRoot,"scripts/archive-sharing-integration-check.js")) as typeof import("./archive-sharing-integration-check");
+    await check.runSharingChecks({db,user,require:localRequire,compiledRoot});
   }
  } finally { moduleApi._load=original; }
 }
