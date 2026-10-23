@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.authorization-services.json",
+  "compilerOptions": { "outDir": "../.tmp/archive-folders" },
+  "include": ["archive-folders-integration-check.ts"]
+}

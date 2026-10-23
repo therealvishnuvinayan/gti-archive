@@ -1,7 +1,10 @@
 import { canArchive } from "@/lib/authorization/archive-rules";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 
 import { ArchiveCategoryWorkspace } from "@/components/archives/archive-category-workspace";
+import { ArchiveFolderWorkspace } from "@/components/archives/archive-folder-workspace";
+import { archiveFoldersEnabled } from "@/lib/archive-folders/activation";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import {
   canAccessArchiveCategoryForUser,
@@ -18,7 +21,7 @@ export default async function ArchiveCategoryPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ search?: string | string[] }>;
+  searchParams: Promise<{ search?: string | string[]; folder?: string; view?: string }>;
 }) {
   const { slug } = await params;
   const resolvedSearchParams = await searchParams;
@@ -52,7 +55,8 @@ export default async function ArchiveCategoryPage({
     );
   }
 
-  if (!(await canAccessArchiveCategoryForUser(user, category))) {
+  const folderManagement = archiveFoldersEnabled() && resolvedSearchParams.view !== "all" && !initialSearch && canArchive(user, "archive.category.update");
+  if (!folderManagement && !(await canAccessArchiveCategoryForUser(user, category))) {
     return (
       <DashboardLayout
         topbarProps={{
@@ -71,6 +75,13 @@ export default async function ArchiveCategoryPage({
     );
   }
 
+  if (archiveFoldersEnabled() && resolvedSearchParams.view !== "all" && !initialSearch) {
+    const folderId = typeof resolvedSearchParams.folder === "string" ? resolvedSearchParams.folder : null;
+    return <DashboardLayout topbarProps={{ searchPlaceholder: "Search archives..." }}>
+      <ArchiveFolderWorkspace key={`${category.id}:${folderId ?? "root"}`} categoryId={category.id} categoryName={category.name} slug={category.slug} folderId={folderId} />
+    </DashboardLayout>;
+  }
+
   const items = await listArchivedFilesByCategory(user, category);
   const canUploadArchives = canUploadArchiveFiles(user);
 
@@ -80,6 +91,7 @@ export default async function ArchiveCategoryPage({
         searchPlaceholder: "Search archive files...",
       }}
     >
+      {archiveFoldersEnabled() && <Link href={`/archives/${category.slug}`} className="mb-4 inline-block text-sm text-brand">← Browse folders</Link>}
       <ArchiveCategoryWorkspace
         canEdit={canArchive(user, "archive.editMetadata")}
         canDelete={canArchive(user, "archive.delete")}

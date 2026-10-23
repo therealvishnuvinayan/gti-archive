@@ -453,6 +453,7 @@ enum FluxAiMessageRole {
 }
 
 model User {
+  archiveOrganizationCommands ArchiveOrganizationCommand[]
   completionActors RuntimeCompletionActivity[]
   runtimeCreationRequests RuntimeCreationRequest[] @relation("RuntimeCreationRequester")
   runtimeCreationDecisions RuntimeCreationDecision[] @relation("RuntimeCreationReviewer")
@@ -1848,6 +1849,8 @@ model AssetTag {
 }
 
 model ArchiveCategory {
+  folders            ArchiveFolder[]
+  placements         ArchiveFilePlacement[]
   id                 String                  @id @default(cuid())
   name               String
   slug               String                  @unique
@@ -2325,6 +2328,7 @@ model ProjectArchive {
 }
 
 model ArchivedProjectFile {
+  folderPlacement ArchiveFilePlacement?
   sharedFileReference SharedFileReference?
   id                   String                   @id @default(cuid())
   archiveId            String
@@ -2591,6 +2595,7 @@ model CompletionDocumentEvent {
 }
 
 model ManualArchiveFile {
+  folderPlacement ArchiveFilePlacement?
   sharedFileReference SharedFileReference?
   id                  String                                @id @default(cuid())
   fileName            String
@@ -4000,4 +4005,56 @@ model RuntimeCompletionDecision {
   activityId String @unique
   activity RuntimeCompletionActivity @relation(fields: [activityId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   @@index([projectId])
+}
+
+// Phase 6.1: additive organization only; no storage, source or permission changes.
+model ArchiveFolder {
+  id String @id @default(cuid())
+  categoryId String
+  category ArchiveCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  parentId String?
+  parent ArchiveFolder? @relation("ArchiveFolderTree", fields: [parentId, categoryId], references: [id, categoryId], onDelete: Restrict, onUpdate: Restrict)
+  children ArchiveFolder[] @relation("ArchiveFolderTree")
+  name String
+  description String @default("")
+  icon String @default("folder")
+  revision Int @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  placements ArchiveFilePlacement[]
+
+  @@unique([id, categoryId])
+  @@index([categoryId, parentId])
+}
+
+model ArchiveFilePlacement {
+  id String @id
+  categoryId String
+  category ArchiveCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  folderId String?
+  folder ArchiveFolder? @relation(fields: [folderId, categoryId], references: [id, categoryId], onDelete: Restrict, onUpdate: Restrict)
+  archivedProjectFileId String? @unique
+  archivedProjectFile ArchivedProjectFile? @relation(fields: [archivedProjectFileId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  manualArchiveFileId String? @unique
+  manualArchiveFile ManualArchiveFile? @relation(fields: [manualArchiveFileId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  revision Int @default(1)
+  updatedAt DateTime @updatedAt
+
+  @@index([categoryId, folderId])
+}
+
+// Append-only replay receipt and organization history; JSON IDs survive file deletion.
+model ArchiveOrganizationCommand {
+  id String @id
+  actorUserId String
+  actor User @relation(fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  requestHash String
+  request Json
+  categoryId String
+  action String
+  before Json
+  result Json
+  createdAt DateTime @default(now())
+
+  @@index([categoryId, createdAt])
 }
