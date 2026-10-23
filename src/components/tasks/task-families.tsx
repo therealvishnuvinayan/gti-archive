@@ -27,9 +27,9 @@ export function SisterComposer({ taskId, onCancel }: { taskId: string; onCancel:
   if (!draft || !values || !options) return <section aria-label="Create Sister Task"><p role={error ? "alert" : "status"}>{error || "Loading reusable details…"}</p><button className={button} onClick={onCancel}>Cancel</button></section>;
   const v = values, d = draft, o = options;
   const update = (patch: Partial<Values>) => setValues({ ...v, ...patch });
-  const targets = o.targets.filter(t => `structured:${t.projectId}` === v.contextTarget && (v.type === "DATA_INPUT" ? t.target.startsWith("checklist:") : !t.target.startsWith("checklist:")));
+  const targets = o.targets.filter(t => `${t.target.startsWith("runtime-") ? "runtime" : "structured"}:${t.projectId}` === v.contextTarget && (v.type === "DATA_INPUT" ? (t.target.startsWith("checklist:") || t.target.startsWith("runtime-field:")) : !(t.target.startsWith("checklist:") || t.target.startsWith("runtime-field:"))));
   const inspirationChoices = [...o.conceptSources.filter(s => s.kind === "INSPIRATION"), ...d.references.filter(r => r.kind === "INSPIRATION" && !o.conceptSources.some(s => s.versionId === r.versionId)).map(r => ({ versionId: r.versionId, sourceTaskTitle: "Previously selected (current eligibility rechecked)", name: r.name, number: r.number, sourceState: r.sourceState }))];
-  const types = taskTypes.filter(t => t === "GENERAL" || (t === "FILE_UPLOAD" && o.targets.some(t => !t.target.startsWith("checklist:"))) || (t === "DATA_INPUT" && o.targets.some(t => t.target.startsWith("checklist:"))) || (o.canCreateConcepts && ["INSPECT_FILE", "INITIAL_CONCEPT", "FINAL_CONCEPT"].includes(t)));
+  const types = taskTypes.filter(t => t === "GENERAL" || (t === "FILE_UPLOAD" && o.targets.some(t => !(t.target.startsWith("checklist:") || t.target.startsWith("runtime-field:")))) || (t === "DATA_INPUT" && o.targets.some(t => (t.target.startsWith("checklist:") || t.target.startsWith("runtime-field:")))) || (!o.generalOnly && o.canCreateConcepts && ["INSPECT_FILE", "INITIAL_CONCEPT", "FINAL_CONCEPT"].includes(t)));
   async function review(event: FormEvent) {
     event.preventDefault(); setBusy(true); setError("");
     const { destination, inputMode, sourceVersionId, inspirationVersionIds, ...common } = v;

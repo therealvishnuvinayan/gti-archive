@@ -7,6 +7,9 @@ import { submissionState } from "./concepts";
 import { confirmationHash, sisterCommand } from "./sister-contracts";
 export { confirmationHash, sisterCommand } from "./sister-contracts";
 
+import { runtimeIntegrationEnabled } from "../runtime-integration/activation";
+import { nativeContext, runtimeTaskVisible, contextIdentity, sameTaskContext, type TaskContext } from "./runtime-context";
+
 type Tx = Prisma.TransactionClient;
 const person = { id: true, name: true } as const;
 export async function sourceTask(tx: Tx, actorId: string, sourceId: string) {
@@ -14,7 +17,7 @@ export async function sourceTask(tx: Tx, actorId: string, sourceId: string) {
   await tx.$queryRaw`SELECT id FROM "UniversalTask" WHERE id=${id(sourceId)} FOR SHARE`;
   const source = await tx.universalTask.findUnique({ where: { id: sourceId }, include: { spectators: true } });
   const actor = await tx.userAuthorization.findUniqueOrThrow({ where: { userId: actorId } });
-  ensure(actor.accountStatus === "ACTIVE" && actor.businessRole && source && !source.deletedAt && source.status === "COMPLETED" && availableTaskType(source.type) &&
+  ensure(actor.accountStatus === "ACTIVE" && actor.businessRole && source && !source.deletedAt && source.status === "COMPLETED" && runtimeTaskVisible(source) && availableTaskType(source.type) &&
     (actor.businessRole === "DIRECTOR" || source.ownerId === actorId || source.executorId === actorId), "SISTER_SOURCE_UNAVAILABLE", 403);
   return source;
 }
@@ -23,7 +26,7 @@ export async function reusableValues(tx: Tx, source: UniversalTask & { spectator
   const refs = await tx.universalTaskReference.findMany({ where: { taskId: source.id }, orderBy: { versionId: "asc" } });
   return { type: source.type, title: source.title, brief: source.brief, context: source.context ?? "", deadline: source.deadline.toISOString(),
     priority: source.priority, executorId: source.executorId, spectatorIds: source.spectators.map(s => s.userId).sort(),
-    contextTarget: source.projectId ? `structured:${source.projectId}` : `flexible:${source.flexibleProjectId}`,
+    contextTarget: await contextIdentity(tx, source),
     ...(target ? { destination: `${target.kind}:${target.nativeId}`, inputMode: target.inputMode } : {}),
     ...(source.type === "INSPECT_FILE" && refs.length ? { sourceVersionId: refs[0].versionId } : {}),
     ...(source.type === "FINAL_CONCEPT" ? { inspirationVersionIds: refs.map(r => r.versionId).sort() } : {}) };
@@ -43,11 +46,11 @@ export async function sourceEvidence(tx: Tx, taskId: string) {
       review: review ? { id: review.id, actor: review.actor, createdAt: review.createdAt.toISOString(), action: review.action } : null }];
   });
 }
-export async function validateSister(tx: Tx, actorId: string, proposal: Record<string, unknown>, context: Pick<UniversalTask, "projectId" | "flexibleProjectId">) {
+export async function validateSister(tx: Tx, actorId: string, proposal: Record<string, unknown>, context: TaskContext) {
   const command = sisterCommand(proposal.sister), source = await sourceTask(tx, actorId, command.sourceTaskId);
   ensure(command.confirmed && command.confirmation === confirmationHash(actorId, proposal), "SISTER_CONFIRMATION_REQUIRED", 409);
   ensure(source.version === command.sourceVersion, "STALE_SISTER_SOURCE", 409);
-  ensure(source.projectId === context.projectId && source.flexibleProjectId === context.flexibleProjectId, "CROSS_PROJECT_FAMILY", 403);
+  ensure(await sameTaskContext(tx, source, context), "CROSS_PROJECT_FAMILY", 403);
   if (command.mode === "KEEP") {
     const values = await reusableValues(tx, source);
     for (const [key, value] of Object.entries(values)) {
@@ -70,7 +73,7 @@ export async function saveSister(tx: Tx, taskId: string, createdEntryId: string,
 }
 export function taskAccess(actorId: string, director: boolean): Prisma.UniversalTaskWhereInput {
   const relation: Prisma.UniversalTaskWhereInput = director ? {} : { OR: [{ ownerId: actorId }, { deletedAt: null, OR: [{ executorId: actorId }, { spectators: { some: { userId: actorId } } }] }] };
-  return { type: { in: enabledTaskTypes() }, AND: relation };
+  return { type: { in: enabledTaskTypes() }, AND: [relation, runtimeIntegrationEnabled() ? {} : nativeContext] };
 }
 export async function familyInfo(tx: Tx, taskId: string, actorId: string, director: boolean) {
   const link = await tx.universalTaskFamilyLink.findUnique({ where: { taskId } });

@@ -8,7 +8,7 @@ export type ApprovalSubjectRequest = Prisma.ApprovalRequestGetPayload<{ include:
 /** Trusted, explicitly registered native adapters only. No public route accepts
  * adapters, subjects, policy plans, principals or callbacks from a client. */
 type NativeDecisionAdapter = {
-  subjectType: "COMPLETION_DOCUMENT_SUBMISSION" | "WORKFLOW_DRAFT_REVISION" | "RUNTIME_STAGE";
+  subjectType: "COMPLETION_DOCUMENT_SUBMISSION" | "WORKFLOW_DRAFT_REVISION" | "RUNTIME_STAGE" | "RUNTIME_DOCUMENT";
   authorize: (request: ApprovalSubjectRequest) => Promise<AuthenticatedPrincipal>;
   applyNative: (outcome: ApprovalOutcome, at: Date) => Promise<string | null>;
   afterDecision?: (decision: ApprovalDecision, event: ApprovalEvent) => Promise<void>;

@@ -7,7 +7,7 @@ import { runtimeAuthorization } from "../authorization/runtime";
 import { capability, text, type FileGate } from "./contracts";
 import { runtimeActor, type StageData, type Tx } from "./data";
 import { requireRuntime } from "./activation";
-export async function prepareRuntimeFile(tx: Tx, data: StageData, input: Record<string, unknown>) {
+export async function prepareRuntimeFile(tx: Tx, data: StageData, input: Record<string, unknown>, publicationId?: string) {
   const c = capability(data.definition, input.capabilityId, "FILE_REQUIREMENT"), actor = await runtimeActor(tx);
   text(input.fileName, 255, true); text(input.mimeType, 160, true);
   ensure(/^[\w.+-]+\/[\w.+-]+$/.test(input.mimeType) && Number.isSafeInteger(input.fileSize) && Number(input.fileSize) > 0 && Number(input.fileSize) <= Math.min(getMaxAssetUploadBytes(), 100 * 1024 * 1024), "INVALID_FILE_SIZE_OR_TYPE");
@@ -19,27 +19,35 @@ export async function prepareRuntimeFile(tx: Tx, data: StageData, input: Record<
     identifier(input.supersedesId); const old = current.find(f => f.id === input.supersedesId); ensure(old, "FILE_REVISION_MISMATCH"); fileId = old.version.fileId;
     ensure(old.state !== "UPLOADING", "UPLOAD_STILL_PENDING", 409);
   } else { ensure(current.length < c.maxFiles, "FILE_COUNT_LIMIT"); fileId = (await tx.sharedFile.create({ data: { runtimeStageId: data.stage.id }, select: { id: true } })).id; }
-  const id = `rf_${crypto.randomUUID().replaceAll("-", "")}`, bucket = getS3BucketName();
+  const publication = publicationId ? await tx.universalTaskPublication.findUniqueOrThrow({ where: { id: publicationId }, include: { sourceVersion: true, application: true } }) : null;
+  if (publication) ensure(publication.application.reviewerId === actor.userId && publication.application.state !== "APPLIED" && publication.sourceVersion.status === "READY" && publication.sourceVersion.originalFileName === input.fileName && publication.sourceVersion.mimeType === input.mimeType && publication.sourceVersion.fileSize === input.fileSize, "INVALID_TASK_PUBLICATION");
+  const id = publication ? publication.storageKey.split("/")[3] : `rf_${crypto.randomUUID().replaceAll("-", "")}`, bucket = publication?.bucket ?? getS3BucketName();
   const prefix = `runtime/${data.stage.projectId}/${data.stage.id}/${id}`;
+  ensure(!publication || publication.storageKey === `${prefix}/sealed/${name}`, "INVALID_TASK_PUBLICATION");
+  const uploaderId = publication?.sourceVersion.uploadedById ?? actor.userId;
   const number = await tx.sharedFileVersion.count({ where: { fileId } }) + 1;
-  const version = await tx.sharedFileVersion.create({ data: { fileId, number, uploadedById: actor.userId, originalFileName: name, mimeType: input.mimeType, fileSize: Number(input.fileSize), bucket, storageKey: `${prefix}/sealed/${name}`, applicationSealed: true } });
-  await tx.runtimeFileSubmission.create({ data: { id, stageId: data.stage.id, capabilityId: c.id, versionId: version.id, supersedesId: input.supersedesId as string | null, submittedById: actor.userId, stagingKey: `${prefix}/upload/${name}`, createdAt: new Date(), expiresAt: new Date(Date.now() + 30 * 60_000) } });
+  const version = await tx.sharedFileVersion.create({ data: { fileId, number, uploadedById: uploaderId, originalFileName: publication?.sourceVersion.originalFileName ?? name, mimeType: input.mimeType, fileSize: Number(input.fileSize), bucket, storageKey: `${prefix}/sealed/${name}`, applicationSealed: true } });
+  await tx.runtimeFileSubmission.create({ data: { id, stageId: data.stage.id, capabilityId: c.id, versionId: version.id, supersedesId: input.supersedesId as string | null, submittedById: uploaderId, stagingKey: `${prefix}/upload/${name}`, createdAt: new Date(), expiresAt: new Date(Date.now() + 30 * 60_000) } });
   await tx.sharedFileReference.create({ data: { runtimeSubmissionId: id, versionId: version.id, role: "SOURCE" }, select: { id: true } });
+  if (publication) await tx.runtimeTaskPublication.create({ data: { publicationId: publication.id, submissionId: id } });
   return { submissionId: id, versionId: version.id };
 }
-export async function finalizeRuntimeFile(tx: Tx, data: StageData, id: unknown, cancel: boolean) {
+export async function finalizeRuntimeFile(tx: Tx, data: StageData, id: unknown, cancel: boolean, publicationId?: string) {
   identifier(id); const f = data.files.find(f => f.id === id); const actor = await runtimeActor(tx);
-  ensure(f && !f.replaced && f.state === "UPLOADING" && f.version.status === "UPLOADING" && f.submittedById === actor.userId, "UPLOAD_UNAVAILABLE", 409);
+  const publication = publicationId ? await tx.runtimeTaskPublication.findUniqueOrThrow({ where: { publicationId }, include: { publication: { include: { sourceVersion: true, application: true } } } }) : null;
+  if (publication) ensure(publication.submissionId === id && publication.publication.application.reviewerId === actor.userId && publication.publication.application.state !== "APPLIED", "INVALID_TASK_PUBLICATION");
+  ensure(f && !f.replaced && f.state === "UPLOADING" && f.version.status === "UPLOADING" && (f.submittedById === actor.userId || !!publication), "UPLOAD_UNAVAILABLE", 409);
   let failure = cancel ? "CANCELLED" : f.expiresAt <= new Date() ? "EXPIRED" : null;
   let integrity: ReturnType<typeof captureFileIntegrity> | null = null;
   if (!failure) {
     try {
-      const source = await getObjectMetadata(f.stagingKey, f.version.bucket), observed = captureFileIntegrity(source, f.version);
-      await copyStoredObject({ sourceBucket: f.version.bucket, sourceKey: f.stagingKey, bucket: f.version.bucket, storageKey: f.version.storageKey, sourceETag: observed.objectETag, sourceVersionId: observed.objectVersionId });
+      const source = await getObjectMetadata(publication ? f.version.storageKey : f.stagingKey, f.version.bucket), observed = captureFileIntegrity(source, f.version);
+      if (!publication) await copyStoredObject({ sourceBucket: f.version.bucket, sourceKey: f.stagingKey, bucket: f.version.bucket, storageKey: f.version.storageKey, sourceETag: observed.objectETag, sourceVersionId: observed.objectVersionId });
       const sealed = await getObjectMetadata(f.version.storageKey, f.version.bucket); integrity = captureFileIntegrity(sealed, f.version);
       ensure(integrity.objectETag === observed.objectETag && (!observed.checksumSha256 || integrity.checksumSha256 === observed.checksumSha256), "SEALED_FILE_CHANGED");
     } catch { failure = "STORAGE_INTEGRITY_FAILED"; }
   }
+  ensure(!publication || !failure, "TASK_PUBLICATION_STORAGE_FAILED", 409);
   const at = new Date();
   await tx.sharedFileVersion.update({ where: { id: f.versionId }, data: failure ? { status: "FAILED", finalizedAt: at } : { status: "READY", ...integrity!, observedAt: at, finalizedAt: at } });
   await tx.runtimeFileSubmission.update({ where: { id }, data: failure ? { state: "FAILED", failureCode: failure } : { state: "SUBMITTED", submittedAt: at } });

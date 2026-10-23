@@ -53,10 +53,23 @@ export function withoutWorkflowPublicationSchema(schema) {
 
 // Phase 4.3 stays disabled on the existing 114-migration database.
 export function withoutStageRuntimeSchema(schema) {
+  schema = withoutRuntimeIntegrationSchema(schema);
   for (const name of ["RuntimeProject", "RuntimeParticipant", "RuntimeStage", "RuntimeFileSubmission", "RuntimeApprovalSubmission", "RuntimeActivity"]) {
     schema = schema.replace(new RegExp(`^model ${name} \{[\\s\\S]*?^\}`, "m"), "");
     schema = schema.replace(new RegExp(`^  \\w+\\s+${name}(?:\\[\\]|\\?)?[^\\n]*\\n`, "gm"), "");
   }
   return schema.replace(/^  (?:runtimeStageId|runtimeSubmissionId)\s+[^\n]+\n/gm, "")
     .replace(/^  (?:RUNTIME_STAGE|RUNTIME_STAGE_REVIEWER|RUNTIME_ACTIVITY)\n/gm, "");
+}
+
+// Phase 4.3 compatibility: integration models are queried only behind their flag.
+export function withoutRuntimeIntegrationSchema(schema) {
+  for (const name of ["RuntimeCompletionActivity", "RuntimeDocumentPolicy", "RuntimeDocumentFile", "RuntimeDocumentSubmission", "RuntimeDocumentReference", "RuntimeDocumentProvenance", "RuntimeCompletionRequest", "RuntimeCompletionDecision"]) {
+    schema = schema.replace(new RegExp(`^model ${name} \{[\\s\\S]*?^\}`, "m"), "");
+    schema = schema.replace(new RegExp(`^  \\w+\\s+${name}(?:\\[\\]|\\?)?[^\\n]*\\n`, "gm"), "");
+  }
+  schema = schema.replace(/^  (?:RUNTIME_DOCUMENT|RUNTIME_COMPLETION_ACTIVITY)\n/gm, "");
+  for (const name of ["RuntimeCreationRequest", "RuntimeCreationDecision", "RuntimeTaskContext", "RuntimeTaskEventContext", "RuntimeTaskTarget", "RuntimeTaskApplication", "RuntimeTaskPublication", "RuntimeTaskReference"]) schema = schema.replace(new RegExp(`^model ${name} \\{[\\s\\S]*?^\\}`, "m"), "");
+  schema = schema.replace(/^  (?:runtimeSource|runtimeInspectionReferences|runtimeTarget|taskTargets|runtimeApplication|taskApplication|runtimePublication|runtimeTaskPublicationLink|runtimeContext|runtimeContextChildren|taskContexts|taskEventContexts|runtimeTaskContext|runtimeCreationRequests|runtimeCreationDecisions|runtimeCreationRequest|runtimeCreationDecision|creationDecision)\s+[^\n]+\n/gm, "");
+  return schema.replace(/^  RUNTIME_CREATION_(?:REQUESTED|DECIDED)\n/gm, "");
 }

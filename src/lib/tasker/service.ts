@@ -19,6 +19,9 @@ import { prepareApplication, applyApplication, completeApplication } from "./app
 import { confirmationHash, familyInfo, inheritedEvidence, reusableValues, saveSister, sisterCommand, sourceEvidence, sourceTask, taskAccess, validateSister } from "./families";
 import { sistersEnabled } from "./contracts";
 
+import { runtimeIntegrationEnabled } from "../runtime-integration/activation";
+import { isRuntimeTask, nativeContext, runtimeContext, runtimeCreationScope } from "./runtime-context";
+
 type Tx = Prisma.TransactionClient;
 type Grant = Extract<AuthorizationDecision, { decision: "ALLOW" }>;
 const person = { id: true, name: true } as const;
@@ -28,12 +31,13 @@ type Record = Prisma.UniversalTaskGetPayload<{ include: typeof relations }>;
 const relationWhere = (actorId: string): Prisma.UniversalTaskWhereInput => ({ OR: [{ ownerId: actorId }, { executorId: actorId }, { spectators: { some: { userId: actorId } } }] });
 function enabled() { ensure(taskEnabled(), "TASKER_DISABLED", 404); }
 const hash = approvalHash;
-function summary(row: Record): TaskSummary {
+async function summary(tx: Tx, row: Record): Promise<TaskSummary> {
   ensure(availableTaskType(row.type), "TASK_TYPE_UNAVAILABLE");
-  const p = row.project ?? row.flexibleProject!;
+  const runtime = isRuntimeTask(row) ? await runtimeContext(tx, row.id) : null;
+  const p = row.project ?? row.flexibleProject ?? { id: runtime!.project.id, name: runtime!.project.title };
   return { id: row.id, title: row.title, type: row.type as TaskSummary["type"], brief: row.brief, context: row.context, priority: row.priority,
     deadline: row.deadline.toISOString(), status: row.status, version: row.version, owner: row.owner, executor: row.executor,
-    spectators: row.spectators.map(s => s.user), project: { ...p, kind: row.project ? "structured" : "flexible" },
+    spectators: row.spectators.map(s => s.user), project: { ...p, kind: runtime ? "runtime" : row.project ? "structured" : "flexible" },
     createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(), deletedAt: row.deletedAt?.toISOString() ?? null };
 }
 async function principal(tx: Tx) {
@@ -60,9 +64,10 @@ async function record(tx: Tx, task: UniversalTask, grant: Grant, commandId: stri
 async function projectFor(tx: Tx, target: ReturnType<typeof contextTarget>) {
   if (target.kind === "task") {
     const source = await tx.universalTask.findUniqueOrThrow({ where: { id: target.key } });
-    return { projectId: source.projectId, flexibleProjectId: source.flexibleProjectId };
+    return { projectId: source.projectId, flexibleProjectId: source.flexibleProjectId, runtimeProjectId: isRuntimeTask(source) ? (await runtimeContext(tx, source.id)).projectId : null, sourceTaskId: source.id };
   }
-  return { projectId: target.kind === "structured" ? target.key : null, flexibleProjectId: target.kind === "flexible" ? target.key : null };
+  if (target.kind === "runtime") ensure(runtimeIntegrationEnabled(), "RUNTIME_INTEGRATION_DISABLED", 404);
+  return { projectId: target.kind === "structured" ? target.key : null, flexibleProjectId: target.kind === "flexible" ? target.key : null, runtimeProjectId: target.kind === "runtime" ? target.key : null, sourceTaskId: null };
 }
 export async function taskOptions(target?: string) {
   enabled();
@@ -72,20 +77,24 @@ export async function taskOptions(target?: string) {
     const [structured, flexible, assigned] = target ? [[], [], []] : await Promise.all([
       tx.project.findMany({ where: structuredProjectReadWhere(actor), select: { id: true, name: true }, orderBy: { name: "asc" } }),
       tx.flexibleProject.findMany({ where: flexibleProjectReadWhere(actor), select: { id: true, name: true }, orderBy: { name: "asc" } }),
-      tx.universalTask.findMany({ where: { deletedAt: null, type: { in: enabledTaskTypes() }, OR: [{ ownerId: grant.actorUserId }, { executorId: grant.actorUserId }] }, select: { id: true, title: true }, orderBy: { updatedAt: "desc" } }),
+      tx.universalTask.findMany({ where: { AND: runtimeIntegrationEnabled() ? {} : nativeContext, deletedAt: null, type: { in: enabledTaskTypes() }, OR: [{ ownerId: grant.actorUserId }, { executorId: grant.actorUserId }] }, select: { id: true, title: true, projectId: true, flexibleProjectId: true }, orderBy: { updatedAt: "desc" } }),
     ]);
+    const runtime = !target && runtimeIntegrationEnabled() ? await tx.runtimeProject.findMany({ where: runtimeCreationScope(actor.userId, actor.businessRole), select: { id: true, title: true }, orderBy: { title: "asc" } }) : [];
+    const resolved = target ? await projectFor(tx, contextTarget(target)) : null;
+    const generalOnly = !!resolved?.runtimeProjectId && target?.startsWith("task:") === true && !await tx.runtimeProject.findFirst({ where: { id: resolved.runtimeProjectId, AND: runtimeCreationScope(actor.userId, actor.businessRole) }, select: { id: true } });
     // Names/roles only. No account administration, legacy labels or email export.
     const people = await tx.user.findMany({ where: { authorization: { accountStatus: "ACTIVE", businessRole: { not: null } } },
       select: { ...person, authorization: { select: { businessRole: true } } }, orderBy: { name: "asc" } });
     const projectIds = target ? [ (await projectFor(tx, contextTarget(target))).projectId ].filter((v): v is string => !!v) : structured.map(p => p.id);
-    const targets = deliverablesEnabled() ? await targetChoices(tx, grant.actorUserId, projectIds) : [];
-    const conceptContexts = target ? [await projectFor(tx, contextTarget(target))] : [
-      ...structured.map(p => ({ projectId: p.id, flexibleProjectId: null })), ...flexible.map(p => ({ projectId: null, flexibleProjectId: p.id }))];
-    const conceptSources = conceptsEnabled() ? await conceptSourceChoices(tx, grant.actorUserId, conceptContexts) : [];
-    return { conceptSources, canCreateConcepts: conceptsEnabled() && conceptManager(actor.businessRole), targets, actorId: grant.actorUserId, people: people.map(p => ({ id: p.id, name: p.name, role: p.authorization!.businessRole })), contexts: [
+    const targets = deliverablesEnabled() ? await targetChoices(tx, grant.actorUserId, projectIds, resolved?.runtimeProjectId ? [resolved.runtimeProjectId] : runtime.map(p => p.id)) : [];
+    const conceptContexts = resolved ? [{ projectId: resolved.projectId, flexibleProjectId: resolved.flexibleProjectId, runtimeProjectId: resolved.runtimeProjectId }] : [
+      ...structured.map(p => ({ projectId: p.id, flexibleProjectId: null })), ...flexible.map(p => ({ projectId: null, flexibleProjectId: p.id })), ...runtime.map(p => ({ projectId: null, flexibleProjectId: null, runtimeProjectId: p.id }))];
+    const conceptSources = conceptsEnabled() && !generalOnly ? await conceptSourceChoices(tx, grant.actorUserId, conceptContexts) : [];
+    return { generalOnly, conceptSources, canCreateConcepts: conceptsEnabled() && conceptManager(actor.businessRole), targets, actorId: grant.actorUserId, people: people.map(p => ({ id: p.id, name: p.name, role: p.authorization!.businessRole })), contexts: [
+      ...runtime.map(p => ({ target: `runtime:${p.id}`, name: p.title, generalOnly: false, runtime: true })),
       ...structured.map(p => ({ target: `structured:${p.id}`, name: p.name })),
       ...flexible.map(p => ({ target: `flexible:${p.id}`, name: p.name })),
-      ...assigned.map(t => ({ target: `task:${t.id}`, name: `Task context: ${t.title}` })),
+      ...assigned.map(t => ({ target: `task:${t.id}`, name: `Task context: ${t.title}`, generalOnly: isRuntimeTask(t) })),
     ] };
   });
 }
@@ -109,7 +118,8 @@ export async function listTasks(raw: unknown = {}) {
     let project: Prisma.UniversalTaskWhereInput = {};
     if (ctx) {
       ensure(ctx.kind !== "task", "INVALID_CONTEXT");
-      project = ctx.kind === "structured" ? { projectId: ctx.key } : { flexibleProjectId: ctx.key };
+      if (ctx.kind === "runtime") ensure(runtimeIntegrationEnabled(), "RUNTIME_INTEGRATION_DISABLED", 404);
+      project = ctx.kind === "runtime" ? { runtimeContext: { projectId: ctx.key } } : ctx.kind === "structured" ? { projectId: ctx.key } : { flexibleProjectId: ctx.key };
     }
     const access = v.scope === "mine" ? { OR: [{ ownerId: grant.actorUserId }, { executorId: grant.actorUserId }] } :
       director && (ctx || v.scope === "accessible" || familyId) ? {} : relationWhere(grant.actorUserId);
@@ -125,7 +135,7 @@ export async function listTasks(raw: unknown = {}) {
     const orderBy: Prisma.UniversalTaskOrderByWithRelationInput[] = [sort === "priority" ? { priority: "desc" } : sort === "created" ? { createdAt: "desc" } : sort === "recent" ? { updatedAt: "desc" } : { deadline: "asc" }, { id: "asc" }];
     const [rows, total] = await Promise.all([tx.universalTask.findMany({ where, include: relations, orderBy, skip: offset, take: 60 }), tx.universalTask.count({ where })]);
     const tasks: TaskSummary[] = [];
-    for (const row of rows) tasks.push({ ...summary(row), ...(sistersEnabled() ? { family: await familyInfo(tx, row.id, grant.actorUserId, director) } : {}) });
+    for (const row of rows) tasks.push({ ...await summary(tx, row), ...(sistersEnabled() ? { family: await familyInfo(tx, row.id, grant.actorUserId, director) } : {}) });
     return { tasks, total };
   });
 }
@@ -138,23 +148,29 @@ export async function createTask(raw: unknown) {
   if (v.sister !== undefined) sisterCommand(v.sister);
   const spectators = ids(v.spectatorIds), commandHash = hash(v);
   const taskType = v.type as TaskSummary["type"], newType = isDeliverable(taskType);
-  return runtimeAuthorization.runAuthorized({ capability: taskType === "FILE_UPLOAD" ? "task.createFileUpload" : taskType === "DATA_INPUT" ? "task.createDataInput" : isConceptType(taskType) ? conceptCreationCapabilities[taskType as keyof typeof conceptCreationCapabilities] : "task.createGeneral", targetId: newType ? text(v.destination, 160) : target.target }, async (tx, grant) => {
+  return runtimeAuthorization.runAuthorized({ capability: taskType === "FILE_UPLOAD" ? "task.createFileUpload" : taskType === "DATA_INPUT" ? "task.createDataInput" : isConceptType(taskType) ? conceptCreationCapabilities[taskType as keyof typeof conceptCreationCapabilities] : "task.createGeneral", targetId: newType ? text(v.destination, typeof v.destination === "string" && v.destination.startsWith("runtime-") ? 256 : 160) : target.target }, async (tx, grant) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${grant.actorUserId + ":" + commandId}, 0))`;
     if (v.sister !== undefined) await sourceTask(tx, grant.actorUserId, sisterCommand(v.sister).sourceTaskId);
     const old = await replay(tx, grant, commandId, commandHash); if (old) return { id: old.taskId, version: old.version, replayed: true };
     await eligible(tx, grant.actorUserId, fields.executorId, spectators);
     const destination = newType ? await authorizedTarget(tx, grant.actorUserId, v.destination) : null;
     if (destination) {
-      ensure(target.kind === "structured" && destination.projectId === target.key, "CROSS_PROJECT_TARGET", 403);
+      ensure(target.kind === (destination.kind.startsWith("runtime-") ? "runtime" : "structured") && destination.projectId === target.key, "CROSS_PROJECT_TARGET", 403);
       ensure(destination.modes.includes(text(v.inputMode, 20)), "UNSUPPORTED_INPUT_MODE");
     }
     const project = await projectFor(tx, target);
+    ensure(!project.runtimeProjectId || isDeliverable(taskType) || ["destination", "inputMode"].every(key => v[key] === undefined), "UNSUPPORTED_TARGET");
     const sister = v.sister === undefined ? null : await validateSister(tx, grant.actorUserId, v, project);
-    const task = await tx.universalTask.create({ data: { type: taskType, ...fields, ...project, ownerId: grant.actorUserId,
+    const task = await tx.universalTask.create({ data: { type: taskType, ...fields, projectId: project.projectId, flexibleProjectId: project.flexibleProjectId, ownerId: grant.actorUserId,
       spectators: { create: spectators.map(userId => ({ userId })) } } });
+    if (project.runtimeProjectId) await tx.runtimeTaskContext.create({ data: { taskId: task.id, projectId: project.runtimeProjectId, sourceTaskId: project.sourceTaskId } });
     if (destination) await tx.universalTaskTarget.create({ data: { taskId: task.id, kind: destination.kind, nativeId: destination.nativeId,
       inputMode: text(v.inputMode, 20), label: destination.label, identity: destination.identity, identityHash: hash(destination.identity),
       expectedState: destination.state, expectedHash: hash(destination.state) } });
+    if (destination?.kind.startsWith("runtime-")) {
+      const identity = destination.identity as { stageId: string; capabilityId: string; fieldId: string | null };
+      await tx.runtimeTaskTarget.create({ data: { taskId: task.id, stageId: identity.stageId, capabilityId: identity.capabilityId, fieldId: identity.fieldId } });
+    }
     ensure(v.sourceVersionId === undefined || taskType === "INSPECT_FILE", "UNSUPPORTED_SOURCE");
     ensure(v.inspirationVersionIds === undefined || taskType === "FINAL_CONCEPT", "UNSUPPORTED_SOURCE");
     const sourceIds = taskType === "INSPECT_FILE" && v.sourceVersionId !== undefined ? [id(v.sourceVersionId)] : ids(v.inspirationVersionIds);
@@ -183,6 +199,14 @@ export async function getTask(taskId: string): Promise<TaskDetail> {
       const application = sensitive ? await tx.universalTaskApplication.findFirst({ where: { taskId }, orderBy: { createdAt: "desc" }, include: { publications: true } }) : null;
       deliverable = { label: target.label, inputMode: target.inputMode, fieldType: (target.identity as { fieldType?: string }).fieldType, publishedAttachmentIds: sensitive ? application?.publications.flatMap(p => p.attachmentId ? [p.attachmentId] : []) ?? [] : [],
         ...(sensitive ? { applicationState: application?.state, errorCode: application?.errorCode } : {}) };
+      if (sensitive && target.kind === "runtime-field") {
+        const field = (target.identity as { field: { options: string[]; min: number | null; max: number | null } }).field;
+        deliverable.fieldRules = { options: field.options, min: field.min, max: field.max };
+      }
+      if (sensitive && isRuntimeTask(task) && application) {
+        const published = await tx.runtimeTaskPublication.findMany({ where: { publication: { applicationId: application.id } }, include: { submission: { include: { version: true } } } });
+        deliverable.runtimeFiles = published.map(p => ({ versionId: p.submission.versionId, name: p.submission.version.originalFileName, state: p.submission.state, acceptance: (target.identity as { capability: { acceptance: string } }).capability.acceptance }));
+      }
       if (active && (director || owner) && task.type === "DATA_INPUT") {
         try { const checked = await recheckTarget(tx, task, grant.actorUserId, false); deliverable.expectedState = target.expectedState;
           deliverable.currentState = checked.current.state; deliverable.conflict = hash(checked.current.state) !== target.expectedHash; }
@@ -194,15 +218,17 @@ export async function getTask(taskId: string): Promise<TaskDetail> {
       const result = submissionState(e, entries); return { id: e.id, state: result.state, reviewer: result.review ? entries.find(r => r.id === result.review!.id)!.actor : null };
     }) : undefined;
     const sourceReady = task.type !== "INSPECT_FILE" || !!references?.length;
-    const family = sistersEnabled() ? await familyInfo(tx, taskId, grant.actorUserId, director) : undefined;
-    const inherited = sistersEnabled() && (director || owner || executor) ? await inheritedEvidence(tx, taskId) : undefined;
-    return { ...summary(task), family, inheritedEvidence: inherited, sistersEnabled: sistersEnabled(), deliverable, references, submissions, entries: (sensitive ? entries : []).map(e => ({ id: e.id, version: e.version, action: e.action, text: e.text,
+    const runtimeReadOnly = isRuntimeTask(task) && (await runtimeContext(tx, task.id)).project.state !== "ACTIVE";
+    const taskSisters = sistersEnabled();
+    const family = taskSisters ? await familyInfo(tx, taskId, grant.actorUserId, director) : undefined;
+    const inherited = taskSisters && (director || owner || executor) ? await inheritedEvidence(tx, taskId) : undefined;
+    return { ...await summary(tx, task), family, inheritedEvidence: inherited, sistersEnabled: taskSisters, deliverable, references, submissions, entries: (sensitive ? entries : []).map(e => ({ id: e.id, version: e.version, action: e.action, text: e.text,
       actor: e.actor, directorOverride: e.directorOverride, createdAt: e.createdAt.toISOString(), snapshot: task.type !== "GENERAL" && !director && !owner && e.action === "REFRESH_TARGET" ? {} : redactSisterSnapshot(e.snapshot) })),
       files: (sensitive ? uploads : []).map(u => ({ id: u.id, fileId: u.version.fileId, versionId: u.versionId, number: u.version.number,
         name: u.version.originalFileName, size: u.version.fileSize, status: u.version.status, uploadedById: u.uploadedById, submittedEntryId: u.submittedEntryId })),
-      permissions: { createSister: sistersEnabled() && task.status === "COMPLETED" && !task.deletedAt && (director || owner || executor), uploadSource: task.type === "INSPECT_FILE" && working && owner && !sourceReady, manage: working && (director || owner), message: active && (director || owner || executor), submit: working && sourceReady && (director || executor),
-        requestCompletion: working && sourceReady && (director || executor), review: active && task.status === "COMPLETION_REQUESTED" && (director || owner) && !executor && pendingRequest?.actorId !== grant.actorUserId,
-        close: active && (director || owner), delete: !task.deletedAt && (director || owner) } };
+      permissions: { createSister: !runtimeReadOnly && taskSisters && task.status === "COMPLETED" && !task.deletedAt && (director || owner || executor), uploadSource: !runtimeReadOnly && task.type === "INSPECT_FILE" && working && owner && !sourceReady, manage: !runtimeReadOnly && working && (director || owner), message: !runtimeReadOnly && active && (director || owner || executor), submit: !runtimeReadOnly && working && sourceReady && (director || executor),
+        requestCompletion: !runtimeReadOnly && working && sourceReady && (director || executor), review: !runtimeReadOnly && active && task.status === "COMPLETION_REQUESTED" && (director || owner) && !executor && pendingRequest?.actorId !== grant.actorUserId,
+        close: !runtimeReadOnly && active && (director || owner), delete: !runtimeReadOnly && !task.deletedAt && (director || owner) } };
   });
 }
 const capability: { [K in TaskAction]: string } = { EDIT: "task.manage", MESSAGE: "task.message", SUBMIT: "task.execute", REQUEST_COMPLETION: "task.requestCompletion",
@@ -379,7 +405,7 @@ export async function downloadTaskFile(taskId: string, uploadId: string, version
 export async function countMyGeneralTasks() {
   if (!taskEnabled()) return 0;
   return runtimeAuthorization.runAuthorized({ capability: "task.list", targetId: "root" }, (tx, grant) =>
-    tx.universalTask.count({ where: { type: { in: enabledTaskTypes() }, deletedAt: null, ...relationWhere(grant.actorUserId) } }));
+    tx.universalTask.count({ where: { type: { in: enabledTaskTypes() }, deletedAt: null, AND: runtimeIntegrationEnabled() ? {} : nativeContext, ...relationWhere(grant.actorUserId) } }));
 }
 
 export async function downloadTaskReference(taskId: string, referenceId: string, versionId: string) {
@@ -409,7 +435,7 @@ export async function sisterDraft(taskId: string) {
   return runtimeAuthorization.runAuthorized({ capability: "task.view", targetId: id(taskId) }, async (tx, grant) => {
     const source = await sourceTask(tx, grant.actorUserId, taskId);
     const actor = await tx.user.findUniqueOrThrow({ where: { id: grant.actorUserId }, select: person });
-    const project = source.projectId ? await tx.project.findUniqueOrThrow({ where: { id: source.projectId }, select: { name: true } }) : await tx.flexibleProject.findUniqueOrThrow({ where: { id: source.flexibleProjectId! }, select: { name: true } });
+    const project = isRuntimeTask(source) ? { name: (await runtimeContext(tx, source.id)).project.title } : source.projectId ? await tx.project.findUniqueOrThrow({ where: { id: source.projectId }, select: { name: true } }) : await tx.flexibleProject.findUniqueOrThrow({ where: { id: source.flexibleProjectId! }, select: { name: true } });
     return { source: { id: source.id, title: source.title, version: source.version, projectName: project.name }, owner: actor, references: await taskReferences(tx, source),
       values: await reusableValues(tx, source), evidence: await sourceEvidence(tx, taskId) };
   });

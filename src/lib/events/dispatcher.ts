@@ -24,7 +24,10 @@ async function locked(tx: Tx, claim: EventClaim) {
 // Phase 2.3 delivery remains usable before the Tasker migration is approved.
 async function loadEvent(tx: Tx, id: string) {
   const [schema] = await tx.$queryRaw<Array<{ ready: boolean }>>`SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='BusinessEvent' AND column_name='taskEntryId') AS ready`;
-  if (schema.ready) return tx.businessEvent.findUniqueOrThrow({ where: { id } });
+  if (schema.ready) {
+    const [runtime] = await tx.$queryRaw<Array<{ ready: boolean }>>`SELECT to_regclass('public."RuntimeTaskEventContext"') IS NOT NULL AS ready`;
+    return tx.businessEvent.findUniqueOrThrow({ where: { id }, ...(runtime.ready ? { include: { runtimeTaskContext: true } } : {}) });
+  }
   const row = await tx.businessEvent.findUniqueOrThrow({ where: { id }, select: {
     id: true, type: true, schemaVersion: true, aggregateType: true, aggregateId: true, sequence: true, projectId: true,
     actorId: true, actorRole: true, actorVersion: true, operation: true, decisionId: true, nativeEventId: true,

@@ -14,6 +14,13 @@ export async function body(request: Request) {
   try { return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown; } catch { throw new TaskerError("INVALID_JSON"); }
 }
 const messages: Record<string, string> = {
+  NUMBER_OUT_OF_RANGE: "Enter a number within the field’s allowed range.",
+  TEXT_OUT_OF_RANGE: "Keep the proposal within the field’s text limits.",
+  INVALID_DATE: "Enter a valid calendar date as YYYY-MM-DD.",
+  INVALID_SELECT_OPTION: "Choose one of the field’s approved options.",
+  FILE_COUNT_LIMIT: "This requirement has reached its file limit. No task files were applied.",
+  FILE_TYPE_DENIED: "The submitted file type is not allowed by this requirement.",
+  TASK_PUBLICATION_STORAGE_FAILED: "The reserved file could not be verified. Review the application and explicitly retry acceptance.",
   SISTERS_DISABLED: "Sister Tasks are not available yet.",
   SISTER_CONFIRMATION_REQUIRED: "Review the Sister Task details and explicitly confirm creation.",
   STALE_SISTER_SOURCE: "The source changed. Reload its details before creating a Sister Task.",

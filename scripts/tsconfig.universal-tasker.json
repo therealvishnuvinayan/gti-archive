@@ -10,6 +10,11 @@
     "tasker-sisters-integration-check.ts",
     "stage-builder-integration-check.ts",
     "workflow-publication-integration-check.ts",
-    "stage-runtime-integration-check.ts"
+    "stage-runtime-integration-check.ts",
+    "runtime-integration-check.ts",
+    "runtime-tasker-check.ts",
+    "runtime-deliverables-check.ts",
+    "runtime-concepts-check.ts",
+    "runtime-completion-check.ts"
   ]
 }

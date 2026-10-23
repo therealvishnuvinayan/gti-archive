@@ -18,7 +18,8 @@ export const businessCapabilityCatalog = {
   workspace: ["workspace.dashboard", "workspace.businessUsers", "workspace.contacts", "workspace.masterData",
     "workspace.calendar.view", "workspace.calendar.create", "workspace.calendar.delete"],
   project: [
-    "project.runtimeCreate", "project.runtimeList", "project.runtimeRead", "project.runtimeManage",
+    "project.runtimeCreateApproved", "project.runtimeRequestCreation", "project.runtimeDecideCreation", "project.runtimeGovernance",
+    "project.runtimeCreate", "project.runtimeList", "project.runtimeRead", "project.runtimeManage", "project.runtimeCompletion",
     "project.view",
     "project.viewContext",
     "project.viewStage",

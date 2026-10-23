@@ -118,6 +118,7 @@
     "tasker:unit-check": "tsc --project scripts/tsconfig.universal-tasker-unit.json && node .tmp/universal-tasker-unit/scripts/universal-tasker-unit-check.js",
     "stage-builder:publication-check": "node scripts/run-universal-tasker-isolated.mjs --workflow-publication",
     "stage-builder:publication-browser-check": "node scripts/workflow-publication-browser-check.mjs",
+    "runtime-integration:check": "node scripts/run-universal-tasker-isolated.mjs --stage-runtime --runtime-integration",
     "stage-runtime:check": "node scripts/run-universal-tasker-isolated.mjs --stage-runtime",
     "stage-runtime:browser-check": "node scripts/stage-runtime-browser-check.mjs"
   },

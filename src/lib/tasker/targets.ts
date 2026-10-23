@@ -6,6 +6,10 @@ import { getStageFiveFieldDefinition } from "../stage-five-fields";
 import { validateChecklistValue } from "../stage-five";
 import { ensure, id, text, taskInputFields } from "./contracts";
 
+import { authorizedRuntimeTarget, runtimeProposedValue } from "./runtime-targets";
+import { runtimeIntegrationEnabled } from "../runtime-integration/activation";
+import { runtimeCreationScope, runtimeContext, isRuntimeTask } from "./runtime-context";
+
 type Tx = Prisma.TransactionClient;
 export type TargetChoice = { target: string; label: string; modes: string[]; projectId: string };
 export function parseDeliverableTarget(raw: unknown) {
@@ -53,6 +57,7 @@ export async function resolveDeliverableTarget(tx: Tx, raw: unknown) {
     permissionTarget: `${kind === "private-folder" ? "requestProjectPrivateFileUpload" : "requestProjectResearchFileUpload"}/${kind}:${nativeId}` };
 }
 export async function authorizedTarget(tx: Tx, userId: string, raw: unknown) {
+  if (typeof raw === "string" && raw.startsWith("runtime-")) return authorizedRuntimeTarget(tx, userId, raw);
   const auth = await tx.userAuthorization.findUnique({ where: { userId } });
   ensure(auth?.accountStatus === "ACTIVE" && auth.businessRole, "TARGET_ACCESS_REVOKED", 403);
   const parsed = parseDeliverableTarget(raw);
@@ -73,11 +78,11 @@ export async function recheckTarget(tx: Tx, task: UniversalTask, reviewerId: str
   const raw = `${stored.kind}:${stored.nativeId}`;
   const current = await authorizedTarget(tx, task.ownerId, raw);
   if (reviewerId !== task.ownerId) await authorizedTarget(tx, reviewerId, raw);
-  ensure(current.projectId === task.projectId && approvalHash(current.identity) === stored.identityHash, "TARGET_MOVED_OR_REPLACED", 409);
+  ensure(current.projectId === (isRuntimeTask(task) ? (await runtimeContext(tx, task.id)).projectId : task.projectId) && approvalHash(current.identity) === stored.identityHash, "TARGET_MOVED_OR_REPLACED", 409);
   if (compareState) ensure(approvalHash(current.state) === stored.expectedHash, "FIELD_CONFLICT_REFRESH_AND_RESUBMIT", 409);
   return { stored, current };
 }
-export async function targetChoices(tx: Tx, actorId: string, projectIds: string[]): Promise<TargetChoice[]> {
+export async function targetChoices(tx: Tx, actorId: string, projectIds: string[], runtimeProjectIds: string[] = []): Promise<TargetChoice[]> {
   const [privateFolders, researchFolders, fields] = await Promise.all([
     tx.projectPrivateFolder.findMany({ where: { projectId: { in: projectIds } }, select: { id: true } }),
     tx.projectResearchFolder.findMany({ where: { workspace: { projectId: { in: projectIds } } }, select: { id: true } }),
@@ -88,6 +93,17 @@ export async function targetChoices(tx: Tx, actorId: string, projectIds: string[
     try { const t = await authorizedTarget(tx, actorId, raw); result.push({ target: raw, label: t.label, modes: t.modes, projectId: t.projectId }); }
     catch (error) { if (!(error instanceof Error) || error.name !== "TaskerError") throw error; }
   }
+  if (runtimeIntegrationEnabled() && runtimeProjectIds.length) {
+    const auth = await tx.userAuthorization.findUniqueOrThrow({ where: { userId: actorId } });
+    const stages = await tx.runtimeStage.findMany({ where: { projectId: { in: runtimeProjectIds }, project: runtimeCreationScope(actorId, auth.businessRole), state: { not: "COMPLETED" } } });
+    for (const stage of stages) {
+      const definition = stage.configuration as unknown as import("../stage-builder/contracts").StageDefinition;
+      for (const c of definition.capabilities) for (const raw of c.type === "FILE_REQUIREMENT" ? [`runtime-file:${stage.id}:${c.id}`] : c.type === "INFORMATION" ? c.fields.filter(f => f.type !== "READ_ONLY").map(f => `runtime-field:${stage.id}:${c.id}:${f.id}`) : []) {
+        try { const t = await authorizedTarget(tx, actorId, raw); result.push({ target: raw, label: t.label, modes: t.modes, projectId: t.projectId }); }
+        catch (error) { if (!(error instanceof Error) || error.name !== "TaskerError") throw error; }
+      }
+    }
+  }
   return result;
 }
 export function proposedValue(target: UniversalTaskTarget, proposedText: unknown, fileCount: number) {
@@ -95,6 +111,7 @@ export function proposedValue(target: UniversalTaskTarget, proposedText: unknown
   const value = text(proposedText, 20000, !needsText);
   ensure(needsFiles ? fileCount > 0 : fileCount === 0, "INPUT_MODE_FILES_REQUIRED");
   ensure(needsText || !value, "INPUT_MODE_TEXT_DENIED");
+  if (target.kind === "runtime-field") return runtimeProposedValue(target.identity, value);
   if (target.kind !== "checklist") return {};
   const identity = target.identity as { fieldKey: Parameters<typeof validateChecklistValue>[0]; fieldType: string };
   ensure(identity.fieldType !== "file" || fileCount === 1, "SINGLE_FILE_REQUIRED");

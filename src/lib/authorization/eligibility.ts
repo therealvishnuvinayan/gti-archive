@@ -14,6 +14,7 @@ import {
 } from "./definitions";
 
 const directorOnlyCapabilities = [
+  "project.runtimeDecideCreation",
   "project.runtimeCreate",
   "template.decideProposal",
   "project.decideCreation",
@@ -77,7 +78,8 @@ const libraryReaderCapabilities = [
 const calendarCapabilities = ["workspace.calendar.view", "workspace.calendar.create", "workspace.calendar.delete"] as const;
 
 const projectManagerCapabilities = [
-  "project.runtimeList", "project.runtimeRead", "project.runtimeManage",
+  "project.runtimeGovernance", "project.runtimeRequestCreation", "project.runtimeCreateApproved",
+  "project.runtimeList", "project.runtimeRead", "project.runtimeManage", "project.runtimeCompletion",
   "workspace.dashboard", ...calendarCapabilities,
   ...libraryReaderCapabilities,
   "project.requestCreation",

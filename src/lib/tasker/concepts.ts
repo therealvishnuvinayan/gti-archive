@@ -3,9 +3,11 @@ import { nativeReferenceSelect, taskFileSelect } from "../files/legacy-select";
 import type { Prisma, UniversalTask, UniversalTaskEntry } from "@prisma/client";
 import { conceptsEnabled, ensure, id, TaskerError, type ConceptSourceChoice, type TaskReference } from "./contracts";
 import { authorizedTarget } from "./targets";
+import { contextIdentity, isRuntimeTask, runtimeContext, sameTaskContext, type TaskContext } from "./runtime-context";
+import { runtimeSourceAuthority, runtimeStageSource } from "./runtime-references";
 
 type Tx = Prisma.TransactionClient;
-type Context = Pick<UniversalTask, "projectId" | "flexibleProjectId">;
+type Context = TaskContext;
 const person = { id: true, name: true } as const;
 export const conceptCreationCapabilities = { INSPECT_FILE: "task.createInspectFile", INITIAL_CONCEPT: "task.createInitialConcept", FINAL_CONCEPT: "task.createFinalConcept" } as const;
 export function conceptManager(role: string | null) { return ["DIRECTOR", "SENIOR_PROJECT_MANAGER", "JUNIOR_PROJECT_MANAGER"].includes(role ?? ""); }
@@ -21,6 +23,7 @@ function sameContext(a: Context, b: Context) { return a.projectId === b.projectI
  * folder the selector can currently write. Archive/Library read grants cannot
  * be laundered into delegation. Historical unmapped files are not adopted here. */
 async function projectSource(tx: Tx, actorId: string, context: Context, versionId: string) {
+  if (isRuntimeTask(context)) return runtimeStageSource(tx, actorId, context, versionId);
   const ref = await tx.sharedFileReference.findFirst({ where: { versionId, projectAttachmentId: { not: null } },
     select: { ...nativeReferenceSelect, projectAttachment: { include: { researchFolderFile: true } }, version: { include: { file: { select: taskFileSelect } } } } });
   const a = ref?.projectAttachment, v = ref?.version;
@@ -40,7 +43,7 @@ async function inspirationSource(tx: Tx, actorId: string, context: Context, vers
   const source = await tx.universalTask.findUniqueOrThrow({ where: { id: upload.taskId } });
   const auth = await tx.userAuthorization.findUniqueOrThrow({ where: { userId: actorId } });
   ensure(auth.accountStatus === "ACTIVE" && conceptManager(auth.businessRole) && (auth.businessRole === "DIRECTOR" || source.ownerId === actorId), "SOURCE_DELEGATION_DENIED", 403);
-  ensure(source.type === "INITIAL_CONCEPT" && !source.deletedAt && source.status !== "CLOSED" && sameContext(source, context) && sameContext(upload.version.file, context), "SOURCE_UNAVAILABLE", 403);
+  ensure(source.type === "INITIAL_CONCEPT" && !source.deletedAt && source.status !== "CLOSED" && await sameTaskContext(tx, source, context) && upload.version.file.taskId === source.id && sameContext(upload.version.file, source), "SOURCE_UNAVAILABLE", 403);
   ensure(upload.version.status === "READY" && upload.version.objectETag && (upload.version.applicationSealed || upload.version.objectVersionId), "SOURCE_UNAVAILABLE", 403);
   const entries = await tx.universalTaskEntry.findMany({ where: { taskId: source.id }, orderBy: { version: "asc" } });
   const submission = entries.find(e => e.id === upload.submittedEntryId && e.action === "SUBMIT");
@@ -66,6 +69,7 @@ export async function resolveTaskReference(tx: Tx, actorId: string, task: Univer
       const auth = await tx.userAuthorization.findUniqueOrThrow({ where: { userId: actorId } });
       ensure(auth.accountStatus === "ACTIVE" && (auth.businessRole === "DIRECTOR" || ref.sourceUpload.task.ownerId === actorId), "SOURCE_DELEGATION_DENIED", 403);
       const version = ref.sourceUpload.version;
+      ensure(await sameTaskContext(tx, ref.sourceUpload.task, task), "SOURCE_UNAVAILABLE", 403);
       ensure(version.status === "READY" && version.objectETag && (version.applicationSealed || version.objectVersionId), "SOURCE_UNAVAILABLE", 403);
       return { version, sourceUploadId: ref.sourceUploadId, sourceAttachmentId: null, sourceSubmissionId: null, sourceReviewId: null, sourceState: "SEALED", kind: "INSPECTION" };
     }
@@ -77,7 +81,8 @@ export async function resolveTaskReference(tx: Tx, actorId: string, task: Univer
 }
 export async function saveTaskReference(tx: Tx, taskId: string, selectedEntryId: string, source: Awaited<ReturnType<typeof resolveTaskReference>>) {
   const { version, sourceUploadId, sourceAttachmentId, sourceSubmissionId, sourceReviewId, sourceState, kind } = source;
-  await tx.universalTaskReference.create({ data: { taskId, selectedEntryId, versionId: version.id, sourceUploadId, sourceAttachmentId, sourceSubmissionId, sourceReviewId, sourceState, kind } });
+  const reference = await tx.universalTaskReference.create({ data: { taskId, selectedEntryId, versionId: version.id, sourceUploadId, sourceAttachmentId, sourceSubmissionId, sourceReviewId, sourceState, kind } });
+  if ("runtimeSource" in source) await tx.runtimeTaskReference.create({ data: { referenceId: reference.id, ...source.runtimeSource } });
   // A Sister can deliberately retain this same inspection version as historical
   // context. Both relationships share one exact native creation provenance row.
   if (!await tx.sharedFileProvenance.findUnique({ where: { taskEntryId_versionId: { taskEntryId: selectedEntryId, versionId: version.id } } })) {
@@ -89,9 +94,9 @@ export async function conceptSourceChoices(tx: Tx, actorId: string, contexts: Co
   if (!conceptsEnabled() || !conceptManager(auth.businessRole)) return [];
   const result: ConceptSourceChoice[] = [];
   for (const context of contexts) {
-    const contextTarget = context.projectId ? `structured:${context.projectId}` : `flexible:${context.flexibleProjectId}`;
-    const candidates = await tx.sharedFileVersion.findMany({ where: { status: "READY", file: context,
-      OR: [{ references: { some: { projectAttachmentId: { not: null } } } }, { taskUpload: { task: { type: "INITIAL_CONCEPT", deletedAt: null }, submittedEntryId: { not: null } } }] },
+    const contextTarget = await contextIdentity(tx, context);
+    const candidates = await tx.sharedFileVersion.findMany({ where: { status: "READY", file: isRuntimeTask(context) ? { OR: [{ task: { runtimeContext: { projectId: contextTarget.slice(8) } } }, { runtimeStage: { projectId: contextTarget.slice(8) } }] } : { projectId: context.projectId, flexibleProjectId: context.flexibleProjectId },
+      OR: [{ references: { some: isRuntimeTask(context) ? { runtimeSubmissionId: { not: null } } : { projectAttachmentId: { not: null } } } }, { taskUpload: { task: { type: "INITIAL_CONCEPT", deletedAt: null }, submittedEntryId: { not: null } } }] },
       select: { id: true, taskUpload: { select: { id: true } } }, orderBy: { createdAt: "desc" }, take: 500 });
     for (const c of candidates) {
       try {
@@ -108,12 +113,29 @@ export async function taskReferences(tx: Tx, task: UniversalTask): Promise<TaskR
     version: { include: { file: { select: taskFileSelect }, uploadedBy: { select: person } } }, sourceAttachment: { select: { projectId: true } }, sourceUpload: { include: { task: { include: { owner: { select: person } } } } },
     sourceSubmission: { include: { actor: { select: person } } }, sourceReview: { include: { actor: { select: person } } },
   }, orderBy: { id: "asc" } });
-  return rows.map(r => {
+  const runtimeSources = isRuntimeTask(task) ? await tx.runtimeTaskReference.findMany({ where: { referenceId: { in: rows.map(r => r.id) } }, include: { submission: { include: { stage: true, submittedBy: { select: person }, reviewedBy: { select: person } } } } }) : [];
+  const result: TaskReference[] = [];
+  for (const r of rows) {
+    const runtime = runtimeSources.find(s => s.referenceId === r.id);
+    if (isRuntimeTask(task)) {
+      const context = await runtimeContext(tx, task.id);
+      if (runtime) {
+        ensure(runtime.projectId === context.projectId && runtime.submission.stage.projectId === context.projectId && runtime.submission.versionId === r.versionId, "SOURCE_UNAVAILABLE", 403);
+        await runtimeSourceAuthority(tx, task.ownerId, context.projectId);
+      } else {
+        ensure(r.sourceUpload && await sameTaskContext(tx, r.sourceUpload.task, task) && r.version.file.taskId === r.sourceUpload.taskId, "SOURCE_UNAVAILABLE", 403);
+        const owner = await tx.userAuthorization.findUnique({ where: { userId: task.ownerId } });
+        ensure(owner?.accountStatus === "ACTIVE" && conceptManager(owner.businessRole) && (owner.businessRole === "DIRECTOR" || r.sourceUpload.task.ownerId === task.ownerId), "SOURCE_DELEGATION_DENIED", 403);
+      }
+    }
     ensure((!r.sourceAttachment || r.sourceAttachment.projectId === task.projectId) && sameContext(r.version.file, task) && (!r.sourceUpload || sameContext(r.sourceUpload.task, task)), "SOURCE_UNAVAILABLE", 403);
     const source = r.kind === "INSPIRATION" ? r.sourceUpload?.task : null;
-    return { id: r.id, kind: r.kind, fileId: r.version.fileId, versionId: r.versionId, number: r.version.number, name: r.version.originalFileName, mimeType: r.version.mimeType,
+    result.push({ id: r.id, kind: r.kind, fileId: r.version.fileId, versionId: r.versionId, number: r.version.number, name: r.version.originalFileName, mimeType: r.version.mimeType,
       sourceState: r.sourceState, sourceTask: source ? { id: source.id, title: source.title, owner: source.owner } : null, uploader: r.version.uploadedBy,
       submission: r.sourceSubmission ? { id: r.sourceSubmission.id, actor: r.sourceSubmission.actor, createdAt: r.sourceSubmission.createdAt.toISOString() } : null,
-      review: r.sourceReview ? { id: r.sourceReview.id, actor: r.sourceReview.actor, action: r.sourceReview.action, createdAt: r.sourceReview.createdAt.toISOString() } : null };
-  });
+      review: r.sourceReview ? { id: r.sourceReview.id, actor: r.sourceReview.actor, action: r.sourceReview.action, createdAt: r.sourceReview.createdAt.toISOString() } : null,
+      ...(runtime ? { runtimeSource: { stageId: runtime.submission.stageId, stageTitle: (runtime.submission.stage.configuration as { title: string }).title,
+        submissionId: runtime.submissionId, state: runtime.submission.state, submittedBy: runtime.submission.submittedBy, reviewer: runtime.submission.reviewedBy } } : {}) });
+  }
+  return result;
 }

@@ -7,6 +7,10 @@ import { copyStoredObject, getObjectMetadata } from "@/lib/storage/s3";
 import { publishTaskAttachmentTx } from "../project-history";
 import { applyTaskChecklistValueTx } from "../stage-five";
 import { ensure } from "./contracts";
+import { runtimeStageCommandTx } from "../stage-runtime/service";
+import { runtimeContext, isRuntimeTask } from "./runtime-context";
+import { sanitizeFileName } from "../storage/s3";
+import { runtimeAdapterError } from "./runtime-targets";
 import { recheckTarget } from "./targets";
 
 type Tx = Prisma.TransactionClient;
@@ -22,7 +26,7 @@ export async function exactRequest(tx: Tx, task: UniversalTask, reviewerId: stri
 }
 export async function prepareApplication(tx: Tx, task: UniversalTask, reviewerId: string) {
   const { request, evidence } = await exactRequest(tx, task, reviewerId);
-  const { stored } = await recheckTarget(tx, task, reviewerId);
+  const { stored, current } = await recheckTarget(tx, task, reviewerId);
   ensure(evidence.targetHash === stored.expectedHash, "FIELD_CONFLICT_REFRESH_AND_RESUBMIT", 409);
   let application = await tx.universalTaskApplication.findUnique({ where: { requestEntryId: request.id } });
   if (application) { ensure(application.reviewerId === reviewerId && application.state !== "APPLIED", "APPLICATION_REVIEWER_CHANGED", 409); return { application, created: false }; }
@@ -31,7 +35,7 @@ export async function prepareApplication(tx: Tx, task: UniversalTask, reviewerId
     const upload = await tx.universalTaskUpload.findFirst({ where: { taskId: task.id, versionId: sourceVersionId, submittedEntryId: evidence.submissionIds[0], version: { status: "READY" } }, include: { version: true } });
     ensure(upload, "INVALID_SUBMISSION_FILES");
     await tx.universalTaskPublication.create({ data: { applicationId: application.id, sourceVersionId, bucket: upload.version.bucket,
-      storageKey: `projects/${task.projectId}/task-publications/${application.id}/${randomUUID()}` } });
+      storageKey: isRuntimeTask(task) ? `runtime/${current.projectId}/${(stored.identity as { stageId: string }).stageId}/rf_${randomUUID().replaceAll("-", "")}/sealed/${sanitizeFileName(upload.version.originalFileName)}` : `projects/${task.projectId}/task-publications/${application.id}/${randomUUID()}` } });
   }
   return { application, created: true };
 }
@@ -43,6 +47,15 @@ export async function applyApplication(tx: Tx, task: UniversalTask, reviewerId: 
   ensure(application.reviewerId === reviewerId && application.state !== "APPLIED", "APPLICATION_REVIEWER_CHANGED", 409);
   ensure(approvalHash(application.publications.map(p => p.sourceVersionId).sort()) === approvalHash([...evidence.fileVersionIds].sort()), "INVALID_SUBMISSION_FILES");
   const attachmentIds: string[] = [], versionIds: string[] = [];
+  let runtimeActivityId: string | null = null;
+  const runtime = isRuntimeTask(task), target = stored.identity as { stageId: string; capabilityId: string; fieldId: string | null };
+  const runtimeCommand = async (command: Record<string, unknown>, publicationId?: string) => {
+    const stage = await tx.runtimeStage.findUniqueOrThrow({ where: { id: target.stageId } });
+    const commandId = randomUUID();
+    const result = await runtimeStageCommandTx(tx, current.projectId, stage.id, { ...command, commandId, expectedRevision: stage.revision }, { applicationId: application.id, publicationId }).catch(runtimeAdapterError);
+    runtimeActivityId = (await tx.runtimeActivity.findUniqueOrThrow({ where: { actorId_commandId: { actorId: reviewerId, commandId } } })).id;
+    return result;
+  };
   for (const publication of application.publications) {
     const source = publication.sourceVersion;
     ensure(source.status === "READY" && source.objectETag && source.uploadedById, "FILE_UNAVAILABLE", 409);
@@ -59,6 +72,13 @@ export async function applyApplication(tx: Tx, task: UniversalTask, reviewerId: 
     }
     const integrity = captureFileIntegrity(observed, source);
     ensure(integrity.objectETag === source.objectETag && (!source.checksumSha256 || integrity.checksumSha256 === source.checksumSha256), "FILE_CHANGED", 409);
+    if (runtime) {
+      const prepared = await runtimeCommand({ action: "UPLOAD_PREPARED", capabilityId: target.capabilityId, fileName: source.originalFileName, mimeType: source.mimeType, fileSize: source.fileSize, supersedesId: null }, publication.id) as { submissionId: string; versionId: string };
+      await runtimeCommand({ action: "FILE_SUBMITTED", submissionId: prepared.submissionId }, publication.id);
+      await tx.universalTaskPublication.update({ where: { id: publication.id }, data: { publishedVersionId: prepared.versionId } });
+      versionIds.push(prepared.versionId);
+      continue;
+    }
     const attachment = await publishTaskAttachmentTx(tx, { projectId: current.projectId, kind: stored.kind, nativeId: stored.nativeId, source, reviewerId, note,
       bucket: publication.bucket, storageKey: publication.storageKey });
     const file = await tx.sharedFile.create({ select: { id: true }, data: { projectId: current.projectId } });
@@ -69,12 +89,18 @@ export async function applyApplication(tx: Tx, task: UniversalTask, reviewerId: 
     await tx.universalTaskPublication.update({ where: { id: publication.id }, data: { attachmentId: attachment.id, publishedVersionId: version.id } });
     attachmentIds.push(attachment.id); versionIds.push(version.id);
   }
+  if (stored.kind === "runtime-field") await runtimeCommand({ action: "FIELDS", values: { [target.fieldId!]: evidence.proposedValue.value } });
   if (stored.kind === "checklist") await applyTaskChecklistValueTx(tx, stored.nativeId, evidence.proposedValue, attachmentIds, reviewerId);
-  return { application, request, evidence, attachmentIds, versionIds, before: current.state };
+  return { application, request, evidence, attachmentIds, versionIds, runtimeActivityId, before: current.state };
 }
 export async function completeApplication(tx: Tx, applied: Awaited<ReturnType<typeof applyApplication>>, task: UniversalTask, entry: UniversalTaskEntry) {
   await tx.universalTaskApplication.update({ where: { id: applied.application.id }, data: { state: "APPLIED", errorCode: null, acceptedEntryId: entry.id } });
   for (const versionId of [...applied.evidence.fileVersionIds, ...applied.versionIds]) await tx.sharedFileProvenance.create({ data: { versionId, taskEntryId: entry.id } });
+  if (isRuntimeTask(task)) {
+    ensure(applied.runtimeActivityId && (await runtimeContext(tx, task.id)).projectId, "RUNTIME_APPLICATION_HISTORY_REQUIRED");
+    await tx.runtimeTaskApplication.create({ data: { applicationId: applied.application.id, activityId: applied.runtimeActivityId } });
+    return;
+  }
   await tx.projectActivityLog.create({ data: { projectId: task.projectId!, actorId: entry.actorId, action: "TASK_DELIVERABLE_ACCEPTED",
     metadata: { taskId: task.id, taskOwnerId: task.ownerId, executorId: task.executorId, requestId: applied.request.id, submissionIds: applied.evidence.submissionIds,
       fileVersionIds: applied.evidence.fileVersionIds, attachmentIds: applied.attachmentIds, applicationId: applied.application.id, taskEntryId: entry.id,

@@ -10,12 +10,13 @@ export type TaskSummary = {
   id: string; title: string; type: typeof taskTypes[number]; brief: string; context: string | null;
   priority: typeof priorities[number]; deadline: string; status: typeof statuses[number]; version: number;
   owner: Person; executor: Person; spectators: Person[];
-  project: { id: string; name: string; kind: "structured" | "flexible" };
+  project: { id: string; name: string; kind: "structured" | "flexible" | "runtime" };
   createdAt: string; updatedAt: string; deletedAt: string | null;
 };
 export type TaskFile = { id: string; fileId: string; versionId: string; number: number; name: string; status: string;
   size: number; uploadedById: string; submittedEntryId: string | null };
 export type TaskReference = {
+  runtimeSource?: { stageId: string; stageTitle: string; submissionId: string; state: string; submittedBy: Person; reviewer: Person | null };
   id: string; kind: string; fileId: string; versionId: string; number: number; name: string; mimeType: string;
   sourceState: string; sourceTask: { id: string; title: string; owner: Person } | null;
   submission: { id: string; actor: Person; createdAt: string } | null;
@@ -31,8 +32,8 @@ export type TaskDetail = TaskSummary & {
   inheritedEvidence?: HistoricalEvidence[];
   sistersEnabled?: boolean;
   submissions?: { id: string; state: string; reviewer: Person | null }[];
-  deliverable?: { label: string; inputMode: string; fieldType?: string; expectedState?: unknown; currentState?: unknown; conflict?: boolean;
-    applicationState?: string; errorCode?: string | null; publishedAttachmentIds: string[] };
+  deliverable?: { label: string; inputMode: string; fieldType?: string; fieldRules?: { options: string[]; min: number | null; max: number | null }; expectedState?: unknown; currentState?: unknown; conflict?: boolean;
+    runtimeFiles?: { versionId: string; name: string; state: string; acceptance: string }[]; applicationState?: string; errorCode?: string | null; publishedAttachmentIds: string[] };
 
   permissions: { createSister?: boolean; uploadSource?: boolean; manage: boolean; message: boolean; submit: boolean; requestCompletion: boolean; review: boolean; close: boolean; delete: boolean };
 };
@@ -69,7 +70,7 @@ export function priority(value: unknown) { ensure(priorities.includes(value as t
 export function expectedVersion(value: unknown) { ensure(Number.isSafeInteger(value) && Number(value) > 0, "VERSION_REQUIRED"); return value as number; }
 export function contextTarget(value: unknown) {
   const target = text(value, 160); const [kind, key, extra] = target.split(":");
-  ensure(["structured", "flexible", "task"].includes(kind) && !extra, "INVALID_CONTEXT"); id(key);
+  ensure(["structured", "flexible", "runtime", "task"].includes(kind) && !extra, "INVALID_CONTEXT"); id(key);
   return { target, kind, key };
 }
 export function taskEnabled() { return process.env.FLUX_UNIVERSAL_TASKER === "1"; }
