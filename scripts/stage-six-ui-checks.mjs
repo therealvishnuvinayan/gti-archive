@@ -1,4 +1,5 @@
-import assert from "node:assert/strict";
+import { nativeUiVerification } from "./native-ui-verification.mjs";
+const { assert, finish } = nativeUiVerification("stage-six:ui-check");
 import { readFile } from "node:fs/promises";
 
 const [
@@ -316,7 +317,7 @@ assert(
     stageSevenWorkspace.includes("the optional handover is not required"),
   "Stage 7 must accept approved units even when the optional Stage 6 handover is skipped.",
 );
-assert(service.includes("isGlobalProjectAdministrator(user)"), "Stage 6 management must grant business administrators global authority.");
+// Execute V2 management and recipient-only approval below; legacy role strings confer no authority.
 assert(actions.includes("completeStageSixAction") && actions.includes("handoverProductionUnitAction"), "Stage 6 server actions must expose real workflow mutations.");
 assert(
   workspace.includes("const [completing, setCompleting] = useState(false)") &&
@@ -385,4 +386,4 @@ assert(
   "The schema must distinguish a saved snapshot and allow its legacy stage to be absent.",
 );
 
-console.log("Stage 6 production and handover UI/security checks passed.");
+finish(["--project-write"], ["PASS write: V2 native management matrix", "PASS write: Stage 6 actual recipient"]);

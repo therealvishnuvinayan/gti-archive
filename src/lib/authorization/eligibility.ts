@@ -14,6 +14,8 @@ import {
 } from "./definitions";
 
 const directorOnlyCapabilities = [
+  "project.runtimeDecideCreation",
+  "project.runtimeCreate",
   "template.decideProposal",
   "project.decideCreation",
   "project.approveLegacyPreset",
@@ -76,6 +78,8 @@ const libraryReaderCapabilities = [
 const calendarCapabilities = ["workspace.calendar.view", "workspace.calendar.create", "workspace.calendar.delete"] as const;
 
 const projectManagerCapabilities = [
+  "project.runtimeGovernance", "project.runtimeRequestCreation", "project.runtimeCreateApproved",
+  "project.runtimeList", "project.runtimeRead", "project.runtimeManage", "project.runtimeCompletion",
   "workspace.dashboard", ...calendarCapabilities,
   ...libraryReaderCapabilities,
   "project.requestCreation",
@@ -95,7 +99,10 @@ const projectManagerCapabilities = [
   "project.respond",
   "project.manageParticipants",
   "project.requestCompletion",
+  "task.list",
   "task.view",
+  "task.message",
+  "task.download",
   "task.createGeneral",
   "task.createFileUpload",
   "task.createDataInput",
@@ -119,7 +126,10 @@ const taskFocusedCapabilities = [
   "project.viewContext",
   "project.viewFile",
   "project.viewFolder",
+  "task.list",
   "task.view",
+  "task.message",
+  "task.download",
   "task.createGeneral",
   "task.createFileUpload",
   "task.execute",
@@ -140,6 +150,9 @@ const eligibleCapabilities: Record<BusinessRole, readonly BusinessCapability[]> 
     "template.createProposal",
     "template.editProposal",
     "template.configureCustomStages",
+    "template.submitWorkflow",
+    "template.viewWorkflowApprovals",
+    "template.viewPublications",
     "archive.view",
     "archive.download",
     "archive.upload",

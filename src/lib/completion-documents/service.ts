@@ -9,6 +9,11 @@ import { isProjectStatusCompleted } from "../project-statuses";
 import { buildProjectCompletionDocumentKey, copyStoredObject, createPresignedDownloadUrl, createPresignedUploadUrl,
   getMaxAssetUploadBytes, getObjectMetadata, getS3BucketName, isAllowedProjectCompletionDocument, sanitizeFileName } from "@/lib/storage/s3";
 import { completionDocumentEvidenceHash, completionStep, stepState } from "./evidence";
+import { recordCompletionFileEvent, assertCompletionFileObservation } from "@/lib/files/completion-adapter";
+import { getSharedFileDownloadPath } from "@/lib/files/access";
+import type { FileObjectObservation } from "@/lib/files/contracts";
+import { recordCompletionApprovalEvent, completionApproval, completionApprovalViews, rejectSupersededCompletion } from "@/lib/approvals/completion";
+import { decideApproval } from "@/lib/approvals/service";
 
 type DB = Prisma.TransactionClient;
 type Actor = { userId: string } | { accessId: string; email: string };
@@ -23,11 +28,14 @@ function transaction(actor: { userId: string }, projectId: string) {
 async function bindActor(tx: DB, actor: Actor) {
   await tx.$queryRaw`SELECT set_config('flux.completion_actor', ${"userId" in actor ? actor.userId : ""}, true), set_config('flux.completion_access', ${"accessId" in actor ? actor.accessId : ""}, true)`;
 }
-async function event(tx: DB, actor: Actor, workflow: Target, action: string, details: unknown, links: { submissionId?: string; accessId?: string } = {}) {
+async function event(tx: DB, actor: Actor, workflow: Target, action: string, details: unknown, links: { submissionId?: string; accessId?: string } = {}, observation?: FileObjectObservation) {
   await bindActor(tx, actor);
-  await tx.completionDocumentEvent.create({ data: { projectId: workflow.projectId, workflowId: workflow.id, action,
+  const recorded = await tx.completionDocumentEvent.create({ data: { projectId: workflow.projectId, workflowId: workflow.id, action,
     actorId: "userId" in actor ? actor.userId : null, externalActorEmail: "email" in actor ? actor.email : null,
     details: JSON.parse(JSON.stringify(details)), ...links } });
+  await recordCompletionFileEvent(tx, recorded.id, observation);
+  await recordCompletionApprovalEvent(tx, recorded.id);
+  return recorded.id;
 }
 export async function completionDocumentEvent(actor: { userId: string }, workflow: Target, action: string, details: unknown) {
   await event(transaction(actor, workflow.projectId), actor, workflow, action, details);
@@ -72,6 +80,10 @@ export async function prepareCompletionUpload(actor: { userId: string }, input: 
 
 async function finish(tx: DB, actor: Actor, input: CompletionUploadInput & { storageKey: string; failed?: boolean }) {
   const workflow = await activeWorkflow(tx, input.projectId);
+  // Lock the row that finalization actually changes BEFORE any storage effect.
+  // A project lock alone does not refresh a waiting Serializable snapshot; a
+  // replay could otherwise copy twice before its later database update aborts.
+  await tx.$queryRaw`SELECT id FROM "CompletionDocumentSubmission" WHERE "uploadKey" = ${input.storageKey} FOR UPDATE`;
   const s = await tx.completionDocumentSubmission.findUnique({ where: { uploadKey: input.storageKey } });
   if (!s || s.projectId !== input.projectId || s.workflowId !== workflow.id || s.type !== input.documentType || s.originalFileName !== input.originalFileName || s.mimeType !== input.mimeType || s.fileSize !== input.fileSize ||
     ("userId" in actor ? s.submittedById !== actor.userId || !!s.accessId : s.accessId !== actor.accessId || s.externalSubmitterEmail !== actor.email)) throw new Error("Upload ticket does not match this project, file or submitter.");
@@ -94,23 +106,26 @@ async function finish(tx: DB, actor: Actor, input: CompletionUploadInput & { sto
   const sealed = await getObjectMetadata(s.storageKey, s.bucket);
   if (sealed.ContentLength !== s.fileSize || sealed.ContentType !== s.mimeType || !sealed.ETag) throw new Error("Unable to verify the sealed completion evidence.");
   await tx.completionDocumentSubmission.update({ where: { id: s.id }, data: { status: "SUBMITTED", uploadedAt: new Date(), objectETag: sealed.ETag } });
-  await event(tx, actor, workflow, "DOCUMENT_SUBMITTED", { etag: sealed.ETag }, { submissionId: s.id });
+  await event(tx, actor, workflow, "DOCUMENT_SUBMITTED", { etag: sealed.ETag }, { submissionId: s.id }, sealed);
   return { submissionId: s.id, status: "SUBMITTED" };
 }
 export async function finishCompletionUpload(actor: { userId: string }, input: CompletionUploadInput & { storageKey: string; failed?: boolean }) { return finish(transaction(actor, input.projectId), actor, input); }
 
-export async function reviewCompletionDocument(user: { id: string }, input: { projectId: string; submissionId: string; decision: "ACCEPT" | "REJECT"; reason: string }) {
+export async function reviewCompletionDocument(user: { id: string }, input: { projectId: string; submissionId: string; decision: "ACCEPT" | "REJECT"; reason: string; approval?: unknown }) {
   return runProjectMutation(user, "reviewCompletionDocument", { kind: "structured", id: input.projectId }, async actor => {
     if (!["ACCEPT", "REJECT"].includes(input.decision) || !input.reason?.trim() || input.reason.length > 2000) throw new Error("A review decision and reason are required.");
     const identity = { userId: actor.id }, tx = transaction(identity, input.projectId), workflow = await activeWorkflow(tx, input.projectId);
     const s = await tx.completionDocumentSubmission.findUniqueOrThrow({ where: { id: input.submissionId } });
     if (s.projectId !== input.projectId || s.workflowId !== workflow.id) throw new Error("Submission belongs to another project.");
     const resultStatus = input.decision === "ACCEPT" ? "ACCEPTED" : "REJECTED";
-    if (s.status === resultStatus && s.reviewedById === actor.id && s.reviewReason === input.reason.trim()) return { status: s.status };
-    if (s.status !== "SUBMITTED") throw new Error("Submission has already been reviewed or is incomplete.");
+    const request = await completionApproval(tx, s.id);
+    const matchingRetry = s.status === resultStatus && s.reviewedById === actor.id && s.reviewReason === input.reason.trim();
+    if (!request && matchingRetry) return { status: s.status };
+    if (s.status !== "SUBMITTED" && !matchingRetry) throw new Error("Submission has already been reviewed or is incomplete.");
+    if (request && request.state !== "SUPERSEDED" && stepState(workflow, s.type).requestedAt?.getTime() !== s.requestTime.getTime()) throw new Error("The approval's document request was superseded.");
     if (input.decision === "ACCEPT") {
-      const requestedAt = assertRequested(workflow, s.type);
-      if (s.requestTime.getTime() !== requestedAt.getTime() || s.evidenceHash !== await completionDocumentEvidenceHash(tx, workflow, s.type)) throw new Error("This submission is stale; reject it and request a revision.");
+      const requestedAt = matchingRetry ? stepState(workflow, s.type).requestedAt : assertRequested(workflow, s.type);
+      if (s.requestTime.getTime() !== requestedAt?.getTime() || s.evidenceHash !== await completionDocumentEvidenceHash(tx, workflow, s.type)) throw new Error("This submission is stale; reject it and request a revision.");
       if (s.accessId) {
         const access = await tx.completionDocumentAccess.findUniqueOrThrow({ where: { id: s.accessId } });
         if (access.revokedAt) throw new Error("The external submission capability was revoked; reject this submission.");
@@ -118,19 +133,34 @@ export async function reviewCompletionDocument(user: { id: string }, input: { pr
       if (!s.uploadedAt || !s.objectETag) throw new Error("Verified upload evidence is missing.");
       const metadata = await getObjectMetadata(s.storageKey, s.bucket);
       if (metadata.ETag !== s.objectETag || metadata.ContentLength !== s.fileSize || metadata.ContentType !== s.mimeType) throw new Error("Stored evidence has changed or is missing.");
+      await assertCompletionFileObservation(tx, s.id, metadata);
     }
-    await bindActor(tx, identity);
-    const reviewedAt = new Date();
-    await tx.completionDocumentSubmission.update({ where: { id: s.id }, data: { status: resultStatus, reviewedById: actor.id, reviewedAt, reviewReason: input.reason.trim() } });
-    if (input.decision === "ACCEPT") {
-      await tx.projectCompletionDocument.create({ data: { projectId: s.projectId, workflowId: s.workflowId, type: s.type, originalFileName: s.originalFileName, archiveFileName: s.originalFileName,
-        mimeType: s.mimeType, fileSize: s.fileSize, bucket: s.bucket, storageKey: s.storageKey, uploadedById: s.submittedById, externalSubmitterEmail: s.externalSubmitterEmail, uploadedAt: s.uploadedAt!, submissionId: s.id } });
-      const prefix = completionStep[s.type];
-      const updated = await tx.projectCompletionWorkflow.update({ where: { id: workflow.id }, data: { [`${prefix}Status`]: "COMPLETED", [`${prefix}CompletedAt`]: reviewedAt } });
-      const resolved = Object.values(completionStep).every(p => updated[`${p}Required`] === false || (updated[`${p}Required`] === true && updated[`${p}Status`] === "COMPLETED"));
-      await tx.projectCompletionWorkflow.update({ where: { id: workflow.id }, data: { completedAt: resolved ? reviewedAt : null } });
+    const applyNative = async (outcome: "APPROVE" | "REJECT", reviewedAt: Date) => {
+      const resultStatus = outcome === "APPROVE" ? "ACCEPTED" : "REJECTED";
+      await bindActor(tx, identity);
+      await tx.completionDocumentSubmission.update({ where: { id: s.id }, data: { status: resultStatus, reviewedById: actor.id, reviewedAt, reviewReason: input.reason.trim() } });
+      if (outcome === "APPROVE") {
+        await tx.projectCompletionDocument.create({ data: { projectId: s.projectId, workflowId: s.workflowId, type: s.type, originalFileName: s.originalFileName, archiveFileName: s.originalFileName,
+          mimeType: s.mimeType, fileSize: s.fileSize, bucket: s.bucket, storageKey: s.storageKey, uploadedById: s.submittedById, externalSubmitterEmail: s.externalSubmitterEmail, uploadedAt: s.uploadedAt!, submissionId: s.id } });
+        const prefix = completionStep[s.type];
+        const updated = await tx.projectCompletionWorkflow.update({ where: { id: workflow.id }, data: { [`${prefix}Status`]: "COMPLETED", [`${prefix}CompletedAt`]: reviewedAt } });
+        const resolved = Object.values(completionStep).every(p => updated[`${p}Required`] === false || (updated[`${p}Required`] === true && updated[`${p}Status`] === "COMPLETED"));
+        await tx.projectCompletionWorkflow.update({ where: { id: workflow.id }, data: { completedAt: resolved ? reviewedAt : null } });
+      }
+      return event(tx, identity, workflow, `DOCUMENT_${resultStatus}`, { reason: input.reason.trim() }, { submissionId: s.id });
+    };
+    if (request) {
+      if (request.state === "SUPERSEDED") {
+        if (input.decision !== "REJECT") throw new Error("Superseded evidence cannot be approved.");
+        await rejectSupersededCompletion(tx, request.id, input.approval, input.reason.trim(), applyNative);
+      } else {
+        const result = await decideApproval(tx, request.id, { expected: input.approval, outcome: input.decision === "ACCEPT" ? "APPROVE" : "REJECT", reason: input.reason }, applyNative);
+        if (result.state === "PENDING") return { status: "SUBMITTED" };
+      }
+    } else {
+      if (input.approval !== undefined) throw new Error("Approval request does not match this submission.");
+      await applyNative(input.decision === "ACCEPT" ? "APPROVE" : "REJECT", new Date());
     }
-    await event(tx, identity, workflow, `DOCUMENT_${resultStatus}`, { reason: input.reason.trim() }, { submissionId: s.id });
     return { status: resultStatus };
   }, input);
 }
@@ -214,11 +244,14 @@ export async function getCompletionDocumentReviews(user: { id: string }, project
     externalSubmitterEmail: true, submittedBy: { select: { name: true, email: true } }, reviewedBy: { select: { name: true, email: true } },
   } });
   const accesses = await prisma.completionDocumentAccess.findMany({ where: { projectId }, orderBy: { createdAt: "desc" }, select: { id: true, type: true, recipientEmail: true, expiresAt: true, revokedAt: true } });
-  return { submissions, accesses };
+  const approvals = await completionApprovalViews(prisma, projectId);
+  return { submissions: submissions.map(s => ({ ...s, approval: approvals.find(a => a.submissionId === s.id) ?? null })), accesses };
 }
 export async function getCompletionSubmissionDownload(user: { id: string }, submissionId: string) {
   const s = await prisma.completionDocumentSubmission.findUniqueOrThrow({ where: { id: submissionId } });
   await requireProjectResourceRead("structured", s.projectId, "project.view", user);
   if (!s.uploadedAt || !s.objectETag || ["UPLOADING", "FAILED"].includes(s.status)) throw new Error("Document has not been submitted.");
+  const versionPath = await getSharedFileDownloadPath({ kind: "completion-submission", id: submissionId });
+  if (versionPath) return versionPath;
   return createPresignedDownloadUrl({ bucket: s.bucket, storageKey: s.storageKey, fileName: s.originalFileName, mimeType: s.mimeType });
 }

@@ -1,0 +1,2559 @@
+{
+  "blueprint": {
+    "blueprintSchemaVersion": 1,
+    "id": "gti-posm-promotional-materials",
+    "revision": 1,
+    "category": "POSM",
+    "designation": "UNAPPROVED_CANDIDATE",
+    "source": {
+      "title": "Flux – Project Process Templates & Content Specification",
+      "version": "2026-09-29",
+      "sha256": "4d86f90d173a406ad9f3a5ffbba7ce55776b5d209f4bc2a0e4653f299d61b944",
+      "pagination": "Supplied as 19 pages; page numbers unverified. Use exact OOXML section/paragraph locators."
+    },
+    "definitionSchemaVersion": 1,
+    "definition": {
+      "schemaVersion": 1,
+      "name": "POSM & Promotional Materials · internal candidate v1",
+      "intendedProjectType": "POSM",
+      "description": "UNAPPROVED CANDIDATE · INTERNAL EVIDENCE PILOT. Human evidence capture only; not an official GTI standard. No conditional rules, skip, external dispatch, procurement, automatic tasks or archive. After all stages, project closure still requires a separately Director-approved per-project document policy, actual Owner completion request and separate Director final decision. Blueprint gti-posm-promotional-materials revision 1; source 2026-09-29 SHA-256 4d86f90d173a406ad9f3a5ffbba7ce55776b5d209f4bc2a0e4653f299d61b944. Material Type is visible but does not change gates. Printed and merchandise fields are optional; all six evidence stages remain fixed. No three-offer count, per-outlet photo minimum, stock reconciliation or signed acceptance enforcement. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+      "stages": [
+        {
+          "id": "posm_brief",
+          "title": "Brief",
+          "position": 0,
+          "description": "Capture the material choice and brief. Material Type records context; it does not switch required fields or skip stages. What now: record applicable information, attach evidence and obtain independent review. Move on: complete all configured fixed gates. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+          "capabilities": [
+            {
+              "id": "posm_brief_fields",
+              "type": "INFORMATION",
+              "title": "Material Type and shared brief",
+              "instructions": "Project summary only. Attach the detailed register; individual rows and quantities are not validated. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "posm_scope",
+                  "label": "Candidate scope",
+                  "type": "READ_ONLY",
+                  "required": false,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": "UNAPPROVED CANDIDATE · INTERNAL EVIDENCE PILOT. Human evidence capture only; not an official GTI standard. No conditional rules, skip, external dispatch, procurement, automatic tasks or archive. After all stages, project closure still requires a separately Director-approved per-project document policy, actual Owner completion request and separate Director final decision.",
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "posm_material_type",
+                  "label": "Material Type",
+                  "type": "SELECT",
+                  "required": true,
+                  "options": [
+                    "Printed POSM",
+                    "Merchandise"
+                  ],
+                  "help": "One source template. Both branches remain visible; no automatic applicability enforcement. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "posm_items_formats",
+                  "label": "Items, formats and sizes",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_languages",
+                  "label": "Languages",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_quantities",
+                  "label": "Quantities by format / size",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_outlet_count",
+                  "label": "Number of outlets",
+                  "type": "NUMBER",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "posm_channel",
+                  "label": "Channel",
+                  "type": "SELECT",
+                  "required": true,
+                  "options": [
+                    "Duty free",
+                    "Retail",
+                    "HoReCa",
+                    "Trade",
+                    "Event"
+                  ],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "posm_market",
+                  "label": "Target market",
+                  "type": "SHORT_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 500
+                },
+                {
+                  "id": "posm_purpose",
+                  "label": "Purpose",
+                  "type": "SELECT",
+                  "required": true,
+                  "options": [
+                    "Campaign",
+                    "Event",
+                    "Trade gift"
+                  ],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "posm_unit_budget",
+                  "label": "Unit budget",
+                  "type": "NUMBER",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "posm_total_budget",
+                  "label": "Total budget",
+                  "type": "NUMBER",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "posm_currency",
+                  "label": "Agreed budget currency",
+                  "type": "SHORT_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Source does not prescribe a currency; record the agreed unit. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 500
+                },
+                {
+                  "id": "posm_required_date",
+                  "label": "Required-by date",
+                  "type": "DATE",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "posm_printed_min_photos",
+                  "label": "Printed POSM · brief minimum outlet photos",
+                  "type": "NUMBER",
+                  "required": false,
+                  "options": [],
+                  "help": "Printed POSM only; optional in this fixed internal template. Leave empty for merchandise. Conditional requiredness is not enforced. Recorded value only; no downstream photo-count gate. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                }
+              ]
+            },
+            {
+              "id": "posm_creative_brief",
+              "type": "INFORMATION",
+              "title": "Creative Brief – General content",
+              "instructions": "Project summary only. Attach the detailed register; individual rows and quantities are not validated. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "posm_cb_header",
+                  "label": "Brief header: date, brand, project and client",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_cb_background",
+                  "label": "Background and business problem",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_cb_objective",
+                  "label": "Objective and success measures",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_cb_target",
+                  "label": "Target group, market and channel",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Source target group: adult smokers of legal age only. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_cb_deliverables",
+                  "label": "Deliverables, formats and quantities",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_cb_mandatory",
+                  "label": "Brand rules, compulsory texts and local restrictions",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_cb_timeline",
+                  "label": "Budget range, timeline and milestones",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_cb_presentation",
+                  "label": "Presentation format and expected concepts",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Record the agreed brief; no invented minimum or task-count gate. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_cb_mode",
+                  "label": "Collaboration context",
+                  "type": "SELECT",
+                  "required": true,
+                  "options": [
+                    "Direct",
+                    "Pitch"
+                  ],
+                  "help": "Context only; no vendor workflow or dispatch. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "posm_cb_contacts",
+                  "label": "Contacts and proposed approval rules",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "posm_brief_file",
+              "type": "FILE_REQUIREMENT",
+              "title": "Creative Brief – General evidence",
+              "instructions": "Upload the manually prepared brief with licensed-elements legal note and Final Artwork File Standard. No generated document or external release. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "posm_brief_review",
+              "type": "APPROVAL",
+              "title": "Owner internal brief review · candidate choice",
+              "instructions": "The source requires brief approval but does not identify its reviewer. Fixed independent Owner review is a proposed candidate choice. Internal evidence decision only; never external approval, production dispatch or certification. Reviewer cannot be requester or evidence contributor. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "steps": [
+                {
+                  "id": "posm_brief_review_decision",
+                  "label": "Owner internal brief review · candidate choice",
+                  "approver": "PROJECT_OWNER",
+                  "evidence": "CONFIGURED_INPUTS",
+                  "decision": "APPROVE_REQUIRED"
+                }
+              ],
+              "rejection": "RETURN_FOR_CHANGES",
+              "gatesProgression": true
+            }
+          ],
+          "gates": [
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "posm_brief_fields"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "posm_creative_brief"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "posm_brief_file"
+            },
+            {
+              "type": "APPROVAL_COMPLETE",
+              "capabilityId": "posm_brief_review"
+            }
+          ]
+        },
+        {
+          "id": "posm_research",
+          "title": "Research / Sourcing",
+          "position": 1,
+          "description": "Review applicable research or sourcing evidence. Printed research cannot be skipped; record limitations in the fixed internal review record. Merchandise three-offer/CERBER rules remain unenforced. What now: record applicable information, attach evidence and obtain independent review. Move on: complete all configured fixed gates. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+          "capabilities": [
+            {
+              "id": "posm_research_summary",
+              "type": "INFORMATION",
+              "title": "Research / sourcing review summary",
+              "instructions": "Project summary only. Attach the detailed register; individual rows and quantities are not validated. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "posm_research_applicability",
+                  "label": "Applicable research, sourcing evidence and unresolved conditions",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "posm_printed_research",
+              "type": "INFORMATION",
+              "title": "Printed POSM · research (optional capture)",
+              "instructions": "Printed POSM only; optional in this fixed internal template. Leave empty for merchandise. Conditional requiredness is not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "posm_printed_restrictions",
+                  "label": "Printed POSM · local advertising restrictions",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Printed POSM only; optional in this fixed internal template. Leave empty for merchandise. Conditional requiredness is not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_printed_benchmark",
+                  "label": "Printed POSM · benchmark",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Printed POSM only; optional in this fixed internal template. Leave empty for merchandise. Conditional requiredness is not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "posm_merch_sourcing",
+              "type": "INFORMATION",
+              "title": "Merchandise · sourcing (optional capture)",
+              "instructions": "Merchandise only; optional in this fixed internal template. Leave empty for printed POSM. Conditional requiredness is not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "posm_merch_offer_summary",
+                  "label": "Merchandise · offers and catalogue references",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Merchandise only; optional in this fixed internal template. Leave empty for printed POSM. Conditional requiredness is not enforced. Source requires at least three distinct quotes; not counted here. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_merch_moq",
+                  "label": "Merchandise · MOQ summary",
+                  "type": "NUMBER",
+                  "required": false,
+                  "options": [],
+                  "help": "Merchandise only; optional in this fixed internal template. Leave empty for printed POSM. Conditional requiredness is not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "posm_merch_lead_time",
+                  "label": "Merchandise · lead time with agreed unit",
+                  "type": "SHORT_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Merchandise only; optional in this fixed internal template. Leave empty for printed POSM. Conditional requiredness is not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 500
+                },
+                {
+                  "id": "posm_merch_unit_cost",
+                  "label": "Merchandise · unit cost",
+                  "type": "NUMBER",
+                  "required": false,
+                  "options": [],
+                  "help": "Merchandise only; optional in this fixed internal template. Leave empty for printed POSM. Conditional requiredness is not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "posm_merch_cost_currency",
+                  "label": "Merchandise · quote currency",
+                  "type": "SHORT_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Merchandise only; optional in this fixed internal template. Leave empty for printed POSM. Conditional requiredness is not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 500
+                },
+                {
+                  "id": "posm_merch_sample",
+                  "label": "Merchandise · sample availability",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Merchandise only; optional in this fixed internal template. Leave empty for printed POSM. Conditional requiredness is not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_merch_vendor",
+                  "label": "Merchandise · Director vendor selection / CERBER evidence references",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Merchandise only; optional in this fixed internal template. Leave empty for printed POSM. Conditional requiredness is not enforced. Reference only, no verified external state. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_merch_conditions",
+                  "label": "Merchandise · agreed order conditions",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Merchandise only; optional in this fixed internal template. Leave empty for printed POSM. Conditional requiredness is not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "posm_research_record",
+              "type": "FILE_REQUIREMENT",
+              "title": "Applicable research / sourcing review record",
+              "instructions": "Record applicable research and exceptions. This fixed pilot evidence requirement is not source permission to skip or a vendor-selection gate. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf",
+                ".xlsx",
+                ".csv"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "posm_printed_photos",
+              "type": "FILE_REQUIREMENT",
+              "title": "Printed POSM · outlet reference photos (optional)",
+              "instructions": "Printed POSM only; optional in this fixed internal template. Leave empty for merchandise. Conditional requiredness is not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf",
+                ".jpg",
+                ".png",
+                ".zip"
+              ],
+              "minFiles": 0,
+              "maxFiles": 20,
+              "required": false,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": false
+            },
+            {
+              "id": "posm_merch_quotes",
+              "type": "FILE_REQUIREMENT",
+              "title": "Merchandise · catalogues, quotes and RFP (optional)",
+              "instructions": "Merchandise only; optional in this fixed internal template. Leave empty for printed POSM. Conditional requiredness is not enforced. No structured minimum offer count or external RFP dispatch. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf",
+                ".xlsx",
+                ".zip"
+              ],
+              "minFiles": 0,
+              "maxFiles": 20,
+              "required": false,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": false
+            },
+            {
+              "id": "posm_research_checks",
+              "type": "CHECKLIST",
+              "title": "Applicable evidence review",
+              "instructions": "Human attestations with written evidence and limitations. No automated compliance, quantity or physical validation. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "items": [
+                {
+                  "id": "posm_research_attestation",
+                  "label": "Applicable restrictions / sourcing evidence and outstanding conditions reviewed",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                }
+              ]
+            }
+          ],
+          "gates": [
+            {
+              "type": "PRECEDING_STAGE",
+              "stageId": "posm_brief"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "posm_research_summary"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "posm_research_record"
+            },
+            {
+              "type": "REQUIRED_CHECKLIST",
+              "capabilityId": "posm_research_checks"
+            }
+          ]
+        },
+        {
+          "id": "posm_design",
+          "title": "Concept & Design",
+          "position": 2,
+          "description": "Create Initial Concept / Final Concept Universal Tasks manually for creative work. Review design evidence here; neither tasks, format coverage nor source 1–2 merchandise rounds are enforced by this stage. What now: record applicable information, attach evidence and obtain independent review. Move on: complete all configured fixed gates. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+          "capabilities": [
+            {
+              "id": "posm_design_fields",
+              "type": "INFORMATION",
+              "title": "Design evidence summary",
+              "instructions": "Project summary only. Attach the detailed register; individual rows and quantities are not validated. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "posm_key_visual",
+                  "label": "Key Visual and all-format adaptations",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_concept_references",
+                  "label": "Concept Task references and reviewed final design",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "References do not verify task completion. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_merch_logo",
+                  "label": "Merchandise · logo placement",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Merchandise only; optional in this fixed internal template. Leave empty for printed POSM. Conditional requiredness is not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_merch_colours",
+                  "label": "Merchandise · item colours",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Merchandise only; optional in this fixed internal template. Leave empty for printed POSM. Conditional requiredness is not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_merch_rounds",
+                  "label": "Merchandise · revision rounds and review notes",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Merchandise only; optional in this fixed internal template. Leave empty for printed POSM. Conditional requiredness is not enforced. Source 1–2 rounds are recorded, not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "posm_design_evidence",
+              "type": "FILE_REQUIREMENT",
+              "title": "Reviewed design evidence",
+              "instructions": "Upload Key Visual, adaptations and applicable merchandise design outcomes with task references. Independent file review is a candidate route, not proof of all required concepts or revision rounds. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf",
+                ".ai",
+                ".psd",
+                ".zip"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            }
+          ],
+          "gates": [
+            {
+              "type": "PRECEDING_STAGE",
+              "stageId": "posm_research"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "posm_design_fields"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "posm_design_evidence"
+            }
+          ]
+        },
+        {
+          "id": "posm_specification",
+          "title": "Specification",
+          "position": 3,
+          "description": "Capture applicable print / merchandise specifications and exact artwork versions. Branch fields remain optional; detailed per-format, outlet and size registers need human review. What now: record applicable information, attach evidence and obtain independent review. Move on: complete all configured fixed gates. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+          "capabilities": [
+            {
+              "id": "posm_spec_summary",
+              "type": "INFORMATION",
+              "title": "Specification applicability",
+              "instructions": "Project summary only. Attach the detailed register; individual rows and quantities are not validated. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "posm_spec_applicability",
+                  "label": "Selected material, applicable requirements and unresolved exceptions",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "posm_printed_spec",
+              "type": "INFORMATION",
+              "title": "Printed POSM · specification (optional capture)",
+              "instructions": "Printed POSM only; optional in this fixed internal template. Leave empty for merchandise. Conditional requiredness is not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "posm_printed_sizes",
+                  "label": "Printed POSM · Final sizes with units",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Printed POSM only; optional in this fixed internal template. Leave empty for merchandise. Conditional requiredness is not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_printed_bleed",
+                  "label": "Printed POSM · Bleed with units",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Printed POSM only; optional in this fixed internal template. Leave empty for merchandise. Conditional requiredness is not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_printed_substrate",
+                  "label": "Printed POSM · Material / substrate",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Printed POSM only; optional in this fixed internal template. Leave empty for merchandise. Conditional requiredness is not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_printed_finishes",
+                  "label": "Printed POSM · Finishes",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Printed POSM only; optional in this fixed internal template. Leave empty for merchandise. Conditional requiredness is not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_printed_quantity",
+                  "label": "Printed POSM · Quantities by format",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Printed POSM only; optional in this fixed internal template. Leave empty for merchandise. Conditional requiredness is not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_printed_texts",
+                  "label": "Printed POSM · Mandatory texts",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Printed POSM only; optional in this fixed internal template. Leave empty for merchandise. Conditional requiredness is not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_printed_distribution",
+                  "label": "Printed POSM · Distribution by outlet",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Printed POSM only; optional in this fixed internal template. Leave empty for merchandise. Conditional requiredness is not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "posm_merch_spec",
+              "type": "INFORMATION",
+              "title": "Merchandise · specification (optional capture)",
+              "instructions": "Merchandise only; optional in this fixed internal template. Leave empty for printed POSM. Conditional requiredness is not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "posm_merch_branding",
+                  "label": "Merchandise · branding method",
+                  "type": "SELECT",
+                  "required": false,
+                  "options": [
+                    "Engraving",
+                    "Pad print",
+                    "Embroidery",
+                    "Sublimation",
+                    "Screen print"
+                  ],
+                  "help": "Merchandise only; optional in this fixed internal template. Leave empty for printed POSM. Conditional requiredness is not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "posm_merch_pantone",
+                  "label": "Merchandise · Pantone / colour specification",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Merchandise only; optional in this fixed internal template. Leave empty for printed POSM. Conditional requiredness is not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_merch_print_area",
+                  "label": "Merchandise · Print area with units",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Merchandise only; optional in this fixed internal template. Leave empty for printed POSM. Conditional requiredness is not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_merch_packaging",
+                  "label": "Merchandise · Unit packaging",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Merchandise only; optional in this fixed internal template. Leave empty for printed POSM. Conditional requiredness is not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_merch_sizes",
+                  "label": "Merchandise · Apparel size split S / M / L / XL",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Merchandise only; optional in this fixed internal template. Leave empty for printed POSM. Conditional requiredness is not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "posm_spec_register",
+              "type": "FILE_REQUIREMENT",
+              "title": "Applicable format / outlet / size specification register",
+              "instructions": "Detailed register is reviewed as evidence; no repeatable rows or quantity completeness enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf",
+                ".xlsx",
+                ".csv"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "posm_artwork",
+              "type": "FILE_REQUIREMENT",
+              "title": "Final Artwork and PDF previews",
+              "instructions": "Upload editable artwork and preview for the applicable print or merchandise variant. No binary preflight. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf",
+                ".ai",
+                ".psd",
+                ".eps",
+                ".zip"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "posm_contract_evidence",
+              "type": "FILE_REQUIREMENT",
+              "title": "Framework / Copyright evidence where applicable (optional)",
+              "instructions": "Manual evidence only; no signature verification, external dispatch or automatic before-artwork legal gate. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf"
+              ],
+              "minFiles": 0,
+              "maxFiles": 20,
+              "required": false,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": false
+            },
+            {
+              "id": "posm_artwork_checks",
+              "type": "CHECKLIST",
+              "title": "Final Artwork File Standard · human review",
+              "instructions": "Human attestations with written evidence and limitations. No automated compliance, quantity or physical validation. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "items": [
+                {
+                  "id": "posm_fa_layers",
+                  "label": "Layered editable files and embedded images reviewed",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "posm_fa_resolution",
+                  "label": "Base 300 dpi / A3 requirement and applicable variant resolution reviewed",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "posm_fa_psd",
+                  "label": "PSD components and separate shadows reviewed",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "posm_fa_fonts",
+                  "label": "Editable typefaces and legal texts reviewed",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "posm_fa_colours",
+                  "label": "CMYK / Pantone, finishes and white / varnish layers reviewed",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "posm_fa_bleed",
+                  "label": "Bleed, safety margins and separate dieline reviewed",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "posm_fa_naming",
+                  "label": "PROJECT_SKU_MARKET_ELEMENT_vXX_DATE, folders and PDF preview reviewed",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "posm_fa_variant",
+                  "label": "Applicable print variant or merchandise vector logo / supplier print-area template reviewed",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                }
+              ]
+            }
+          ],
+          "gates": [
+            {
+              "type": "PRECEDING_STAGE",
+              "stageId": "posm_design"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "posm_spec_summary"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "posm_spec_register"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "posm_artwork"
+            },
+            {
+              "type": "REQUIRED_CHECKLIST",
+              "capabilityId": "posm_artwork_checks"
+            }
+          ]
+        },
+        {
+          "id": "posm_production",
+          "title": "Production & Approval",
+          "position": 4,
+          "description": "Review proof / golden-sample and production records. The Director decision approves internal evidence only; it does not place, dispatch or certify a production order. What now: record applicable information, attach evidence and obtain independent review. Move on: complete all configured fixed gates. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+          "capabilities": [
+            {
+              "id": "posm_production_summary",
+              "type": "INFORMATION",
+              "title": "Production evidence summary",
+              "instructions": "Project summary only. Attach the detailed register; individual rows and quantities are not validated. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "posm_production_order",
+                  "label": "Production-order approval evidence and outstanding conditions",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_printed_handover",
+                  "label": "Printed POSM · printer proof, review and handover references",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Printed POSM only; optional in this fixed internal template. Leave empty for merchandise. Conditional requiredness is not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_merch_production",
+                  "label": "Merchandise · supplier visual, golden sample and mass production references",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Merchandise only; optional in this fixed internal template. Leave empty for printed POSM. Conditional requiredness is not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "posm_production_evidence",
+              "type": "FILE_REQUIREMENT",
+              "title": "Applicable proof / golden-sample and production evidence",
+              "instructions": "Upload the applicable branch evidence and internal approval/handover records. A photo or PDF does not certify physical quality or external release. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf",
+                ".jpg",
+                ".png",
+                ".zip"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "posm_production_checks",
+              "type": "CHECKLIST",
+              "title": "Production evidence review",
+              "instructions": "Human attestations with written evidence and limitations. No automated compliance, quantity or physical validation. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "items": [
+                {
+                  "id": "posm_production_attestation",
+                  "label": "Applicable proof / sample and production evidence manually reviewed",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                }
+              ]
+            },
+            {
+              "id": "posm_production_review",
+              "type": "APPROVAL",
+              "title": "Director internal production-evidence approval",
+              "instructions": "Source production orders require the Director. This supported internal decision does not execute the source external order requirement or full approval chain. Internal evidence decision only; never external approval, production dispatch or certification. Reviewer cannot be requester or evidence contributor. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "steps": [
+                {
+                  "id": "posm_production_review_decision",
+                  "label": "Director internal production-evidence approval",
+                  "approver": "DIRECTOR",
+                  "evidence": "CONFIGURED_INPUTS",
+                  "decision": "APPROVE_REQUIRED"
+                }
+              ],
+              "rejection": "RETURN_FOR_CHANGES",
+              "gatesProgression": true
+            }
+          ],
+          "gates": [
+            {
+              "type": "PRECEDING_STAGE",
+              "stageId": "posm_specification"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "posm_production_summary"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "posm_production_evidence"
+            },
+            {
+              "type": "REQUIRED_CHECKLIST",
+              "capabilityId": "posm_production_checks"
+            },
+            {
+              "type": "APPROVAL_COMPLETE",
+              "capabilityId": "posm_production_review"
+            }
+          ]
+        },
+        {
+          "id": "posm_delivery",
+          "title": "Delivery & Execution",
+          "position": 5,
+          "description": "Review delivery / execution or batch / warehouse evidence and the Acceptance Protocol. Photo minima, inventory and bilateral signatures remain unenforced. What now: record applicable information, attach evidence and obtain independent review. Move on: complete all configured fixed gates. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+          "capabilities": [
+            {
+              "id": "posm_delivery_summary",
+              "type": "INFORMATION",
+              "title": "Delivery and acceptance summary",
+              "instructions": "Project summary only. Attach the detailed register; individual rows and quantities are not validated. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "posm_acceptance_summary",
+                  "label": "Received quantities, acceptance decision, remarks and fix deadlines",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_printed_delivery",
+                  "label": "Printed POSM · delivery and outlet distribution",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Printed POSM only; optional in this fixed internal template. Leave empty for merchandise. Conditional requiredness is not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_printed_photo_review",
+                  "label": "Printed POSM · execution photos against brief minimum (human review)",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Printed POSM only; optional in this fixed internal template. Leave empty for merchandise. Conditional requiredness is not enforced. No automated count. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_merch_batch",
+                  "label": "Merchandise · batch quality check",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Merchandise only; optional in this fixed internal template. Leave empty for printed POSM. Conditional requiredness is not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_merch_intake",
+                  "label": "Merchandise · warehouse intake",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Merchandise only; optional in this fixed internal template. Leave empty for printed POSM. Conditional requiredness is not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                },
+                {
+                  "id": "posm_merch_issue",
+                  "label": "Merchandise · issue to departments / events",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Merchandise only; optional in this fixed internal template. Leave empty for printed POSM. Conditional requiredness is not enforced. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "posm_execution_evidence",
+              "type": "FILE_REQUIREMENT",
+              "title": "Delivery / execution photos or batch / warehouse report",
+              "instructions": "Include applicable execution photographs or QC/intake/issue records. Counts and stock are not reconciled. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf",
+                ".jpg",
+                ".png",
+                ".xlsx",
+                ".zip"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "posm_acceptance_protocol",
+              "type": "FILE_REQUIREMENT",
+              "title": "Acceptance Protocol evidence",
+              "instructions": "Upload a manually prepared protocol. Internal review does not prove both parties signed or confirm external acceptance. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "posm_delivery_checks",
+              "type": "CHECKLIST",
+              "title": "Delivery and acceptance review",
+              "instructions": "Human attestations with written evidence and limitations. No automated compliance, quantity or physical validation. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "items": [
+                {
+                  "id": "posm_delivery_attestation",
+                  "label": "Applicable execution or batch records reviewed with limitations",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "posm_acceptance_attestation",
+                  "label": "Protocol, remarks and unresolved issues reviewed",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                }
+              ]
+            }
+          ],
+          "gates": [
+            {
+              "type": "PRECEDING_STAGE",
+              "stageId": "posm_production"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "posm_delivery_summary"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "posm_execution_evidence"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "posm_acceptance_protocol"
+            },
+            {
+              "type": "REQUIRED_CHECKLIST",
+              "capabilityId": "posm_delivery_checks"
+            }
+          ]
+        }
+      ]
+    },
+    "scope": "INTERNAL_EVIDENCE_PILOT",
+    "trace": {
+      "posm_scope": {
+        "paragraphs": [
+          123,
+          518
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_material_type": {
+        "paragraphs": [
+          123,
+          125
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_items_formats": {
+        "paragraphs": [
+          123,
+          125
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_languages": {
+        "paragraphs": [
+          125
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_quantities": {
+        "paragraphs": [
+          125
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_outlet_count": {
+        "paragraphs": [
+          125
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_channel": {
+        "paragraphs": [
+          125
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_market": {
+        "paragraphs": [
+          125
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_purpose": {
+        "paragraphs": [
+          125
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_unit_budget": {
+        "paragraphs": [
+          125
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_total_budget": {
+        "paragraphs": [
+          125
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_currency": {
+        "paragraphs": [
+          125
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_required_date": {
+        "paragraphs": [
+          125
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_printed_min_photos": {
+        "paragraphs": [
+          144
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_brief_fields": {
+        "paragraphs": [
+          123,
+          125,
+          126
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_cb_header": {
+        "paragraphs": [
+          437
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_cb_background": {
+        "paragraphs": [
+          438
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_cb_objective": {
+        "paragraphs": [
+          439
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_cb_target": {
+        "paragraphs": [
+          440
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_cb_deliverables": {
+        "paragraphs": [
+          441
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_cb_mandatory": {
+        "paragraphs": [
+          442
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_cb_timeline": {
+        "paragraphs": [
+          443
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_cb_presentation": {
+        "paragraphs": [
+          444
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_cb_mode": {
+        "paragraphs": [
+          445
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_cb_contacts": {
+        "paragraphs": [
+          448
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_creative_brief": {
+        "paragraphs": [
+          436,
+          437,
+          438,
+          439,
+          440,
+          441,
+          442,
+          443,
+          444,
+          445,
+          448
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_brief_file": {
+        "paragraphs": [
+          126,
+          412,
+          414,
+          446,
+          447
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_brief_review": {
+        "paragraphs": [
+          126,
+          448,
+          518
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_brief_review_decision": {
+        "paragraphs": [
+          126,
+          448,
+          518
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_brief": {
+        "paragraphs": [
+          124,
+          125,
+          126
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_brief.gate.0": {
+        "paragraphs": [
+          124,
+          125,
+          126
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "posm_brief.gate.1": {
+        "paragraphs": [
+          124,
+          125,
+          126
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "posm_brief.gate.2": {
+        "paragraphs": [
+          124,
+          125,
+          126
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "posm_brief.gate.3": {
+        "paragraphs": [
+          124,
+          125,
+          126
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "posm_research_applicability": {
+        "paragraphs": [
+          128,
+          129,
+          130
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_research_summary": {
+        "paragraphs": [
+          128,
+          129,
+          130
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_printed_restrictions": {
+        "paragraphs": [
+          128
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_printed_benchmark": {
+        "paragraphs": [
+          128
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_printed_research": {
+        "paragraphs": [
+          128
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_merch_offer_summary": {
+        "paragraphs": [
+          129
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_merch_moq": {
+        "paragraphs": [
+          129
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_merch_lead_time": {
+        "paragraphs": [
+          129
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_merch_unit_cost": {
+        "paragraphs": [
+          129
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_merch_cost_currency": {
+        "paragraphs": [
+          129
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_merch_sample": {
+        "paragraphs": [
+          129
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_merch_vendor": {
+        "paragraphs": [
+          129
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_merch_conditions": {
+        "paragraphs": [
+          130
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_merch_sourcing": {
+        "paragraphs": [
+          129,
+          130
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_research_record": {
+        "paragraphs": [
+          128,
+          129,
+          130
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_printed_photos": {
+        "paragraphs": [
+          128
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_merch_quotes": {
+        "paragraphs": [
+          129,
+          418
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_research_checks": {
+        "paragraphs": [
+          128,
+          129,
+          130
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_research_attestation": {
+        "paragraphs": [
+          128,
+          129,
+          130
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_research": {
+        "paragraphs": [
+          127,
+          128,
+          129,
+          130
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_research.gate.0": {
+        "paragraphs": [
+          127,
+          128,
+          129,
+          130
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "posm_research.gate.1": {
+        "paragraphs": [
+          127,
+          128,
+          129,
+          130
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "posm_research.gate.2": {
+        "paragraphs": [
+          127,
+          128,
+          129,
+          130
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "posm_research.gate.3": {
+        "paragraphs": [
+          127,
+          128,
+          129,
+          130
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "posm_key_visual": {
+        "paragraphs": [
+          132
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_concept_references": {
+        "paragraphs": [
+          132,
+          133
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_merch_logo": {
+        "paragraphs": [
+          132
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_merch_colours": {
+        "paragraphs": [
+          132
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_merch_rounds": {
+        "paragraphs": [
+          132
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_design_fields": {
+        "paragraphs": [
+          132,
+          133
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_design_evidence": {
+        "paragraphs": [
+          132,
+          133
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_design": {
+        "paragraphs": [
+          131,
+          132,
+          133
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_design.gate.0": {
+        "paragraphs": [
+          131,
+          132,
+          133
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "posm_design.gate.1": {
+        "paragraphs": [
+          131,
+          132,
+          133
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "posm_design.gate.2": {
+        "paragraphs": [
+          131,
+          132,
+          133
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "posm_spec_applicability": {
+        "paragraphs": [
+          135,
+          136,
+          137
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_spec_summary": {
+        "paragraphs": [
+          135,
+          136,
+          137
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_printed_sizes": {
+        "paragraphs": [
+          135
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_printed_bleed": {
+        "paragraphs": [
+          135
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_printed_substrate": {
+        "paragraphs": [
+          135
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_printed_finishes": {
+        "paragraphs": [
+          135
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_printed_quantity": {
+        "paragraphs": [
+          135
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_printed_texts": {
+        "paragraphs": [
+          135
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_printed_distribution": {
+        "paragraphs": [
+          135
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_printed_spec": {
+        "paragraphs": [
+          135
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_merch_branding": {
+        "paragraphs": [
+          136
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_merch_pantone": {
+        "paragraphs": [
+          136
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_merch_print_area": {
+        "paragraphs": [
+          136
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_merch_packaging": {
+        "paragraphs": [
+          136
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_merch_sizes": {
+        "paragraphs": [
+          136
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_merch_spec": {
+        "paragraphs": [
+          136
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_spec_register": {
+        "paragraphs": [
+          135,
+          136,
+          137
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_artwork": {
+        "paragraphs": [
+          137,
+          509,
+          515,
+          516
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_contract_evidence": {
+        "paragraphs": [
+          424,
+          425,
+          426
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_artwork_checks": {
+        "paragraphs": [
+          507,
+          508,
+          516
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_fa_layers": {
+        "paragraphs": [
+          509
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_fa_resolution": {
+        "paragraphs": [
+          510,
+          516
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_fa_psd": {
+        "paragraphs": [
+          511
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_fa_fonts": {
+        "paragraphs": [
+          512
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_fa_colours": {
+        "paragraphs": [
+          513
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_fa_bleed": {
+        "paragraphs": [
+          514
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_fa_naming": {
+        "paragraphs": [
+          515
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_fa_variant": {
+        "paragraphs": [
+          516
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_specification": {
+        "paragraphs": [
+          134,
+          135,
+          136,
+          137
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_specification.gate.0": {
+        "paragraphs": [
+          134,
+          135,
+          136,
+          137
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "posm_specification.gate.1": {
+        "paragraphs": [
+          134,
+          135,
+          136,
+          137
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "posm_specification.gate.2": {
+        "paragraphs": [
+          134,
+          135,
+          136,
+          137
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "posm_specification.gate.3": {
+        "paragraphs": [
+          134,
+          135,
+          136,
+          137
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "posm_specification.gate.4": {
+        "paragraphs": [
+          134,
+          135,
+          136,
+          137
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "posm_production_order": {
+        "paragraphs": [
+          141,
+          142
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_printed_handover": {
+        "paragraphs": [
+          139
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_merch_production": {
+        "paragraphs": [
+          140
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_production_summary": {
+        "paragraphs": [
+          139,
+          140,
+          141,
+          142
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_production_evidence": {
+        "paragraphs": [
+          139,
+          140,
+          142
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_production_checks": {
+        "paragraphs": [
+          139,
+          140,
+          142
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_production_attestation": {
+        "paragraphs": [
+          139,
+          140,
+          142
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_production_review": {
+        "paragraphs": [
+          141,
+          142
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_production_review_decision": {
+        "paragraphs": [
+          141,
+          142
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_production": {
+        "paragraphs": [
+          138,
+          139,
+          140,
+          141,
+          142
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_production.gate.0": {
+        "paragraphs": [
+          138,
+          139,
+          140,
+          141,
+          142
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "posm_production.gate.1": {
+        "paragraphs": [
+          138,
+          139,
+          140,
+          141,
+          142
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "posm_production.gate.2": {
+        "paragraphs": [
+          138,
+          139,
+          140,
+          141,
+          142
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "posm_production.gate.3": {
+        "paragraphs": [
+          138,
+          139,
+          140,
+          141,
+          142
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "posm_production.gate.4": {
+        "paragraphs": [
+          138,
+          139,
+          140,
+          141,
+          142
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "posm_acceptance_summary": {
+        "paragraphs": [
+          500,
+          501,
+          503,
+          504
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_printed_delivery": {
+        "paragraphs": [
+          144
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_printed_photo_review": {
+        "paragraphs": [
+          144
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_merch_batch": {
+        "paragraphs": [
+          145
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_merch_intake": {
+        "paragraphs": [
+          145
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_merch_issue": {
+        "paragraphs": [
+          145
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_delivery_summary": {
+        "paragraphs": [
+          144,
+          145,
+          146,
+          500,
+          501,
+          503,
+          504
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_execution_evidence": {
+        "paragraphs": [
+          144,
+          145
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_acceptance_protocol": {
+        "paragraphs": [
+          146,
+          499,
+          505,
+          506
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_delivery_checks": {
+        "paragraphs": [
+          144,
+          145,
+          146
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_delivery_attestation": {
+        "paragraphs": [
+          144,
+          145
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_acceptance_attestation": {
+        "paragraphs": [
+          146,
+          503,
+          504,
+          505
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_delivery": {
+        "paragraphs": [
+          143,
+          144,
+          145,
+          146
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "posm_delivery.gate.0": {
+        "paragraphs": [
+          143,
+          144,
+          145,
+          146
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "posm_delivery.gate.1": {
+        "paragraphs": [
+          143,
+          144,
+          145,
+          146
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "posm_delivery.gate.2": {
+        "paragraphs": [
+          143,
+          144,
+          145,
+          146
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "posm_delivery.gate.3": {
+        "paragraphs": [
+          143,
+          144,
+          145,
+          146
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "posm_delivery.gate.4": {
+        "paragraphs": [
+          143,
+          144,
+          145,
+          146
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "workflow": {
+        "paragraphs": [
+          122,
+          123,
+          146
+        ],
+        "interpretation": "Source sequence retained as configurable evidence stages. Creative work uses existing Universal Tasks; no legacy concept engine. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      }
+    },
+    "gaps": [
+      {
+        "id": "candidate-decisions",
+        "paragraphs": [
+          125,
+          126,
+          133,
+          137,
+          518,
+          523
+        ],
+        "classification": "REQUIRES_BUSINESS_DECISION",
+        "missing": "Field requiredness, detailed checklists, reviewer identities where unspecified, file limits and fixed pilot gates are proposed; no approved official designation process.",
+        "internalPilotTreatment": "Every field and block labels candidate choices. Owner brief review is a proposed internal route, not a source-assigned approver."
+      },
+      {
+        "id": "material-applicability-skip",
+        "paragraphs": [
+          123,
+          128,
+          129,
+          130
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "Material Type cannot change field/checklist requirements, make sourcing conditionally mandatory or allow Director-approved printed research skipping.",
+        "internalPilotTreatment": "One template, visible Printed POSM / Merchandise selector, optional branch fields and fixed stages for both. Human applicability review; no skip or bypass."
+      },
+      {
+        "id": "structured-offers",
+        "paragraphs": [
+          129,
+          130,
+          418
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No structured vendor comparison or enforcement of at least three distinct RFP offers, per-offer MOQ, lead time, price and sample availability.",
+        "internalPilotTreatment": "Optional merchandise quote files and scalar summaries record evidence only; file count never substitutes for distinct offers."
+      },
+      {
+        "id": "vendor-orders",
+        "paragraphs": [
+          129,
+          130,
+          139,
+          141,
+          142,
+          522
+        ],
+        "classification": "REQUIRES_EXTERNAL_INTEGRATION",
+        "missing": "No CERBER verification, Director external vendor selection, procurement, agreed external order conditions or approved production-order dispatch.",
+        "internalPilotTreatment": "Record references and independent Director internal evidence review. No vendor message, order or payment is sent."
+      },
+      {
+        "id": "concept-task-gates",
+        "paragraphs": [
+          131,
+          132,
+          133,
+          327
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No concept-to-stage task gate, all-format adaptation validation or enforcement of merchandise 1–2 revision rounds.",
+        "internalPilotTreatment": "Manually create Initial/Final Concept Universal Tasks. Review exact uploaded design evidence; task references and round summaries do not prove task completion."
+      },
+      {
+        "id": "format-size-outlet-records",
+        "paragraphs": [
+          125,
+          135,
+          136
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No repeating format, apparel-size, quantity or outlet-distribution records or cross-row completeness checks.",
+        "internalPilotTreatment": "Optional branch summaries and attached registers; no paragraph is treated as a validated row matrix."
+      },
+      {
+        "id": "outlet-photo-count",
+        "paragraphs": [
+          144
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No per-outlet photo count calculated against the minimum in the brief.",
+        "internalPilotTreatment": "Record the brief minimum as an optional Printed POSM number and attach photos/report. Fixed file limits do not enforce that number."
+      },
+      {
+        "id": "physical-production-quality",
+        "paragraphs": [
+          139,
+          140,
+          142,
+          145
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No physical golden-sample lifecycle, proof authenticity, mass-production or batch-quality certification.",
+        "internalPilotTreatment": "Human review of submitted proof/sample/QC evidence only, retaining reviewer independence."
+      },
+      {
+        "id": "inventory-distribution",
+        "paragraphs": [
+          144,
+          145
+        ],
+        "classification": "REQUIRES_EXTERNAL_INTEGRATION",
+        "missing": "No real stock, warehouse intake, department/event issue or delivery/distribution quantity reconciliation.",
+        "internalPilotTreatment": "Store records and review notes without asserting inventory state."
+      },
+      {
+        "id": "artwork-regulatory-validation",
+        "paragraphs": [
+          128,
+          135,
+          137,
+          442,
+          509,
+          510,
+          511,
+          512,
+          513,
+          514,
+          515,
+          516
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No local advertising compliance engine, binary artwork preflight or print/merchandise variant validation.",
+        "internalPilotTreatment": "Capture supplied restrictions, exact files and human File Standard attestations; no legal certification."
+      },
+      {
+        "id": "documents-signatures",
+        "paragraphs": [
+          126,
+          146,
+          408,
+          424,
+          426,
+          429,
+          432,
+          446,
+          447,
+          505,
+          521
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No prefilled Creative Brief/RFP, signed external contracts, bilateral Acceptance Protocol, external document lifecycle or lawyer-approved wording. Fixed document stage numbers conflict with POSM's six stages.",
+        "internalPilotTreatment": "Upload manually prepared documents by business purpose. Optional framework/copyright evidence is not a signature or pre-production legal gate; final document policy stays separate."
+      },
+      {
+        "id": "planning-budget-tasks",
+        "paragraphs": [
+          125,
+          443,
+          519,
+          520
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No automatic scheduling, budget accounting or template starter-task generation; source durations/tasks remain open.",
+        "internalPilotTreatment": "Store agreed dates, currency and budget values; create actual General Tasks manually."
+      },
+      {
+        "id": "completion-governance",
+        "paragraphs": [
+          56,
+          146,
+          340,
+          398
+        ],
+        "classification": "SUPERSEDED_BY_APPROVED_V2_RULE",
+        "missing": "Source completion/automatic archive cannot substitute for V2 explicit final-project governance or establish signed acceptance.",
+        "internalPilotTreatment": "Stage evidence gates only. Explicit Director document policy, actual Owner request and separate Director final decision; no automatic archive."
+      }
+    ],
+    "tasker": [
+      {
+        "type": "INITIAL_CONCEPT",
+        "paragraphs": [
+          131,
+          132,
+          133
+        ],
+        "instructions": "Manually create Initial Concept tasks for Key Visual / directions and format adaptations. Existing independent review applies; no new fixed concept stage or minimum task count."
+      },
+      {
+        "type": "FINAL_CONCEPT",
+        "paragraphs": [
+          131,
+          132,
+          133
+        ],
+        "instructions": "Manually create Final Concept tasks using eligible exact inspiration where appropriate; retain merchandise logo/colour revisions. Source 1–2 rounds and all-format coverage are not automatically enforced."
+      }
+    ],
+    "revisionPolicy": "Increment blueprint revision for content or policy changes. Keep semantic IDs for unchanged meanings; new meanings need new IDs and a compatibility map. Imported copies are editable and edits are not automatically source-certified. Published versions and runtime pins never change."
+  },
+  "definitionHash": "2f0f94603398158d6866e45111b6fa84499c1636a098565817bfd185294bc4fc",
+  "validation": {
+    "internalCandidate": [],
+    "officialStandard": [
+      {
+        "path": "gaps.candidate-decisions",
+        "message": "Field requiredness, detailed checklists, reviewer identities where unspecified, file limits and fixed pilot gates are proposed; no approved official designation process."
+      },
+      {
+        "path": "gaps.material-applicability-skip",
+        "message": "Material Type cannot change field/checklist requirements, make sourcing conditionally mandatory or allow Director-approved printed research skipping."
+      },
+      {
+        "path": "gaps.structured-offers",
+        "message": "No structured vendor comparison or enforcement of at least three distinct RFP offers, per-offer MOQ, lead time, price and sample availability."
+      },
+      {
+        "path": "gaps.vendor-orders",
+        "message": "No CERBER verification, Director external vendor selection, procurement, agreed external order conditions or approved production-order dispatch."
+      },
+      {
+        "path": "gaps.concept-task-gates",
+        "message": "No concept-to-stage task gate, all-format adaptation validation or enforcement of merchandise 1–2 revision rounds."
+      },
+      {
+        "path": "gaps.format-size-outlet-records",
+        "message": "No repeating format, apparel-size, quantity or outlet-distribution records or cross-row completeness checks."
+      },
+      {
+        "path": "gaps.outlet-photo-count",
+        "message": "No per-outlet photo count calculated against the minimum in the brief."
+      },
+      {
+        "path": "gaps.physical-production-quality",
+        "message": "No physical golden-sample lifecycle, proof authenticity, mass-production or batch-quality certification."
+      },
+      {
+        "path": "gaps.inventory-distribution",
+        "message": "No real stock, warehouse intake, department/event issue or delivery/distribution quantity reconciliation."
+      },
+      {
+        "path": "gaps.artwork-regulatory-validation",
+        "message": "No local advertising compliance engine, binary artwork preflight or print/merchandise variant validation."
+      },
+      {
+        "path": "gaps.documents-signatures",
+        "message": "No prefilled Creative Brief/RFP, signed external contracts, bilateral Acceptance Protocol, external document lifecycle or lawyer-approved wording. Fixed document stage numbers conflict with POSM's six stages."
+      },
+      {
+        "path": "gaps.planning-budget-tasks",
+        "message": "No automatic scheduling, budget accounting or template starter-task generation; source durations/tasks remain open."
+      },
+      {
+        "path": "gaps.completion-governance",
+        "message": "Source completion/automatic archive cannot substitute for V2 explicit final-project governance or establish signed acceptance."
+      }
+    ]
+  }
+}

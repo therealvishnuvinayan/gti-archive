@@ -300,6 +300,7 @@ async function resolveComparableSubmissionPair(
 
   for (const attachment of attachments) {
     await assertProjectAttachmentVisibilityForUser(user, {
+      id: attachment.id,
       projectId: attachment.projectId,
       stageId: input.stageId,
       createdAt: attachment.createdAt,
@@ -361,6 +362,7 @@ async function getVisibleSubmissionCaptionContext(
   }
 
   await assertProjectAttachmentVisibilityForUser(user, {
+    id: attachment.id,
     projectId: attachment.projectId,
     stageId: attachment.stageId,
     createdAt: attachment.createdAt,

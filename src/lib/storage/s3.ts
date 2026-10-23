@@ -443,11 +443,12 @@ export async function copyStoredObject(input: {
   bucket: string;
   storageKey: string;
   sourceETag?: string;
+  sourceVersionId?: string | null;
 }) {
   await getS3Client("regional").send(new CopyObjectCommand({
     Bucket: input.bucket,
     Key: input.storageKey,
-    CopySource: `${input.sourceBucket}/${encodeURIComponent(input.sourceKey)}`,
+    CopySource: `${input.sourceBucket}/${encodeURIComponent(input.sourceKey)}${input.sourceVersionId ? `?versionId=${encodeURIComponent(input.sourceVersionId)}` : ""}`,
     CopySourceIfMatch: input.sourceETag,
   }));
 }
@@ -475,6 +476,18 @@ export async function getObjectMetadata(
       Key: storageKey,
     }),
   );
+}
+
+/** Shared versions use a conditional GET, not HEAD followed by an unguarded URL.
+ * A non-null object version is pinned when available; ETag remains an opaque
+ * storage validator and is never labelled a cryptographic checksum. */
+export async function readPinnedStoredObject(input: {
+  bucket: string; storageKey: string; objectVersionId: string | null; objectETag: string; checksumSha256: string | null;
+}) {
+  if (!input.objectETag.trim() || input.objectVersionId === "null") throw new Error("Invalid pinned object reference.");
+  return getS3Client().send(new GetObjectCommand({ Bucket: input.bucket, Key: input.storageKey,
+    VersionId: input.objectVersionId ?? undefined, IfMatch: input.objectETag,
+    ChecksumMode: input.checksumSha256 ? "ENABLED" : undefined }));
 }
 
 export async function deleteObjectIfNeeded(

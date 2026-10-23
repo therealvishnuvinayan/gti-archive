@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.universal-tasker.json",
+  "compilerOptions": { "outDir": "../.tmp/standard-template-spec" },
+  "include": ["standard-template-spec-check.ts"]
+}

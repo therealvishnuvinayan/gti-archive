@@ -1,3 +1,4 @@
+import { ProjectTaskerLink } from "@/components/tasks/project-tasker-link";
 import { ProjectCompletionGovernance } from "@/components/projects/project-completion-governance";
 import { ProjectCompletionChecklist } from "@/components/projects/project-completion-checklist";
 import { CompletionDocumentReviews } from "@/components/projects/completion-document-reviews";
@@ -65,6 +66,7 @@ async function ProjectOverviewContent({
     ? await getProjectCompletionWorkflowForUser(user, project.id) : null;
   return (
     <>
+    <ProjectTaskerLink kind="structured" projectId={project.id} />
     <ProjectOverviewWorkspace
       project={project}
       allowLockedReads={isDirectorReader(user)}
@@ -93,7 +95,7 @@ async function UserProjectWorkspaceContent({
     return <ProjectUnavailableContent slug={slug} user={user} />;
   }
 
-  return <UserProjectWorkspace data={data} currentUserId={user.id} />;
+  return <><ProjectTaskerLink kind="structured" projectId={slug} /><UserProjectWorkspace data={data} currentUserId={user.id} /></>;
 }
 
 function UserProjectWorkspaceLoadingShell() {

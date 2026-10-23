@@ -1,0 +1,59 @@
+import "server-only";
+import { getApplicationUrl } from "../secure-external-token";
+import { NextResponse } from "next/server";
+import { AuthorizationDeniedError } from "../authorization/policy";
+import { TaskerError, ensure } from "./contracts";
+export async function body(request: Request) {
+  ensure(request.headers.get("origin") === new URL(getApplicationUrl()).origin, "INVALID_ORIGIN", 403);
+  ensure(request.headers.get("content-type")?.split(";")[0] === "application/json", "JSON_REQUIRED", 415);
+  const reader = request.body?.getReader(); ensure(reader, "BODY_REQUIRED");
+  const chunks: Uint8Array[] = []; let size = 0;
+  try { for (;;) { const next = await reader.read(); if (next.done) break; size += next.value.byteLength;
+    ensure(size <= 65536, "BODY_TOO_LARGE", 413); chunks.push(next.value); } }
+  finally { await reader.cancel(); }
+  try { return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown; } catch { throw new TaskerError("INVALID_JSON"); }
+}
+const messages: Record<string, string> = {
+  NUMBER_OUT_OF_RANGE: "Enter a number within the field’s allowed range.",
+  TEXT_OUT_OF_RANGE: "Keep the proposal within the field’s text limits.",
+  INVALID_DATE: "Enter a valid calendar date as YYYY-MM-DD.",
+  INVALID_SELECT_OPTION: "Choose one of the field’s approved options.",
+  FILE_COUNT_LIMIT: "This requirement has reached its file limit. No task files were applied.",
+  FILE_TYPE_DENIED: "The submitted file type is not allowed by this requirement.",
+  TASK_PUBLICATION_STORAGE_FAILED: "The reserved file could not be verified. Review the application and explicitly retry acceptance.",
+  SISTERS_DISABLED: "Sister Tasks are not available yet.",
+  SISTER_CONFIRMATION_REQUIRED: "Review the Sister Task details and explicitly confirm creation.",
+  STALE_SISTER_SOURCE: "The source changed. Reload its details before creating a Sister Task.",
+  KEEP_VALUES_CHANGED: "Keep uses the original details. Choose Modify to change them.",
+  INSPECTION_SOURCE_REQUIRED: "The Task Owner must pin a sealed inspection source before findings can be submitted.",
+  SOURCE_ALREADY_PINNED: "This inspection already has an immutable source. Create a new task to inspect another version.",
+  SOURCE_UNAVAILABLE: "This exact source is unavailable or cannot be delegated in this task context.",
+  SOURCE_INELIGIBLE: "Select a current submitted or approved Initial Concept version.",
+  FIELD_CONFLICT_REFRESH_AND_RESUBMIT: "The field changed since this task was created. Review current and proposed values, refresh the target, and request a new submission.",
+  TARGET_MOVED_OR_REPLACED: "The destination was moved or replaced. Create a task for a currently authorized destination.",
+  TARGET_UNAVAILABLE: "The destination no longer exists or is no longer writable.",
+  FRESH_SUBMISSION_REQUIRED: "Submit a new response after changes, rejection or target refresh before requesting completion.",
+  INPUT_MODE_FILES_REQUIRED: "Attach the required files for this response; text-only responses cannot include submitted files.",
+  PROPOSED_TEXT_REQUIRED: "Enter the proposed field value before submitting.",
+  APPLICATION_REVIEWER_CHANGED: "This publication attempt belongs to another reviewer. Request changes before starting a new review.",
+  UNSUPPORTED_FIELD: "This stage field is not supported for Data Input Tasks.",
+  TASKER_DISABLED: "General Tasks are not available yet.", TASK_TYPE_UNAVAILABLE: "This task type is not available yet.",
+  STALE_TASK_VERSION: "This task changed. Review the refreshed task and try again.", COMMAND_REUSED: "This request has already been used with different details. Refresh and try again.",
+  DISTINCT_EXECUTOR_REQUIRED: "Choose an executor other than the Task Owner.", SPECTATORS_MUST_BE_VIEW_ONLY: "The owner and executor cannot also be spectators.",
+  ACTIVE_BUSINESS_PARTICIPANTS_REQUIRED: "Choose active business users for this task.", REVIEW_PENDING: "Wait for the owner to review the completion request before changing the work.",
+  TASK_TERMINAL: "This task is already completed or closed.", TASK_DELETED: "This task has been deleted.",
+  NO_COMPLETION_REQUEST: "There is no completion request awaiting review.", SELF_REVIEW_DENIED: "A different authorized reviewer must review this request.",
+  INVALID_SUBMISSION_FILES: "One or more attachments are no longer available for this response.", INVALID_REPLACEMENT: "Choose an existing attachment from this task.",
+  UPLOAD_UNAVAILABLE: "This upload expired or is no longer available. Attach the file again.", FILE_CHANGED: "The stored file changed. Attach and review a new version.",
+  INVALID_FILE_SIZE: "Choose a file between 1 byte and 100 MB.", INVALID_MIME_TYPE: "The file type is invalid.",
+  INVALID_DEADLINE: "Enter a valid deadline including its time.", INVALID_PRIORITY: "Choose a task priority.",
+  INVALID_TEXT: "Complete the required text fields and keep within their length limits.", BODY_TOO_LARGE: "This request is too large. Shorten the task text and try again.",
+};
+export async function response(operation: () => Promise<unknown>) {
+  try { return NextResponse.json(await operation(), { headers: { "Cache-Control": "private, no-store" } }); }
+  catch (error) {
+    const status = error instanceof TaskerError ? error.status : error instanceof AuthorizationDeniedError ? 403 : 500;
+    return NextResponse.json({ error: status === 403 ? "Task unavailable or access denied." : error instanceof TaskerError ? (messages[error.code] ?? "Check the task details and try again.") : "Task operation failed. Refresh and retry." },
+      { status, headers: { "Cache-Control": "private, no-store" } });
+  }
+}

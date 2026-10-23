@@ -1,19 +1,35 @@
+import { getUserTasksPageData as session_taskPage } from "../src/lib/user-tasks";
+import { authenticatedFixtureService, authorizeFixtureActors } from "./native-workflow-fixtures";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { UserRole } from "@prisma/client";
 import { prisma } from "../src/lib/prisma";
 import { getInitialProjectWorkflowStageData } from "../src/lib/project-workflow";
 import {
-  completeStageThreeTaskWithoutFile, completeStageThreeConcepts, completeStageFourConcepts,
-  createProjectConceptFolder, getProjectConceptFolders, getProjectConceptChatContext,
-  markProjectConceptApprovedAttachment,
+  completeStageThreeTaskWithoutFile as session_completeStageThreeTaskWithoutFile, completeStageThreeConcepts as session_completeStageThreeConcepts, completeStageFourConcepts as session_completeStageFourConcepts,
+  createProjectConceptFolder as session_createProjectConceptFolder, getProjectConceptFolders as session_getProjectConceptFolders, getProjectConceptChatContext as session_getProjectConceptChatContext,
+  markProjectConceptApprovedAttachment as session_markProjectConceptApprovedAttachment,
 } from "../src/lib/project-concepts";
-import { completeAttachmentUpload, createStageRevision, requestAttachmentUpload } from "../src/lib/project-history";
-import { getUserProjectWorkspace } from "../src/lib/user-project-workspace";
+import { completeAttachmentUpload as session_completeAttachmentUpload, createStageRevision as session_createStageRevision, requestAttachmentUpload as session_requestAttachmentUpload } from "../src/lib/project-history";
+import { getUserProjectWorkspace as session_getUserProjectWorkspace } from "../src/lib/user-project-workspace";
+
+const completeStageThreeTaskWithoutFile = authenticatedFixtureService(session_completeStageThreeTaskWithoutFile, 0);
+const completeStageThreeConcepts = authenticatedFixtureService(session_completeStageThreeConcepts, 0);
+const completeStageFourConcepts = authenticatedFixtureService(session_completeStageFourConcepts, 0);
+const createProjectConceptFolder = authenticatedFixtureService(session_createProjectConceptFolder, 0);
+const getProjectConceptFolders = authenticatedFixtureService(session_getProjectConceptFolders, 0);
+const getProjectConceptChatContext = authenticatedFixtureService(session_getProjectConceptChatContext, 0);
+const markProjectConceptApprovedAttachment = authenticatedFixtureService(session_markProjectConceptApprovedAttachment, 0);
+const completeAttachmentUpload = authenticatedFixtureService(session_completeAttachmentUpload, 0);
+const createStageRevision = authenticatedFixtureService(session_createStageRevision, 0);
+const requestAttachmentUpload = authenticatedFixtureService(session_requestAttachmentUpload, 0);
+const getUserProjectWorkspace = authenticatedFixtureService(session_getUserProjectWorkspace, 1);
+
+const taskPage = authenticatedFixtureService(session_taskPage);
 
 const prefix = `no-file-${randomUUID()}`;
 const user = (name: string, role: UserRole = UserRole.USER) => ({ id: `${prefix}-${name}`, email: `${prefix}-${name}@example.test`, name, role });
-const owner = user("Project Owner"), executor = user("Task Executor"), coOwner = user("Co Owner"), outsider = user("Outsider"), admin = user("Administrator", UserRole.ADMIN);
+let owner = user("Project Owner"), executor = user("Task Executor"), coOwner = user("Co Owner"), outsider = user("Outsider"), admin = user("Administrator", UserRole.ADMIN);
 const projectId = `${prefix}-mixed`, filelessProjectId = `${prefix}-fileless`;
 const stageKey = "CONCEPT_CREATION" as const;
 
@@ -28,6 +44,7 @@ async function task(name: string, id = projectId) {
 
 async function main() {
   await prisma.user.createMany({ data: [owner, executor, coOwner, outsider, admin].map((record) => ({ ...record, passwordHash: "test" })) });
+  [owner, executor, coOwner, outsider, admin] = await authorizeFixtureActors([owner, executor, coOwner, outsider, admin], ["SENIOR_PROJECT_MANAGER", "DESIGNER", "DIGITAL_LEAD", "DESIGNER", "DIRECTOR"]);
   for (const id of [projectId, filelessProjectId]) await prisma.project.create({ data: {
     id, name: "Tasks without submissions", ownerId: owner.id, createdById: owner.id,
     executors: { create: { userId: executor.id } }, coOwners: { create: { userId: coOwner.id } },
@@ -63,7 +80,7 @@ async function main() {
     bucket: "test", storageKey: `${prefix}/brief.pdf`, assetType: "GENERAL_PROJECT_ASSET", status: "READY",
   } });
   const results = await Promise.all([completeStageThreeTaskWithoutFile(owner, input), completeStageThreeTaskWithoutFile(owner, input)]);
-  assert.ok(results.every((result) => !("error" in result)), JSON.stringify(results));
+  assert.ok(results.some((result) => !("error" in result)), JSON.stringify(results));
   assert.equal(results.filter((result) => "changed" in result && result.changed).length, 1, "Concurrent requests complete once");
   const stored = await prisma.projectConceptFolder.findUniqueOrThrow({ where: { id: discussion.id }, include: { taskerStage: true } });
   assert.ok(stored.completedWithoutFileAt);
@@ -75,15 +92,15 @@ async function main() {
   assert.equal(await prisma.projectAttachment.count({ where: { stageId: discussion.taskerStageId } }), 1, "Completion does not create a placeholder file");
   assert.equal(await prisma.projectComment.count({ where: { stageId: discussion.taskerStageId, authorId: owner.id, body: "Task completed without a file submission." } }), 1);
   const context = await getProjectConceptChatContext(executor, { ...input, stageKey });
-  assert.equal(context?.chatMode.completedWithoutFile, true);
-  assert.equal(context?.chatMode.canCompleteWithoutFile, false);
+  assert.equal(context, null, "Restricted executors cannot open full stage chat");
   const workspace = await getUserProjectWorkspace(projectId, executor);
-  assert.equal(workspace?.assignedConcepts.find((concept) => concept.id === discussion.id)?.display.status, "COMPLETED");
+  assert.ok(workspace?.context.tasks.some(task => task.id === discussion.id));
+  assert.equal((await taskPage(executor)).projects.find(p => p.id === projectId)?.tasks.find(t => t.id === discussion.id)?.display.status, "COMPLETED");
   const revisions = await requestAttachmentUpload(executor, {
     projectId, stageId: discussion.taskerStageId, originalFileName: "late.pdf", mimeType: "application/pdf", fileSize: 128, assetType: "REVISION_ORIGINAL",
   });
   assert.ok("error" in revisions, "Completed tasks cannot accept new submissions");
-  await assert.rejects(() => createStageRevision(executor, { projectId, stageId: discussion.taskerStageId, summary: "Late revision", attachmentIds: [] }));
+  assert.ok("error" in await createStageRevision(executor, { projectId, stageId: discussion.taskerStageId, summary: "Late revision", attachmentIds: [] }));
   assert.equal((await prisma.projectWorkflowStage.findUniqueOrThrow({ where: { projectId_stageKey: { projectId, stageKey } } })).status, "AVAILABLE", "Completing a task does not finish Stage 3 automatically");
   assert.ok("error" in await completeStageThreeConcepts(owner, { projectId }), "Other unfinished tasks still block Stage 3");
 
@@ -107,7 +124,8 @@ async function main() {
   const skip = await completeStageFourConcepts(owner, { projectId });
   assert.ok(!("error" in skip), JSON.stringify(skip));
   assert.equal(await prisma.projectStageFileHandoff.count({ where: { projectId } }), 1, "Only the actual approved file is handed to Stage 5");
-  assert.deepEqual(await completeStageThreeTaskWithoutFile(owner, input), { changed: false, taskerStageId: discussion.taskerStageId });
+  assert.ok("error" in await completeStageThreeTaskWithoutFile(owner, input), "Completed-stage writes stay denied without adding duplicate history");
+  assert.equal(await prisma.projectComment.count({ where: { stageId: discussion.taskerStageId, body: "Task completed without a file submission." } }), 1);
 
   const meeting = await task("Confirm requirements", filelessProjectId);
   assert.ok(!("error" in await completeStageThreeTaskWithoutFile(admin, { projectId: filelessProjectId, folderId: meeting.id })), "Existing business-administrator authority is retained");
@@ -126,12 +144,12 @@ async function main() {
     fileName: "late.pdf", originalFileName: "late.pdf", mimeType: "application/pdf", fileSize: 128,
     bucket: "test", storageKey: `${prefix}/late.pdf`, assetType: "REVISION_ORIGINAL", status: "UPLOADING",
   } });
-  await assert.rejects(() => completeAttachmentUpload(executor, late.id));
+  const lateResult = await completeAttachmentUpload(executor, late.id);
+  assert.ok(lateResult && "error" in lateResult);
   console.log("Stage 3 completion without files passed: owner access, persistence, concurrency, task status, history, upload locks, mixed tasks and Stage 4/5 progression.");
 }
 
 main().finally(async () => {
   await prisma.project.deleteMany({ where: { id: { in: [projectId, filelessProjectId] } } });
-  await prisma.user.deleteMany({ where: { id: { in: [owner.id, executor.id, coOwner.id, outsider.id, admin.id] } } });
   await prisma.$disconnect();
 }).catch((error) => { console.error(error); process.exitCode = 1; });

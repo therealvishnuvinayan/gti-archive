@@ -1,3 +1,4 @@
+import { ProjectTaskerLink } from "@/components/tasks/project-tasker-link";
 import { ProjectCompletionGovernance } from "@/components/projects/project-completion-governance";
 import { RestrictedProjectContextView } from "@/components/projects/restricted-project-context";
 import { getFlexibleContextBySlug } from "@/lib/authorization/project-context";
@@ -27,7 +28,7 @@ export default async function FlexibleProjectPage({
   if (!project) {
     const context = await getFlexibleContextBySlug(projectSlug, user);
     if (!context) notFound();
-    return <DashboardLayout><RestrictedProjectContextView data={context} /></DashboardLayout>;
+    return <DashboardLayout><ProjectTaskerLink kind="flexible" projectId={context.id} /><RestrictedProjectContextView data={context} /></DashboardLayout>;
   }
   const userOptions = project.canManageProject
     ? await getFlexibleProjectUserOptions()
@@ -35,6 +36,7 @@ export default async function FlexibleProjectPage({
 
   return (
     <DashboardLayout>
+      <ProjectTaskerLink kind="flexible" projectId={project.id} />
       <FlexibleProjectDetailWorkspace
         project={project}
         userOptions={userOptions}

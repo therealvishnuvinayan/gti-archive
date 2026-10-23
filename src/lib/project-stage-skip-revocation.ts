@@ -1,3 +1,4 @@
+import { activeProjectMutation } from "@/lib/authorization/project-transaction";
 import { isDirectorReader } from "@/lib/authorization/project-read-rules";
 import { runProjectMutation } from "@/lib/authorization/project-write";
 import { ActivityLogAction, AttachmentAssetType, AttachmentStatus, Prisma, ProjectFileChecklistItemStatus, ProjectWorkflowStageKey, ProjectWorkflowStageStatus, StageStatus } from "@prisma/client";
@@ -259,7 +260,7 @@ async function reopenConceptWork(
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5_000, timeout: 15_000 }));
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
-      if (retryCount < 2) return reopenConceptWork(user, input, retryCount + 1);
+      if (!activeProjectMutation() && retryCount < 2) return reopenConceptWork(user, input, retryCount + 1);
       return { error: "The project changed at the same time. Refresh and try again." };
     }
     throw error;

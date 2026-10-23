@@ -1,3 +1,4 @@
+import { deliverablesEnabled, taskInputFields } from "./tasker/contracts";
 import { canReadFullProject, isDirectorReader } from "@/lib/authorization/project-read-rules";
 import { runProjectMutation } from "@/lib/authorization/project-write";
 import { refreshProjectReader, requireProjectResourceRead } from "@/lib/authorization/project-read";
@@ -66,6 +67,7 @@ export type StageFiveAttachmentRecord = {
 };
 
 export type StageFiveChecklistItemRecord = {
+  taskRequestHref?: string;
   fieldKey: ProjectFileChecklistField;
   value: StageFiveChecklistValue;
   status: ProjectFileChecklistItemStatus;
@@ -287,6 +289,7 @@ function loadStageFiveChecklist(handoffId: string) {
         id: true,
         items: {
           select: {
+            id: true,
             fieldKey: true,
             value: true,
             status: true,
@@ -416,6 +419,7 @@ export async function getStageFiveWorkspaceData(
               const latestRequest = item?.requests[0];
               return {
                 fieldKey,
+                ...(deliverablesEnabled() && item && taskInputFields.includes(fieldKey) ? { taskRequestHref: `/tasks?createContext=structured:${projectId}&destination=checklist:${item.id}` } : {}),
                 value: item ? parseChecklistValue(item.value) : {},
                 status:
                   item?.status ?? ProjectFileChecklistItemStatus.PENDING,
@@ -643,7 +647,7 @@ async function deleteStageFiveSourceFileImplementation(
   } as const;
 }
 
-function validateChecklistValue(
+export function validateChecklistValue(
   fieldKey: ProjectFileChecklistField,
   value: StageFiveChecklistValue,
 ): { error: string } | { value: StageFiveChecklistValue } {
@@ -2269,4 +2273,19 @@ export async function submitStageFiveChecklistResponse(
 ) {
   return runProjectMutation(user, "submitStageFiveChecklistResponse", { kind: "checklist-request", id: input.requestId }, async (trustedUser) =>
     submitStageFiveChecklistResponseImplementation(trustedUser, input), input);
+}
+
+/** Exact existing-item adapter; the native project/checklist/handoff locks and
+ * target token have been checked by Tasker. Never initializes or bulk saves fields. */
+export async function applyTaskChecklistValueTx(tx: Prisma.TransactionClient, itemId: string, value: StageFiveChecklistValue, attachmentIds: string[], reviewerId: string) {
+  const item = await tx.projectFileChecklistItem.findUniqueOrThrow({ where: { id: itemId } });
+  const checked = validateChecklistValue(item.fieldKey, value);
+  if ("error" in checked || !valueIsFilled(checked.value, attachmentIds)) throw new Error("INVALID_TASK_FIELD_VALUE");
+  await tx.projectFileChecklistItem.update({ where: { id: itemId }, data: { value: checked.value as Prisma.InputJsonObject, status: "FILLED", updatedById: reviewerId } });
+  await tx.projectFileChecklistItemAttachment.deleteMany({ where: { checklistItemId: itemId } });
+  if (attachmentIds.length) await tx.projectFileChecklistItemAttachment.createMany({ data: attachmentIds.map(attachmentId => ({ checklistItemId: itemId, attachmentId })) });
+  // Match the native checklist save: filling a field stops its existing reminders.
+  // This creates no request, notification, dispatch or worker activity.
+  await tx.requestReminder.updateMany({ where: { enabled: true, stageFiveRequest: { checklistItemId: itemId } },
+    data: { enabled: false, nextReminderAt: null, stoppedAt: new Date(), processingToken: null, processingStartedAt: null } });
 }

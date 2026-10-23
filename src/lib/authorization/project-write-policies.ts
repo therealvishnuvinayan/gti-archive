@@ -94,7 +94,10 @@ export function projectMutationTarget(operation: ProjectWriteOperation, target: 
   return `${operation}/${target.kind}:${target.id}`;
 }
 
-async function loadWriteContext({ tx, actor, request }: Parameters<NonNullable<ResourcePolicies["project.edit"]>>[0]): Promise<AuthorizationContext | null> {
+type WritePolicyInput = Parameters<NonNullable<ResourcePolicies["project.edit"]>>[0];
+// Also used to recheck the recorded Task Owner from current persisted V2 identity;
+// no session, membership, grant or authenticated principal is fabricated.
+export async function projectWriteContext(tx: DB, actor: Pick<WritePolicyInput["actor"], "userId" | "businessRole">, request: WritePolicyInput["request"]): Promise<AuthorizationContext | null> {
   const match = /^([^/]+)\/([^:]+):(.+)$/.exec(request.targetId);
   if (!match || !Object.hasOwn(projectWriteOperations, match[1]) || !actor.businessRole) return null;
   const operation = match[1] as ProjectWriteOperation;
@@ -170,6 +173,7 @@ async function loadWriteContext({ tx, actor, request }: Parameters<NonNullable<R
     integrity: { workflowAllowed: true, actorUserId: actor.userId, preservesOwnership: true, preservesHistory: true } };
 }
 
+const loadWriteContext = ({ tx, actor, request }: WritePolicyInput) => projectWriteContext(tx, actor, request);
 export const projectWritePolicies: ResourcePolicies = Object.freeze({
   "project.edit": loadWriteContext,
   "project.manageParticipants": loadWriteContext,

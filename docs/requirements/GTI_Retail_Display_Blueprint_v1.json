@@ -1,0 +1,2531 @@
+{
+  "blueprint": {
+    "blueprintSchemaVersion": 1,
+    "id": "gti-retail-display",
+    "revision": 1,
+    "category": "RETAIL_DISPLAY",
+    "designation": "UNAPPROVED_CANDIDATE",
+    "source": {
+      "title": "Flux – Project Process Templates & Content Specification",
+      "version": "2026-09-29",
+      "sha256": "4d86f90d173a406ad9f3a5ffbba7ce55776b5d209f4bc2a0e4653f299d61b944",
+      "pagination": "Supplied as 19 pages; page numbers unverified. Use exact OOXML section/paragraph locators."
+    },
+    "definitionSchemaVersion": 1,
+    "definition": {
+      "schemaVersion": 1,
+      "name": "Retail Display · internal candidate v1",
+      "intendedProjectType": "RETAIL_DISPLAY",
+      "description": "UNAPPROVED CANDIDATE · INTERNAL EVIDENCE PILOT. Human evidence capture only; not an official GTI standard. No conditional rules, skip, external dispatch, procurement, automatic tasks or archive. After all stages, project closure still requires a separately Director-approved per-project document policy, actual Owner completion request and separate Director final decision. Blueprint gti-retail-display revision 1; source 2026-09-29 SHA-256 4d86f90d173a406ad9f3a5ffbba7ce55776b5d209f4bc2a0e4653f299d61b944. Seven configurable evidence stages. No relational production units or outlet engine, sample-coverage calculation, engineering certification, physical-prototype validation or all-outlets-or-issue-tasks completion gate. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+      "stages": [
+        {
+          "id": "retail_brief",
+          "title": "Brief",
+          "position": 0,
+          "description": "Capture display scope, available space and supplied restrictions. Enter agreed units; no safety or regulatory threshold is inferred. What now: record applicable information, attach evidence and obtain independent review. Move on: complete all configured fixed gates. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+          "capabilities": [
+            {
+              "id": "retail_brief_fields",
+              "type": "INFORMATION",
+              "title": "Retail Display brief",
+              "instructions": "Project summary only. Attach the detailed register; individual rows and quantities are not validated. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "retail_scope",
+                  "label": "Candidate scope",
+                  "type": "READ_ONLY",
+                  "required": false,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": "UNAPPROVED CANDIDATE · INTERNAL EVIDENCE PILOT. Human evidence capture only; not an official GTI standard. No conditional rules, skip, external dispatch, procurement, automatic tasks or archive. After all stages, project closure still requires a separately Director-approved per-project document policy, actual Owner completion request and separate Director final decision.",
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "retail_outlet_type",
+                  "label": "Outlet type",
+                  "type": "SHORT_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 500
+                },
+                {
+                  "id": "retail_outlet_count",
+                  "label": "Number of outlets",
+                  "type": "NUMBER",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "retail_width",
+                  "label": "Available width",
+                  "type": "NUMBER",
+                  "required": true,
+                  "options": [],
+                  "help": "Source does not prescribe a unit or threshold. Record the agreed unit explicitly; dimensions are a summary, not per-outlet validation. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "retail_height",
+                  "label": "Available height",
+                  "type": "NUMBER",
+                  "required": true,
+                  "options": [],
+                  "help": "Source does not prescribe a unit or threshold. Record the agreed unit explicitly; dimensions are a summary, not per-outlet validation. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "retail_depth",
+                  "label": "Available depth",
+                  "type": "NUMBER",
+                  "required": true,
+                  "options": [],
+                  "help": "Source does not prescribe a unit or threshold. Record the agreed unit explicitly; dimensions are a summary, not per-outlet validation. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "retail_dimension_unit",
+                  "label": "Agreed space measurement unit",
+                  "type": "SHORT_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Source does not prescribe a unit or threshold. Record the agreed unit explicitly; dimensions are a summary, not per-outlet validation. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 500
+                },
+                {
+                  "id": "retail_shelves",
+                  "label": "Number of shelves",
+                  "type": "NUMBER",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "retail_facings",
+                  "label": "Number of facings",
+                  "type": "NUMBER",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "retail_skus",
+                  "label": "SKUs to display",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_lighting",
+                  "label": "Lighting requirements",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_locking",
+                  "label": "Locking / shutters",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_budget",
+                  "label": "Budget",
+                  "type": "NUMBER",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "retail_currency",
+                  "label": "Agreed budget currency",
+                  "type": "SHORT_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "No source-prescribed currency or accounting implied. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 500
+                },
+                {
+                  "id": "retail_market_rules",
+                  "label": "Market rules and display restrictions",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Record supplied rules, including display bans where applicable; no legal compliance certification. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_installation_deadline",
+                  "label": "Installation deadline",
+                  "type": "DATE",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                }
+              ]
+            },
+            {
+              "id": "retail_creative_brief",
+              "type": "INFORMATION",
+              "title": "Creative Brief – General content",
+              "instructions": "Project summary only. Attach the detailed register; individual rows and quantities are not validated. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "retail_cb_header",
+                  "label": "Brief header: date, brand, project and client",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_cb_background",
+                  "label": "Background and business problem",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_cb_objective",
+                  "label": "Objective and success measures",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_cb_target",
+                  "label": "Target group, market and channel",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Source target group: adult smokers of legal age only. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_cb_deliverables",
+                  "label": "Deliverables, formats and quantities",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_cb_mandatory",
+                  "label": "Brand rules, compulsory texts and local restrictions",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_cb_timeline",
+                  "label": "Budget range, timeline and milestones",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_cb_presentation",
+                  "label": "Presentation format and expected concepts",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Record the agreed brief; no invented minimum or task-count gate. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_cb_mode",
+                  "label": "Collaboration context",
+                  "type": "SELECT",
+                  "required": true,
+                  "options": [
+                    "Direct",
+                    "Pitch"
+                  ],
+                  "help": "Context only; no vendor workflow or dispatch. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "retail_cb_contacts",
+                  "label": "Contacts and proposed approval rules",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "retail_brief_file",
+              "type": "FILE_REQUIREMENT",
+              "title": "Creative Brief – General evidence",
+              "instructions": "Manually prepare the brief with licensed-elements legal note and File Standard. Independent file review is a candidate choice; no source-specific brief approver is invented. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            }
+          ],
+          "gates": [
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "retail_brief_fields"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "retail_creative_brief"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "retail_brief_file"
+            }
+          ]
+        },
+        {
+          "id": "retail_survey",
+          "title": "Site Survey",
+          "position": 1,
+          "description": "Capture survey evidence and proposed coverage basis. The source allows all outlets or an Owner-approved sample; fixed Owner review here does not calculate either condition. What now: record applicable information, attach evidence and obtain independent review. Move on: complete all configured fixed gates. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+          "capabilities": [
+            {
+              "id": "retail_survey_fields",
+              "type": "INFORMATION",
+              "title": "Site survey and coverage summary",
+              "instructions": "Project summary only. Attach the detailed register; individual rows and quantities are not validated. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "retail_survey_basis",
+                  "label": "Survey coverage basis (record only)",
+                  "type": "SELECT",
+                  "required": true,
+                  "options": [
+                    "All outlets",
+                    "Representative sample proposed for Owner review"
+                  ],
+                  "help": "No conditional decision or automatic coverage check. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "retail_survey_sites",
+                  "label": "Outlet / site identifiers and coverage register",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_survey_measurements",
+                  "label": "Survey measurements with units by outlet",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Source does not prescribe a unit or threshold. Record the agreed unit explicitly; dimensions are a summary, not per-outlet validation. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_survey_furniture",
+                  "label": "Existing furniture drawings and references",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_retailer_requirements",
+                  "label": "Retailer requirements",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_electrical_access",
+                  "label": "Electrical access",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_sample_rationale",
+                  "label": "Representative sample rationale and excluded outlets",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Optional for all-outlet surveys. Human review cannot enforce conditional sample eligibility. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "retail_survey_evidence",
+              "type": "FILE_REQUIREMENT",
+              "title": "Survey register, site photographs and furniture drawings",
+              "instructions": "Include outlet identifiers, measurements and coverage. One bundle cannot prove every outlet was surveyed. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf",
+                ".xlsx",
+                ".jpg",
+                ".png",
+                ".dxf",
+                ".zip"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "retail_rfp_evidence",
+              "type": "FILE_REQUIREMENT",
+              "title": "RFP evidence where applicable (optional)",
+              "instructions": "Manually prepared RFP only; no vendor selection or dispatch. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf"
+              ],
+              "minFiles": 0,
+              "maxFiles": 20,
+              "required": false,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": false
+            },
+            {
+              "id": "retail_survey_review",
+              "type": "APPROVAL",
+              "title": "Owner internal survey-evidence review",
+              "instructions": "Source names Owner for a representative sample only. Fixed Owner review for either basis is a proposed pilot choice, not a conditional sample authorization or coverage gate. Internal evidence decision only; never external approval, production dispatch or certification. Reviewer cannot be requester or evidence contributor. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "steps": [
+                {
+                  "id": "retail_survey_review_decision",
+                  "label": "Owner internal survey-evidence review",
+                  "approver": "PROJECT_OWNER",
+                  "evidence": "CONFIGURED_INPUTS",
+                  "decision": "APPROVE_REQUIRED"
+                }
+              ],
+              "rejection": "RETURN_FOR_CHANGES",
+              "gatesProgression": true
+            }
+          ],
+          "gates": [
+            {
+              "type": "PRECEDING_STAGE",
+              "stageId": "retail_brief"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "retail_survey_fields"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "retail_survey_evidence"
+            },
+            {
+              "type": "APPROVAL_COMPLETE",
+              "capabilityId": "retail_survey_review"
+            }
+          ]
+        },
+        {
+          "id": "retail_concept",
+          "title": "Concept",
+          "position": 2,
+          "description": "Use existing Initial/Final Concept Universal Tasks for creative work. No mandatory concept count, legacy concept engine or source-unspecified completion rule is introduced. What now: record applicable information, attach evidence and obtain independent review. Move on: complete all configured fixed gates. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+          "capabilities": [
+            {
+              "id": "retail_concept_fields",
+              "type": "INFORMATION",
+              "title": "Concept instructions and evidence",
+              "instructions": "Project summary only. Attach the detailed register; individual rows and quantities are not validated. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "retail_concept_instructions",
+                  "label": "3D visualisation and planogram creative instructions",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_concept_task_refs",
+                  "label": "Concept Task references and reviewed outcomes",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "References do not establish task completion or mandatory counts. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "retail_renders",
+              "type": "FILE_REQUIREMENT",
+              "title": "3D visualisation evidence",
+              "instructions": "Exact reviewed visualisation evidence; file count and independent reviewer are candidate choices. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf",
+                ".jpg",
+                ".png",
+                ".zip"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "retail_planogram",
+              "type": "FILE_REQUIREMENT",
+              "title": "Planogram layout evidence",
+              "instructions": "Upload the layout and relevant task references; no relational SKU/facing validation. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf",
+                ".ai",
+                ".zip"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            }
+          ],
+          "gates": [
+            {
+              "type": "PRECEDING_STAGE",
+              "stageId": "retail_survey"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "retail_concept_fields"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "retail_renders"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "retail_planogram"
+            }
+          ]
+        },
+        {
+          "id": "retail_technical",
+          "title": "Technical Design",
+          "position": 3,
+          "description": "Record technical design and inspection evidence. Human inspection is not engineering certification. What now: record applicable information, attach evidence and obtain independent review. Move on: complete all configured fixed gates. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+          "capabilities": [
+            {
+              "id": "retail_technical_fields",
+              "type": "INFORMATION",
+              "title": "Technical design summary",
+              "instructions": "Project summary only. Attach the detailed register; individual rows and quantities are not validated. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "retail_technical_materials",
+                  "label": "Materials",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_construction",
+                  "label": "Construction methods",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_weight",
+                  "label": "Weight summary",
+                  "type": "NUMBER",
+                  "required": false,
+                  "options": [],
+                  "help": "Source supplies no numerical safety limit. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "retail_weight_unit",
+                  "label": "Agreed weight unit",
+                  "type": "SHORT_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 500
+                },
+                {
+                  "id": "retail_weight_safety",
+                  "label": "Weight and physical-safety considerations",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_assembly_method",
+                  "label": "Assembly method",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "retail_technical_drawings",
+              "type": "FILE_REQUIREMENT",
+              "title": "Technical drawings and supporting versions",
+              "instructions": "Upload drawings, assembly and inspection evidence. Files do not certify loads, electrical safety or engineering compliance. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf",
+                ".dxf",
+                ".dwg",
+                ".zip"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "retail_technical_checks",
+              "type": "CHECKLIST",
+              "title": "Technical evidence review",
+              "instructions": "Human attestations with written evidence and limitations. No automated compliance, quantity or physical validation. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "items": [
+                {
+                  "id": "retail_technical_attestation",
+                  "label": "Construction, materials, weight / safety and assembly evidence reviewed with limitations",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                }
+              ]
+            }
+          ],
+          "gates": [
+            {
+              "type": "PRECEDING_STAGE",
+              "stageId": "retail_concept"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "retail_technical_fields"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "retail_technical_drawings"
+            },
+            {
+              "type": "REQUIRED_CHECKLIST",
+              "capabilityId": "retail_technical_checks"
+            }
+          ]
+        },
+        {
+          "id": "retail_specification",
+          "title": "Specification & Graphics per Component",
+          "position": 4,
+          "description": "Retain the source component list and detailed production-unit register as evidence. Scalar fields and files do not implement separate component entities or per-component gates. What now: record applicable information, attach evidence and obtain independent review. Move on: complete all configured fixed gates. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+          "capabilities": [
+            {
+              "id": "retail_component_fields",
+              "type": "INFORMATION",
+              "title": "Component specification summary",
+              "instructions": "Project summary only. Attach the detailed register; individual rows and quantities are not validated. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "retail_component_notice",
+                  "label": "Component coverage limitation",
+                  "type": "READ_ONLY",
+                  "required": false,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": "Structure, header, side panels, shelf talkers, shutters and lighting are separate production units in the source. This candidate stores a summary and reviewed register only; no per-component lifecycle or checklist validation.",
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "retail_components",
+                  "label": "Applicable components and production-unit identifiers",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_graphics",
+                  "label": "Graphic files by component",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_dimensions",
+                  "label": "Dimensions with units by component",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_component_materials",
+                  "label": "Materials by component",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_finishes",
+                  "label": "Finishes by component",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_quantities",
+                  "label": "Quantities by component",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_large_format",
+                  "label": "Scale, material-specific resolution and component naming",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "retail_component_register",
+              "type": "FILE_REQUIREMENT",
+              "title": "Component specification and checklist register",
+              "instructions": "List production units and individual checks in the register. Review does not enforce repeated rows, component counts or quantity completeness. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf",
+                ".xlsx",
+                ".csv"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "retail_artwork",
+              "type": "FILE_REQUIREMENT",
+              "title": "Component graphics and large-format Final Artwork",
+              "instructions": "Exact source files and PDF previews, with display scale/resolution/naming evidence; no binary preflight. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf",
+                ".ai",
+                ".psd",
+                ".eps",
+                ".zip"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "retail_contract_evidence",
+              "type": "FILE_REQUIREMENT",
+              "title": "Framework / Copyright evidence where applicable (optional)",
+              "instructions": "Manual evidence only; does not enforce legal signatures or before-artwork external contract acceptance. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf"
+              ],
+              "minFiles": 0,
+              "maxFiles": 20,
+              "required": false,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": false
+            },
+            {
+              "id": "retail_artwork_checks",
+              "type": "CHECKLIST",
+              "title": "Final Artwork File Standard · human review",
+              "instructions": "Human attestations with written evidence and limitations. No automated compliance, quantity or physical validation. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "items": [
+                {
+                  "id": "retail_fa_layers",
+                  "label": "Layered editable files and embedded images reviewed",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "retail_fa_resolution",
+                  "label": "Base 300 dpi / A3 requirement and applicable variant resolution reviewed",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "retail_fa_psd",
+                  "label": "PSD components and separate shadows reviewed",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "retail_fa_fonts",
+                  "label": "Editable typefaces and legal texts reviewed",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "retail_fa_colours",
+                  "label": "CMYK / Pantone, finishes and white / varnish layers reviewed",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "retail_fa_bleed",
+                  "label": "Bleed, safety margins and separate dieline reviewed",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "retail_fa_naming",
+                  "label": "PROJECT_SKU_MARKET_ELEMENT_vXX_DATE, folders and PDF preview reviewed",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "retail_fa_variant",
+                  "label": "Large-format scale, material-specific resolution and component naming reviewed",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                }
+              ]
+            }
+          ],
+          "gates": [
+            {
+              "type": "PRECEDING_STAGE",
+              "stageId": "retail_technical"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "retail_component_fields"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "retail_component_register"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "retail_artwork"
+            },
+            {
+              "type": "REQUIRED_CHECKLIST",
+              "capabilityId": "retail_artwork_checks"
+            }
+          ]
+        },
+        {
+          "id": "retail_prototype",
+          "title": "Prototype & Production",
+          "position": 5,
+          "description": "Capture evidence of the mandatory physical prototype, assembly test and series production. Internal evidence approval does not validate physical reality or dispatch a production order. What now: record applicable information, attach evidence and obtain independent review. Move on: complete all configured fixed gates. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+          "capabilities": [
+            {
+              "id": "retail_prototype_fields",
+              "type": "INFORMATION",
+              "title": "Prototype and series-production summary",
+              "instructions": "Project summary only. Attach the detailed register; individual rows and quantities are not validated. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "retail_physical_prototype",
+                  "label": "Physical prototype identification and inspection record",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_assembly_test",
+                  "label": "Assembly test method, result and unresolved issues",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_prototype_acceptance",
+                  "label": "Prototype review / acceptance evidence references",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_series_production",
+                  "label": "Series-production information",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_production_order",
+                  "label": "Production-order approval evidence and outstanding conditions",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "retail_prototype_evidence",
+              "type": "FILE_REQUIREMENT",
+              "title": "Physical prototype and assembly-test evidence",
+              "instructions": "Photos, reports and test evidence for human review; upload alone never proves physical validation. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf",
+                ".jpg",
+                ".png",
+                ".zip"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "retail_production_evidence",
+              "type": "FILE_REQUIREMENT",
+              "title": "Series-production and order-approval evidence",
+              "instructions": "Internal records only; no approved external dispatch, vendor integration or procurement. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "retail_prototype_checks",
+              "type": "CHECKLIST",
+              "title": "Prototype evidence review",
+              "instructions": "Human attestations with written evidence and limitations. No automated compliance, quantity or physical validation. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "items": [
+                {
+                  "id": "retail_prototype_attestation",
+                  "label": "Physical prototype and assembly-test evidence reviewed with limitations",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                }
+              ]
+            },
+            {
+              "id": "retail_production_review",
+              "type": "APPROVAL",
+              "title": "Director internal production-evidence approval",
+              "instructions": "Source production orders require Director approval. This fixed internal decision is narrower than the source approval chain and external order. Internal evidence decision only; never external approval, production dispatch or certification. Reviewer cannot be requester or evidence contributor. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "steps": [
+                {
+                  "id": "retail_production_review_decision",
+                  "label": "Director internal production-evidence approval",
+                  "approver": "DIRECTOR",
+                  "evidence": "CONFIGURED_INPUTS",
+                  "decision": "APPROVE_REQUIRED"
+                }
+              ],
+              "rejection": "RETURN_FOR_CHANGES",
+              "gatesProgression": true
+            }
+          ],
+          "gates": [
+            {
+              "type": "PRECEDING_STAGE",
+              "stageId": "retail_specification"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "retail_prototype_fields"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "retail_prototype_evidence"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "retail_production_evidence"
+            },
+            {
+              "type": "REQUIRED_CHECKLIST",
+              "capabilityId": "retail_prototype_checks"
+            },
+            {
+              "type": "APPROVAL_COMPLETE",
+              "capabilityId": "retail_production_review"
+            }
+          ]
+        },
+        {
+          "id": "retail_installation",
+          "title": "Logistics & Installation",
+          "position": 6,
+          "description": "Record installation evidence by outlet. Create actual General Tasks manually for open issues. General gates do not enforce every outlet accepted or every issue assigned. What now: record applicable information, attach evidence and obtain independent review. Move on: complete all configured fixed gates. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+          "capabilities": [
+            {
+              "id": "retail_installation_fields",
+              "type": "INFORMATION",
+              "title": "Outlet installation and issue summary",
+              "instructions": "Project summary only. Attach the detailed register; individual rows and quantities are not validated. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "fields": [
+                {
+                  "id": "retail_outlet_notice",
+                  "label": "Outlet completion limitation",
+                  "type": "READ_ONLY",
+                  "required": false,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": "Source outlet states: planned / installed / accepted / issue. Every outlet must be accepted or open issues assigned as tasks. This candidate has no relational outlet states or task/gate adapter; records and attestations do not enforce that rule.",
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "retail_schedule",
+                  "label": "Installation schedule by outlet",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_outlet_register",
+                  "label": "Outlet list and planned / installed / accepted / issue status register",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_installation_date",
+                  "label": "Planned installation date summary",
+                  "type": "DATE",
+                  "required": false,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": null
+                },
+                {
+                  "id": "retail_warranty",
+                  "label": "Warranty details",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_service_contact",
+                  "label": "Service contact",
+                  "type": "SHORT_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 500
+                },
+                {
+                  "id": "retail_open_issues",
+                  "label": "Outstanding installation issues and disposition",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_issue_task_refs",
+                  "label": "Manually assigned General Task references by outlet / issue",
+                  "type": "LONG_TEXT",
+                  "required": false,
+                  "options": [],
+                  "help": "Create real General Tasks via Tasker. Optional when no issues; references are not verified assignments or a completion gate. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": null,
+                  "max": 10000
+                },
+                {
+                  "id": "retail_acceptance_summary",
+                  "label": "Acceptance decisions, quantities, remarks and fix deadlines",
+                  "type": "LONG_TEXT",
+                  "required": true,
+                  "options": [],
+                  "help": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+                  "defaultValue": null,
+                  "min": 1,
+                  "max": 10000
+                }
+              ]
+            },
+            {
+              "id": "retail_installation_evidence",
+              "type": "FILE_REQUIREMENT",
+              "title": "Outlet schedule, status register and installation photographs",
+              "instructions": "Attach per-outlet evidence; fixed file counts do not measure outlet completeness. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf",
+                ".xlsx",
+                ".csv",
+                ".jpg",
+                ".png",
+                ".zip"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "retail_acceptance_protocols",
+              "type": "FILE_REQUIREMENT",
+              "title": "Per-outlet Acceptance Protocol evidence",
+              "instructions": "Upload the protocol register/files. Independent review is not bilateral signing or verification that every outlet has accepted. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. Review binds an exact sealed version, not physical or legal certification.",
+              "acceptedTypes": [
+                ".pdf"
+              ],
+              "minFiles": 1,
+              "maxFiles": 20,
+              "required": true,
+              "acceptance": "REVIEWER",
+              "acceptedVersionsGate": true
+            },
+            {
+              "id": "retail_installation_checks",
+              "type": "CHECKLIST",
+              "title": "Installation evidence and issue review",
+              "instructions": "Human attestations with written evidence and limitations. No automated compliance, quantity or physical validation. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation.",
+              "items": [
+                {
+                  "id": "retail_installation_attestation",
+                  "label": "Outlet evidence, protocols and unresolved exceptions reviewed",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                },
+                {
+                  "id": "retail_issue_attestation",
+                  "label": "Open issues and manual General Task references reviewed, or no issues recorded",
+                  "description": "Describe the human review, applicable material/components and unresolved exceptions. This records an attestation only.",
+                  "required": true,
+                  "evidence": "TEXT"
+                }
+              ]
+            }
+          ],
+          "gates": [
+            {
+              "type": "PRECEDING_STAGE",
+              "stageId": "retail_prototype"
+            },
+            {
+              "type": "REQUIRED_FIELDS",
+              "capabilityId": "retail_installation_fields"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "retail_installation_evidence"
+            },
+            {
+              "type": "ACCEPTED_FILES",
+              "capabilityId": "retail_acceptance_protocols"
+            },
+            {
+              "type": "REQUIRED_CHECKLIST",
+              "capabilityId": "retail_installation_checks"
+            }
+          ]
+        }
+      ]
+    },
+    "scope": "INTERNAL_EVIDENCE_PILOT",
+    "trace": {
+      "retail_scope": {
+        "paragraphs": [
+          148,
+          518
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_outlet_type": {
+        "paragraphs": [
+          150
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_outlet_count": {
+        "paragraphs": [
+          150
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_width": {
+        "paragraphs": [
+          150
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_height": {
+        "paragraphs": [
+          150
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_depth": {
+        "paragraphs": [
+          150
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_dimension_unit": {
+        "paragraphs": [
+          150
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_shelves": {
+        "paragraphs": [
+          150
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_facings": {
+        "paragraphs": [
+          150
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_skus": {
+        "paragraphs": [
+          150
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_lighting": {
+        "paragraphs": [
+          150
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_locking": {
+        "paragraphs": [
+          150
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_budget": {
+        "paragraphs": [
+          150
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_currency": {
+        "paragraphs": [
+          150
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_market_rules": {
+        "paragraphs": [
+          150
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_installation_deadline": {
+        "paragraphs": [
+          150
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_brief_fields": {
+        "paragraphs": [
+          148,
+          150
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_cb_header": {
+        "paragraphs": [
+          437
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_cb_background": {
+        "paragraphs": [
+          438
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_cb_objective": {
+        "paragraphs": [
+          439
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_cb_target": {
+        "paragraphs": [
+          440
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_cb_deliverables": {
+        "paragraphs": [
+          441
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_cb_mandatory": {
+        "paragraphs": [
+          442
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_cb_timeline": {
+        "paragraphs": [
+          443
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_cb_presentation": {
+        "paragraphs": [
+          444
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_cb_mode": {
+        "paragraphs": [
+          445
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_cb_contacts": {
+        "paragraphs": [
+          448
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_creative_brief": {
+        "paragraphs": [
+          412,
+          413,
+          436,
+          437,
+          438,
+          439,
+          440,
+          441,
+          442,
+          443,
+          444,
+          445,
+          448
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_brief_file": {
+        "paragraphs": [
+          412,
+          413,
+          414,
+          446,
+          447
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_brief": {
+        "paragraphs": [
+          149,
+          150
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_brief.gate.0": {
+        "paragraphs": [
+          149,
+          150
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "retail_brief.gate.1": {
+        "paragraphs": [
+          149,
+          150
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "retail_brief.gate.2": {
+        "paragraphs": [
+          149,
+          150
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "retail_survey_basis": {
+        "paragraphs": [
+          153
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_survey_sites": {
+        "paragraphs": [
+          148,
+          152,
+          153
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_survey_measurements": {
+        "paragraphs": [
+          152
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_survey_furniture": {
+        "paragraphs": [
+          152
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_retailer_requirements": {
+        "paragraphs": [
+          152
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_electrical_access": {
+        "paragraphs": [
+          152
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_sample_rationale": {
+        "paragraphs": [
+          153
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_survey_fields": {
+        "paragraphs": [
+          152,
+          153
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_survey_evidence": {
+        "paragraphs": [
+          152,
+          153
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_rfp_evidence": {
+        "paragraphs": [
+          418,
+          419,
+          420
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_survey_review": {
+        "paragraphs": [
+          153,
+          518
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_survey_review_decision": {
+        "paragraphs": [
+          153,
+          518
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_survey": {
+        "paragraphs": [
+          151,
+          152,
+          153
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_survey.gate.0": {
+        "paragraphs": [
+          151,
+          152,
+          153
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "retail_survey.gate.1": {
+        "paragraphs": [
+          151,
+          152,
+          153
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "retail_survey.gate.2": {
+        "paragraphs": [
+          151,
+          152,
+          153
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "retail_survey.gate.3": {
+        "paragraphs": [
+          151,
+          152,
+          153
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "retail_concept_instructions": {
+        "paragraphs": [
+          155
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_concept_task_refs": {
+        "paragraphs": [
+          155,
+          327
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_concept_fields": {
+        "paragraphs": [
+          155,
+          444
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_renders": {
+        "paragraphs": [
+          155
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_planogram": {
+        "paragraphs": [
+          155
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_concept": {
+        "paragraphs": [
+          154,
+          155
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_concept.gate.0": {
+        "paragraphs": [
+          154,
+          155
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "retail_concept.gate.1": {
+        "paragraphs": [
+          154,
+          155
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "retail_concept.gate.2": {
+        "paragraphs": [
+          154,
+          155
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "retail_concept.gate.3": {
+        "paragraphs": [
+          154,
+          155
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "retail_technical_materials": {
+        "paragraphs": [
+          157
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_construction": {
+        "paragraphs": [
+          157
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_weight": {
+        "paragraphs": [
+          157
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_weight_unit": {
+        "paragraphs": [
+          157
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_weight_safety": {
+        "paragraphs": [
+          157
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_assembly_method": {
+        "paragraphs": [
+          157
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_technical_fields": {
+        "paragraphs": [
+          157
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_technical_drawings": {
+        "paragraphs": [
+          157
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_technical_checks": {
+        "paragraphs": [
+          157
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_technical_attestation": {
+        "paragraphs": [
+          157
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_technical": {
+        "paragraphs": [
+          156,
+          157
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_technical.gate.0": {
+        "paragraphs": [
+          156,
+          157
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "retail_technical.gate.1": {
+        "paragraphs": [
+          156,
+          157
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "retail_technical.gate.2": {
+        "paragraphs": [
+          156,
+          157
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "retail_technical.gate.3": {
+        "paragraphs": [
+          156,
+          157
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "retail_component_notice": {
+        "paragraphs": [
+          148,
+          159
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_components": {
+        "paragraphs": [
+          148
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_graphics": {
+        "paragraphs": [
+          159
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_dimensions": {
+        "paragraphs": [
+          159
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_component_materials": {
+        "paragraphs": [
+          159
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_finishes": {
+        "paragraphs": [
+          159
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_quantities": {
+        "paragraphs": [
+          159
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_large_format": {
+        "paragraphs": [
+          159,
+          516
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_component_fields": {
+        "paragraphs": [
+          148,
+          159
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_component_register": {
+        "paragraphs": [
+          148,
+          159
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_artwork": {
+        "paragraphs": [
+          159,
+          509,
+          515,
+          516
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_contract_evidence": {
+        "paragraphs": [
+          424,
+          425,
+          426
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_artwork_checks": {
+        "paragraphs": [
+          507,
+          508,
+          516
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_fa_layers": {
+        "paragraphs": [
+          509
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_fa_resolution": {
+        "paragraphs": [
+          510,
+          516
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_fa_psd": {
+        "paragraphs": [
+          511
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_fa_fonts": {
+        "paragraphs": [
+          512
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_fa_colours": {
+        "paragraphs": [
+          513
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_fa_bleed": {
+        "paragraphs": [
+          514
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_fa_naming": {
+        "paragraphs": [
+          515
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_fa_variant": {
+        "paragraphs": [
+          516
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_specification": {
+        "paragraphs": [
+          148,
+          158,
+          159
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_specification.gate.0": {
+        "paragraphs": [
+          148,
+          158,
+          159
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "retail_specification.gate.1": {
+        "paragraphs": [
+          148,
+          158,
+          159
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "retail_specification.gate.2": {
+        "paragraphs": [
+          148,
+          158,
+          159
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "retail_specification.gate.3": {
+        "paragraphs": [
+          148,
+          158,
+          159
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "retail_specification.gate.4": {
+        "paragraphs": [
+          148,
+          158,
+          159
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "retail_physical_prototype": {
+        "paragraphs": [
+          161
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_assembly_test": {
+        "paragraphs": [
+          161
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_prototype_acceptance": {
+        "paragraphs": [
+          161
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_series_production": {
+        "paragraphs": [
+          161
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_production_order": {
+        "paragraphs": [
+          161
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_prototype_fields": {
+        "paragraphs": [
+          161
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_prototype_evidence": {
+        "paragraphs": [
+          161
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_production_evidence": {
+        "paragraphs": [
+          161
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_prototype_checks": {
+        "paragraphs": [
+          161
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_prototype_attestation": {
+        "paragraphs": [
+          161
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_production_review": {
+        "paragraphs": [
+          161
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_production_review_decision": {
+        "paragraphs": [
+          161
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_prototype": {
+        "paragraphs": [
+          160,
+          161
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_prototype.gate.0": {
+        "paragraphs": [
+          160,
+          161
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "retail_prototype.gate.1": {
+        "paragraphs": [
+          160,
+          161
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "retail_prototype.gate.2": {
+        "paragraphs": [
+          160,
+          161
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "retail_prototype.gate.3": {
+        "paragraphs": [
+          160,
+          161
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "retail_prototype.gate.4": {
+        "paragraphs": [
+          160,
+          161
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "retail_prototype.gate.5": {
+        "paragraphs": [
+          160,
+          161
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "retail_outlet_notice": {
+        "paragraphs": [
+          163,
+          164
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_schedule": {
+        "paragraphs": [
+          163
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_outlet_register": {
+        "paragraphs": [
+          163
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_installation_date": {
+        "paragraphs": [
+          163
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_warranty": {
+        "paragraphs": [
+          163
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_service_contact": {
+        "paragraphs": [
+          163
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_open_issues": {
+        "paragraphs": [
+          164
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_issue_task_refs": {
+        "paragraphs": [
+          164,
+          327
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_acceptance_summary": {
+        "paragraphs": [
+          500,
+          501,
+          503,
+          504
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_installation_fields": {
+        "paragraphs": [
+          163,
+          164
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_installation_evidence": {
+        "paragraphs": [
+          163
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_acceptance_protocols": {
+        "paragraphs": [
+          163,
+          499,
+          505,
+          506
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_installation_checks": {
+        "paragraphs": [
+          163,
+          164
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_installation_attestation": {
+        "paragraphs": [
+          163
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_issue_attestation": {
+        "paragraphs": [
+          164
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_installation": {
+        "paragraphs": [
+          162,
+          163,
+          164
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      },
+      "retail_installation.gate.0": {
+        "paragraphs": [
+          162,
+          163,
+          164
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "retail_installation.gate.1": {
+        "paragraphs": [
+          162,
+          163,
+          164
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "retail_installation.gate.2": {
+        "paragraphs": [
+          162,
+          163,
+          164
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "retail_installation.gate.3": {
+        "paragraphs": [
+          162,
+          163,
+          164
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "retail_installation.gate.4": {
+        "paragraphs": [
+          162,
+          163,
+          164
+        ],
+        "interpretation": "Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation. AND of supported gates; no branch, task-status gate or skip."
+      },
+      "workflow": {
+        "paragraphs": [
+          147,
+          148,
+          164
+        ],
+        "interpretation": "Source sequence retained as configurable evidence stages. Creative work uses existing Universal Tasks; no legacy concept engine. Internal candidate choice: requiredness, bounds, file counts, reviewer routing and fixed gates need business confirmation."
+      }
+    },
+    "gaps": [
+      {
+        "id": "candidate-decisions",
+        "paragraphs": [
+          150,
+          155,
+          157,
+          159,
+          518,
+          523
+        ],
+        "classification": "REQUIRES_BUSINESS_DECISION",
+        "missing": "Detailed requiredness, review routing, file limits, checklists and stage completion criteria absent from the source need confirmation; no official designation process.",
+        "internalPilotTreatment": "Required fields, counts and gates are labeled candidate decisions. No measurement unit or engineering/compliance threshold is invented."
+      },
+      {
+        "id": "survey-coverage-sample",
+        "paragraphs": [
+          152,
+          153
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No per-outlet survey coverage calculation or conditional Owner-approved representative-sample decision.",
+        "internalPilotTreatment": "Survey-basis choice, attached outlet register and fixed independent Owner evidence review for both choices. This does not verify coverage or sample eligibility."
+      },
+      {
+        "id": "component-production-units",
+        "paragraphs": [
+          148,
+          159
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No relational production units, per-component dimensions/files/checklists, quantity completeness or component lifecycle.",
+        "internalPilotTreatment": "Named component summary, editable scalar fields, attached register and human checklist. Structure/header/side panels/shelf talkers/shutters/lighting are not separate runtime entities."
+      },
+      {
+        "id": "outlet-installation-issue-gate",
+        "paragraphs": [
+          148,
+          163,
+          164,
+          327
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No per-outlet installed/accepted state tracking or every-outlet-accepted OR open-issues-assigned-to-tasks gate; no task-to-outlet adapter.",
+        "internalPilotTreatment": "Record a register with source statuses and issue references. Manually create actual General Tasks; a reference or checklist cannot verify their assignment or satisfy the missing source gate."
+      },
+      {
+        "id": "concept-task-gates",
+        "paragraphs": [
+          154,
+          155,
+          327,
+          444
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No automatic concept-task completion, count or stage dependency gate; source supplies no specific concept approver or definition of done.",
+        "internalPilotTreatment": "Manually create Initial/Final Concept tasks. Independent uploaded render/planogram review is a proposed internal evidence gate only."
+      },
+      {
+        "id": "engineering-safety",
+        "paragraphs": [
+          150,
+          157
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No engineering certification, load/weight/safety calculation or validation of retailer, electrical or market compliance.",
+        "internalPilotTreatment": "Store supplied dimensions with explicitly entered units, drawings and human inspection notes. No certification or compliance threshold implied."
+      },
+      {
+        "id": "physical-prototype",
+        "paragraphs": [
+          160,
+          161
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No verified physical prototype lifecycle, assembly-test validation or series-production quality certification.",
+        "internalPilotTreatment": "Mandatory internal evidence upload and attestation record a human review only; a PDF/photo cannot prove the physical prototype is valid."
+      },
+      {
+        "id": "vendor-production-dispatch",
+        "paragraphs": [
+          161,
+          418,
+          522
+        ],
+        "classification": "REQUIRES_EXTERNAL_INTEGRATION",
+        "missing": "No vendor/CERBER procurement, full stakeholder approval chain or approved external series-production order dispatch.",
+        "internalPilotTreatment": "Director approves internal production evidence. No external order, vendor communication or financial action."
+      },
+      {
+        "id": "large-format-preflight",
+        "paragraphs": [
+          159,
+          509,
+          510,
+          511,
+          512,
+          513,
+          514,
+          515,
+          516
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No automatic per-component large-format artwork validation, material-specific resolution, scale or naming preflight.",
+        "internalPilotTreatment": "Exact-version uploads and human File Standard review, retaining source base and display variant requirements without certifying binary contents."
+      },
+      {
+        "id": "documents-signatures",
+        "paragraphs": [
+          163,
+          408,
+          412,
+          424,
+          426,
+          429,
+          432,
+          505,
+          521
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No prefilled documents, before-artwork signed-contract guard, per-outlet bilateral Acceptance Protocol or external signature lifecycle; legal wording remains open.",
+        "internalPilotTreatment": "Upload manually prepared brief/RFP/contract/protocol evidence by purpose. Final completion-document policy remains a separate explicit Director decision."
+      },
+      {
+        "id": "scheduling-budget-service",
+        "paragraphs": [
+          150,
+          163,
+          443,
+          519,
+          520
+        ],
+        "classification": "REQUIRES_NEW_CAPABILITY",
+        "missing": "No installation scheduling engine, budget accounting, warranty/service lifecycle or automatic starter/issue tasks.",
+        "internalPilotTreatment": "Record dates, currency, schedule/register and service contacts. Use existing General Tasks manually; no automatic assignment or reminders."
+      },
+      {
+        "id": "completion-governance",
+        "paragraphs": [
+          56,
+          164,
+          340,
+          398
+        ],
+        "classification": "SUPERSEDED_BY_APPROVED_V2_RULE",
+        "missing": "Source stage acceptance and automatic closure/archive cannot replace explicit V2 project completion governance.",
+        "internalPilotTreatment": "Fixed stage gates do not certify all outlets. Final completion still requires Director-approved per-project document policy, actual Owner request and separate Director decision; no auto-archive."
+      }
+    ],
+    "tasker": [
+      {
+        "type": "INITIAL_CONCEPT",
+        "paragraphs": [
+          154,
+          155
+        ],
+        "instructions": "Manually create Initial Concept tasks for 3D directions and planogram layouts. No source-prescribed mandatory concept count or approver is inferred."
+      },
+      {
+        "type": "FINAL_CONCEPT",
+        "paragraphs": [
+          154,
+          155
+        ],
+        "instructions": "Use Final Concept tasks for development where appropriate, selecting eligible exact inspiration. Reviewed upload evidence does not prove all concept tasks completed."
+      }
+    ],
+    "revisionPolicy": "Increment blueprint revision for content or policy changes. Keep semantic IDs for unchanged meanings; new meanings need new IDs and a compatibility map. Imported copies are editable and edits are not automatically source-certified. Published versions and runtime pins never change."
+  },
+  "definitionHash": "dbfb9f4de1e68ccb5d706ba210a9a6481eac3bb6d912541ee56f151927dd8694",
+  "validation": {
+    "internalCandidate": [],
+    "officialStandard": [
+      {
+        "path": "gaps.candidate-decisions",
+        "message": "Detailed requiredness, review routing, file limits, checklists and stage completion criteria absent from the source need confirmation; no official designation process."
+      },
+      {
+        "path": "gaps.survey-coverage-sample",
+        "message": "No per-outlet survey coverage calculation or conditional Owner-approved representative-sample decision."
+      },
+      {
+        "path": "gaps.component-production-units",
+        "message": "No relational production units, per-component dimensions/files/checklists, quantity completeness or component lifecycle."
+      },
+      {
+        "path": "gaps.outlet-installation-issue-gate",
+        "message": "No per-outlet installed/accepted state tracking or every-outlet-accepted OR open-issues-assigned-to-tasks gate; no task-to-outlet adapter."
+      },
+      {
+        "path": "gaps.concept-task-gates",
+        "message": "No automatic concept-task completion, count or stage dependency gate; source supplies no specific concept approver or definition of done."
+      },
+      {
+        "path": "gaps.engineering-safety",
+        "message": "No engineering certification, load/weight/safety calculation or validation of retailer, electrical or market compliance."
+      },
+      {
+        "path": "gaps.physical-prototype",
+        "message": "No verified physical prototype lifecycle, assembly-test validation or series-production quality certification."
+      },
+      {
+        "path": "gaps.vendor-production-dispatch",
+        "message": "No vendor/CERBER procurement, full stakeholder approval chain or approved external series-production order dispatch."
+      },
+      {
+        "path": "gaps.large-format-preflight",
+        "message": "No automatic per-component large-format artwork validation, material-specific resolution, scale or naming preflight."
+      },
+      {
+        "path": "gaps.documents-signatures",
+        "message": "No prefilled documents, before-artwork signed-contract guard, per-outlet bilateral Acceptance Protocol or external signature lifecycle; legal wording remains open."
+      },
+      {
+        "path": "gaps.scheduling-budget-service",
+        "message": "No installation scheduling engine, budget accounting, warranty/service lifecycle or automatic starter/issue tasks."
+      },
+      {
+        "path": "gaps.completion-governance",
+        "message": "Source stage acceptance and automatic closure/archive cannot replace explicit V2 project completion governance."
+      }
+    ]
+  }
+}

@@ -1,18 +1,28 @@
+import { authenticatedFixtureService, authorizeFixtureActors } from "./native-workflow-fixtures";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { Prisma, UserRole } from "@prisma/client";
 import { prisma } from "../src/lib/prisma";
 import { getInitialProjectWorkflowStageData } from "../src/lib/project-workflow";
-import { completeProjectResearchStage } from "../src/lib/project-research";
+import { completeProjectResearchStage as session_completeProjectResearchStage } from "../src/lib/project-research";
 import {
-  completeStageThreeConcepts, completeStageFourConcepts, createProjectConceptFolder,
-  markProjectConceptApprovedAttachment, markStageFourFinalApprovedAttachment,
+  completeStageThreeConcepts as session_completeStageThreeConcepts, completeStageFourConcepts as session_completeStageFourConcepts, createProjectConceptFolder as session_createProjectConceptFolder,
+  markProjectConceptApprovedAttachment as session_markProjectConceptApprovedAttachment, markStageFourFinalApprovedAttachment as session_markStageFourFinalApprovedAttachment,
 } from "../src/lib/project-concepts";
-import { getStageSkipRevocationEligibility, revokeSkippedConceptStage } from "../src/lib/project-stage-skip-revocation";
+import { getStageSkipRevocationEligibility as session_getStageSkipRevocationEligibility, revokeSkippedConceptStage as session_revokeSkippedConceptStage } from "../src/lib/project-stage-skip-revocation";
+
+const completeProjectResearchStage = authenticatedFixtureService(session_completeProjectResearchStage, 0);
+const completeStageThreeConcepts = authenticatedFixtureService(session_completeStageThreeConcepts, 0);
+const completeStageFourConcepts = authenticatedFixtureService(session_completeStageFourConcepts, 0);
+const createProjectConceptFolder = authenticatedFixtureService(session_createProjectConceptFolder, 0);
+const markProjectConceptApprovedAttachment = authenticatedFixtureService(session_markProjectConceptApprovedAttachment, 0);
+const markStageFourFinalApprovedAttachment = authenticatedFixtureService(session_markStageFourFinalApprovedAttachment, 0);
+const getStageSkipRevocationEligibility = authenticatedFixtureService(session_getStageSkipRevocationEligibility, 0);
+const revokeSkippedConceptStage = authenticatedFixtureService(session_revokeSkippedConceptStage, 0);
 
 const prefix = `undo-skip-${randomUUID()}`;
 const makeUser = (name: string, role: UserRole = UserRole.USER) => ({ id: `${prefix}-${name}`, name, email: `${prefix}-${name}@example.test`, role });
-const owner = makeUser("Owner"), executor = makeUser("Executor"), coOwner = makeUser("CoOwner"), outsider = makeUser("Outsider"), admin = makeUser("Admin", UserRole.ADMIN);
+let owner = makeUser("Owner"), executor = makeUser("Executor"), coOwner = makeUser("CoOwner"), outsider = makeUser("Outsider"), admin = makeUser("Admin", UserRole.ADMIN);
 const users = [owner, executor, coOwner, outsider, admin];
 const projectIds: string[] = [];
 type StageKey = "CONCEPT_CREATION" | "PROJECT_DEVELOPMENT";
@@ -44,7 +54,7 @@ async function blocked(projectId: string, stageKey: StageKey, pattern?: RegExp) 
   const eligibility = await getStageSkipRevocationEligibility(owner, input);
   assert.equal(eligibility.canRevoke, false);
   if (pattern) assert.match(eligibility.reason ?? "", pattern);
-  const result = await revokeSkippedConceptStage(owner, input);
+  const result = await revokeSkippedConceptStage(owner, { ...input, reason: "Review and reopen disposable workflow" });
   assert.ok("error" in result, JSON.stringify(result));
   assert.deepEqual(await states(projectId), before, "Blocked revocation must not change workflow state");
 }
@@ -79,10 +89,11 @@ async function approvedTask(projectId: string, stageKey: StageKey) {
 
 async function main() {
   await prisma.user.createMany({ data: users.map((user) => ({ ...user, passwordHash: "test", projectCreationAccessGranted: user.id === owner.id })) });
+  [owner, executor, coOwner, outsider, admin] = await authorizeFixtureActors([owner, executor, coOwner, outsider, admin], ["DIRECTOR", "DESIGNER", "JUNIOR_PROJECT_MANAGER", "DESIGNER", "SENIOR_PROJECT_MANAGER"]);
 
   // Automatic skips in a self-managed project require an executor before reopening.
   const selfManaged = await project(false, true);
-  const completedResearch = await completeProjectResearchStage(admin, selfManaged);
+  const completedResearch = await completeProjectResearchStage(owner, selfManaged);
   assert.ok("skippedConceptStages" in completedResearch && completedResearch.skippedConceptStages, JSON.stringify(completedResearch));
   for (const stageKey of ["CONCEPT_CREATION", "PROJECT_DEVELOPMENT"] as const) {
     await blocked(selfManaged, stageKey, /executor/i);
@@ -92,15 +103,15 @@ async function main() {
   const input = { projectId: selfManaged, stageKey: "CONCEPT_CREATION" as const };
   for (const actor of [executor, coOwner, outsider]) {
     assert.equal((await getStageSkipRevocationEligibility(actor, input)).visible, false);
-    assert.ok("error" in await revokeSkippedConceptStage(actor, input));
+    assert.ok("error" in await revokeSkippedConceptStage(actor, { ...input, reason: "Review and reopen disposable workflow" }));
   }
-  assert.equal((await getStageSkipRevocationEligibility(admin, input)).canRevoke, true);
+  assert.equal((await getStageSkipRevocationEligibility(admin, input)).canRevoke, false);
   // A stale UI must not bypass an executor removed after the eligibility check.
   assert.equal((await getStageSkipRevocationEligibility(owner, input)).canRevoke, true);
   await prisma.projectExecutor.deleteMany({ where: { projectId: selfManaged } });
   await blocked(selfManaged, "CONCEPT_CREATION", /executor/i);
   await prisma.projectExecutor.create({ data: { projectId: selfManaged, userId: executor.id } });
-  const together = await Promise.all([revokeSkippedConceptStage(owner, input), revokeSkippedConceptStage(owner, input)]);
+  const together = await Promise.all([revokeSkippedConceptStage(owner, { ...input, reason: "Review and reopen disposable workflow" }), revokeSkippedConceptStage(owner, { ...input, reason: "Review and reopen disposable workflow" })]);
   assert.equal(together.filter((result) => "changed" in result).length, 1, "Concurrent clicks must reopen once");
   const reopened = await states(selfManaged);
   assert.equal(reopened.find((stage) => stage.stageKey === "CONCEPT_CREATION")?.status, "AVAILABLE");
@@ -158,29 +169,29 @@ async function main() {
   await blocked(carried, "PROJECT_DEVELOPMENT", /production work/i);
   assert.equal(await prisma.projectProductionUnit.count({ where: { id: unit.id } }), 1);
   await prisma.projectProductionUnit.delete({ where: { id: unit.id } });
-  // Pause deletion after eligibility was checked, then create a request from
-  // another connection. The serializable revoke must retry and preserve it.
+  // Hold the shared native project lock while a second connection saves a
+  // request. Reopening must reject/roll back and preserve the committed request.
   let releaseHandoff!: () => void;
   let reportLocked!: () => void;
   const hold = new Promise<void>((resolve) => { releaseHandoff = resolve; });
   const locked = new Promise<void>((resolve) => { reportLocked = resolve; });
   const holder = prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT "id" FROM "ProjectStageFileHandoff" WHERE "id" = ${handoff.id} FOR UPDATE`;
+    await tx.$queryRaw`SELECT "id" FROM "Project" WHERE "id" = ${carried} FOR NO KEY UPDATE`;
     reportLocked();
     await hold;
   }, { timeout: 15_000 });
   await locked;
-  const concurrentRevoke = revokeSkippedConceptStage(owner, reopenFour);
+  const concurrentRevoke = revokeSkippedConceptStage(owner, { ...reopenFour, reason: "Review and reopen disposable workflow" }).then(value => ({ value }), error => ({ error }));
   let concurrentRequestId: string | undefined;
   try {
     const until = Date.now() + 5_000;
     let waiting = false;
     while (Date.now() < until) {
-      const rows = await prisma.$queryRaw<Array<{ count: bigint }>>`SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%DELETE%ProjectStageFileHandoff%'`;
+      const rows = await prisma.$queryRaw<Array<{ count: bigint }>>`SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%Project%FOR UPDATE%'`;
       if (Number(rows[0].count) > 0) { waiting = true; break; }
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
-    assert.ok(waiting, "The concurrent revoke must reach its deletion before the new request is saved");
+    assert.ok(waiting, "The concurrent revoke must wait for the native project lock before the request is saved");
     const concurrentRequest = await prisma.projectFileChecklistRequest.create({ data: {
       clientRequestId: randomUUID(), projectId: carried, checklistId: handoff.checklist.id, checklistItemId: item.id,
       fieldKey: "OUTPUT_NAME", requestedById: owner.id, channel: "IN_APP", recipientUserId: executor.id,
@@ -190,10 +201,12 @@ async function main() {
     releaseHandoff();
     await holder;
   }
-  assert.ok("error" in await concurrentRevoke, "A concurrently created request must block reopening");
+  const concurrentOutcome = await concurrentRevoke;
+  if ("error" in concurrentOutcome) throw concurrentOutcome.error;
+  assert.ok("error" in concurrentOutcome.value, "A concurrently created request must block reopening");
   assert.equal(await prisma.projectFileChecklistRequest.count({ where: { id: concurrentRequestId! } }), 1, "Concurrent request data must remain intact");
   await prisma.projectFileChecklistRequest.delete({ where: { id: concurrentRequestId! } });
-  assert.ok("changed" in await revokeSkippedConceptStage(owner, reopenFour));
+  assert.ok("changed" in await revokeSkippedConceptStage(owner, { ...reopenFour, reason: "Review and reopen disposable workflow" }));
   assert.equal(await prisma.projectStageFileHandoff.count({ where: { projectId: carried } }), 0);
   assert.equal(await prisma.projectFileChecklist.count({ where: { projectId: carried } }), 0);
   assert.equal((await prisma.projectAttachment.findUniqueOrThrow({ where: { id: original.attachmentId } })).status, "READY");
@@ -238,7 +251,7 @@ async function main() {
   await completeStageThreeConcepts(owner, { projectId: racing });
   await Promise.all([
     completeStageFourConcepts(owner, { projectId: racing }),
-    revokeSkippedConceptStage(owner, { projectId: racing, stageKey: "CONCEPT_CREATION" }),
+    revokeSkippedConceptStage(owner, { ...{ projectId: racing, stageKey: "CONCEPT_CREATION" }, reason: "Review and reopen disposable workflow" }),
   ]);
   const raceStates = await states(racing);
   if (raceStates.find((stage) => stage.stageKey === "CONCEPT_CREATION")?.status === "AVAILABLE") {
@@ -249,7 +262,7 @@ async function main() {
   await completeStageThreeConcepts(owner, { projectId: racingTask });
   await Promise.all([
     createProjectConceptFolder(owner, { projectId: racingTask, stageKey: "PROJECT_DEVELOPMENT", name: "Concurrent task", assignedExecutorId: executor.id, deadline: new Date(Date.now() + 86_400_000).toISOString(), brief: "<p>New work</p>" }),
-    revokeSkippedConceptStage(owner, { projectId: racingTask, stageKey: "CONCEPT_CREATION" }),
+    revokeSkippedConceptStage(owner, { ...{ projectId: racingTask, stageKey: "CONCEPT_CREATION" }, reason: "Review and reopen disposable workflow" }),
   ]);
   if ((await states(racingTask)).find((stage) => stage.stageKey === "PROJECT_DEVELOPMENT")?.status === "LOCKED") {
     assert.equal(await prisma.projectConceptFolder.count({ where: { projectId: racingTask, workflowStageKey: "PROJECT_DEVELOPMENT" } }), 0, "A task created concurrently must not end up in a relocked stage");
@@ -259,6 +272,5 @@ async function main() {
 
 main().finally(async () => {
   await prisma.project.deleteMany({ where: { id: { in: projectIds } } });
-  await prisma.user.deleteMany({ where: { id: { in: users.map((user) => user.id) } } });
   await prisma.$disconnect();
 }).catch((error) => { console.error(error); process.exitCode = 1; });

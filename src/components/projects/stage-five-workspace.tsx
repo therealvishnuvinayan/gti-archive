@@ -2143,6 +2143,7 @@ export function StageFiveWorkspace({
                   })()}
                   isResending={isRequestActionPending}
                 >
+                  {pageData.canEdit && activeFile.items.find(field => field.fieldKey === item.key)?.taskRequestHref && <a className="mb-2 inline-block text-sm text-emerald-800 underline" href={activeFile.items.find(field => field.fieldKey === item.key)?.taskRequestHref}>Request Data Input Task</a>}
                   {renderControl(item)}
                 </ChecklistItemRow>
               ))}

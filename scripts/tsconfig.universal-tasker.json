@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.authorization-services.json",
+  "compilerOptions": {
+    "outDir": "../.tmp/universal-tasker"
+  },
+  "include": [
+    "universal-tasker-integration-check.ts",
+    "tasker-deliverables-integration-check.ts",
+    "tasker-concepts-integration-check.ts",
+    "tasker-sisters-integration-check.ts",
+    "stage-builder-integration-check.ts",
+    "workflow-publication-integration-check.ts",
+    "stage-runtime-integration-check.ts",
+    "runtime-integration-check.ts",
+    "runtime-tasker-check.ts",
+    "runtime-deliverables-check.ts",
+    "runtime-concepts-check.ts",
+    "runtime-completion-check.ts",
+    "standard-template-integration-check.ts"
+  ]
+}

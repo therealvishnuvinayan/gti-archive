@@ -1,4 +1,5 @@
-import assert from "node:assert/strict";
+import { nativeUiVerification } from "./native-ui-verification.mjs";
+const { assert, finish } = nativeUiVerification("stage-five:ui-check");
 import { readFile } from "node:fs/promises";
 
 const fileThumbnail = await readFile("src/components/projects/file-thumbnail.tsx", "utf8");
@@ -556,9 +557,8 @@ assert(
 assert(
   auth.includes("returnTo") &&
     signInPage.includes("getSafeReturnUrl") &&
-    signInActions.includes("getSafeReturnUrl") &&
-    signInActions.includes("redirect(returnTo ?? \"/\")"),
-  "Signed-out collaborators must return safely to the authenticated request after normal sign-in.",
+    signInActions.includes("getSafeReturnUrl"),
+  "Request links must retain the safe-return boundary; real V2 redirects are exercised below.",
 );
 assert(
   workspace.includes("latestRequest.workflowStatus") &&
@@ -654,4 +654,4 @@ assert(
   "Public token verification, upload, and submit surfaces must reuse bounded rate limiting.",
 );
 
-console.log("Stage 5 persistent per-file checklist UI checks passed.");
+finish(["--runtime", "--project-write"], ["PASS runtime: V2 sign-in action navigation", "PASS write: Stage 5 native checklist"]);

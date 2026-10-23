@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
+import { getApplicationUrl } from "@/lib/secure-external-token";
 import { getProjectCompletionDocumentDownloadUrlForUser } from "@/lib/project-completion";
 
 export async function GET(
@@ -20,7 +21,7 @@ export async function GET(
       user,
       documentId,
     );
-    return NextResponse.redirect(downloadUrl);
+    return NextResponse.redirect(new URL(downloadUrl, getApplicationUrl()), { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     const message =
       error instanceof Error

@@ -1,3 +1,5 @@
+import { getApplicationUrl } from "./secure-external-token";
+import { getSharedFileDownloadPath, readSharedFileTextIfAdopted } from "./files/access";
 import { activeProjectMutation } from "@/lib/authorization/project-transaction";
 import { isDirectorReader } from "@/lib/authorization/project-read-rules";
 import { runProjectMutation } from "@/lib/authorization/project-write";
@@ -544,6 +546,8 @@ export async function getProjectPrivateFilePreviewUrl(
   await requireProjectResourceRead('file', input.fileId, 'project.viewFile', user);
 
   const attachment = await prisma.projectAttachment.findFirstOrThrow({where:{id:input.fileId,projectId:input.projectId,privateFolderId:input.folderId,status:"READY"}});
+  const shared = await getSharedFileDownloadPath({ kind: "project-attachment", id: attachment.id }, true);
+  if (shared) return new URL(shared, getApplicationUrl()).toString();
   return createPresignedPreviewUrl({
     bucket: attachment.bucket,
     storageKey: attachment.storageKey,
@@ -560,6 +564,8 @@ export async function getProjectPrivateFileDownloadUrl(
   await requireProjectResourceRead('file', input.fileId, 'project.viewFile', user);
 
   const attachment = await prisma.projectAttachment.findFirstOrThrow({where:{id:input.fileId,projectId:input.projectId,privateFolderId:input.folderId,status:"READY"}});
+  const shared = await getSharedFileDownloadPath({ kind: "project-attachment", id: attachment.id }, false);
+  if (shared) return new URL(shared, getApplicationUrl()).toString();
   return createPresignedDownloadUrl({
     bucket: attachment.bucket,
     storageKey: attachment.storageKey,
@@ -595,7 +601,8 @@ export async function getProjectPrivateTextFileContent(
   const maxBytes = input.excerpt
     ? PRIVATE_TEXT_EXCERPT_MAX_BYTES
     : PRIVATE_TEXT_PREVIEW_MAX_BYTES;
-  const content = await readTextObject({
+  const adopted = await readSharedFileTextIfAdopted({ kind: "project-attachment", id: attachment.id }, maxBytes);
+  const content = adopted ?? await readTextObject({
     bucket: attachment.bucket,
     storageKey: attachment.storageKey,
     maxBytes,

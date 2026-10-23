@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.authorization-services.json",
+  "compilerOptions": { "outDir": "../.tmp/shared-events-unit" },
+  "include": ["shared-events-unit-check.ts"]
+}

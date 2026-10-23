@@ -21,7 +21,8 @@ export async function POST(request: Request) {
     if (typeof data.projectId !== "string") throw new Error("Project is required.");
     let result;
     if (data.command === "REVIEW" && typeof data.submissionId === "string" && ["ACCEPT", "REJECT"].includes(data.decision) && typeof data.reason === "string") {
-      result = await reviewCompletionDocument(user, { projectId: data.projectId, submissionId: data.submissionId, decision: data.decision, reason: data.reason });
+      if (Object.keys(data).some(key => !["command", "projectId", "submissionId", "decision", "reason", "approval"].includes(key))) throw new Error("Unexpected review fields.");
+      result = await reviewCompletionDocument(user, { projectId: data.projectId, submissionId: data.submissionId, decision: data.decision, reason: data.reason, approval: data.approval });
     } else if (data.command === "REOPEN" && Object.values(ProjectCompletionDocumentType).includes(data.type) && typeof data.reason === "string") {
       result = await reopenCompletionDocument(user, { projectId: data.projectId, type: data.type, reason: data.reason });
     } else if (data.command === "ISSUE" && Object.values(ProjectCompletionDocumentType).includes(data.type) && typeof data.recipientEmail === "string") {

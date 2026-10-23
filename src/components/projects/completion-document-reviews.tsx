@@ -2,9 +2,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import type { ApprovalExpectation } from "@/lib/approvals/contracts";
 
 type Reviews = {
-  submissions: { id: string; type: string; originalFileName: string; status: string; createdAt: string; uploadedAt: string | null; reviewedAt: string | null; reviewReason: string | null; externalSubmitterEmail: string | null; submittedBy: { name: string | null; email: string } | null; reviewedBy: { name: string | null; email: string } | null }[];
+  submissions: { id: string; type: string; originalFileName: string; status: string; createdAt: string; uploadedAt: string | null; reviewedAt: string | null; reviewReason: string | null; externalSubmitterEmail: string | null; submittedBy: { name: string | null; email: string } | null; reviewedBy: { name: string | null; email: string } | null; approval?: (Omit<ApprovalExpectation, "commandId"> & { state: string }) | null }[];
   accesses: { id: string; type: string; recipientEmail: string; expiresAt: string; revokedAt: string | null }[];
 };
 export function CompletionDocumentReviews({ projectId, canManage }: { projectId: string; canManage: boolean }) {
@@ -17,7 +18,7 @@ export function CompletionDocumentReviews({ projectId, canManage }: { projectId:
     setData(body);
   }, [projectId]);
   useEffect(() => { const load = () => { void refresh().catch(e => setError(e.message)); }; load(); window.addEventListener("completion-documents-changed", load); return () => window.removeEventListener("completion-documents-changed", load); }, [refresh]);
-  async function command(values: Record<string, string>) {
+  async function command(values: Record<string, unknown>) {
     setBusy(true); setError("");
     try {
       const response = await fetch("/api/project-completion-documents/reviews", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...values, projectId }) });
@@ -37,9 +38,10 @@ export function CompletionDocumentReviews({ projectId, canManage }: { projectId:
       <p className="text-sm">{s.type.replaceAll("_", " ")} · Submitted by {s.submittedBy?.name ?? s.submittedBy?.email ?? `external recipient ${s.externalSubmitterEmail}`} · {s.uploadedAt ?? s.createdAt}</p>
       {s.uploadedAt && <a className="text-emerald-800 underline" href={`/api/project-completion-documents/submissions/${s.id}`} target="_blank" rel="noreferrer">Review document</a>}
       {s.reviewedAt && <p className="text-sm">{s.reviewedBy?.name ?? s.reviewedBy?.email} · {s.reviewedAt} · {s.reviewReason}</p>}
-      {canManage && s.status === "SUBMITTED" && <form className="flex flex-wrap gap-2" onSubmit={e => { e.preventDefault(); const f = new FormData(e.currentTarget); const button = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null; void command({ command: "REVIEW", submissionId: s.id, decision: button?.value ?? "REJECT", reason: String(f.get("reason")) }); }}>
+      {s.approval?.state === "SUPERSEDED" && <p className="text-sm">This request changed. Reject this submission and submit a revision.</p>}
+      {canManage && s.status === "SUBMITTED" && <form className="flex flex-wrap gap-2" onSubmit={e => { e.preventDefault(); const f = new FormData(e.currentTarget); const button = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null; const a = s.approval; void command({ command: "REVIEW", submissionId: s.id, decision: button?.value ?? "REJECT", reason: String(f.get("reason")), ...(a ? { approval: { requestId: a.requestId, stepId: a.stepId, revision: a.revision, evidenceHash: a.evidenceHash, commandId: crypto.randomUUID() } } : {}) }); }}>
         <input className="rounded border p-2" name="reason" aria-label={`Review reason for ${s.originalFileName}`} placeholder="Review reason" required maxLength={2000} />
-        <Button disabled={busy} type="submit" value="ACCEPT">Accept document</Button><Button disabled={busy} type="submit" value="REJECT" variant="outline">Reject / request revision</Button>
+        <Button disabled={busy || s.approval?.state === "SUPERSEDED"} type="submit" value="ACCEPT">Accept document</Button><Button disabled={busy} type="submit" value="REJECT" variant="outline">Reject / request revision</Button>
       </form>}
     </article>)}
     {canManage && <details className="space-y-3"><summary className="cursor-pointer font-medium">Request a revision of accepted evidence</summary>

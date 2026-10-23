@@ -1,3 +1,4 @@
+import { activeProjectMutation } from "@/lib/authorization/project-transaction";
 import { runProjectMutation } from "@/lib/authorization/project-write";
 import { refreshProjectReader, requireProjectResourceRead } from "@/lib/authorization/project-read";
 import {
@@ -2484,7 +2485,7 @@ async function requestProjectConceptTaskCompletionImplementation(
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5_000, timeout: 15_000 }));
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
-      if (conflictRetryCount < 2) return requestProjectConceptTaskCompletionImplementation(user, input, conflictRetryCount + 1);
+      if (!activeProjectMutation() && conflictRetryCount < 2) return requestProjectConceptTaskCompletionImplementation(user, input, conflictRetryCount + 1);
       return { error: "The task changed at the same time. Please try again." };
     }
     throw error;
@@ -2536,7 +2537,7 @@ async function completeProjectConceptTaskWithoutFileImplementation(
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5_000, timeout: 15_000 }));
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
-      if (conflictRetryCount < 2) return completeProjectConceptTaskWithoutFileImplementation(user, input, conflictRetryCount + 1);
+      if (!activeProjectMutation() && conflictRetryCount < 2) return completeProjectConceptTaskWithoutFileImplementation(user, input, conflictRetryCount + 1);
       return { error: "The task changed at the same time. Please try again." };
     }
     throw error;
@@ -2746,7 +2747,7 @@ async function completeStageThreeConceptsImplementation(
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       if (
         (error.code === "P2002" || error.code === "P2034") &&
-        conflictRetryCount < 1
+        !activeProjectMutation() && conflictRetryCount < 1
       ) {
         return completeStageThreeConceptsImplementation(
           user,
@@ -3273,7 +3274,7 @@ async function completeStageFourConceptsImplementation(
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       if (
         (error.code === "P2002" || error.code === "P2034") &&
-        conflictRetryCount < 1
+        !activeProjectMutation() && conflictRetryCount < 1
       ) {
         return completeStageFourConceptsImplementation(
           user,

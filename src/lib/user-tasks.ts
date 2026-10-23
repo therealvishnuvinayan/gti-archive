@@ -1,3 +1,4 @@
+import { countMyGeneralTasks } from "@/lib/tasker/service";
 import { refreshProjectReader } from "@/lib/authorization/project-read";
 import { isDirectorReader } from "@/lib/authorization/project-read-rules";
 import {
@@ -91,7 +92,8 @@ export async function getUserTaskSidebarCount(user: PermissionUser) {
 
   if (!canUseTasks(user)) return 0;
 
-  return (() => withPrismaRetry(() => prisma.projectConceptFolder.findMany({
+  const generalCount = await countMyGeneralTasks();
+  return generalCount + await (() => withPrismaRetry(() => prisma.projectConceptFolder.findMany({
       where: getTaskListWhere(user), select: { projectId: true, taskerStage: { select: { projectId: true } } },
     }).then(rows => rows.filter(row => row.projectId === row.taskerStage.projectId).length)))();
 }

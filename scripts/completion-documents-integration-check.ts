@@ -25,7 +25,8 @@ const db = new Client({datasourceUrl:url});
 let token: string | null = null;
 const roles: Array<[string, BusinessRole | null]> = [["director","DIRECTOR"],["spm","SENIOR_PROJECT_MANAGER"],["jpm","JUNIOR_PROJECT_MANAGER"],["designer","DESIGNER"],["digital","DIGITAL_LEAD"],["tech",null],["unassigned",null],["outsider","SENIOR_PROJECT_MANAGER"],["designer2","DESIGNER"]];
 const tokens = new Map<string,string>();
-const objects = new Map<string, { ContentLength: number; ContentType: string; ETag: string }>();
+const objects = new Map<string, { ContentLength: number; ContentType: string; ETag: string; VersionId?: string; ChecksumSHA256?: string; ChecksumType?: string }>();
+const storageCalls = { copies: 0, reads: 0 };
 async function as(id:string) { token = tokens.get(id)!; }
 
 
@@ -43,6 +44,9 @@ async function seed() {
 
 async function main(){
  await seed();
+ // Adoption is enabled only after the private cluster identity and fixture guard.
+ const sharedFiles = process.env.FLUX_FILE_IDENTITY_TEST === "1";
+ if (sharedFiles) process.env.FLUX_SHARED_FILE_IDENTITY = "1";
  const moduleApi=localRequire("node:module") as {_load:(name:string,...args:unknown[])=>unknown};
  const original=moduleApi._load, compiledRoot=dirname(dirname(__filename));
  moduleApi._load=function(name,...args){
@@ -54,7 +58,7 @@ async function main(){
   if(name==="next/headers")return{cookies:async()=>({get:()=>token?{value:token}:undefined})};
   if(name==="next/cache")return{unstable_cache:(fn:unknown)=>fn,revalidatePath:()=>{},revalidateTag:()=>{}};
   if(name==="next/navigation")return{redirect:(url:string)=>{throw new Error(`REDIRECT:${url}`);}};
-  if(name==="next/server")return{NextResponse:{json:(body:unknown,init?:ResponseInit)=>Response.json(body,init)},after:(fn:unknown)=>{void fn;}};
+  if(name==="next/server")return{NextResponse:{json:(body:unknown,init?:ResponseInit)=>Response.json(body,init),redirect:(url:string|URL,init?:ResponseInit)=>{const target=new URL(String(url));return new Response(null,{...init,status:307,headers:{...Object.fromEntries(new Headers(init?.headers)),Location:target.href}})}},after:(fn:unknown)=>{void fn;}};
   if(name==="react")return{cache:(fn:unknown)=>fn};
   if(name==="@/lib/prisma"||name==="../prisma"||name==="./prisma")return{prisma:projectTransactionClient(db),withPrismaRetry:(fn:()=>unknown)=>fn()};
   if(name==="@/lib/permissions/profiles")return{getPermissionProfileSnapshotForUser:async()=>({effectivePermissions:new Set(allPermissionKeys),rolePermissions:new Set(allPermissionKeys),archiveAccessGranted:true,archiveAccessLevel:"FULL"})};
@@ -63,8 +67,9 @@ async function main(){
     getMaxAssetUploadBytes:()=>10000000, getS3BucketName:()=>"fixture-no-network", sanitizeFileName:(v:string)=>v.replace(/[^a-zA-Z0-9.]/g,"_"),
     buildProjectCompletionDocumentKey:({projectId,documentType,safeFileName}:{projectId:string;documentType:string;safeFileName:string})=>`fixture/${projectId}/${documentType}/${safeFileName}`,
     createPresignedUploadUrl:async()=>"http://fixture.invalid/upload", createPresignedDownloadUrl:async()=>"http://fixture.invalid/download", createPresignedPreviewUrl:async()=>"http://fixture.invalid/preview",
+    readPinnedStoredObject:async({storageKey,objectVersionId,objectETag}:{storageKey:string;objectVersionId:string|null;objectETag:string})=>{storageCalls.reads++;const value=objects.get(storageKey);if(!value||value.ETag!==objectETag||(objectVersionId && objectVersionId!==value.VersionId))throw new Error("Conditional GET failed");return {...value,Body:{transformToWebStream:()=>new ReadableStream({start(controller){controller.enqueue(new Uint8Array(value.ContentLength));controller.close();}})}};},
     getObjectMetadata:async(key:string)=>{const value=objects.get(key);if(!value)throw new Error("Fixture object missing");return value;},
-    copyStoredObject:async({sourceKey,storageKey,sourceETag}:{sourceKey:string;storageKey:string;sourceETag:string})=>{const value=objects.get(sourceKey);if(!value||value.ETag!==sourceETag)throw new Error("Conditional object copy failed");objects.set(storageKey,{...value});},
+    copyStoredObject:async({sourceKey,storageKey,sourceETag}:{sourceKey:string;storageKey:string;sourceETag:string})=>{const value=objects.get(sourceKey);if(!value||value.ETag!==sourceETag)throw new Error("Conditional object copy failed");storageCalls.copies++; objects.set(storageKey,{...value});},
   };
   return original.call(this,name.startsWith("@/")?resolve(compiledRoot,"src",name.slice(2)):name,...args);
  };
@@ -185,6 +190,24 @@ async function main(){
   const internal=await fixture("documents-internal","INTERNAL");await docs.configureProjectCompletionWorkflow(director,{projectId:internal.projectId,approvalRequired:false,copyrightRequired:false,invoiceRequired:true});assert.equal((await docs.getProjectCompletionWorkflowForUser(director,internal.projectId))?.invoiceRequired,true);await denied(()=>governance.finalizeProjectAsDirector(director,internal,"Internal configured requirement cannot be waived"));
   assert.equal(JSON.stringify(await db.userAuthorization.findMany({orderBy:{userId:"asc"},include:{user:{select:{email:true,passwordHash:true,role:true}}}})),roleSnapshot);assert.equal(JSON.stringify(await db.userAuthorizationChange.findMany({orderBy:[{userId:"asc"},{authorizationVersion:"asc"}]})),roleHistory);assert.equal(await db.user.count(),9);
   console.log("PASS documents: required invoices cannot be skipped; audited revisions preserve versions and invalidate completion snapshots; actual Owner request, Director-only finalization, live object verification, Stage 7 closure, INTERNAL requirements honored, nine fixture roles unchanged.");
+  if (sharedFiles) {
+    const { verifySharedFiles } = localRequire(join(compiledRoot,"scripts/file-identity-integration-check.js")) as typeof import("./file-identity-integration-check");
+    await verifySharedFiles({ db, objects, storageCalls, user, fixture, load: (name: string) => localRequire(join(compiledRoot, name)) });
+  } else {
+    assert.equal(await db.sharedFile.count(), 0, "Default-off workflow does not adopt historical/new files");
+  }
+  if (process.env.FLUX_APPROVAL_TEST === "1") {
+    const { verifyApprovalEngine } = localRequire(join(compiledRoot,"scripts/approval-engine-integration-check.js")) as typeof import("./approval-engine-integration-check");
+    await verifyApprovalEngine({ db, objects, user, fixture, load: (name: string) => localRequire(join(compiledRoot, name)),
+      renewSession: async (id: string) => { const assignment = await db.userAuthorization.findUniqueOrThrow({ where: { userId: id } });
+        const value = createVersionedSessionToken(assignment.authorizationVersion); tokens.set(id, value);
+        await db.session.create({ data: { userId: id, token: value, expiresAt: new Date(Date.now() + 3600000) } }); return user(id); } });
+    if (process.env.FLUX_EVENT_TEST === "1") {
+      const { verifySharedEvents } = localRequire(join(compiledRoot, "scripts/shared-events-integration-check.js")) as typeof import("./shared-events-integration-check");
+      await verifySharedEvents({ db, objects, user, fixture, load: (name: string) => localRequire(join(compiledRoot, name)) });
+    }
+  }
+
  } finally { moduleApi._load=original; }
 }
 main().then(()=>console.log("PASS Phase 1.5E completion document integration on disposable PostgreSQL.")).finally(()=>db.$disconnect()).catch(error=>{console.error(error);process.exitCode=1;});
