@@ -1,8 +1,11 @@
 import "server-only";
+import { dashboardV2Enabled } from "../dashboard-v2/activation";
 import type { AuthorizationContext, ResourcePolicies } from "./policy";
 
 async function loadWorkspaceContext({ tx, actor, request }: Parameters<NonNullable<ResourcePolicies["workspace.dashboard"]>>[0]): Promise<AuthorizationContext | null> {
   const cap = request.capability, target = request.targetId;
+  if (cap === "workspace.dashboard" && !dashboardV2Enabled() &&
+    !["DIRECTOR", "SENIOR_PROJECT_MANAGER", "JUNIOR_PROJECT_MANAGER"].includes(actor.businessRole ?? "")) return null;
   let allowed = target === "root" && ["workspace.dashboard", "workspace.businessUsers", "workspace.contacts", "workspace.masterData", "workspace.calendar.view"].includes(cap);
   if (cap === "workspace.calendar.create") {
     allowed = ["EVENTS", "REMINDERS"].includes(target) ||

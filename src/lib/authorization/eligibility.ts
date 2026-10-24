@@ -117,6 +117,7 @@ const projectManagerCapabilities = [
 ] as const satisfies readonly BusinessCapability[];
 
 const taskFocusedCapabilities = [
+  "workspace.dashboard",
   ...calendarCapabilities,
   ...libraryReaderCapabilities,
   "project.executeTask",

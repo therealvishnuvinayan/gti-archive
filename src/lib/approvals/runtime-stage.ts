@@ -1,4 +1,5 @@
 import "server-only";
+import { isConfiguredRuntimeReviewer } from "./runtime-stage-eligibility";
 import { randomUUID } from "node:crypto";
 import { approvalCondition, approvalHash, type ApprovalOutcome } from "./contracts";
 import { decideTypedApproval } from "./engine";
@@ -35,9 +36,8 @@ export async function decideRuntimeApproval(tx: Tx, data: StageData, input: { ex
     approvalCondition(step, "APPROVER_STEP_DENIED");
     const configured = c.steps[step.position - 1];
     const project = await tx.runtimeProject.findUniqueOrThrow({ where: { id: data.stage.projectId }, include: { participants: true } });
-    const eligible = configured.approver === "DIRECTOR" ? actor.businessRole === "DIRECTOR" : configured.approver === "SENIOR_PROJECT_MANAGER" ? actor.businessRole === "SENIOR_PROJECT_MANAGER" : configured.approver === "PROJECT_OWNER" ? actor.userId === project.ownerId : project.participants.some(p => p.role === "CO_OWNER" && p.userId === actor.userId);
     const contributors = [sub.requestedById, ...Object.values(data.stage.values as Values).map(v => v.actorId), ...Object.values(data.stage.checklist as Checks).filter(v => v.complete).map(v => v.actorId), ...data.files.filter(f => !f.replaced).map(f => f.submittedById)];
-    approvalCondition(eligible && !contributors.includes(actor.userId), "APPROVER_STEP_DENIED");
+    approvalCondition(isConfiguredRuntimeReviewer(actor, configured.approver, project, contributors), "APPROVER_STEP_DENIED");
     const requester = await tx.userAuthorization.findUnique({ where: { userId: sub.requestedById } });
     approvalCondition(requester?.accountStatus === "ACTIVE" && requester.authorizationVersion === sub.actorVersion && ["DIRECTOR", "SENIOR_PROJECT_MANAGER", "JUNIOR_PROJECT_MANAGER"].includes(requester.businessRole ?? ""), "APPROVER_RESOURCE_DENIED");
     await tx.$queryRaw`SELECT set_config('flux.approval_actor', ${actor.userId}, true), set_config('flux.approval_session', ${actor.session.id}, true)`;
