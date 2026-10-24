@@ -1,3 +1,4 @@
+import { withoutArchiveFoldersSchema } from "./archive-folders-schema-baseline.mjs";
 // Reconstruct the reviewed Phase 2.3 shape for disposable migration tests only.
 export function withoutTaskerSchema(schema) {
   schema = withoutTaskDeliverablesSchema(schema);
@@ -64,6 +65,7 @@ export function withoutStageRuntimeSchema(schema) {
 
 // Phase 4.3 compatibility: integration models are queried only behind their flag.
 export function withoutRuntimeIntegrationSchema(schema) {
+  schema = withoutArchiveFoldersSchema(schema);
   for (const name of ["RuntimeCompletionActivity", "RuntimeDocumentPolicy", "RuntimeDocumentFile", "RuntimeDocumentSubmission", "RuntimeDocumentReference", "RuntimeDocumentProvenance", "RuntimeCompletionRequest", "RuntimeCompletionDecision"]) {
     schema = schema.replace(new RegExp(`^model ${name} \{[\\s\\S]*?^\}`, "m"), "");
     schema = schema.replace(new RegExp(`^  \\w+\\s+${name}(?:\\[\\]|\\?)?[^\\n]*\\n`, "gm"), "");

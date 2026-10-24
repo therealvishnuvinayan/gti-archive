@@ -23,7 +23,7 @@ An empty category ACL retains its established unrestricted-category meaning. It 
 
 `runtimeAuthorization` registers Archive policies in the existing V2 evaluator. Canonical actions are `archive.view`, `archive.download`, `archive.upload`, `archive.editMetadata`, `archive.shareExternal`, `archive.category.create/update/delete`, `archive.manageAccess`, `archive.delete`, and `archive.publishFromProject`. The previous `archive.share` name uses the same file policy. Unknown actions and target/action mismatches deny.
 
-The role eligibility contract includes `archive.verify` for Director/Digital Lead only. Its runtime policy stays unregistered until verification storage/audit transitions exist. The old coarse category capability is not a generic mutation grant; actual operations use granular category capabilities.
+The role eligibility contract includes `archive.verify` for Director/Digital Lead only. Phase 6.2 now registers its exact-file policy only when `FLUX_ARCHIVE_VERIFICATION=1`; otherwise it remains denied. `archive.revokeVerification` is Director-only, with the same current-session and exact-file resource checks. See [Phase 6.2](../archive-verification/PHASE-6.2.md) for immutable decisions, storage observations and deletion retention. The old coarse category capability is not a generic mutation grant; actual operations use granular category capabilities.
 
 Services authenticate again and check the actual resource inside a Serializable transaction. Nested native queries/transactions join that transaction; native error results roll back, and partial transactions are not retried. Identity/session and ACL locks protect checks. File policies resolve stored category/source associations and reject mismatched projects, revisions or storage references, including for Director. Storage cleanup after an authorized deletion runs after database commit.
 
@@ -106,7 +106,7 @@ No migration or schema change is required. No Neon connection, existing account/
 
 Deferred intentionally:
 
-- Verified/Unverified storage, immutable decisions/reasons/revocations and verification audit history. A future migration should introduce versioned verification evidence tied to exact Archive file/source versions; existing artwork `approvedBy` metadata must not be reused as verification.
+- Historical Phase 1.5F deferral, now implemented separately by Phase 6.2 behind its default-off flag: exact-version verification, immutable decisions/reasons/revocations and audit history. Existing artwork `approvedBy` metadata is never reused as verification.
 - Nested folders and folder-level sharing.
 - A comprehensive append-only Archive mutation/access audit ledger. Existing publisher/metadata/share/grant attribution is retained; grant revocations are logged to the application log, not a new durable event table.
 - Changes to the existing upload/storage protocol. This phase preserves its mechanics rather than introducing sealed object versions or a new content-validation subsystem.
@@ -166,3 +166,16 @@ Recommended next milestone: a dedicated Library authorization/security integrati
 - `src/lib/authorization/archive-transaction.ts`
 - `src/lib/authorization/archive.ts`
 - `src/lib/authorization/ARCHIVES.md`
+
+
+## Phase 6.3: confirmed internal access (pending, default off)
+
+`FLUX_ARCHIVE_SHARING=1` exposes the new confirmed workflow in both Archive views. Director/SPM alone manage eligible active Designer/Digital Lead recipients. The existing `UserArchiveAssetAccess` is still required; `ArchiveGrantScope` only narrows a native grant using its immutable `ArchiveAccessDecision`. Existing native grants are not migrated or silently narrowed.
+
+New grants allow preview/download only, freeze the selected genuine source/reference/version (or explicitly unmapped native source fingerprint), and optionally expire within 90 days. `archive-grants.ts` prepares effective grants in the current transaction for native lists/search/counts, folder paths and central authorization. New scoped grants cannot satisfy the Digital Lead verification requirement, including through direct SQL review writes. Legacy unscoped grants retain that independently reviewed requirement. Current role/session/category restrictions always apply.
+
+Confirmed grant/revoke decisions, native rows, scopes, BusinessEvent and outbox commit atomically. Revocation requires a reason. Actor-scoped canonical replay and expected grant/decision/sequence prevent duplicate or stale writes. Once audited, the old checkbox workflow cannot manage that file; guarded native grant pairs cannot be rewritten or restored outside a decision. Narrowing/expiry remains enforced after migration even with the UI flag off. Catalog detection preserves reads and untouched native sharing against the original 116 schema with features disabled.
+
+New version-specific recipients use the existing source-authorized conditional version stream for both preview/download. Relative redirects preserve the browser origin behind proxies. New protected requests deny after grant expiry/revocation; a previously issued direct legacy S3 URL can remain usable for up to its existing five-minute expiry. No public tokens or folder inheritance were added. Sharing never rewrites verification history; Director source deletion retains audit and tombstone evidence.
+
+See [the Phase 6.3 report](../archive-sharing/PHASE-6.3.md) for exact pending migration/checksum, 117/157 rehearsal, file manifest and local test evidence. Neon and actual feature flags remain unchanged.

@@ -1,3 +1,4 @@
+import { runCurrentContract } from "./run-server-contract-check.mjs";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -52,16 +53,8 @@ assertIncludes(
   "const canViewArchivedFiles = hasProjectPermission(user, project, \"archive.view\");",
   "project archive summary per-project view guard",
 );
-assertIncludes(
-  archives,
-  "if (!hasProjectPermission(user, project, \"archive.download\"))",
-  "project archive download per-project guard",
-);
-assertIncludes(
-  archives,
-  "if (!hasProjectPermission(user, project, \"archive.view\"))",
-  "project archive preview per-project guard",
-);
+// Central file/category authorization replaces obsolete per-project download guards.
+runCurrentContract("archive");
 assertIncludes(
   archives,
   "getFinalCompletionArchiveBlockers",
@@ -163,8 +156,9 @@ for (const functionName of [
   "finalizePreparedStageCommentUploads",
   "completePreparedChatAttachmentUpload",
 ]) {
+  assertIncludes(history, `runProjectMutation(user, "${functionName}"`, `${functionName} central authorization wrapper`);
   const pattern = new RegExp(
-    `export async function ${functionName}[\\s\\S]*?assertStageChatWriteAccess`,
+    `async function ${functionName}Implementation[\\s\\S]*?assertStageChatWriteAccess`,
   );
   assert(pattern.test(history), `${functionName} must use assertStageChatWriteAccess.`);
 }
@@ -180,8 +174,11 @@ assert(
 
 const projectCompletion = read("src/lib/project-completion.ts");
 for (const requiredSnippet of [
-  "canUseFinalCompletionWorkflow",
-  "areAllStagesCompleted",
+  "canReadFullProject",
+  "requireProjectResourceRead",
+  'runProjectMutation(user, "configureProjectCompletionWorkflow"',
+  "isCompletedProject",
+  "isCompletionRequirementResolved",
   "getFinalCompletionArchiveBlockers",
   "getPreArchiveFinalFileOptions",
   "approvalSelectedProjectFileIds",
@@ -189,9 +186,9 @@ for (const requiredSnippet of [
   "requestProjectFinalInvoice",
   "invoiceContactUserId",
   "invoiceStatus: ProjectCompletionStepStatus.PENDING",
-  "Only the selected approval contact can upload authority approval proof.",
-  "Only the selected copyright contact can upload copyright transfer documents.",
-  "Only the selected final invoice recipient can upload the final invoice.",
+  "prepareCompletionUpload",
+  "finishCompletionUpload",
+  "completionDocumentEvent",
 ]) {
   assertIncludes(projectCompletion, requiredSnippet, `project completion ${requiredSnippet}`);
 }
@@ -284,7 +281,7 @@ for (const resolverCheck of [
   "hasProjectCollaboratorGrant(user, project, \"canViewVendorInfo\")",
   "hasProjectCollaboratorGrant(user, project, \"canDownloadFiles\")",
   "hasProjectCollaboratorGrant(user, project, \"canInteract\")",
-  "hasProjectArchiveAccessGrant(user, project)",
+  'canArchive(user, "archive.download")',
   "hasProjectCollaboratorGrant(user, project, \"canAddCaptions\")",
 ]) {
   assertIncludes(resolver, resolverCheck, `resolver grant ${resolverCheck}`);

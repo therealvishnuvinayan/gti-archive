@@ -178,7 +178,7 @@ async function main(){
     }
     if(!["director","spm","outsider","digital"].includes(id)) await denied(()=>actions.saveArchiveCategoryAction({name:`denied-${id}`,isActive:true}));
     const api=await download.GET(new Request("http://fixture.invalid"),{params:Promise.resolve({archivedFileId:"manual"})});
-    assert.equal(api.status,reader?302:404);
+    assert.equal(api.status,reader?307:404);
     const uploadIcon=await iconUpload.POST(new Request("http://fixture.invalid",{method:"POST",body:JSON.stringify({fileName:"icon.png",mimeType:"image/png",fileSize:10})}));
     assert.equal(uploadIcon.status,["director","spm","outsider","digital"].includes(id)?200:403);
     if(!manager) await denied(()=>archives.saveStageSixArchiveSnapshot(actor,{projectId:"project",archiveCategoryId:"open",files:[]}));

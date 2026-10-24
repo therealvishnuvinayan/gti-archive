@@ -1,0 +1,18 @@
+import { cpSync, mkdtempSync, symlinkSync, writeFileSync, mkdirSync } from 'node:fs';
+import { resolve, join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+const repository=resolve(import.meta.dirname,'..'), root=mkdtempSync('/private/tmp/flux-dashboard-build-');
+for(const p of ['src','prisma','public','package.json','pnpm-lock.yaml','next.config.ts','tsconfig.json','next-env.d.ts','postcss.config.mjs'])cpSync(join(repository,p),join(root,p),{recursive:true});
+symlinkSync(join(repository,'node_modules'),join(root,'node_modules'),'dir');
+const compatibility=process.argv.includes('--compatibility'), notifications=compatibility||process.argv.includes('--notifications'), calendar=notifications||process.argv.includes('--calendar'), search=calendar||process.argv.includes('--search');
+const evidenceDirectory=process.argv.find(arg=>arg.startsWith('--evidence-dir='))?.slice('--evidence-dir='.length);
+const artifacts=evidenceDirectory?resolve(repository,evidenceDirectory):join(repository,compatibility?'.tmp/phase75':notifications?'.tmp/phase74':calendar?'.tmp/phase73':search?'.tmp/phase72':'.tmp/phase71');
+if(!artifacts.startsWith(join(repository,'.tmp')+'/'))throw new Error('Evidence must stay in the repository temporary directory');
+mkdirSync(artifacts,{recursive:true});writeFileSync(join(artifacts,'build-path'),root);
+const flags=Object.fromEntries(['DASHBOARD_V2','SHARED_FILE_IDENTITY','APPROVAL_ENGINE','SHARED_EVENTS','UNIVERSAL_TASKER','TASKER_DELIVERABLES','TASKER_CONCEPTS','TASKER_SISTERS','STAGE_BUILDER_DRAFTS','STAGE_BUILDER_PUBLICATION','STAGE_RUNTIME','RUNTIME_INTEGRATION','ARCHIVE_FOLDERS','ARCHIVE_VERIFICATION','ARCHIVE_SHARING','ARCHIVE_RUNTIME'].map(k=>['FLUX_'+k,'1']));
+if(search)flags.FLUX_SEARCH_V2='1';
+if(calendar)flags.FLUX_CALENDAR_V2='1';
+if(notifications)flags.FLUX_NOTIFICATIONS_V2='1';
+const url='postgresql://build_only@127.0.0.1:1/build_only?connect_timeout=1';
+const r=spawnSync('pnpm',['build','--webpack'],{cwd:root,env:{...flags,PATH:process.env.PATH,LANG:'C',LC_ALL:'C',NODE_ENV:'production',NEXT_TELEMETRY_DISABLED:'1',CHECKPOINT_DISABLE:'1',PRISMA_HIDE_UPDATE_MESSAGE:'1',PRISMA_GENERATE_SKIP_AUTOINSTALL:'1',DATABASE_URL:url,DIRECT_URL:url},stdio:'inherit'});
+console.log('Isolated build: '+root);process.exitCode=r.status??1;

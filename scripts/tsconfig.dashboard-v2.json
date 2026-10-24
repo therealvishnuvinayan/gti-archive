@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.authorization-services.json",
+  "compilerOptions": {
+    "outDir": "../.tmp/dashboard-v2"
+  },
+  "include": [
+    "dashboard-v2-integration-check.ts",
+    "../src/app/api/dashboard/route.ts"
+  ]
+}

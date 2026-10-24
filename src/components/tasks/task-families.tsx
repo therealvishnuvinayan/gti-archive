@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, useSyncExternalStore, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { priorities, taskTypes, type HistoricalEvidence, type TaskDetail, type TaskSummary } from "@/lib/tasker/contracts";
 import type { sisterDraft, taskOptions } from "@/lib/tasker/service";
@@ -10,6 +10,17 @@ import { richTextToPlainText } from "@/lib/rich-text";
 const input = "w-full rounded-xl border border-[#d9e2da] bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-600";
 const button = "rounded-xl border border-[#d9e2da] px-4 py-2 text-sm font-semibold disabled:opacity-50";
 const label = (value: string) => value.toLowerCase().replaceAll("_", " ");
+const subscribeToHydration = () => () => {};
+const clientSnapshot = () => true;
+const serverSnapshot = () => false;
+function useHydrated() {
+  return useSyncExternalStore(subscribeToHydration, clientSnapshot, serverSnapshot);
+}
+function LocalTaskTime({ value }: { value: string }) {
+  const hydrated = useHydrated();
+  // The first browser render must match SSR even when their timezones differ.
+  return <time dateTime={value}>{hydrated ? new Date(value).toLocaleString() : value}</time>;
+}
 async function api<T>(path: string, data?: unknown): Promise<T> {
   const r = await fetch(`/api/tasker${path}`, data === undefined ? { cache: "no-store" } : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
   const result = await r.json(); if (!r.ok) throw new Error(result.error ?? "Task unavailable"); return result;
@@ -95,8 +106,9 @@ export function RevisionComparison({ task }: { task: TaskDetail }) {
 }
 function TaskCard({ task: t }: { task: TaskSummary }) {
   const [now] = useState(() => Date.now());
-  const overdue = new Date(t.deadline).getTime() < now && !["COMPLETED", "CLOSED"].includes(t.status);
-  return <Link className="block min-w-0 rounded-xl border bg-white p-4 hover:border-emerald-600" href={`/tasks/${t.id}`}><p className="text-xs">{t.project.name} · {label(t.type)}</p><h3 className="my-2 font-semibold">{t.title}</h3><p className="text-sm">Owner: {t.owner.name} · Executor: {t.executor.name}</p><p className="mt-2 text-sm">{label(t.status)} · {label(t.priority)}</p><p className={`mt-1 text-xs ${overdue ? "text-red-700" : ""}`}>{overdue ? "Overdue · " : "Due · "}{new Date(t.deadline).toLocaleString()}</p>{t.family && <p className="mt-2 text-xs">{t.family.isSister ? t.family.source ? `Sister of ${t.family.source.title}` : "Sister · Source restricted" : "Original task"}</p>}</Link>;
+  const hydrated = useHydrated();
+  const overdue = hydrated && new Date(t.deadline).getTime() < now && !["COMPLETED", "CLOSED"].includes(t.status);
+  return <Link className="block min-w-0 rounded-xl border bg-white p-4 hover:border-emerald-600" href={`/tasks/${t.id}`}><p className="text-xs">{t.project.name} · {label(t.type)}</p><h3 className="my-2 font-semibold">{t.title}</h3><p className="text-sm">Owner: {t.owner.name} · Executor: {t.executor.name}</p><p className="mt-2 text-sm">{label(t.status)} · {label(t.priority)}</p><p className={`mt-1 text-xs ${overdue ? "text-red-700" : ""}`}>{overdue ? "Overdue · " : "Due · "}<LocalTaskTime value={t.deadline} /></p>{t.family && <p className="mt-2 text-xs">{t.family.isSister ? t.family.source ? `Sister of ${t.family.source.title}` : "Sister · Source restricted" : "Original task"}</p>}</Link>;
 }
 function visibleLineage(tasks: TaskSummary[]) {
   const visible = new Set(tasks.map(t => t.id)), result: { task: TaskSummary; depth: number }[] = [], visited = new Set<string>();
@@ -112,7 +124,7 @@ function FamilyStack({ tasks, view }: { tasks: TaskSummary[]; view: string }) {
   useEffect(() => { if (!open) return; let active = true; api<{ tasks: TaskSummary[]; total: number }>(`?familyId=${family.anchorId}&offset=${offset}&sort=created`).then(r => { if (active) { setMembers(r.tasks); setTotal(r.total); } }).catch(e => { if (active) setError(e.message); }); return () => { active = false; }; }, [open, offset, family.anchorId]);
   return <section className="min-w-0 space-y-3 rounded-2xl border border-emerald-200 bg-[#f4f7f3] p-3 shadow-[3px_3px_0_0_#dce5dd]">
     <button className={`${button} w-full text-left`} aria-expanded={open} aria-controls={`family-${family.anchorId}`} onClick={() => setOpen(!open)}>{open ? "Collapse" : "Expand"} family · {family.root?.title ?? "Related work"} · {family.count} accessible {family.count === 1 ? "task" : "tasks"}</button>
-    <p className="text-xs">Latest accessible activity: {new Date(family.latestActivity).toLocaleString()}</p>
+    <p className="text-xs">Latest accessible activity: <LocalTaskTime value={family.latestActivity} /></p>
     <div id={`family-${family.anchorId}`} className={view === "list" ? "grid gap-3 md:grid-cols-2" : "space-y-3"}>{visibleLineage(open ? members : tasks).map(({ task, depth }) => <div key={task.id} style={{ marginLeft: `${Math.min(depth, 2) * 12}px` }}><TaskCard task={task} /></div>)}</div>
     {error && <p role="alert">{error}</p>}{open && total > 60 && <div className="flex gap-2"><button className={button} disabled={!offset} onClick={() => setOffset(offset - 60)}>Previous family page</button><button className={button} disabled={offset + 60 >= total} onClick={() => setOffset(offset + 60)}>Next family page</button></div>}
   </section>;

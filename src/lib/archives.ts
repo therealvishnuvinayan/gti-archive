@@ -1,3 +1,8 @@
+import { runtimeArchiveFiles, runtimeArchiveDownloadPath } from "./archive-runtime/sources";
+import { AuthorizationDeniedError } from "./authorization/policy";
+import { archiveGrantWhere } from "./authorization/archive-rules";
+import { scopedArchiveDownloadPath } from "./authorization/archive-grants";
+import { prepareArchiveSourceDeletion } from "@/lib/archive-verification/service";
 import { withArchiveShare } from "@/lib/authorization/archive-share";
 import { runArchiveOperation } from "@/lib/authorization/archive";
 import { activeArchiveOperation } from "@/lib/authorization/archive-transaction";
@@ -122,7 +127,7 @@ export type ArchiveCategorySummary = {
 
 export type ArchiveSearchResult = {
   id: string;
-  recordType: "PROJECT_ARCHIVE" | "MANUAL_ARCHIVE_FILE";
+  recordType: "PROJECT_ARCHIVE" | "MANUAL_ARCHIVE_FILE" | "RUNTIME_ARCHIVE_FILE";
   name: string;
   projectName: string | null;
   archiveCategory: string;
@@ -141,9 +146,11 @@ export type ArchiveSearchResponse = {
 };
 
 export type ArchivedProjectFileRecord = {
+  runtimeSource?: { projectId: string; stageId: string; submissionId: string; referenceId: string; versionId: string; versionNumber: number; submitter: string; finalDecisionId: string; publishedVersionId: string; publicationId: string };
   id: string;
   recordType:
     | "FINAL_ARCHIVE_FILE"
+    | "RUNTIME_ARCHIVE_FILE"
     | "MANUAL_ARCHIVE_FILE"
     | "AUTHORITY_APPROVAL_PROOF"
     | "COPYRIGHT_TRANSFER"
@@ -406,44 +413,12 @@ function getManualArchiveFileAccessWhere(user: ArchiveAccessUser): Prisma.Manual
   return manualArchiveFileWhere(archiveScopeForUser(user));
 }
   
-function getArchiveCategoryAssetGrantWhere(
-  user: ArchiveAccessUser,
-): Prisma.ArchiveCategoryWhereInput {
-  if (!hasPartialArchiveAccess(user)) {
-    return {};
-  }
-
-  return {
-    OR: [
-      {
-        projectArchives: {
-          some: {
-            files: {
-              some: {
-                userArchiveAccesses: {
-                  some: {
-                    userId: user.id,
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-      {
-        manualArchiveFiles: {
-          some: {
-            status: AttachmentStatus.READY,
-            userArchiveAccesses: {
-              some: {
-                userId: user.id,
-              },
-            },
-          },
-        },
-      },
-    ],
-  };
+function getArchiveCategoryAssetGrantWhere(user: ArchiveAccessUser): Prisma.ArchiveCategoryWhereInput {
+  if (!hasPartialArchiveAccess(user)) return {};
+  return { OR: [
+    { projectArchives: { some: { files: { some: getArchivedProjectFileAccessWhere(user) } } } },
+    { manualArchiveFiles: { some: getManualArchiveFileAccessWhere(user) } },
+  ] };
 }
 
 export function getAccessibleArchiveCategoryWhere(user: ArchiveAccessUser, options: { activeOnly?: boolean } = {}): Prisma.ArchiveCategoryWhereInput {
@@ -482,7 +457,7 @@ export async function canAccessArchivesArea(user: ArchiveAccessUser) {
   return canUseArchives(user);
 }
 
-export async function canAccessArchiveCategoryForUser(
+async function canAccessArchiveCategoryForUserNative(
   user: ArchiveAccessUser,
   category: { id: string; allowedUsers?: Array<{ userId: string }> },
 ) {
@@ -518,7 +493,7 @@ export async function canAccessArchiveCategoryForUser(
     ]),
   );
 
-  return projectFileCount + manualFileCount > 0;
+  return projectFileCount + manualFileCount > 0 || (await runtimeArchiveFiles(activeArchiveOperation()!.tx, archiveScopeForUser(user), category.id)).length > 0;
 }
 
 export async function assertCanAccessArchiveCategory(
@@ -2162,6 +2137,7 @@ async function listArchiveCategorySummariesNative(user: ArchiveAccessUser) {
     isArchiveTimestampVisibleToUser(user, file.project, file.archivedAt),
   );
 
+  const runtimeFiles = await runtimeArchiveFiles(activeArchiveOperation()!.tx, archiveScopeForUser(user));
   const summaries = categories.map<ArchiveCategorySummary>((category) => {
     const categoryFiles = visibleArchivedFiles.filter(
       (file) => file.archive.archiveCategoryId === category.id,
@@ -2169,13 +2145,16 @@ async function listArchiveCategorySummariesNative(user: ArchiveAccessUser) {
     const categoryManualFiles = manualArchiveFiles.filter(
       (file) => file.archiveCategoryId === category.id,
     );
+    const categoryRuntimeFiles = runtimeFiles.filter(f => f.categoryId === category.id);
     const uniqueProjectIds = new Set([
+      ...categoryRuntimeFiles.map(f => `runtime:${f.publication.projectId}`),
       ...categoryFiles.map((file) => file.projectId),
       ...categoryManualFiles
         .map((file) => file.projectName?.trim())
         .filter((projectName): projectName is string => Boolean(projectName)),
     ]);
     const latestArchivedAt = [
+      ...categoryRuntimeFiles.map(f => f.publication.createdAt),
       ...categoryFiles.map((file) => file.archivedAt),
       ...categoryManualFiles.map((file) => file.uploadedAt),
     ].sort((left, right) => right.getTime() - left.getTime())[0];
@@ -2193,7 +2172,7 @@ async function listArchiveCategorySummariesNative(user: ArchiveAccessUser) {
       parentName: category.parent?.name ?? null,
       childCount: category.children.length,
       fileCount:
-        categoryFiles.length + categoryManualFiles.length,
+        categoryFiles.length + categoryManualFiles.length + categoryRuntimeFiles.length,
       projectCount: uniqueProjectIds.size,
       latestArchivedAt: formatArchiveTimestamp(latestArchivedAt),
     };
@@ -3339,6 +3318,13 @@ input = { ...input, user: await refreshProjectReader(input.user) };
     }
   }
 
+  for (const file of await runtimeArchiveFiles(activeArchiveOperation()!.tx, archiveScopeForUser(input.user))) {
+    const name = file.version.originalFileName;
+    if (!parsedQuery.recent && !name.toLowerCase().includes(parsedQuery.query.toLowerCase())) continue;
+    rankedResults.push({ rank: 1, result: { id: file.id, recordType: "RUNTIME_ARCHIVE_FILE", name, projectName: file.publication.project.title,
+      archiveCategory: file.category.name, archivedAt: file.publication.createdAt.toISOString(), matchedOn: "FILE_METADATA", matchedFileName: name, matchedField: "Filename", matchedValue: name,
+      href: `/archives/${file.category.slug}?view=all&search=${encodeURIComponent(name)}` } });
+  }
   rankedResults.sort((left, right) => {
     if (parsedQuery.recent) {
       return (
@@ -3829,7 +3815,17 @@ async function listArchivedFilesByCategoryNative(
     isArchiveTimestampVisibleToUser(user, file.project, file.archivedAt),
   );
 
+  const runtimeFiles = await runtimeArchiveFiles(activeArchiveOperation()!.tx, archiveScopeForUser(user), category.id);
   return [
+    ...runtimeFiles.map(file => ({ sortDate: file.publication.createdAt, record: {
+      id: file.id, recordType: "RUNTIME_ARCHIVE_FILE", recordTypeLabel: "Completed runtime project", finalArchiveFileName: file.version.originalFileName, originalFileName: file.version.originalFileName,
+      projectId: file.publication.projectId, projectName: file.publication.project.title, projectCategory: "Runtime project", projectTag: "", projectTags: [], assetTags: [],
+      archiveCategoryId: category.id, archiveCategorySlug: category.slug, archiveCategoryLabel: category.name, sourceLabel: `Stage evidence · v${file.version.number}`, fileTypeLabel: file.version.mimeType,
+      mimeType: file.version.mimeType, fileSizeLabel: formatArchiveFileSize(file.version.fileSize), archivedAt: file.publication.createdAt.toISOString(), archivedBy: file.publication.actor.name ?? "", artworkMetadata: null,
+      previewPath: `/api/archives/files/${file.id}/preview`, downloadPath: `/api/archives/files/${file.id}/download`,
+      runtimeSource: { projectId: file.publication.projectId, stageId: file.submission.stageId, submissionId: file.submissionId, referenceId: file.referenceId, versionId: file.versionId, versionNumber: file.version.number,
+        submitter: file.submission.submittedBy.name ?? "", finalDecisionId: file.publication.finalDecisionId, publishedVersionId: file.publication.publishedVersionId, publicationId: file.publicationId },
+    } satisfies ArchivedProjectFileRecord })),
     ...visibleFiles.map((file) => ({
       sortDate: file.archivedAt,
       record: mapArchivedFileRecord({
@@ -4725,7 +4721,7 @@ async function assertCanAccessArchivedProjectFileAsset(
   const accessCount = await withPrismaRetry(() =>
     prisma.userArchiveAssetAccess.count({
       where: {
-        userId: user.id,
+        ...archiveGrantWhere(archiveScopeForUser(user)),
         archivedProjectFileId: archivedFile.id,
       },
     }),
@@ -4760,7 +4756,7 @@ async function assertCanAccessManualArchiveFileAsset(
   const accessCount = await withPrismaRetry(() =>
     prisma.userArchiveAssetAccess.count({
       where: {
-        userId: user.id,
+        ...archiveGrantWhere(archiveScopeForUser(user)),
         manualArchiveFileId: manualArchiveFile.id,
       },
     }),
@@ -5166,7 +5162,14 @@ async function deleteArchivedFileForUserNative(
   archivedFileId: string,
 ) {
   assertCanUseArchives(user);
+  const [runtime] = await runtimeArchiveFiles(activeArchiveOperation()!.tx, archiveScopeForUser(user), undefined, archivedFileId);
+  if (runtime) {
+    await prepareArchiveSourceDeletion(user, archivedFileId);
+    await activeArchiveOperation()!.tx.runtimeArchiveFile.delete({ where: { id: archivedFileId } });
+    return { archivedFileId, storageCleanupPending: false };
+  }
   const file = await getArchiveDownloadFileForUser(user, archivedFileId);
+  await prepareArchiveSourceDeletion(user, archivedFileId);
   await withPrismaRetry(async () => {
     if (file.recordType === "FINAL_ARCHIVE_FILE") {
       await prisma.archivedProjectFile.delete({ where: { id: file.id } });
@@ -5183,6 +5186,7 @@ async function deleteArchivedFileForUserNative(
   const where = { bucket: file.bucket, storageKey: file.storageKey };
   try {
     const references = await withPrismaRetry(() => Promise.all([
+      prisma.sharedFileVersion.count({ where }),
       prisma.projectAttachment.count({ where }),
       prisma.archivedProjectFile.count({ where }),
       prisma.manualArchiveFile.count({ where }),
@@ -5208,7 +5212,8 @@ async function getArchivedFileDownloadUrlForUserNative(
   archivedFileId: string,
 ) {
   const file = await getArchiveDownloadFileForUser(user, archivedFileId);
-  return createPresignedDownloadUrl(file);
+  const pinned = await scopedArchiveDownloadPath(activeArchiveOperation()!.tx, user.id, archivedFileId);
+  return pinned ?? createPresignedDownloadUrl(file);
 }
 
 export const archiveShareExpiryDayOptions = [1, 3, 7, 14, 30] as const;
@@ -5551,6 +5556,8 @@ async function getArchivedFilePreviewUrlForUserNative(
   archivedFileId: string,
 ) {
   user = await refreshProjectReader(user);
+  const pinned = await scopedArchiveDownloadPath(activeArchiveOperation()!.tx, user.id, archivedFileId, true);
+  if (pinned) return pinned;
 
   const archivedFile = await withPrismaRetry(() =>
     prisma.archivedProjectFile.findUnique({
@@ -5669,7 +5676,10 @@ export async function deleteArchivedFileForUser(user: ArchiveAccessUser, archive
 }
 
 export async function getArchivedFileDownloadUrlForUser(user: ArchiveAccessUser, archivedFileId: string) {
-  return runArchiveOperation(user, "archive.download", `file:${archivedFileId}`, fresh => getArchivedFileDownloadUrlForUserNative(fresh, archivedFileId));
+  return runArchiveOperation(user, "archive.download", `file:${archivedFileId}`, async fresh => {
+    const [file] = await runtimeArchiveFiles(activeArchiveOperation()!.tx, archiveScopeForUser(fresh), undefined, archivedFileId);
+    return file ? runtimeArchiveDownloadPath(file) : getArchivedFileDownloadUrlForUserNative(fresh, archivedFileId);
+  });
 }
 
 export async function createArchiveFileShareLink(user: ArchiveAccessUser, input: { archivedFileId: string; expiryDays: number }) {
@@ -5677,7 +5687,10 @@ export async function createArchiveFileShareLink(user: ArchiveAccessUser, input:
 }
 
 export async function getArchivedFilePreviewUrlForUser(user: ArchiveAccessUser, archivedFileId: string) {
-  return runArchiveOperation(user, "archive.download", `file:${archivedFileId}`, fresh => getArchivedFilePreviewUrlForUserNative(fresh, archivedFileId));
+  return runArchiveOperation(user, "archive.download", `file:${archivedFileId}`, async fresh => {
+    const [file] = await runtimeArchiveFiles(activeArchiveOperation()!.tx, archiveScopeForUser(fresh), undefined, archivedFileId);
+    return file ? runtimeArchiveDownloadPath(file, true) : getArchivedFilePreviewUrlForUserNative(fresh, archivedFileId);
+  });
 }
 
 export async function getSharedArchiveFilePageData(token: string): Promise<SharedArchiveFilePageData> {
@@ -5690,4 +5703,9 @@ export async function getSharedArchiveFilePreview(token: string): Promise<Shared
 
 export async function getSharedArchiveFileDownload(token: string): Promise<SharedArchiveFileDownloadResult> {
   return withArchiveShare(token, () => getSharedArchiveFileDownloadNative(token));
+}
+
+export async function canAccessArchiveCategoryForUser(user: ArchiveAccessUser, category: { id: string; allowedUsers?: Array<{ userId: string }> }) {
+  try { return await runArchiveOperation(user, "archive.view", `category:${category.id}`, current => canAccessArchiveCategoryForUserNative(current, category)); }
+  catch (error) { if (error instanceof AuthorizationDeniedError) return false; throw error; }
 }

@@ -42,12 +42,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ArchiveVerification } from "./archive-verification";
 import type {
   ArchivedFileInformationUpdate,
   ArchivedProjectFileRecord,
 } from "@/lib/archives";
 
 type ArchiveCategoryWorkspaceProps = {
+  verificationEnabled?: boolean;
+  sharingEnabled?: boolean;
   categoryId: string;
   categoryTitle: string;
   categoryDescription: string;
@@ -199,7 +202,7 @@ export function ArchiveCategoryWorkspace({
   items,
   initialSearch = "",
   canUploadArchives, canEdit, canDelete, canShare,
-  currentUserDisplayName,
+  currentUserDisplayName, verificationEnabled = false, sharingEnabled = false,
 }: ArchiveCategoryWorkspaceProps) {
   const router = useRouter();
   const [deleteTarget, setDeleteTarget] = useState<ArchivedProjectFileRecord | null>(null);
@@ -551,6 +554,8 @@ export function ArchiveCategoryWorkspace({
                             <span>{item.fileSizeLabel}</span>
                             <span>{item.sourceLabel}</span>
                           </div>
+                          {item.runtimeSource && <details className="mt-2 max-w-lg break-all text-xs"><summary>Runtime source and exact version</summary><p>Project: {item.runtimeSource.projectId}</p><p>Stage: {item.runtimeSource.stageId} · Submission: {item.runtimeSource.submissionId}</p><p>Submitted by {item.runtimeSource.submitter} · Version {item.runtimeSource.versionNumber}: {item.runtimeSource.versionId}</p><p>Reference: {item.runtimeSource.referenceId}</p><p>Final Director decision: {item.runtimeSource.finalDecisionId}</p><p>Workflow version: {item.runtimeSource.publishedVersionId}</p><p>Published by {item.archivedBy} · {item.archivedAt}</p></details>}
+                          {verificationEnabled && <ArchiveVerification sourceId={item.id} sourceKind={item.recordType === "RUNTIME_ARCHIVE_FILE" ? "runtime" : item.recordType === "FINAL_ARCHIVE_FILE" ? "project" : "manual"} categoryId={categoryId} />}
                           {item.assetTags.length > 0 ? (
                             <div className="mt-2 flex flex-wrap gap-1.5">
                               {item.assetTags.slice(0, 3).map((tag) => (
@@ -617,12 +622,12 @@ export function ArchiveCategoryWorkspace({
                           Download
                         </a>
                       </Button>
-                      {canShare && <ArchiveAccessButton fileId={item.id} />}
-                      {canShare && <ArchiveShareButton
+                      {canShare && (item.recordType !== "RUNTIME_ARCHIVE_FILE" || sharingEnabled) && <ArchiveAccessButton fileId={item.id} sharingEnabled={sharingEnabled} />}
+                      {canShare && item.recordType !== "RUNTIME_ARCHIVE_FILE" && <ArchiveShareButton
                         archivedFileId={item.id}
                         fileName={item.finalArchiveFileName}
                       />}
-                      {canEdit && <Button
+                      {canEdit && item.recordType !== "RUNTIME_ARCHIVE_FILE" && <Button
                         type="button"
                         variant="secondary"
                         onClick={() => setEditingArchiveItem(item)}

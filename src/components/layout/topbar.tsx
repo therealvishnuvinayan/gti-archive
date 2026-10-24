@@ -1,9 +1,10 @@
 "use client";
 
 import { useRef, useState, type ReactNode } from "react";
-import { ChevronDown, LogOut, Menu } from "lucide-react";
-
+import { Bell, ChevronDown, LogOut, Menu } from "lucide-react";
+import Link from "next/link";
 import { NotificationDropdown } from "@/components/notifications/notification-dropdown";
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,6 +27,7 @@ export type DashboardTopbarProps = {
   onOpenSidebar: () => void;
   leadingContent?: ReactNode;
   showNotifications?: boolean;
+  liveAttentionEnabled?: boolean;
 };
 
 const defaultUser: DashboardUserView = {
@@ -93,6 +95,7 @@ export function Topbar({
   onOpenSidebar,
   leadingContent,
   showNotifications = true,
+  liveAttentionEnabled = false,
 }: DashboardTopbarProps) {
   const signOutFormRef = useRef<HTMLFormElement>(null);
   const [signOutPending, setSignOutPending] = useState(false);
@@ -117,7 +120,7 @@ export function Topbar({
         </div>
 
         <div className="flex min-w-0 items-center justify-end gap-2">
-          {showNotifications ? <NotificationDropdown /> : null}
+          {showNotifications ? liveAttentionEnabled ? <Link href="/notifications" prefetch={false} aria-label="Open Notifications and Attention" className="grid size-10 place-items-center rounded-xl border border-line bg-white text-emerald-900 focus-visible:outline-2 focus-visible:outline-emerald-700"><Bell className="h-5 w-5" aria-hidden /></Link> : <NotificationDropdown /> : null}
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

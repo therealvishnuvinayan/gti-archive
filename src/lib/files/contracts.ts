@@ -1,6 +1,6 @@
 /** Stable business entry points, never bucket/key or a caller-supplied actor. */
 export const fileSourceKinds = ["project-attachment", "library-attachment", "flexible-attachment", "archived-project-file",
-  "manual-archive-file", "manual-library-asset", "completion-submission", "completion-document"] as const;
+  "runtime-archive-file", "manual-archive-file", "manual-library-asset", "completion-submission", "completion-document"] as const;
 export type FileSource = { kind: typeof fileSourceKinds[number]; id: string };
 export class FileIdentityError extends Error {
   constructor(readonly code: string) { super(code); this.name = "FileIdentityError"; }

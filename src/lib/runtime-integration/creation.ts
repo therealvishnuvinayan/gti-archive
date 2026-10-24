@@ -10,7 +10,7 @@ import { requireRuntimeIntegration } from "./activation";
 import { parseCreationDecision, parseCreationRequest } from "./creation-contracts";
 import { instantiateRuntimeProject } from "./instantiate";
 
-async function validate(tx: Tx, requesterId: string, creation: ReturnType<typeof parseCreate>) {
+export async function validateRuntimeCreation(tx: Tx, requesterId: string, creation: ReturnType<typeof parseCreate>) {
   const ids = [requesterId, creation.ownerId, ...creation.coOwnerIds, ...creation.executorIds];
   await tx.$queryRaw`SELECT "userId" FROM "UserAuthorization" WHERE "userId" IN (${(await import("@prisma/client")).Prisma.join(ids)}) ORDER BY "userId" FOR SHARE`;
   const users = await tx.userAuthorization.findMany({ where: { userId: { in: ids }, accountStatus: "ACTIVE" } });
@@ -29,7 +29,7 @@ export async function requestRuntimeCreation(raw: unknown) {
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`runtime-creation:${actor.userId}:${input.creation.commandId}`},0))::text`;
     const old = await tx.runtimeCreationRequest.findUnique({ where: { requesterId_commandId: { requesterId: actor.userId, commandId: input.creation.commandId } } });
     if (old) { ensure(old.commandHash === hash, "COMMAND_REUSED", 409); return { requestId: old.id }; }
-    await validate(tx, actor.userId, input.creation);
+    await validateRuntimeCreation(tx, actor.userId, input.creation);
     const id = `rcr_${crypto.randomUUID().replaceAll("-", "")}`;
     await tx.runtimeCreationRequest.create({ data: { id, requesterId: actor.userId, publishedVersionId: input.creation.publishedVersionId, snapshot: json(input.creation), snapshotHash: approvalHash(input.creation), reason: input.reason,
       commandId: input.creation.commandId, commandHash: hash, actorVersion: actor.authorizationVersion!, sessionId: actor.session.id, eventId: `runtime-creation:${id}` } });
@@ -48,7 +48,7 @@ export async function decideRuntimeCreation(raw: unknown) {
     if (old) { ensure(old.commandHash === hash && old.requestId === request.id, "COMMAND_REUSED", 409); return { projectId: old.projectId, outcome: old.outcome }; }
     ensure(!request.decision && actor.userId !== request.requesterId, "REQUEST_ALREADY_DECIDED", 409);
     const creation = parseCreate(request.snapshot);
-    if (input.outcome === "APPROVE") await validate(tx, request.requesterId, creation);
+    if (input.outcome === "APPROVE") await validateRuntimeCreation(tx, request.requesterId, creation);
     const id = `rcd_${crypto.randomUUID().replaceAll("-", "")}`, projectId = input.outcome === "APPROVE" ? `rp_${crypto.randomUUID().replaceAll("-", "")}` : null;
     await tx.runtimeCreationDecision.create({ data: { id, requestId: request.id, reviewerId: actor.userId, outcome: input.outcome, reason: input.reason, snapshotHash: request.snapshotHash, commandId: input.commandId, commandHash: hash,
       actorVersion: actor.authorizationVersion!, sessionId: actor.session.id, projectId, eventId: `runtime-creation:${id}` } });

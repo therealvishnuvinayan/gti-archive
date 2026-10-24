@@ -1,4 +1,6 @@
 import { canLibrary } from "@/lib/authorization/library-rules";
+import { dashboardV2Enabled } from "@/lib/dashboard-v2/activation";
+import { searchV2Enabled } from "@/lib/search-v2/activation";
 import { canArchive, archiveAccessLevel } from "@/lib/authorization/archive-rules";
 import {
   Prisma,
@@ -39,6 +41,7 @@ export type ProjectPermissionContext = Pick<
 };
 
 export type SidebarVisibility = {
+  search: boolean;
   dashboard: boolean;
   fluxAi: boolean;
   projects: boolean;
@@ -162,7 +165,8 @@ export function hasPermission(user: PermissionUser, permissionKey: PermissionKey
   if (!role) return false;
   const director = role === "DIRECTOR";
   const manager = director || role === "SENIOR_PROJECT_MANAGER" || role === "JUNIOR_PROJECT_MANAGER";
-  if (["dashboard.view", "dashboard.viewRecentProjects"].includes(permissionKey)) return manager;
+  if (permissionKey === "dashboard.view") return manager || dashboardV2Enabled();
+  if (permissionKey === "dashboard.viewRecentProjects") return manager;
   if (permissionKey === "dashboard.viewProjectCounts") return true;
   if (permissionKey === "fluxAi.view") return canArchive(user, "archive.view");
   if (["users.view", "settings.viewMasterData", "settings.manageMasterData", "settings.deleteMasterData"].includes(permissionKey)) return director;
@@ -279,6 +283,7 @@ export function getSidebarVisibility(user: PermissionUser): SidebarVisibility {
   const projects = canUseProjects(user);
 
   return {
+    search: searchV2Enabled() && !!projectReadActor(user)?.businessRole,
     dashboard: hasPermission(user, "dashboard.view"),
     fluxAi: canUseFluxAi(user),
     projects: projects && canCreateProjects(user),

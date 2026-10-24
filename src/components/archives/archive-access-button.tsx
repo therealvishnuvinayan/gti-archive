@@ -1,9 +1,13 @@
 "use client";
+import { ArchiveManageAccess } from "./archive-manage-access";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 
 type Access = { users: Array<{ id: string; name: string | null; email: string }>; grantedUserIds: string[] };
-export function ArchiveAccessButton({ fileId }: { fileId: string }) {
+export function ArchiveAccessButton({ fileId, sharingEnabled = false }: { fileId: string; sharingEnabled?: boolean }) {
+  return sharingEnabled ? <ArchiveManageAccess fileId={fileId} /> : <NativeArchiveAccessButton fileId={fileId} />;
+}
+function NativeArchiveAccessButton({ fileId }: { fileId: string }) {
   const [access, setAccess] = useState<Access | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");

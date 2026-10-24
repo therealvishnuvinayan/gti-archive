@@ -5,6 +5,10 @@ import { redirect } from "next/navigation";
 import { Plus } from "lucide-react";
 
 import { DashboardWorkspace } from "@/components/dashboard/dashboard-workspace";
+import { RoleDashboardWorkspace } from "@/components/dashboard/role-dashboard";
+import { dashboardV2Enabled } from "@/lib/dashboard-v2/activation";
+import { getRoleDashboard } from "@/lib/dashboard-v2/service";
+import { TaskerError } from "@/lib/tasker/contracts";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { requireUser } from "@/lib/auth";
@@ -12,11 +16,22 @@ import { getDashboardSnapshot } from "@/lib/dashboard";
 import { getAuthenticatedDefaultRoute } from "@/lib/permissions/fallback-route";
 import { canCreateProjects, hasPermission } from "@/lib/permissions/resolver";
 
-export default async function Home() {
+export default async function Home({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const user = await requireUser();
 
   if (!hasPermission(user, "dashboard.view")) {
     redirect(getAuthenticatedDefaultRoute(user));
+  }
+
+  if (dashboardV2Enabled()) {
+    let data;
+    try {
+      data = await getRoleDashboard(await searchParams);
+    } catch (error) {
+      if (error instanceof TaskerError && error.status === 400) return <DashboardLayout><main className="space-y-4 p-6"><h1 className="text-2xl font-semibold">Invalid dashboard filters</h1><p>Choose a supported view to continue.</p><Link className="underline" href="/">Reset dashboard filters</Link></main></DashboardLayout>;
+      throw error;
+    }
+    return <DashboardLayout><RoleDashboardWorkspace data={data} /></DashboardLayout>;
   }
 
   const snapshot = await getDashboardSnapshot(user);

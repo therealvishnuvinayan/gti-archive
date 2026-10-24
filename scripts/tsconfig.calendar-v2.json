@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.search-v2.json",
+  "include": ["dashboard-v2-integration-check.ts", "search-v2-integration-check.ts", "calendar-v2-integration-check.ts", "../src/app/api/dashboard/route.ts", "../src/app/api/search/route.ts", "../src/app/api/calendar/route.ts"]
+}

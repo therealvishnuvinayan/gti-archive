@@ -4,6 +4,7 @@ import {
   getSidebarVisibility,
 } from "@/lib/permissions/resolver";
 import { getUserTaskSidebarCount } from "@/lib/user-tasks";
+import { notificationsV2Enabled } from "@/lib/notifications-v2/activation";
 
 export default async function DashboardRoutesLayout({
   children,
@@ -28,6 +29,7 @@ export default async function DashboardRoutesLayout({
       }}
       taskBadgeCount={taskBadgeCount}
       sidebarVisibility={sidebarVisibility}
+      liveAttentionEnabled={notificationsV2Enabled()}
     >
       {children}
     </DashboardAppFrame>

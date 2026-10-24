@@ -21,14 +21,15 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
+  Search,
   ShieldUser,
   UsersRound,
   Sparkles,
   X,
 } from "lucide-react";
 
-import { useNotificationCenter } from "@/components/notifications/notification-center";
 import type { SidebarVisibility } from "@/lib/permissions/resolver";
+import { useNotificationCenter } from "@/components/notifications/notification-center";
 
 type SidebarItem = {
   label: string;
@@ -48,6 +49,7 @@ const sidebarSections: SidebarSection[] = [
     title: "Menu",
     items: [
       { label: "Dashboard", href: "/", icon: LayoutDashboard, visibilityKey: "dashboard" },
+      { label: "Search", href: "/search", icon: Search, visibilityKey: "search" },
       { label: "Flux AI", href: "/flux-ai", icon: Sparkles, visibilityKey: "fluxAi" },
       { label: "Projects", href: "/projects", icon: Folder, visibilityKey: "projects" },
       { label: "Clients", href: "/clients", icon: Building2, visibilityKey: "clients" },
@@ -96,6 +98,7 @@ type SidebarProps = {
   projectBadgeCount?: number;
   taskBadgeCount?: number;
   visibility: SidebarVisibility;
+  liveAttentionEnabled?: boolean;
 };
 
 function LogoMark({ compact = false }: { compact?: boolean }) {
@@ -244,6 +247,7 @@ export function Sidebar({
   projectBadgeCount,
   taskBadgeCount,
   visibility,
+  liveAttentionEnabled = false,
 }: SidebarProps) {
   const pathname = usePathname();
   const { unreadCount } = useNotificationCenter();
@@ -378,10 +382,8 @@ export function Sidebar({
                       ? String(resolvedProjectBadgeCount)
                       : item.href === "/tasks" && typeof taskBadgeCount === "number"
                         ? String(taskBadgeCount)
-                      : item.href === "/notifications"
-                        ? unreadCount > 0
-                          ? String(unreadCount)
-                          : undefined
+                      : item.href === "/notifications" && !liveAttentionEnabled
+                        ? unreadCount > 0 ? String(unreadCount) : undefined
                       : item.badge;
                   const isActive =
                     item.href !== "#" &&

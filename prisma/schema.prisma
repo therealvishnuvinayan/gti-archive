@@ -453,6 +453,12 @@ enum FluxAiMessageRole {
 }
 
 model User {
+  runtimeArchivePublications RuntimeArchivePublication[]
+  archiveAccessActions ArchiveAccessDecision[] @relation("ArchiveAccessActor")
+  archiveAccessReceived ArchiveAccessDecision[] @relation("ArchiveAccessRecipient")
+  archiveVerificationDecisions ArchiveVerificationDecision[]
+  retainedArchiveSources RetainedArchiveSource[]
+  archiveOrganizationCommands ArchiveOrganizationCommand[]
   completionActors RuntimeCompletionActivity[]
   runtimeCreationRequests RuntimeCreationRequest[] @relation("RuntimeCreationRequester")
   runtimeCreationDecisions RuntimeCreationDecision[] @relation("RuntimeCreationReviewer")
@@ -660,6 +666,7 @@ model UserArchiveAccess {
 }
 
 model UserArchiveAssetAccess {
+  archiveScope ArchiveGrantScope?
   id                    String               @id @default(cuid())
   userId                String
   user                  User                 @relation("UserArchiveAssetAccessUser", fields: [userId], references: [id], onDelete: Cascade)
@@ -1848,6 +1855,10 @@ model AssetTag {
 }
 
 model ArchiveCategory {
+  runtimeArchivePublications RuntimeArchivePublication[]
+  runtimeArchiveFiles RuntimeArchiveFile[]
+  folders            ArchiveFolder[]
+  placements         ArchiveFilePlacement[]
   id                 String                  @id @default(cuid())
   name               String
   slug               String                  @unique
@@ -2325,6 +2336,7 @@ model ProjectArchive {
 }
 
 model ArchivedProjectFile {
+  folderPlacement ArchiveFilePlacement?
   sharedFileReference SharedFileReference?
   id                   String                   @id @default(cuid())
   archiveId            String
@@ -2591,6 +2603,7 @@ model CompletionDocumentEvent {
 }
 
 model ManualArchiveFile {
+  folderPlacement ArchiveFilePlacement?
   sharedFileReference SharedFileReference?
   id                  String                                @id @default(cuid())
   fileName            String
@@ -2908,6 +2921,9 @@ model SharedFile {
 }
 
 model SharedFileVersion {
+  runtimeArchiveFiles RuntimeArchiveFile[]
+  archiveAccessDecisions ArchiveAccessDecision[]
+  archiveVerificationDecisions ArchiveVerificationDecision[]
   completionRuntimeSubmission RuntimeDocumentSubmission?
   runtimeSubmission RuntimeFileSubmission?
   inheritedEvidence UniversalTaskInheritedEvidence[]
@@ -2951,6 +2967,10 @@ model SharedFileVersion {
 }
 
 model SharedFileReference {
+  runtimeArchiveFile RuntimeArchiveFile?
+  archiveAccessDecisions ArchiveAccessDecision[]
+  archiveVerificationDecisions ArchiveVerificationDecision[]
+  retainedArchiveSource RetainedArchiveSource?
   completionRuntimeReference RuntimeDocumentReference?
   runtimeSubmissionId String? @unique
   runtimeSubmission RuntimeFileSubmission? @relation(fields: [runtimeSubmissionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
@@ -3138,6 +3158,9 @@ model ApprovalEvent {
 
 // Phase 2.3: native history remains authoritative; SQL guards own event production.
 enum BusinessEventType {
+  ARCHIVE_VERIFICATION_DECIDED
+  ARCHIVE_ACCESS_DECIDED
+  ARCHIVE_RUNTIME_PUBLISHED
   RUNTIME_COMPLETION_ACTIVITY
   RUNTIME_CREATION_REQUESTED
   RUNTIME_CREATION_DECIDED
@@ -3167,6 +3190,9 @@ enum EventAttemptOutcome {
 }
 
 model BusinessEvent {
+  runtimeArchivePublication RuntimeArchivePublication?
+  archiveAccessDecision ArchiveAccessDecision?
+  archiveVerificationDecision ArchiveVerificationDecision?
   completionRuntimeActivity RuntimeCompletionActivity?
   runtimeTaskContext RuntimeTaskEventContext?
   runtimeCreationRequest RuntimeCreationRequest?
@@ -3589,6 +3615,7 @@ model PublishedWorkflow {
 }
 
 model PublishedWorkflowVersion {
+  runtimeArchivePublications RuntimeArchivePublication[]
   runtimeCreationRequests RuntimeCreationRequest[]
 
   runtimeProjects RuntimeProject[]
@@ -3641,6 +3668,7 @@ model WorkflowPublicationAudit {
 
 // Phase 4.3: a narrowly typed project identity, independent of legacy stage initializers.
 model RuntimeProject {
+  archivePublications RuntimeArchivePublication[]
   completionPolicies RuntimeDocumentPolicy[]
   completionFiles RuntimeDocumentFile[]
   completionDocuments RuntimeDocumentSubmission[]
@@ -3709,6 +3737,7 @@ model RuntimeStage {
   @@unique([projectId, position])
 }
 model RuntimeFileSubmission {
+  archiveFile RuntimeArchiveFile?
   runtimeInspectionReferences RuntimeTaskReference[]
   runtimeTaskPublicationLink RuntimeTaskPublication?
   id String @id @default(cuid())
@@ -3989,6 +4018,7 @@ model RuntimeCompletionRequest {
   @@unique([projectId, revision])
 }
 model RuntimeCompletionDecision {
+  archivePublications RuntimeArchivePublication[]
   id String @id
   projectId String
   project RuntimeProject @relation(fields: [projectId], references: [id], onDelete: Restrict, onUpdate: Restrict)
@@ -4000,4 +4030,200 @@ model RuntimeCompletionDecision {
   activityId String @unique
   activity RuntimeCompletionActivity @relation(fields: [activityId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   @@index([projectId])
+}
+
+// Phase 6.1: additive organization only; no storage, source or permission changes.
+model ArchiveFolder {
+  id String @id @default(cuid())
+  categoryId String
+  category ArchiveCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  parentId String?
+  parent ArchiveFolder? @relation("ArchiveFolderTree", fields: [parentId, categoryId], references: [id, categoryId], onDelete: Restrict, onUpdate: Restrict)
+  children ArchiveFolder[] @relation("ArchiveFolderTree")
+  name String
+  description String @default("")
+  icon String @default("folder")
+  revision Int @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  placements ArchiveFilePlacement[]
+
+  @@unique([id, categoryId])
+  @@index([categoryId, parentId])
+}
+
+model ArchiveFilePlacement {
+  runtimeArchiveFileId String? @unique
+  runtimeArchiveFile RuntimeArchiveFile? @relation(fields: [runtimeArchiveFileId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  id String @id
+  categoryId String
+  category ArchiveCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  folderId String?
+  folder ArchiveFolder? @relation(fields: [folderId, categoryId], references: [id, categoryId], onDelete: Restrict, onUpdate: Restrict)
+  archivedProjectFileId String? @unique
+  archivedProjectFile ArchivedProjectFile? @relation(fields: [archivedProjectFileId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  manualArchiveFileId String? @unique
+  manualArchiveFile ManualArchiveFile? @relation(fields: [manualArchiveFileId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  revision Int @default(1)
+  updatedAt DateTime @updatedAt
+
+  @@index([categoryId, folderId])
+}
+
+// Append-only replay receipt and organization history; JSON IDs survive file deletion.
+model ArchiveOrganizationCommand {
+  id String @id
+  actorUserId String
+  actor User @relation(fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  requestHash String
+  request Json
+  categoryId String
+  action String
+  before Json
+  result Json
+  createdAt DateTime @default(now())
+
+  @@index([categoryId, createdAt])
+}
+
+// Exact review decisions retain their shared reference even after native deletion.
+model ArchiveVerificationDecision {
+  id String @id
+  referenceId String
+  reference SharedFileReference @relation(fields: [referenceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  versionId String
+  version SharedFileVersion @relation(fields: [versionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sourceKind String
+  sourceId String
+  categoryId String
+  projectId String?
+  sourceRevisionId String?
+  action String
+  sequence Int
+  previousId String? @unique
+  previous ArchiveVerificationDecision? @relation("ArchiveVerificationChain", fields: [previousId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  next ArchiveVerificationDecision? @relation("ArchiveVerificationChain")
+  actorId String
+  actor User @relation(fields: [actorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actorRole String
+  actorVersion Int
+  sessionId String
+  reason String
+  commandId String
+  commandHash String
+  storageEvidence Json
+  eventId String @unique
+  event BusinessEvent @relation(fields: [eventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdAt DateTime @default(now())
+
+  @@unique([referenceId, sequence])
+  @@unique([actorId, commandId])
+  @@index([sourceKind, sourceId, versionId])
+}
+
+// Created only by the existing authorized native DELETE, never a backfill.
+// Original typed IDs become historical identifiers once their row is removed.
+model RetainedArchiveSource {
+  runtimeSourceId String? @unique
+  id String @id
+  reference SharedFileReference @relation(fields: [id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  manualSourceId String? @unique
+  projectSourceId String? @unique
+  sourceSnapshot Json
+  referenceSnapshot Json
+  actorId String
+  actor User @relation(fields: [actorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actorVersion Int
+  sessionId String
+  createdAt DateTime @default(now())
+}
+
+// Phase 6.3: the native grant remains the authority. This companion only narrows it.
+model ArchiveGrantScope {
+  grantId String @id
+  grant UserArchiveAssetAccess @relation(fields: [grantId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  decisionId String @unique
+  decision ArchiveAccessDecision @relation(fields: [decisionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+}
+
+model ArchiveAccessDecision {
+  id String @id
+  sourceKind String
+  sourceId String
+  categoryId String
+  recipientId String
+  recipient User @relation("ArchiveAccessRecipient", fields: [recipientId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  grantId String
+  referenceId String?
+  reference SharedFileReference? @relation(fields: [referenceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  versionId String?
+  version SharedFileVersion? @relation(fields: [versionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sourceSnapshot Json
+  action String
+  capability String
+  expiresAt DateTime?
+  sequence Int
+  previousId String? @unique
+  previous ArchiveAccessDecision? @relation("ArchiveAccessChain", fields: [previousId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  next ArchiveAccessDecision? @relation("ArchiveAccessChain")
+  actorId String
+  actor User @relation("ArchiveAccessActor", fields: [actorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actorRole String
+  actorVersion Int
+  sessionId String
+  reason String
+  commandId String
+  commandHash String
+  eventId String @unique
+  event BusinessEvent @relation(fields: [eventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdAt DateTime @default(now())
+  scope ArchiveGrantScope?
+
+  @@unique([sourceKind, sourceId, recipientId, sequence], map: "ArchiveAccessDecision_source_recipient_sequence_key")
+  @@unique([actorId, commandId])
+  @@index([sourceKind, sourceId, createdAt])
+}
+
+// Phase 6.4: genuine runtime publication; immutable source references are reused.
+model RuntimeArchivePublication {
+  id String @id
+  projectId String
+  project RuntimeProject @relation(fields: [projectId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  finalDecisionId String
+  finalDecision RuntimeCompletionDecision @relation(fields: [finalDecisionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  publishedVersionId String
+  publishedVersion PublishedWorkflowVersion @relation(fields: [publishedVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  categoryId String
+  category ArchiveCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  destinationFolderId String?
+  manifest Json
+  manifestHash String @unique
+  actorId String
+  actor User @relation(fields: [actorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actorVersion Int
+  sessionId String
+  reason String
+  commandId String
+  commandHash String
+  eventId String @unique
+  event BusinessEvent @relation(fields: [eventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdAt DateTime @default(now())
+  files RuntimeArchiveFile[]
+  @@unique([actorId, commandId])
+  @@index([projectId, createdAt])
+}
+model RuntimeArchiveFile {
+  id String @id
+  publicationId String
+  publication RuntimeArchivePublication @relation(fields: [publicationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  categoryId String
+  category ArchiveCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  submissionId String @unique
+  submission RuntimeFileSubmission @relation(fields: [submissionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  referenceId String @unique
+  reference SharedFileReference @relation(fields: [referenceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  versionId String @unique
+  version SharedFileVersion @relation(fields: [versionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  folderPlacement ArchiveFilePlacement?
+  @@index([categoryId, publicationId])
 }

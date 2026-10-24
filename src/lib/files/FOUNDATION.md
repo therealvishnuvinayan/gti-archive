@@ -130,3 +130,7 @@ Modified:
 - `src/lib/storage/s3.ts`
 
 Phase 2.1 is ready for scoped implementation review. Development activation remains pending separate migration approval and storage/environment acceptance. No later milestone was started.
+
+## Phase 6.2 Archive deletion retention addendum
+
+[Phase 6.2](../archive-verification/PHASE-6.2.md) adds one narrowly guarded lifecycle transition for an adopted Archive entry's existing Director-only deletion. Before native deletion, PostgreSQL saves its typed original source and exact reference snapshots in immutable `RetainedArchiveSource`, then clears only that reference's native Archive FK. The reference ID, version, role, timestamp, immutable READY version and provenance remain intact. Other reference updates/deletions remain forbidden. Tombstone creation requires the current Director session and existing deletion transaction; old source IDs cannot be reused. Downloads through the removed native source fail closed. Storage cleanup retains objects referenced by SharedFileVersion. This is not an adoption or backfill path and does not enable either Phase 6 flag.

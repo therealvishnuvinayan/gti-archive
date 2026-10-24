@@ -3,6 +3,8 @@ import { getCurrentUser } from "../auth";
 import { runtimeAuthorization } from "./runtime";
 import { projectReadActor } from "./project-read-rules";
 import { archiveTransactions, activeArchiveOperation } from "./archive-transaction";
+import { archiveReadScopes, prepareArchiveScope } from "./archive-grants";
+import { archiveScopeForActor } from "./archive-rules";
 import type { ArchiveCapability } from "./archive-rules";
 
 class RejectedArchiveOperation extends Error {
@@ -17,7 +19,8 @@ export async function runArchiveOperation<T>(expected: { id: string }, capabilit
     return archiveTransactions.run({ tx, actorId: grant.actorUserId, capability, targetId, afterCommit }, async () => {
       const user = await getCurrentUser();
       if (!user || user.id !== grant.actorUserId) throw new Error("Archive authentication expired.");
-      const value = await operation(user);
+      const scope = await prepareArchiveScope(tx, archiveScopeForActor(projectReadActor(user)!));
+      const value = await archiveReadScopes.run(scope, () => operation(user));
       const actor = projectReadActor(user);
       if (!actor || Date.parse(actor.session.expiresAt) <= Date.now()) throw new Error("Archive authentication expired.");
       if (value && typeof value === "object" && "error" in value) throw new RejectedArchiveOperation(value);

@@ -37,6 +37,7 @@ type DashboardShellProps = {
   projectBadgeCount?: number;
   taskBadgeCount?: number;
   sidebarVisibility: SidebarVisibility;
+  liveAttentionEnabled?: boolean;
 };
 
 export function DashboardShell({
@@ -46,6 +47,7 @@ export function DashboardShell({
   projectBadgeCount,
   taskBadgeCount,
   sidebarVisibility,
+  liveAttentionEnabled = false,
 }: DashboardShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -94,6 +96,7 @@ export function DashboardShell({
           projectBadgeCount={projectBadgeCount}
           taskBadgeCount={taskBadgeCount}
           visibility={sidebarVisibility}
+          liveAttentionEnabled={liveAttentionEnabled}
         />
 
         <div className="flex min-w-0 flex-1 flex-col gap-2.5 overflow-hidden">
@@ -102,6 +105,7 @@ export function DashboardShell({
             user={user}
             {...topbarProps}
             showNotifications={sidebarVisibility.notifications}
+            liveAttentionEnabled={liveAttentionEnabled}
           />
           <main
             className={`dashboard-scroll min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto rounded-[22px] bg-surface shadow-[0_20px_60px_rgba(23,39,28,0.055)] sm:rounded-[26px] ${

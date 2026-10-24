@@ -163,7 +163,7 @@ for (const role of businessRoleValues) {
 }
 
 for (const capability of businessCapabilityCatalog.archive) {
-  if (capability === "archive.delete" || capability === "archive.category.delete" || capability === "archive.verify") {
+  if (capability === "archive.delete" || capability === "archive.category.delete" || capability === "archive.verify" || capability === "archive.revokeVerification") {
     denied("SENIOR_PROJECT_MANAGER", capability, true);
   } else {
     eligible("SENIOR_PROJECT_MANAGER", capability);

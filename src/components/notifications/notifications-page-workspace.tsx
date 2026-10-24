@@ -109,7 +109,7 @@ function NotificationListRow({
   onView: () => void;
 }) {
   return (
-    <article className="grid grid-cols-[18px_minmax(0,1.9fr)_minmax(0,1fr)_190px_150px] items-center gap-4 border-b border-[#e7ece7] px-4 py-4 last:border-b-0 xl:px-5">
+    <article className="grid grid-cols-[18px_minmax(0,1fr)] items-center gap-4 border-b border-[#e7ece7] px-4 py-4 last:border-b-0 xl:grid-cols-[18px_minmax(0,1.9fr)_minmax(0,1fr)_190px_150px] xl:px-5">
       <div className="flex justify-center">
         <NotificationUnreadDot unread={!notification.read} />
       </div>
@@ -117,27 +117,27 @@ function NotificationListRow({
       <div className="flex min-w-0 items-center gap-4">
         <NotificationVisual notification={notification} />
         <div className="min-w-0">
-          <p className="truncate text-[15px] font-[700] leading-5 text-[#18211a]">
+          <p className="break-words text-[15px] font-[700] leading-5 text-[#18211a] xl:truncate">
             {notification.title}
           </p>
-          <p className="mt-1 text-[14px] leading-5 text-[#5f6b62]">
+          <p className="mt-1 break-words text-[14px] leading-5 text-[#5f6b62]">
             {notification.description}
           </p>
         </div>
       </div>
 
-      <div className="justify-self-start">
+      <div className="col-start-2 justify-self-start xl:col-start-auto">
         <NotificationContextBadge
           tone={notification.contextTone}
           label={notification.contextLabel}
         />
       </div>
 
-      <p className="justify-self-start text-[14px] text-[#6d776f]">
+      <p className="col-start-2 justify-self-start text-[14px] text-[#6d776f] xl:col-start-auto">
         {notification.timestampLabel}
       </p>
 
-      <div className="flex items-center justify-end gap-2">
+      <div className="col-start-2 flex flex-wrap items-center gap-2 xl:col-start-auto xl:justify-end">
         <button
           type="button"
           onClick={onToggleRead}

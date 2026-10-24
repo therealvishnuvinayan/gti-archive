@@ -1,3 +1,4 @@
+import { archiveReadScopes } from "./archive-grants";
 import type { Prisma } from "@prisma/client";
 import type { BusinessCapability } from "./definitions";
 import { getBusinessRoleEligibility } from "./eligibility";
@@ -5,11 +6,12 @@ import { projectReadActor } from "./project-read-rules";
 import type { AuthenticatedPrincipal } from "./session";
 
 export type ArchiveCapability = Extract<BusinessCapability, `archive.${string}`>;
-export type ArchiveScope = { actor: Pick<AuthenticatedPrincipal, "userId" | "businessRole">; level: "NONE" | "FULL" | "PARTIAL" };
+export type ArchiveScope = { actor: Pick<AuthenticatedPrincipal, "userId" | "businessRole">; level: "NONE" | "FULL" | "PARTIAL"; grantIds?: string[] };
 export function archiveScopeForUser(user: object): ArchiveScope | null {
   const actor = projectReadActor(user);
   if (!actor) return null;
-  return archiveScopeForActor(actor);
+  const current = archiveReadScopes.getStore();
+  return current?.actor.userId === actor.userId ? current : archiveScopeForActor(actor);
 }
 export function canArchive(user: object, capability: ArchiveCapability): boolean {
   const scope = archiveScopeForUser(user);
@@ -33,10 +35,15 @@ export function archiveCategoryWhere(scope: ArchiveScope | null, activeOnly = tr
 export function archivedFileWhere(scope: ArchiveScope | null): Prisma.ArchivedProjectFileWhereInput {
   if (!scope || scope.level === "NONE" || getBusinessRoleEligibility(scope.actor.businessRole, "archive.view").decision === "DENY") return { id: { in: [] } };
   return { archive: { is: { archiveCategory: { is: archiveCategoryWhere(scope) } } },
-    ...(scope.level === "PARTIAL" ? { userArchiveAccesses: { some: { userId: scope.actor.userId } } } : {}) };
+    ...(scope.level === "PARTIAL" ? { userArchiveAccesses: { some: archiveGrantWhere(scope) } } : {}) };
 }
 export function manualArchiveFileWhere(scope: ArchiveScope | null): Prisma.ManualArchiveFileWhereInput {
   if (!scope || scope.level === "NONE" || getBusinessRoleEligibility(scope.actor.businessRole, "archive.view").decision === "DENY") return { id: { in: [] } };
   return { status: "READY", archiveCategory: { is: archiveCategoryWhere(scope) },
-    ...(scope.level === "PARTIAL" ? { userArchiveAccesses: { some: { userId: scope.actor.userId } } } : {}) };
+    ...(scope.level === "PARTIAL" ? { userArchiveAccesses: { some: archiveGrantWhere(scope) } } : {}) };
+}
+
+export function archiveGrantWhere(scope: ArchiveScope | null): Prisma.UserArchiveAssetAccessWhereInput {
+  // No prepared transaction means no file grants, rather than a stale fallback.
+  return { userId: scope?.actor.userId ?? "", id: { in: scope?.grantIds ?? [] } };
 }

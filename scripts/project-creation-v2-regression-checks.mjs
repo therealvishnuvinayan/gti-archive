@@ -1,3 +1,4 @@
+import { runCurrentContract } from "./run-server-contract-check.mjs";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -102,7 +103,7 @@ for (const legacyField of [
   assert(!projectCreateBlock.includes(legacyField), `V2 creation must not fabricate ${legacyField}`);
 }
 
-assertIncludes(candidates, "role: UserRole.ADMIN", "ADMIN-only co-owner candidates");
+runCurrentContract("creation");
 assert(!/email|name/.test(candidates.slice(candidates.indexOf("where:"), candidates.indexOf("orderBy:"))), "Owner eligibility must not infer role from name or email.");
 
 for (const snippet of [
@@ -146,7 +147,9 @@ for (const snippet of [
   "tx.projectCoOwner.deleteMany",
   "tx.projectExecutor.deleteMany",
   "tx.projectCollaborator.deleteMany",
-  "tx.projectCollaborator.upsert",
+  "tx.projectCoOwner.createMany",
+  "tx.projectExecutor.createMany",
+  "Collaborator changes are disabled. Use Co-owners and Executors.",
 ]) {
   assertIncludes(creation, snippet, `Project edit persistence ${snippet}`);
 }
@@ -209,9 +212,7 @@ for (const snippet of [
   "isProjectOwnerOrCoOwner",
   "isProjectExecutor",
   "isGlobalProjectAdministrator",
-  "ownerId: user.id",
-  "coOwners:",
-  "collaborators:",
+  "structuredProjectReadWhere(projectReadActor(user))",
 ]) {
   assertIncludes(resolver, snippet, `Access resolver rule ${snippet}`);
 }

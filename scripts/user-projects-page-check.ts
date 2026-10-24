@@ -1,4 +1,16 @@
 import assert from "node:assert/strict";
+import { bindProjectReadIdentity, isProjectManagerReader, canReadFullProject } from "../src/lib/authorization/project-read-rules";
+import { canUseProjects } from "../src/lib/permissions/resolver";
+for (const businessRole of ["DIRECTOR", "SENIOR_PROJECT_MANAGER", "JUNIOR_PROJECT_MANAGER", "DESIGNER", "DIGITAL_LEAD", null] as const) {
+  const user = bindProjectReadIdentity({ id: "fixture", role: "USER" as const }, { userId: "fixture", identity: { email: "fixture@invalid.test", name: null }, businessRole, accountStatus: "ACTIVE", authorizationVersion: 1, technicalPrivileges: businessRole ? [] : ["TECHNICAL_ADMIN"], session: { id: "unit", expiresAt: new Date(Date.now() + 60000).toISOString() } });
+  const manager = ["DIRECTOR", "SENIOR_PROJECT_MANAGER", "JUNIOR_PROJECT_MANAGER"].includes(businessRole ?? "");
+  assert.equal(isProjectManagerReader(user), manager);
+  assert.equal(canReadFullProject(user, { ownerId: "fixture" }), manager);
+  assert.equal(canReadFullProject(user, { ownerId: "another-user" }), businessRole === "DIRECTOR");
+  if (!businessRole) assert.equal(canUseProjects(user), false);
+}
+assert.equal(isProjectManagerReader({ id: "forged", role: "SUPER_ADMIN" }), false);
+
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -127,7 +139,7 @@ const sidebar = read("src/components/layout/sidebar.tsx");
 const permissions = read("src/lib/permissions/resolver.ts");
 const flexibleRoute = read("src/components/projects/flexible-projects-route-workspace.tsx");
 
-assert.match(page, /user\.role === UserRole\.USER/);
+assert.match(page, /!isProjectManagerReader\(user\)/);
 assert.match(page, /<UserProjectsBrowser/);
 assert.match(page, /<ProjectsBrowser/);
 assert.match(managerBrowser, /All Stages/);
@@ -189,14 +201,17 @@ assert.match(browser, /role="tooltip"/);
 assert.match(browser, /task\.name/);
 assert.match(browser, /task\.display\.label/);
 assert.match(query, /buildAccessibleProjectsWhere\(currentUser\)/);
-assert.match(query, /buildProjectListStatusWhere\("ACTIVE"\)/);
-assert.match(query, /buildProjectListStatusWhere\("COMPLETED"\)/);
+assert.match(query, /refreshProjectReader\(currentUser\)/);
+// The display-state contracts above preserve task/project completion separation.
+assert.match(query, /deriveUserProjectDisplayStatus\(/);
+
+
 assert.match(query, /where: listWhere/);
 assert.match(query, /where: \{ assignedExecutorId: currentUser\.id \}/);
 assert.match(query, /plannedDueAt: true/);
 assert.match(query, /revisions: \{/);
-assert.match(query, /workflowStages: \{/);
-assert.match(query, /deriveProjectListWorkflowState\(project\)/);
+assert.doesNotMatch(query, /workflowStages: \{/);
+
 assert.match(query, /compareProjectsByPriority/);
 assert.match(query, /isCompleted: left\.status === "COMPLETED"/);
 assert.doesNotMatch(query, /inquiry:/);
@@ -219,7 +234,7 @@ assert.match(tasksService, /ProjectWorkflowStageKey\.PROJECT_DEVELOPMENT/);
 assert.match(tasksService, /returnTo=%2Ftasks/);
 assert.match(tasksService, /getNeedsAttentionItems\(user\)/);
 assert.match(tasksService, /needsAttention: view === "RECEIVED"[\s\S]*?attentionItems\.length/);
-assert.match(tasksService, /assignedById: user\.id/);
+assert.match(tasksService, /where: getTaskListWhere\(user\)/);
 assert.match(tasksWorkspace, /data\.attentionItems/);
 assert.match(tasksWorkspace, /<AttentionRow key=\{item\.id\} item=\{item\} \/>/);
 assert.match(tasksWorkspace, /onClick=\{\(\) => setFilter\(card\.filter\)\}/);

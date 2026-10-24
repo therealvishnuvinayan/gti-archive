@@ -1,3 +1,4 @@
+import { runCurrentContract } from "./run-server-contract-check.mjs";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -59,7 +60,8 @@ includes(page, ': "priority";', "priority default sort");
 includes(projects, "compareProjectsByPriority", "portfolio priority ordering");
 includes(card, "WorkflowProgress", "seven-stage card progress");
 includes(card, "Executors (", "card executor summary");
-includes(actions, "ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION", "completed delete guard");
+includes(actions, "deleteProject(await requireUser(), projectId)", "central project deletion service");
+runCurrentContract("deletion");
 includes(projects, "const updatedAt = toProjectDate(project.updatedAt);", "cached updatedAt normalization");
 
 assert(
