@@ -8,7 +8,9 @@ const repository = resolve(import.meta.dirname, '..'), require = createRequire(i
 const root = mkdtempSync('/private/tmp/flux-v2-dashboard-'), data = join(root, 'data'), socket = join(root, 's');
 const url = `postgresql://dashboard_test@localhost:55439/dashboard_test?host=${encodeURIComponent(socket)}&connect_timeout=5`;
 const compatibility = process.argv.includes('--compatibility'), notifications = compatibility || process.argv.includes('--notifications'), calendar = notifications || process.argv.includes('--calendar'), search = calendar || process.argv.includes('--search');
-const artifacts = join(repository, compatibility ? '.tmp/phase75' : notifications ? '.tmp/phase74' : calendar ? '.tmp/phase73' : search ? '.tmp/phase72' : '.tmp/phase71');
+const evidenceDirectory = process.argv.find(arg => arg.startsWith('--evidence-dir='))?.slice('--evidence-dir='.length);
+const artifacts = evidenceDirectory ? resolve(repository, evidenceDirectory) : join(repository, compatibility ? '.tmp/phase75' : notifications ? '.tmp/phase74' : calendar ? '.tmp/phase73' : search ? '.tmp/phase72' : '.tmp/phase71');
+assert.ok(artifacts.startsWith(join(repository, '.tmp') + '/'), 'Evidence must stay in the repository temporary directory');
 mkdirSync(artifacts,{recursive:true});
 if(calendar)mkdirSync(join(artifacts,'search'),{recursive:true});
 if(notifications)mkdirSync(join(artifacts,'calendar'),{recursive:true});
@@ -30,7 +32,17 @@ try {
  const rejected=spawnSync(process.execPath,['-e',"require('server-only')"],{cwd:root,env,encoding:'utf8'});
  assert.notEqual(rejected.status,0);assert.match(rejected.stderr,/cannot be imported from a Client Component/);
  console.log(run(process.execPath,['--conditions=react-server',join(output,'scripts/dashboard-v2-integration-check.js')]));
- if(process.argv.includes('--browser')) console.log(run(process.execPath,[join(repository,notifications ? 'scripts/notifications-browser-check.mjs' : calendar ? 'scripts/calendar-browser-check.mjs' : search ? 'scripts/search-browser-check.mjs' : 'scripts/dashboard-browser-check.mjs')],{env:{...env,FLUX_BROWSER_BUILD:process.env.FLUX_BROWSER_BUILD,FLUX_BROWSER_ARTIFACTS:process.env.FLUX_BROWSER_ARTIFACTS||join(artifacts,'browser'),FLUX_PLAYWRIGHT_PACKAGE:process.env.FLUX_PLAYWRIGHT_PACKAGE},timeout:360000}));
+ if(process.argv.includes('--browser')) {
+  const legacySnapshot=()=>JSON.parse(run('psql',['-X','-qAt','-h',socket,'-p','55439','-U','dashboard_test','-d','dashboard_test','-v','ON_ERROR_STOP=1'],{input:`BEGIN READ ONLY;
+SELECT jsonb_build_object('manual', (SELECT coalesce(jsonb_agg(to_jsonb(e) ORDER BY id),'[]') FROM "CalendarEvent" e), 'messages', (SELECT coalesce(jsonb_agg(to_jsonb(n) - 'isRead' - 'readAt' - 'updatedAt' ORDER BY id),'[]') FROM "Notification" n));
+COMMIT;`}));
+  const before=compatibility?legacySnapshot():null;
+  console.log(run(process.execPath,[join(repository,notifications ? 'scripts/notifications-browser-check.mjs' : calendar ? 'scripts/calendar-browser-check.mjs' : search ? 'scripts/search-browser-check.mjs' : 'scripts/dashboard-browser-check.mjs')],{env:{...env,FLUX_BROWSER_BUILD:process.env.FLUX_BROWSER_BUILD,FLUX_BROWSER_ARTIFACTS:process.env.FLUX_BROWSER_ARTIFACTS||join(artifacts,'browser'),FLUX_PLAYWRIGHT_PACKAGE:process.env.FLUX_PLAYWRIGHT_PACKAGE},timeout:360000}));
+  if(before){
+   const after=legacySnapshot();assert.deepEqual(after,before,'Existing manual records and recorded message content must survive browser navigation and temporary fixture operations');
+   writeFileSync(join(artifacts,'browser-preservation.json'),JSON.stringify({status:'PASS',manualEvents:after.manual.length,recordedMessages:after.messages.length,manualRowsUnchanged:true,messageIdentityAndContentUnchanged:true,excludedMessageFields:['isRead','readAt','updatedAt'],reason:'Actual read/unread controls deliberately mutate only receipt state.'},null,2),{mode:0o600});
+  }
+ }
 } finally {
  if(started) run('pg_ctl',['-D',data,'-m','fast','-w','stop']);
  rmSync(root,{recursive:true,force:true});console.log('Disposable dashboard database, sessions and application removed. No live credentials or storage used.');

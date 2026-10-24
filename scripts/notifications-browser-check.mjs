@@ -23,7 +23,11 @@ try{
  browser=await chromium.launch({headless:true,args:['--disable-background-networking']});result.chromium=browser.version();
  const pages=new Map();
  async function pageFor(id){if(pages.has(id))return pages.get(id);const context=await browser.newContext({viewport:{width:1536,height:1100},timezoneId:'America/Los_Angeles'});await context.route('**/*',route=>{const u=new URL(route.request().url());if(u.origin===origin||['blob:','data:'].includes(u.protocol))return route.continue();result.externalRequests.push(u.origin);return route.abort();});const page=await context.newPage();page.setDefaultTimeout(15000);page.on('pageerror',e=>{result.pageErrors.push(e.message);result.errorLocations.push({id,url:page.url(),stack:e.stack});});page.on('response',response=>{if(response.status()<400)return;const path=new URL(response.url()).pathname;const expected=[400,403,404].includes(response.status())&&(/^\/api\/(notifications\/attention|dashboard|search|calendar|tasker)/.test(path)||path==='/notifications');(expected?result.expectedDenials:result.unexpectedResponses).push({path,status:response.status()});});await page.goto(origin+'/sign-in');await page.locator('[name=email]').fill(`${id}@dashboard.invalid`);await page.locator('[name=password]').fill(fixture.password);await page.locator('button[type=submit]').click();await page.waitForURL(u=>u.pathname!=='/sign-in');pages.set(id,page);return page;}
- async function shot(page,name){await page.screenshot({path:join(artifact,name+'.png'),fullPage:true,animations:'disabled'});result.screens.push(name);}
+ async function shot(page,name){
+  // Framer Motion's JS-driven entry transition can outlast route readiness.
+  await page.waitForFunction(()=>{const content=document.querySelector('main[data-layout-density] > div');return content&&Number(getComputedStyle(content).opacity)===1;});
+  await page.screenshot({path:join(artifact,name+'.png'),fullPage:true,animations:'disabled'});result.screens.push(name);
+ }
  async function json(page,path='/api/notifications/attention'){return page.evaluate(async path=>{const r=await fetch(path);return {status:r.status,cache:r.headers.get('cache-control'),body:await r.json()};},path);}
  async function attention(page,query={}){await page.goto(origin+'/notifications?'+new URLSearchParams(query));await page.locator('[data-live-attention]').waitFor();}
  const f=fixture.attention;
