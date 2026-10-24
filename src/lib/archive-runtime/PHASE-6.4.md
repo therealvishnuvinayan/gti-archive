@@ -1,5 +1,7 @@
 # FLUX V2 — Phase 6.4: completed RuntimeProject Archive integration
 
+> Superseded candidate notice: [Phase 6.5](./PHASE-6.5.md) adds the required migration timeouts and records the integrated verification/read-only Neon preflight. Current candidate SHA-256: `f654a4101f805a93544d34e22efd73d914234f0690451d2bbab8b8d80627e5b9`. Migration remains unapplied; all four Phase 6 flags remain off/unset. Checksums and “not started” statements below are historical to this phase.
+
 Implemented and locally verified on 24 October 2026 against committed Phase 6.3 (`38471f6`). **Not activated.** No Neon connection/migration, live S3 operation, actual environment change, real project publication, real account/password change, push or deployment. Phase 6.5 and Phase 7 were not started.
 
 ## 1. Publication eligibility and authority

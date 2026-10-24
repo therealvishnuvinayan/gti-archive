@@ -1,5 +1,7 @@
--- Phase 6.1 candidate only. No old rows are relocated or rewritten.
+-- Combined Phase 6 candidate. No old rows are relocated or rewritten.
 BEGIN;
+SET LOCAL lock_timeout = '5s';
+SET LOCAL statement_timeout = '60s';
 -- CreateTable
 CREATE TABLE "ArchiveFolder" (
     "id" TEXT NOT NULL,

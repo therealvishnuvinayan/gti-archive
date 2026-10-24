@@ -10,6 +10,7 @@ export async function runRuntimeArchiveChecks(h: Harness) {
   const workflows = load("src/lib/stage-builder/publication.js") as typeof import("../src/lib/stage-builder/publication");
   const runtime = load("src/lib/stage-runtime/service.js") as typeof import("../src/lib/stage-runtime/service");
   const completion = load("src/lib/runtime-completion/service.js") as typeof import("../src/lib/runtime-completion/service");
+  const tasks = load("src/lib/tasker/service.js") as typeof import("../src/lib/tasker/service");
   const service = load("src/lib/archive-runtime/service.js") as typeof import("../src/lib/archive-runtime/service");
   const archives = load("src/lib/archives.js") as typeof import("../src/lib/archives");
   const folders = load("src/lib/archive-folders/service.js") as typeof import("../src/lib/archive-folders/service");
@@ -36,10 +37,33 @@ export async function runRuntimeArchiveChecks(h: Harness) {
   const command=async(action:string,extra={})=>runtime.runtimeStageCommand(projectId,stage.id,{commandId:randomUUID(),expectedRevision:(await db.runtimeStage.findUniqueOrThrow({where:{id:stage.id}})).revision,action,...extra});
   for(const [name,capabilityId] of [["runtime-accepted.pdf","accepted"],["runtime-second.pdf","accepted"],["runtime-sealed.pdf","sealed"]]) {
     await user("spm");const uploaded=await command("UPLOAD_PREPARED",{capabilityId,fileName:name,mimeType:"application/pdf",fileSize:100,supersedesId:null}) as {submissionId:string};
-    const s=await db.runtimeFileSubmission.findUniqueOrThrow({where:{id:uploaded.submissionId}});seedObject(s.stagingKey);
+    let s=await db.runtimeFileSubmission.findUniqueOrThrow({where:{id:uploaded.submissionId}});seedObject(s.stagingKey);
     await command("FILE_SUBMITTED",{submissionId:s.id});
+    if(name==="runtime-accepted.pdf") {
+      await user("director");await command("FILE_DECIDED",{submissionId:s.id,outcome:"REJECT",reason:"Synthetic rejected historical version"});
+      await user("spm");
+      for(const fail of [true,false]) {
+        const next=await command("UPLOAD_PREPARED",{capabilityId,fileName:name,mimeType:"application/pdf",fileSize:100,supersedesId:s.id}) as {submissionId:string};
+        s=await db.runtimeFileSubmission.findUniqueOrThrow({where:{id:next.submissionId}});
+        if(!fail)seedObject(s.stagingKey);
+        await command("FILE_SUBMITTED",{submissionId:s.id});
+        assert.equal((await db.runtimeFileSubmission.findUniqueOrThrow({where:{id:s.id}})).state,fail?"FAILED":"SUBMITTED");
+      }
+    }
     if(capabilityId==="accepted"){await user("director");await command("FILE_DECIDED",{submissionId:s.id,outcome:"APPROVE",reason:"Exact artwork review"});}
   }
+  // A genuine Tasker deliverable is accepted into the stage and final completion,
+  // but its lineage must still exclude it and its private conversation from Archive.
+  await user("spm");
+  const task=await tasks.createTask({commandId:randomUUID(),contextTarget:`runtime:${projectId}`,type:"FILE_UPLOAD",destination:`runtime-file:${stage.id}:sealed`,inputMode:"FILE",title:"Private Tasker evidence",brief:"Protected task context",deadline:"2026-11-20T12:00:00Z",priority:"NORMAL",executorId:"designer",spectatorIds:[]});
+  const taskCommand=async(action:string,extra={})=>tasks.mutateTask(task.id,{commandId:randomUUID(),expectedVersion:(await tasks.getTask(task.id)).version,action,text:"Private task reason",...extra});
+  await user("designer");
+  const prepared=await taskCommand("PREPARE_UPLOAD",{fileName:"private-tasker.pdf",mimeType:"application/pdf",fileSize:100});
+  const upload=await db.universalTaskUpload.findUniqueOrThrow({where:{id:prepared.uploadId}});seedObject(upload.stagingKey);
+  await taskCommand("FINALIZE_UPLOAD",{uploadId:upload.id});await taskCommand("MESSAGE",{text:"Private conversation must never become an Archive file"});
+  await taskCommand("SUBMIT",{fileIds:[upload.id]});await taskCommand("REQUEST_COMPLETION");
+  await user("spm");await taskCommand("APPROVE");
+  const taskBinding=await db.runtimeTaskPublication.findFirstOrThrow({where:{submission:{stageId:stage.id}}});
   await user("spm");await command("COMPLETED",{reason:"Stage output completed"});
   await user("director");await denied(()=>service.readRuntimeArchivePublication(director,projectId));
   const completionCommand=async(action:string,extra={})=>{const v=await completion.getRuntimeCompletion(projectId);return completion.runtimeCompletionCommand(projectId,{commandId:randomUUID(),expectedRevision:v.revision,expectedProjectRevision:v.projectRevision,expectedPolicyRevision:v.policyRevision,action,...extra});};
@@ -57,11 +81,16 @@ export async function runRuntimeArchiveChecks(h: Harness) {
   const source=async()=>JSON.stringify([await db.runtimeProject.findMany({orderBy:{id:"asc"}}),await db.runtimeStage.findMany({orderBy:{id:"asc"}}),await db.runtimeFileSubmission.findMany({orderBy:{id:"asc"}}),await db.runtimeCompletionDecision.findMany({orderBy:{id:"asc"}}),await db.runtimeCompletionRequest.findMany({orderBy:{id:"asc"}}),await db.runtimeDocumentSubmission.findMany({orderBy:{id:"asc"}}),await db.sharedFileVersion.findMany({orderBy:{id:"asc"}}),await db.sharedFileReference.findMany({orderBy:{id:"asc"}}),await db.sharedFileProvenance.findMany({orderBy:{id:"asc"}})]);
   const preserved=await source();
   const view=await service.readRuntimeArchivePublication(director,projectId);assert.equal(view.files.filter(f=>f.eligible).length,3);assert.ok(view.exclusions.some(e=>e.includes("invoices")));assert.ok(!JSON.stringify(view.files).includes("private-invoice"));
+  const eligible=view.files.filter(f=>f.eligible);
+  assert.equal(view.files.find(f=>f.submissionId===taskBinding.submissionId)?.eligible,false);
+  assert.equal(view.files.filter(f=>["REJECTED","FAILED"].includes(f.state)).length,2);
   for(const role of ["spm","jpm","designer","digital","tech","unassigned"]){const actor=await user(role);await denied(()=>service.readRuntimeArchivePublication(actor,projectId));}
   await user("director");
   const folder=await folders.organizeArchive(director,{commandId:randomUUID(),categoryId:"open",action:"create",name:"Runtime artwork",description:"",icon:"folder",parentId:null});
-  const makeCommand=(selected=view.files.slice(0,2)):RuntimeArchiveCommand=>({commandId:randomUUID(),reason:"Explicit non-sensitive artwork publication",confirmed:true,manifest:{projectId,finalDecisionId:view.finalDecision.id,publishedVersionId:view.project.publishedVersionId,categoryId:"open",folderId:folder.id,nonSensitiveConfirmed:true,files:selected.map(f=>({submissionId:f.submissionId,referenceId:f.referenceId!,versionId:f.versionId}))}});
+  const makeCommand=(selected=eligible.slice(0,2)):RuntimeArchiveCommand=>({commandId:randomUUID(),reason:"Explicit non-sensitive artwork publication",confirmed:true,manifest:{projectId,finalDecisionId:view.finalDecision.id,publishedVersionId:view.project.publishedVersionId,categoryId:"open",folderId:folder.id,nonSensitiveConfirmed:true,files:selected.map(f=>({submissionId:f.submissionId,referenceId:f.referenceId!,versionId:f.versionId}))}});
   const publish=makeCommand();
+  for(const excluded of view.files.filter(f=>!f.eligible))await denied(()=>service.publishRuntimeArchive(director,makeCommand([excluded])));
+  for(const invalid of [{...publish,confirmed:false},{...publish,reason:" "},{...publish,manifest:{...publish.manifest,nonSensitiveConfirmed:false}},{...publish,manifest:{...publish.manifest,files:[]}},{...publish,manifest:{...publish.manifest,files:[{submissionId:upload.id,referenceId:"private-conversation",versionId:upload.versionId}]}}])await denied(()=>service.publishRuntimeArchive(director,invalid));
   for(const manifest of [{...publish.manifest,projectId:active.projectId},{...publish.manifest,finalDecisionId:"forged"},{...publish.manifest,categoryId:"missing"},{...publish.manifest,publishedVersionId:"wrong"},{...publish.manifest,files:[{...publish.manifest.files[0],versionId:docRow.versionId}]},{...publish.manifest,files:[{...publish.manifest.files[0],referenceId:"wrong"}]}])await denied(()=>service.publishRuntimeArchive(director,{...publish,manifest}));
   const result=await service.publishRuntimeArchive(director,publish);assert.deepEqual(await service.publishRuntimeArchive(director,publish),result);
   const spm=await user("spm");await denied(()=>service.publishRuntimeArchive(spm,publish));await user("director");
@@ -104,7 +133,7 @@ export async function runRuntimeArchiveChecks(h: Harness) {
   await user("designer");await files.openSharedFileVersion({kind:"runtime-archive-file",id:b.id},b.versionId);
   await new Promise(resolve=>setTimeout(resolve,1750));await denied(()=>files.openSharedFileVersion({kind:"runtime-archive-file",id:b.id},b.versionId));
   await user("director");
-  const third=makeCommand(view.files.slice(2));
+  const third=makeCommand(eligible.slice(2));
   await db.$executeRawUnsafe(`CREATE FUNCTION phase64_reject_outbox() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW."eventId" LIKE 'archive-runtime:%' THEN RAISE EXCEPTION 'forced outbox rollback'; END IF; RETURN NEW; END $$`);
   await db.$executeRawUnsafe('CREATE TRIGGER phase64_reject_outbox BEFORE INSERT ON "EventOutbox" FOR EACH ROW EXECUTE FUNCTION phase64_reject_outbox()');
   await denied(()=>service.publishRuntimeArchive(director,third));assert.equal(await db.runtimeArchivePublication.count(),1);assert.equal(await db.runtimeArchiveFile.count(),2);
@@ -113,6 +142,7 @@ export async function runRuntimeArchiveChecks(h: Harness) {
   await denied(()=>command("FIELDS",{values:{}}));await denied(()=>completionCommand("POLICY_APPROVED",{settings:{AUTHORITY_APPROVAL_PROOF:"NOT_APPLICABLE",COPYRIGHT_TRANSFER:"NOT_APPLICABLE",INVOICE:"NOT_APPLICABLE"},reason:"Attempt mutation",confirmed:true}));
   await denied(()=>db.runtimeArchivePublication.update({where:{id:result.publicationId},data:{reason:"rewrite"}}));await denied(()=>db.runtimeArchiveFile.update({where:{id:a.id},data:{versionId:b.versionId}}));
   await archives.deleteArchivedFileForUser(director,a.id);assert.equal(await db.runtimeArchiveFile.count({where:{id:a.id}}),0);assert.equal((await db.retainedArchiveSource.findUniqueOrThrow({where:{id:a.referenceId}})).runtimeSourceId,a.id);assert.equal(await db.archiveVerificationDecision.count({where:{referenceId:a.referenceId}}),2);
+  await denied(()=>service.publishRuntimeArchive(director,makeCommand(eligible.filter(f=>f.versionId===a.versionId))));
   assert.equal(await source(),preserved);assert.equal(JSON.stringify([await db.project.findMany({orderBy:{id:"asc"}}),await db.projectArchive.findMany({orderBy:{id:"asc"}}),await db.manualArchiveFile.findMany({orderBy:{id:"asc"}})]),native);
   for(const e of await db.businessEvent.findMany({where:{type:"ARCHIVE_RUNTIME_PUBLISHED"}})){assert.equal(events.decodeBusinessEvent(e).type,"ARCHIVE_RUNTIME_PUBLISHED");assert.equal(await db.eventOutbox.count({where:{eventId:e.id}}),1);}
   const route=load("src/app/api/archives/runtime/route.js") as typeof import("../src/app/api/archives/runtime/route");

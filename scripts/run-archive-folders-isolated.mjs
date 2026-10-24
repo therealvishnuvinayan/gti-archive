@@ -7,6 +7,9 @@ import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync
 import { dirname, join, resolve } from "node:path";
 import { archiveFoldersMigration, withoutArchiveFoldersSchema } from "./archive-folders-schema-baseline.mjs";
 const repository=resolve(import.meta.dirname,".."),require=createRequire(import.meta.url);
+const evidenceArg=process.argv.find(a=>a.startsWith("--evidence-dir="));
+const evidenceDir=evidenceArg?resolve(evidenceArg.slice("--evidence-dir=".length)):null;
+if(evidenceDir)mkdirSync(evidenceDir,{recursive:true,mode:0o700});
 const root=mkdtempSync("/private/tmp/flux-v2-auth-pg-"), data=join(root,"data"),socket=join(root,"s"),client=join(root,"client"),schemaPath=join(root,"schema.prisma");
 const url=`postgresql://flux_v2_test@localhost:55432/flux_v2_archives_test?host=${encodeURIComponent(socket)}&connect_timeout=5`;
 const env={PATH:process.env.PATH,LANG:"C",LC_ALL:"C",CHECKPOINT_DISABLE:"1",PRISMA_HIDE_UPDATE_MESSAGE:"1",PGPASSFILE:join(root,"no-pass"),PGSERVICEFILE:join(root,"no-service"),DATABASE_URL:url,DIRECT_URL:url};
@@ -14,6 +17,7 @@ const localEnv={...env,NODE_ENV:"production",NODE_PATH:join(repository,"node_mod
 const run=(command,args,options={})=>{const r=spawnSync(command,args,{cwd:root,env,encoding:"utf8",timeout:120000,maxBuffer:20*1024*1024,...options});if(r.status!==0)throw new Error(r.stdout+r.stderr+(r.error?.message??""));return r.stdout.trim();};
 const pg=["-X","-qAt","-h",socket,"-p","55432","-U","flux_v2_test","-d","flux_v2_archives_test","-v","ON_ERROR_STOP=1"];
 const sql=input=>run("psql",pg,{input});
+const capture=name=>{if(!evidenceDir)return;const rows=sql(readFileSync(join(repository,"scripts/archive-catalog-snapshot.sql"),"utf8")).split("\n").map(line=>JSON.parse(line));const result={tables:{}};for(const row of rows){if(row.section==="table")result.tables[row.table]=row.data;else result[row.section]=row.data;}writeFileSync(join(evidenceDir,name+".json"),JSON.stringify(result,null,2),{mode:0o600});};
 const prisma=args=>run(process.execPath,[require.resolve("prisma/build/index.js"),...args]);
 let started=false;
 try {
@@ -44,18 +48,23 @@ try {
  UNION ALL SELECT 'enum',typname,string_agg(enumlabel,',' ORDER BY enumsortorder) FROM pg_type JOIN pg_enum ON enumtypid=pg_type.oid WHERE typnamespace='public'::regnamespace GROUP BY typname
  ) objects`));
  const catalogBefore=catalog();
+ capture("disposable-before");
  const before=snapshot();copy(archiveFoldersMigration);writeFileSync(schemaPath,schema);prisma(["migrate","deploy","--schema",schemaPath]);assert.deepEqual(snapshot(),before);
  const catalogAfter=catalog();
+ capture("disposable-after");
  const inventory={added:Object.fromEntries(Object.entries(catalogAfter).filter(([key])=>!(key in catalogBefore))),changed:Object.fromEntries(Object.entries(catalogAfter).filter(([key,value])=>key in catalogBefore && catalogBefore[key]!==value).map(([key,value])=>[key,{before:catalogBefore[key],after:value}])),removed:Object.keys(catalogBefore).filter(key=>!(key in catalogAfter))};
  assert.deepEqual(inventory.removed,[]);
  assert.deepEqual(Object.keys(inventory.changed).sort(),['constraint:"UserArchiveAssetAccess".UserArchiveAssetAccess_single_asset_check','constraint:"BusinessEvent".BusinessEvent_contract_check','enum:BusinessEventType','function:flux_event_write_guard()','function:flux_shared_file_reference_guard()'].sort());
  assert.equal(Object.keys(inventory.added).filter(key=>key.startsWith('table:')).length,9);
+ for(const [kind,count] of [["index",39],["constraint",49],["function",21],["trigger",22]])assert.equal(Object.keys(inventory.added).filter(key=>key.startsWith(kind+":")).length,count);
+ for(const [prefix,count] of [["FOREIGN KEY",34],["PRIMARY KEY",9],["CHECK",6]])assert.equal(Object.entries(inventory.added).filter(([key,value])=>key.startsWith("constraint:")&&value.startsWith(prefix)).length,count);
  writeFileSync('/private/tmp/flux-phase64-migration-inventory.json',JSON.stringify(inventory,null,2));
+ if(evidenceDir)writeFileSync(join(evidenceDir,"migration-inventory.json"),JSON.stringify(inventory,null,2),{mode:0o600});
  assert.equal(sql('SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL'),"117");assert.equal(sql("SELECT count(*) FROM pg_tables WHERE schemaname='public'"),"159");
  for(const table of ["ArchiveFolder","ArchiveFilePlacement","ArchiveOrganizationCommand","ArchiveVerificationDecision","RetainedArchiveSource","ArchiveGrantScope","ArchiveAccessDecision","RuntimeArchivePublication","RuntimeArchiveFile"])assert.equal(sql(`SELECT count(*) FROM "${table}"`),"0");
  console.log("PASS populated additive migration: 116/150 → 117/159. Every original table/row/ledger checksum unchanged; zero relocation/backfill.");
  console.log("Candidate "+archiveFoldersMigration+"/migration.sql SHA-256 "+createHash("sha256").update(readFileSync(join(migrations,archiveFoldersMigration,"migration.sql"))).digest("hex"));
- console.log(run(process.execPath,[test,...process.argv.slice(2).filter(arg=>["--verification","--sharing","--runtime"].includes(arg))],{env:localEnv}));
+ console.log(run(process.execPath,[test,...process.argv.slice(2).filter(arg=>["--verification","--sharing","--runtime"].includes(arg))],{env:localEnv,timeout:600000}));
  assert.match(prisma(["migrate","diff","--from-url",url,"--to-schema-datamodel",schemaPath,"--script"]),/empty migration/);
  console.log("PASS schema drift empty. No remote database or storage used.");
 } finally {if(started)run("pg_ctl",["-D",data,"-m","fast","-w","stop"]);rmSync(root,{recursive:true,force:true});console.log("Disposable Phase 6.1 cluster removed.");}

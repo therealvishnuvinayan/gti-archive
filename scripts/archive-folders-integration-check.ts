@@ -26,6 +26,7 @@ const roles: Array<[string, BusinessRole | null]> = [["director","DIRECTOR"],["s
 const tokens = new Map<string,string>();
 let signed = 0;
 let deleted = 0;
+let copied = 0;
 let storageMode = "ok";
 const runtimeObjects = new Map<string, { ContentLength: number; ContentType: string; ETag: string; VersionId: string }>();
 async function as(id:string) { token = tokens.get(id)!; }
@@ -64,8 +65,8 @@ async function main(){
   if(name==="@/lib/s3"||name.endsWith("storage/s3"))return {
     ...original.call(this, join(compiledRoot,"src/lib/storage/s3.js"), ...args) as typeof import("../src/lib/storage/s3"),
     getS3BucketName:()=>"fixture-no-network",
-    getObjectMetadata:async(key:string)=>{ const o=runtimeObjects.get(key); if(!o)throw new Error("Missing synthetic object");return {...o}; },
-    copyStoredObject:async(input:{sourceKey:string;storageKey:string;sourceETag:string})=>{ const o=runtimeObjects.get(input.sourceKey);assert.equal(o?.ETag,input.sourceETag);runtimeObjects.set(input.storageKey,{...o!}); },
+    getObjectMetadata:async(key:string)=>{ const o=runtimeObjects.get(key); if(!o)throw Object.assign(new Error("Missing synthetic object"),{name:"NotFound"});return {...o}; },
+    copyStoredObject:async(input:{sourceKey:string;storageKey:string;sourceETag:string})=>{ const o=runtimeObjects.get(input.sourceKey);assert.equal(o?.ETag,input.sourceETag);runtimeObjects.set(input.storageKey,{...o!});copied++; },
 
     observePinnedStoredObject:async(input:{objectVersionId:string|null;objectETag:string})=>{ if(storageMode === "missing")throw new Error("NoSuchKey"); return {ContentLength:100,ContentType:"application/pdf",ETag:storageMode === "changed" ? '"changed"' : input.objectETag,VersionId:input.objectVersionId??undefined}; },
     readPinnedStoredObject:async(input:{objectVersionId:string|null;objectETag:string})=>({ContentLength:100,ContentType:"application/pdf",ETag:input.objectETag,VersionId:input.objectVersionId??undefined,Body:{transformToWebStream:()=>new ReadableStream({start(controller){controller.enqueue(new Uint8Array(100));controller.close();}})}}),
@@ -233,6 +234,8 @@ async function main(){
   if(process.argv.includes("--runtime")) {
     const check = localRequire(join(compiledRoot,"scripts/archive-runtime-integration-check.js")) as typeof import("./archive-runtime-integration-check");
     await check.runRuntimeArchiveChecks({db,user,require:localRequire,compiledRoot,seedObject:(key:string)=>runtimeObjects.set(key,{ContentLength:100,ContentType:"application/pdf",ETag:'"runtime-artwork"',VersionId:"runtime-exact-object"})});
+    const bounds = await import("./archive-runtime-bounds-check");
+    await bounds.runRuntimeArchiveBounds({db,user,require:localRequire,compiledRoot,seedObject:(key:string)=>runtimeObjects.set(key,{ContentLength:100,ContentType:"application/pdf",ETag:'"runtime-boundary"',VersionId:"runtime-boundary-object"}),storageWrites:()=>copied+deleted});
   }
  } finally { moduleApi._load=original; }
 }

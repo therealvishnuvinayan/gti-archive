@@ -1,5 +1,7 @@
 # FLUX V2 — Phase 6.3: internal Archive sharing
 
+> Superseded candidate notice: [Phase 6.5](../archive-runtime/PHASE-6.5.md) adds the required migration timeouts and records the integrated verification/read-only Neon preflight. Current candidate SHA-256: `f654a4101f805a93544d34e22efd73d914234f0690451d2bbab8b8d80627e5b9`. Migration remains unapplied; all four Phase 6 flags remain off/unset. Checksums and “not started” statements below are historical to this phase.
+
 > Historical phase report. [Phase 6.4](../archive-runtime/PHASE-6.4.md) records the latest still-unapplied combined migration, checksum, 159-table rehearsal and runtime Archive integration. The implementation and evidence below retain their original phase scope.
 
 Development implementation, 2026-10-24. Phase 6.3 only. No Neon migration, live S3 use, flag activation, account changes, push, deployment, runtime Archive publication, or later package work.
