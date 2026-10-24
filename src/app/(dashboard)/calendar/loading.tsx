@@ -1,0 +1,1 @@
+export default function CalendarLoading() { return <div role="status" className="space-y-4 p-6"><p className="text-sm text-emerald-800">Loading task deadlines…</p><div aria-hidden className="h-96 animate-pulse rounded-2xl bg-[#e5ebe6]" /></div>; }

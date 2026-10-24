@@ -28,7 +28,6 @@ import {
   X,
 } from "lucide-react";
 
-import { useNotificationCenter } from "@/components/notifications/notification-center";
 import type { SidebarVisibility } from "@/lib/permissions/resolver";
 
 type SidebarItem = {
@@ -248,7 +247,6 @@ export function Sidebar({
   visibility,
 }: SidebarProps) {
   const pathname = usePathname();
-  const { unreadCount } = useNotificationCenter();
   const [fetchedProjectBadgeCount, setFetchedProjectBadgeCount] = useState<
     number | undefined
   >(undefined);
@@ -380,10 +378,6 @@ export function Sidebar({
                       ? String(resolvedProjectBadgeCount)
                       : item.href === "/tasks" && typeof taskBadgeCount === "number"
                         ? String(taskBadgeCount)
-                      : item.href === "/notifications"
-                        ? unreadCount > 0
-                          ? String(unreadCount)
-                          : undefined
                       : item.badge;
                   const isActive =
                     item.href !== "#" &&

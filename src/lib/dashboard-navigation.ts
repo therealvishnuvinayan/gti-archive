@@ -1,3 +1,5 @@
+import { calendarHref, parseCalendarQuery } from "./calendar-v2/contracts";
+import { attentionHref, parseAttentionQuery } from "./notifications-v2/contracts";
 import { parseSearchQuery, searchHref } from "./search-v2/contracts";
 
 export type DashboardBackNavigation =
@@ -47,6 +49,23 @@ export function getDashboardBackNavigation(
   const segments = pathname.split("/").filter(Boolean);
   // Search return targets are canonical internal URLs, never arbitrary redirects.
   const searchReturn = searchParams.get("returnTo");
+  if (searchReturn?.startsWith("/notifications?") && /^\/(tasks\/[^/]+|projects\/(runtime|workflow-approvals)(\/[^/]+)?(\/completion)?)$/.test(pathname)) {
+    try {
+      const url = new URL(searchReturn, "http://internal");
+      if (url.origin === "http://internal" && url.pathname === "/notifications" && [...url.searchParams.keys()].length === new Set(url.searchParams.keys()).size)
+        return topbar(attentionHref(parseAttentionQuery(Object.fromEntries(url.searchParams))), "Attention", "Back to Attention");
+    } catch { /* Invalid targets retain the existing navigation. */ }
+  }
+  if (searchReturn?.startsWith("/calendar?") && /^\/tasks\/[^/]+$/.test(pathname)) {
+    try {
+      const url = new URL(searchReturn, "http://internal");
+      if (url.origin === "http://internal" && url.pathname === "/calendar" &&
+        [...url.searchParams.keys()].length === new Set(url.searchParams.keys()).size) {
+        return topbar(calendarHref(parseCalendarQuery(Object.fromEntries(url.searchParams))), "Calendar", "Back to Calendar");
+      }
+    } catch { /* Invalid targets retain the existing workspace navigation. */ }
+  }
+
   if (searchReturn && /^\/(tasks\/[^/]+|projects\/[^/]+|projects\/(flexible|runtime)\/[^/]+)$/.test(pathname)) {
     try {
       const url = new URL(searchReturn, "http://internal");

@@ -15,7 +15,7 @@ assert.equal(process.env.DATABASE_URL, url);
 const req = createRequire(__filename), Client = (req("@prisma/client") as { PrismaClient: typeof PrismaClient }).PrismaClient;
 const db = new Client({ datasourceUrl: url, log: [{ emit: "event", level: "query" }] });
 const queries: { query: string; params: string }[] = [];
-db.$on("query", e => { if (process.env.FLUX_SEARCH_CAPTURE === "1") queries.push({ query: e.query, params: e.params }); });
+db.$on("query", e => { if (process.env.FLUX_NOTIFICATIONS_CAPTURE === "1" || process.env.FLUX_SEARCH_CAPTURE === "1" || process.env.FLUX_CALENDAR_CAPTURE === "1") queries.push({ query: e.query, params: e.params }); });
 let token: string | null = null;
 async function as(userId: string) { token = (await db.session.findFirstOrThrow({ where: { userId } })).token; }
 async function main() {
@@ -195,6 +195,14 @@ async function main() {
   if (process.env.FLUX_SEARCH_TEST === "1") {
     const searchTests = req(join(compiled, "scripts/search-v2-integration-check.js")) as typeof import("./search-v2-integration-check");
     await searchTests.runSearchAcceptance({ db, as, setToken: value => { token = value; }, queries, root, storageReads: () => storageReads, external: () => external });
+  }
+  if (process.env.FLUX_CALENDAR_TEST === "1") {
+    const calendarTests = req(join(compiled, "scripts/calendar-v2-integration-check.js")) as typeof import("./calendar-v2-integration-check");
+    await calendarTests.runCalendarAcceptance({ db, as, setToken: value => { token = value; }, queries, root, storageReads: () => storageReads, external: () => external });
+  }
+  if (process.env.FLUX_NOTIFICATIONS_TEST === "1") {
+    const notificationTests = req(join(compiled, "scripts/notifications-v2-integration-check.js")) as typeof import("./notifications-v2-integration-check");
+    await notificationTests.runAttentionAcceptance({ db, as, setToken: value => { token = value; }, queries, root, storageReads: () => storageReads, external: () => external });
   }
   console.log(`PASS dashboard service: ${assertions} assertions; all five business roles, technical/anonymous denials, counts, six Tasker types, Sisters, accepted output, exact decision queues, project families, pagination and no dashboard storage/network reads.`);
 }

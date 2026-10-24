@@ -7,9 +7,13 @@ import { join, resolve } from 'node:path';
 const repository = resolve(import.meta.dirname, '..'), require = createRequire(import.meta.url);
 const root = mkdtempSync('/private/tmp/flux-v2-dashboard-'), data = join(root, 'data'), socket = join(root, 's');
 const url = `postgresql://dashboard_test@localhost:55439/dashboard_test?host=${encodeURIComponent(socket)}&connect_timeout=5`;
-const search = process.argv.includes('--search');
+const notifications = process.argv.includes('--notifications'), calendar = notifications || process.argv.includes('--calendar'), search = calendar || process.argv.includes('--search');
+const artifacts = join(repository, notifications ? '.tmp/phase74' : calendar ? '.tmp/phase73' : search ? '.tmp/phase72' : '.tmp/phase71');
+mkdirSync(artifacts,{recursive:true});
+if(calendar)mkdirSync(join(artifacts,'search'),{recursive:true});
+if(notifications)mkdirSync(join(artifacts,'calendar'),{recursive:true});
 const flags = Object.fromEntries(['DASHBOARD_V2','SHARED_FILE_IDENTITY','APPROVAL_ENGINE','SHARED_EVENTS','UNIVERSAL_TASKER','TASKER_DELIVERABLES','TASKER_CONCEPTS','TASKER_SISTERS','STAGE_BUILDER_DRAFTS','STAGE_BUILDER_PUBLICATION','STAGE_RUNTIME','RUNTIME_INTEGRATION','ARCHIVE_FOLDERS','ARCHIVE_VERIFICATION','ARCHIVE_SHARING','ARCHIVE_RUNTIME'].map(k => ['FLUX_'+k,'1']));
-const env = { PATH: process.env.PATH, LANG: 'C', LC_ALL: 'C', CHECKPOINT_DISABLE: '1', PRISMA_HIDE_UPDATE_MESSAGE: '1', NEXT_TELEMETRY_DISABLED: '1', PGPASSFILE: join(root,'no-password'), PGSERVICEFILE: join(root,'no-service'), DATABASE_URL: url, DIRECT_URL: url, NODE_PATH: join(repository,'node_modules'), FLUX_DASHBOARD_TEST_ROOT: root, ...flags, ...(search ? {FLUX_SEARCH_V2:'1',FLUX_SEARCH_TEST:'1',FLUX_SEARCH_ARTIFACTS:join(repository,'.tmp/phase72')} : {}) };
+const env = { PATH: process.env.PATH, LANG: 'C', LC_ALL: 'C', CHECKPOINT_DISABLE: '1', PRISMA_HIDE_UPDATE_MESSAGE: '1', NEXT_TELEMETRY_DISABLED: '1', PGPASSFILE: join(root,'no-password'), PGSERVICEFILE: join(root,'no-service'), DATABASE_URL: url, DIRECT_URL: url, NODE_PATH: join(repository,'node_modules'), FLUX_DASHBOARD_TEST_ROOT: root, ...flags, ...(search ? {FLUX_SEARCH_V2:'1',FLUX_SEARCH_TEST:'1',FLUX_SEARCH_ARTIFACTS:calendar ? join(artifacts,'search') : artifacts} : {}), ...(calendar ? {FLUX_CALENDAR_V2:'1',FLUX_CALENDAR_TEST:'1',FLUX_CALENDAR_ARTIFACTS:notifications ? join(artifacts,'calendar') : artifacts} : {}), ...(notifications ? {FLUX_NOTIFICATIONS_V2:'1',FLUX_NOTIFICATIONS_TEST:'1',FLUX_NOTIFICATIONS_ARTIFACTS:artifacts} : {}) };
 const run = (cmd,args,options={}) => { const r=spawnSync(cmd,args,{cwd:root,env,encoding:'utf8',timeout:180000,maxBuffer:16*1024*1024,...options}); assert.equal(r.status,0,r.stderr||r.stdout||r.error?.message); return r.stdout.trim(); };
 let started=false;
 try {
@@ -20,11 +24,11 @@ try {
  cpSync(join(repository,'prisma'),join(root,'prisma'),{recursive:true});
  run(process.execPath,[require.resolve('prisma/build/index.js'),'migrate','deploy','--schema',join(root,'prisma/schema.prisma')]);
  const output=join(root,'compiled'), config=join(root,'tsconfig.json');
- writeFileSync(config,JSON.stringify({extends:join(repository,search ? 'scripts/tsconfig.search-v2.json' : 'scripts/tsconfig.dashboard-v2.json'),compilerOptions:{outDir:output}}));
+ writeFileSync(config,JSON.stringify({extends:join(repository,notifications ? 'scripts/tsconfig.notifications-v2.json' : calendar ? 'scripts/tsconfig.calendar-v2.json' : search ? 'scripts/tsconfig.search-v2.json' : 'scripts/tsconfig.dashboard-v2.json'),compilerOptions:{outDir:output}}));
  run(process.execPath,[require.resolve('typescript/bin/tsc'),'--project',config]);
  mkdirSync(join(output,'node_modules/server-only'),{recursive:true});writeFileSync(join(output,'node_modules/server-only/index.js'),'');
  console.log(run(process.execPath,[join(output,'scripts/dashboard-v2-integration-check.js')]));
- if(process.argv.includes('--browser')) console.log(run(process.execPath,[join(repository,search ? 'scripts/search-browser-check.mjs' : 'scripts/dashboard-browser-check.mjs')],{env:{...env,FLUX_BROWSER_BUILD:process.env.FLUX_BROWSER_BUILD,FLUX_BROWSER_ARTIFACTS:process.env.FLUX_BROWSER_ARTIFACTS||join(repository,search ? '.tmp/phase72/browser' : '.tmp/phase71/browser'),FLUX_PLAYWRIGHT_PACKAGE:process.env.FLUX_PLAYWRIGHT_PACKAGE},timeout:360000}));
+ if(process.argv.includes('--browser')) console.log(run(process.execPath,[join(repository,notifications ? 'scripts/notifications-browser-check.mjs' : calendar ? 'scripts/calendar-browser-check.mjs' : search ? 'scripts/search-browser-check.mjs' : 'scripts/dashboard-browser-check.mjs')],{env:{...env,FLUX_BROWSER_BUILD:process.env.FLUX_BROWSER_BUILD,FLUX_BROWSER_ARTIFACTS:process.env.FLUX_BROWSER_ARTIFACTS||join(artifacts,'browser'),FLUX_PLAYWRIGHT_PACKAGE:process.env.FLUX_PLAYWRIGHT_PACKAGE},timeout:360000}));
 } finally {
  if(started) run('pg_ctl',['-D',data,'-m','fast','-w','stop']);
  rmSync(root,{recursive:true,force:true});console.log('Disposable dashboard database, sessions and application removed. No live credentials or storage used.');

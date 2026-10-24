@@ -90,7 +90,7 @@ export function DashboardAppFrame({
   }
 
   return (
-    <NotificationCenterProvider key={user.id} currentUserId={user.id} enabled={sidebarVisibility.notifications}>
+    <NotificationCenterProvider key={user.id} currentUserId={user.id} enabled={sidebarVisibility.notifications && pathname === "/notifications" && searchParams.get("view") === "messages"}>
       <DashboardShell
         user={user}
         projectBadgeCount={projectBadgeCount}

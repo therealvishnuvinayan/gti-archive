@@ -134,7 +134,13 @@
     "dashboard:role-browser-check": "node scripts/run-dashboard-isolated.mjs --browser",
     "search:v2-check": "node scripts/run-dashboard-isolated.mjs --search",
     "search:v2-build": "node scripts/dashboard-v2-build.mjs --search",
-    "search:v2-browser-check": "node scripts/run-dashboard-isolated.mjs --search --browser"
+    "search:v2-browser-check": "node scripts/run-dashboard-isolated.mjs --search --browser",
+    "notifications:v2-check": "node scripts/run-dashboard-isolated.mjs --notifications",
+    "notifications:v2-build": "node scripts/dashboard-v2-build.mjs --notifications",
+    "notifications:v2-browser-check": "node scripts/run-dashboard-isolated.mjs --notifications --browser",
+    "calendar:v2-check": "node scripts/run-dashboard-isolated.mjs --calendar",
+    "calendar:v2-build": "node scripts/dashboard-v2-build.mjs --calendar",
+    "calendar:v2-browser-check": "node scripts/run-dashboard-isolated.mjs --calendar --browser"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1053.0",
