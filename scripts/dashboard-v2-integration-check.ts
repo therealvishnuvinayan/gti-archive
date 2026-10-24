@@ -13,7 +13,9 @@ assert.ok(root.startsWith("/private/tmp/flux-v2-dashboard-")); assert.equal(stat
 const url = `postgresql://dashboard_test@localhost:55439/dashboard_test?host=${encodeURIComponent(join(root, "s"))}&connect_timeout=5`;
 assert.equal(process.env.DATABASE_URL, url);
 const req = createRequire(__filename), Client = (req("@prisma/client") as { PrismaClient: typeof PrismaClient }).PrismaClient;
-const db = new Client({ datasourceUrl: url });
+const db = new Client({ datasourceUrl: url, log: [{ emit: "event", level: "query" }] });
+const queries: { query: string; params: string }[] = [];
+db.$on("query", e => { if (process.env.FLUX_SEARCH_CAPTURE === "1") queries.push({ query: e.query, params: e.params }); });
 let token: string | null = null;
 async function as(userId: string) { token = (await db.session.findFirstOrThrow({ where: { userId } })).token; }
 async function main() {
@@ -190,6 +192,10 @@ async function main() {
   const response = await api.GET(new Request("http://local/api/dashboard")); assert.equal(response.status, 200); assert.equal(response.headers.get("cache-control"), "private, no-store");
   // Preserve synthetic fixtures for real password browser logins, never real accounts.
   writeFileSync(join(root, "browser-fixture.json"), JSON.stringify({ password, projectId, privateRuntime, taskId: task.id, privateTaskId: privateTask.id, digitalTaskId: digitalTask.id, ownedId: owned.id, dataTaskId: dataTask.id, fileTaskId: fileTask.id, finalId: final.id }), { mode: 0o600 });
+  if (process.env.FLUX_SEARCH_TEST === "1") {
+    const searchTests = req(join(compiled, "scripts/search-v2-integration-check.js")) as typeof import("./search-v2-integration-check");
+    await searchTests.runSearchAcceptance({ db, as, setToken: value => { token = value; }, queries, root, storageReads: () => storageReads, external: () => external });
+  }
   console.log(`PASS dashboard service: ${assertions} assertions; all five business roles, technical/anonymous denials, counts, six Tasker types, Sisters, accepted output, exact decision queues, project families, pagination and no dashboard storage/network reads.`);
 }
 main().catch(error => { console.error(error); process.exitCode = 1; }).finally(() => db.$disconnect());

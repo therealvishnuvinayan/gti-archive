@@ -15,7 +15,7 @@ export type TechnicalPrivilege = (typeof technicalPrivilegeValues)[number];
 
 /** Future contracts, not a claim that these operations already exist. */
 export const businessCapabilityCatalog = {
-  workspace: ["workspace.dashboard", "workspace.businessUsers", "workspace.contacts", "workspace.masterData",
+  workspace: ["workspace.search", "workspace.dashboard", "workspace.businessUsers", "workspace.contacts", "workspace.masterData",
     "workspace.calendar.view", "workspace.calendar.create", "workspace.calendar.delete"],
   project: [
     "project.runtimeCreateApproved", "project.runtimeRequestCreation", "project.runtimeDecideCreation", "project.runtimeGovernance",

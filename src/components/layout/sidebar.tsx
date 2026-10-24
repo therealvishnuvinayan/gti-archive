@@ -21,6 +21,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
+  Search,
   ShieldUser,
   UsersRound,
   Sparkles,
@@ -48,6 +49,7 @@ const sidebarSections: SidebarSection[] = [
     title: "Menu",
     items: [
       { label: "Dashboard", href: "/", icon: LayoutDashboard, visibilityKey: "dashboard" },
+      { label: "Search", href: "/search", icon: Search, visibilityKey: "search" },
       { label: "Flux AI", href: "/flux-ai", icon: Sparkles, visibilityKey: "fluxAi" },
       { label: "Projects", href: "/projects", icon: Folder, visibilityKey: "projects" },
       { label: "Clients", href: "/clients", icon: Building2, visibilityKey: "clients" },

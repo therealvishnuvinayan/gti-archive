@@ -1,0 +1,73 @@
+// Invoked by run-dashboard-isolated --search after persisted search acceptance.
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import { spawn } from 'node:child_process';
+import { cpSync, mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+const repository=resolve(import.meta.dirname,'..'), require=createRequire(import.meta.url);
+const root=realpathSync(process.env.FLUX_DASHBOARD_TEST_ROOT||'missing');assert.ok(root.startsWith('/private/tmp/flux-v2-dashboard-'));
+const build=realpathSync(process.env.FLUX_BROWSER_BUILD||'missing');assert.ok(build.startsWith('/private/tmp/flux-dashboard-build-'));
+const artifact=process.env.FLUX_BROWSER_ARTIFACTS||join(repository,'.tmp/phase72/browser');mkdirSync(artifact,{recursive:true,mode:0o700});
+const fixture=JSON.parse(readFileSync(join(root,'browser-fixture.json'),'utf8')), app=join(root,'app'), origin='http://127.0.0.1:3109';mkdirSync(app);
+for(const p of ['package.json','public','next.config.ts'])cpSync(join(build,p),join(app,p),{recursive:true});
+cpSync(join(build,'.next'),join(app,'.next'),{recursive:true,filter:p=>!p.startsWith(join(build,'.next/cache'))});symlinkSync(join(repository,'node_modules'),join(app,'node_modules'),'dir');
+const guard=join(root,'local-only.cjs');writeFileSync(guard,`for(const protocol of ['http','https']){const m=require('node:'+protocol),request=m.request;m.request=function(...args){const a=args[0],h=typeof a==='string'||a instanceof URL?new URL(a).hostname:a?.hostname||a?.host||'localhost';if(!['localhost','127.0.0.1','::1'].includes(h))throw new Error('EXTERNAL_NETWORK_FORBIDDEN:'+h);return request.apply(this,args);};} const f=global.fetch;global.fetch=(input,...args)=>{const u=new URL(typeof input==='string'||input instanceof URL?input:input.url);if(!['localhost','127.0.0.1','::1'].includes(u.hostname))throw new Error('EXTERNAL_FETCH_FORBIDDEN:'+u.hostname);return f(input,...args);};`);
+const result={checks:[],screens:[],expectedDenials:[],unexpectedResponses:[],pageErrors:[],externalRequests:[]}, logs=[];
+let browser, server;
+const pass=message=>{result.checks.push(message);console.log('PASS browser: '+message);};
+async function start(dashboard, search){server=spawn(process.execPath,['--require',guard,require.resolve('next/dist/bin/next'),'start','--hostname','127.0.0.1','--port','3109'],{cwd:app,env:{...process.env,FLUX_DASHBOARD_V2:dashboard,FLUX_SEARCH_V2:search,APP_URL:origin,NODE_ENV:'production',NEXT_PUBLIC_REALTIME_PROVIDER:'none',AWS_ACCESS_KEY_ID:'fixture-only',AWS_SECRET_ACCESS_KEY:'fixture-only',AWS_REGION:'us-east-1',AWS_S3_BUCKET:'fixture-only',AWS_ENDPOINT_URL_S3:'http://127.0.0.1:3110',S3_USE_ACCELERATE_ENDPOINT:'false'},stdio:['ignore','pipe','pipe']});for(const stream of [server.stdout,server.stderr])stream.on('data',b=>logs.push(b.toString()));for(let i=0;i<100;i++){try{if((await fetch(origin+'/sign-in')).status===200)return;}catch{}await new Promise(r=>setTimeout(r,150));}throw new Error('App failed to start');}
+async function stop(){if(!server)return;const closed=new Promise(r=>server.once('exit',r));server.kill('SIGTERM');await closed;server=null;}
+try{
+ await start('1','1');
+ const {chromium}=createRequire(process.env.FLUX_PLAYWRIGHT_PACKAGE||'/Users/vishnuvinayan/Projects/dinepanel/qa-harness/package.json')('playwright-core');
+ browser=await chromium.launch({headless:true,args:['--disable-background-networking']});result.chromium=browser.version();
+ const pages=new Map();
+ async function pageFor(id){if(pages.has(id))return pages.get(id);const context=await browser.newContext({viewport:{width:1440,height:1100}});await context.route('**/*',route=>{const u=new URL(route.request().url());if(u.origin===origin||['blob:','data:'].includes(u.protocol))return route.continue();result.externalRequests.push(u.origin);return route.abort();});const page=await context.newPage();page.setDefaultTimeout(15000);page.on('pageerror',e=>result.pageErrors.push(e.message));page.on('response',response=>{if(response.status()<400)return;const path=new URL(response.url()).pathname;const expected=[400,403,404].includes(response.status())&&(/^\/api\/(search|dashboard|tasker|runtime-projects)/.test(path)||path==='/search');(expected?result.expectedDenials:result.unexpectedResponses).push({path,status:response.status()});});await page.goto(origin+'/sign-in');await page.locator('[name=email]').fill(`${id}@dashboard.invalid`);await page.locator('[name=password]').fill(fixture.password);await page.locator('button[type=submit]').click();await page.waitForURL(u=>u.pathname!=='/sign-in');pages.set(id,page);return page;}
+ async function shot(page,name){await page.screenshot({path:join(artifact,name+'.png'),fullPage:true,animations:'disabled'});result.screens.push(name);}
+ async function json(page,path='/api/search'){return page.evaluate(async path=>{const response=await fetch(path);return {status:response.status,cache:response.headers.get('cache-control'),body:await response.json()};},path);}
+ async function search(page,q,kind='all',family='all',type='all') {await page.goto(origin+`/search?${new URLSearchParams({q,kind,family,type})}`);await page.locator('[data-search-v2]').waitFor();}
+ for(const id of ['director','spm','jpm','designer','digital']){
+  const page=await pageFor(id);await page.getByRole('link',{name:'Search',exact:true}).click();await page.waitForURL(u=>u.pathname==='/search');
+  await page.getByLabel('Project name, identifier or task title',{exact:true}).fill(['designer','digital'].includes(id)?'design':'project');await page.getByRole('button',{name:'Search',exact:true}).click();await page.locator('#search-results').filter({hasText:'Results for'}).waitFor();
+  const payload=await json(page,'/api/search?q='+(['designer','digital'].includes(id)?'design':'project'));assert.equal(payload.status,200);assert.equal(payload.cache,'private, no-store');
+  if(['designer','digital'].includes(id)){assert.ok(!('runtime' in payload.body.projects));assert.equal(await page.locator('select[name=family] option[value=runtime]').count(),0);assert.ok(!JSON.stringify(payload.body).includes('PRIVATE_'));}
+  assert.equal(await page.locator('[role=search]').count(),1);await shot(page,id+'-search');
+ }
+ pass('Five business roles sign in with genuine passwords, use the sidebar Search link and receive persisted authorized results');
+ const director=await pageFor('director'),spm=await pageFor('spm'),jpm=await pageFor('jpm'),designer=await pageFor('designer'),digital=await pageFor('digital');
+ for(const [q,family,path] of [['Native artwork','native','/projects/native'],['dashboard-flexible','flexible','/projects/flexible/dashboard-flexible'],[fixture.projectId,'runtime',`/projects/runtime/${fixture.projectId}`]]){
+  await search(spm,q,'projects',family);const saved=new URL(spm.url()).search;await spm.locator(`main a[href^="${path}?"]`).first().click();await spm.waitForURL(u=>u.pathname===path);await shot(spm,family+'-destination');await spm.getByRole('link',{name:'Back to Search',exact:true}).click();await spm.waitForURL(u=>u.pathname==='/search');assert.equal(new URL(spm.url()).searchParams.get('q'),q);assert.equal(new URL(spm.url()).searchParams.get('family'),family);assert.ok(saved.includes('kind=projects'));
+ }
+ pass('Native, flexible and runtime result links open genuine authorized workspaces and Back to Search preserves the selected query and filters');
+ await search(designer,'Prepare design brief','tasks','all','GENERAL');await designer.locator(`main a[href^="/tasks/${fixture.taskId}?"]`).click();await designer.waitForURL(u=>u.pathname===`/tasks/${fixture.taskId}`);await shot(designer,'task-destination');await designer.getByRole('link',{name:'Back to Search',exact:true}).click();await designer.waitForURL(u=>u.pathname==='/search');assert.equal(new URL(designer.url()).searchParams.get('type'),'GENERAL');
+ for(const [type,q] of [['GENERAL','Prepare'],['FILE_UPLOAD','Upload'],['DATA_INPUT','Enter'],['INSPECT_FILE','Inspect'],['INITIAL_CONCEPT','Initial'],['FINAL_CONCEPT','Final']]){await search(designer,q,'tasks','all',type);assert.equal((await json(designer,`/api/search?q=${q}&kind=tasks&type=${type}`)).body.tasks.items[0].type,type);}
+ await shot(designer,'final-concept-filter');
+ await search(digital,'Sister','tasks');await digital.getByText('Sister Task',{exact:true}).waitFor();assert.equal(await digital.locator(`main a[href^="/tasks/${fixture.initialId}"]`).count(),0);await shot(digital,'sister-with-private-parent');
+ pass('All six task filters work; task destinations reauthorize and Sister results omit the inaccessible parent');
+ await search(designer,'Paginated','tasks');const first=(await json(designer,'/api/search?q=Paginated&kind=tasks')).body.tasks.items.map(t=>t.id);await designer.getByRole('navigation',{name:'Search pages'}).getByRole('link',{name:'Next',exact:true}).click();await designer.waitForURL(u=>u.searchParams.get('page')==='1');await designer.locator('#search-results').waitFor();assert.ok(await designer.locator('#search-results').evaluate(e=>document.activeElement===e));
+ const second=(await json(designer,'/api/search?q=Paginated&kind=tasks&page=1')).body.tasks.items.map(t=>t.id);assert.ok(second.every(id=>!first.includes(id)));await shot(designer,'tasks-page-two');
+ await designer.locator('main a[href^="/tasks/"]').first().click();await designer.getByRole('link',{name:'Back to Search',exact:true}).click();await designer.waitForURL(u=>u.searchParams.get('page')==='1');
+ await designer.locator('[name=q]').fill('Prepare');await designer.getByRole('button',{name:'Search',exact:true}).click();await designer.waitForURL(u=>u.searchParams.get('q')==='Prepare');assert.equal(new URL(designer.url()).searchParams.get('page'),'0');assert.equal(new URL(designer.url()).searchParams.get('kind'),'tasks');
+ pass('Stable pagination has no duplicate IDs, returns to the same result page, focuses the results heading and resets only the page for a new search');
+ for(const id of ['spm','jpm','designer','digital']){const page=await pageFor(id);await search(page,'PRIVATE');await page.getByRole('heading',{name:'No accessible matches on this page',exact:true}).waitFor();const r=await json(page,'/api/search?q=PRIVATE');assert.equal(r.body.hasMore,false);assert.ok(!('total' in r.body));assert.equal((await json(page,`/api/tasker/${fixture.privateTaskId}`)).status,403);assert.equal((await json(page,`/api/runtime-projects/${fixture.privateRuntime}`)).status,403);}
+ await shot(designer,'hidden-record-empty-state');await search(designer,'');await designer.getByRole('heading',{name:'Start your search',exact:true}).waitFor();await shot(designer,'initial-search');
+ await designer.goto(origin+'/search?q=a&q=b');await designer.getByRole('heading',{name:'Invalid search',exact:true}).waitFor();await shot(designer,'invalid-search');
+ assert.equal((await json(designer,'/api/search?q=a&q=b')).status,400);assert.equal((await json(jpm,'/api/search?q=x&actorId=director')).status,400);
+ const tech=await pageFor('tech');assert.equal((await json(tech,'/api/search?q=project')).status,403);await tech.goto(origin+'/search');await tech.waitForURL(u=>u.pathname==='/settings');assert.equal(await tech.getByRole('link',{name:'Search',exact:true}).count(),0);await shot(tech,'technical-denial');
+ const anonymous=await browser.newContext();const anonResponse=await anonymous.request.get(origin+'/api/search?q=project');assert.equal(anonResponse.status(),403);result.expectedDenials.push({path:'/api/search (anonymous)',status:403});await anonymous.close();
+ pass('Hidden records have identical empty states without totals; direct destination/API attacks deny, technical-only Search redirects and anonymous access denies');
+ await search(designer,'design');await designer.setViewportSize({width:390,height:844});await designer.waitForTimeout(350);const closeSidebar=designer.getByRole('button',{name:'Close sidebar',exact:true});const box=await closeSidebar.boundingBox();if(box&&box.x>=0&&box.x<390)await closeSidebar.click();await shot(designer,'designer-mobile');assert.ok(await designer.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+ await search(designer,'x'.repeat(120));assert.ok(await designer.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await shot(designer,'mobile-long-search');await search(designer,'design');
+ await designer.setViewportSize({width:768,height:1024});await shot(designer,'designer-tablet');assert.ok(await designer.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await designer.locator('[name=q]').focus();await designer.keyboard.press('Tab');assert.equal(await designer.evaluate(()=>document.activeElement.textContent),'Search');
+ pass('Mobile and tablet search render without horizontal overflow; the query and submit button support keyboard navigation');
+ for(const [dashboard,searchFlag]of [['0','0'],['1','0'],['0','1'],['1','1']]){
+  await stop();await start(dashboard,searchFlag);await designer.goto(origin+'/');await designer.waitForURL(u=>u.pathname===(dashboard==='1'?'/':'/tasks'));
+  assert.equal((await json(designer)).status,searchFlag==='1'?200:404);assert.equal((await json(designer,'/api/dashboard')).status,dashboard==='1'?200:404);
+  assert.equal(await designer.getByRole('link',{name:'Search',exact:true}).count(),searchFlag==='1'?1:0);
+  if(searchFlag==='1'){await search(designer,'design');await designer.getByRole('heading',{name:'Results for “design”',exact:true}).waitFor();}else{await director.goto(origin+'/');assert.equal(await director.locator('[data-dashboard-v2]').count(),dashboard==='1'?1:0);}
+  await shot(searchFlag==='1'?designer:director,`flags-dashboard-${dashboard}-search-${searchFlag}`);
+ }
+ pass('All four independent dashboard/search flag combinations preserve the existing home route, sidebar and API availability');
+ assert.deepEqual(result.pageErrors,[]);assert.deepEqual(result.unexpectedResponses,[]);assert.deepEqual(result.externalRequests,[]);assert.ok(!logs.join('').includes('EXTERNAL_NETWORK_FORBIDDEN'));result.status='PASS';
+}catch(error){result.status='FAIL';result.error=error.stack;console.error(error.stack);process.exitCode=1;if(browser)for(const [i,c]of browser.contexts().entries())for(const [j,p]of c.pages().entries()){await p.screenshot({path:join(artifact,`failure-${i}-${j}.png`),fullPage:true}).catch(()=>{});console.log(JSON.stringify({url:p.url(),text:(await p.locator('body').innerText()).slice(-1200)}));}}
+finally{writeFileSync(join(artifact,'result.json'),JSON.stringify(result,null,2),{mode:0o600});writeFileSync(join(artifact,'server.log'),logs.join(''),{mode:0o600});await browser?.close();await stop();}

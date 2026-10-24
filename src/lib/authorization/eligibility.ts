@@ -79,6 +79,7 @@ const libraryReaderCapabilities = [
 const calendarCapabilities = ["workspace.calendar.view", "workspace.calendar.create", "workspace.calendar.delete"] as const;
 
 const projectManagerCapabilities = [
+  "workspace.search",
   "project.runtimeGovernance", "project.runtimeRequestCreation", "project.runtimeCreateApproved",
   "project.runtimeList", "project.runtimeRead", "project.runtimeManage", "project.runtimeCompletion",
   "workspace.dashboard", ...calendarCapabilities,
@@ -117,6 +118,7 @@ const projectManagerCapabilities = [
 ] as const satisfies readonly BusinessCapability[];
 
 const taskFocusedCapabilities = [
+  "workspace.search",
   "workspace.dashboard",
   ...calendarCapabilities,
   ...libraryReaderCapabilities,

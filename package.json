@@ -131,7 +131,10 @@
     "archive:folders-browser-check": "node scripts/archive-folders-browser-check.mjs",
     "dashboard:role-check": "node scripts/run-dashboard-isolated.mjs",
     "dashboard:role-build": "node scripts/dashboard-v2-build.mjs",
-    "dashboard:role-browser-check": "node scripts/run-dashboard-isolated.mjs --browser"
+    "dashboard:role-browser-check": "node scripts/run-dashboard-isolated.mjs --browser",
+    "search:v2-check": "node scripts/run-dashboard-isolated.mjs --search",
+    "search:v2-build": "node scripts/dashboard-v2-build.mjs --search",
+    "search:v2-browser-check": "node scripts/run-dashboard-isolated.mjs --search --browser"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1053.0",

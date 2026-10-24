@@ -1,3 +1,5 @@
+import { parseSearchQuery, searchHref } from "./search-v2/contracts";
+
 export type DashboardBackNavigation =
   | { owner: "none" }
   | { owner: "page" }
@@ -43,6 +45,18 @@ export function getDashboardBackNavigation(
   searchParams: SearchParamsReader,
 ): DashboardBackNavigation {
   const segments = pathname.split("/").filter(Boolean);
+  // Search return targets are canonical internal URLs, never arbitrary redirects.
+  const searchReturn = searchParams.get("returnTo");
+  if (searchReturn && /^\/(tasks\/[^/]+|projects\/[^/]+|projects\/(flexible|runtime)\/[^/]+)$/.test(pathname)) {
+    try {
+      const url = new URL(searchReturn, "http://internal");
+      if (searchReturn.startsWith("/search?") && url.origin === "http://internal" && url.pathname === "/search" &&
+        [...url.searchParams.keys()].length === new Set(url.searchParams.keys()).size) {
+        return topbar(searchHref(parseSearchQuery(Object.fromEntries(url.searchParams))), "Search", "Back to Search");
+      }
+    } catch { /* Preserve the existing workspace fallback for invalid input. */ }
+  }
+
 
   if (pathname === "/projects/new") {
     return topbar("/projects", "Projects", "Back to Projects");
