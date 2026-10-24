@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.notifications-v2.json",
+  "include": ["dashboard-v2-integration-check.ts", "search-v2-integration-check.ts", "calendar-v2-integration-check.ts", "notifications-v2-integration-check.ts", "phase75-integration-check.ts", "../src/app/api/notifications/route.ts", "../src/app/api/notifications/recent/route.ts", "../src/app/api/notifications/[notificationId]/read/route.ts", "../src/app/api/notifications/[notificationId]/unread/route.ts", "../src/app/api/notifications/read-all/route.ts"]
+}

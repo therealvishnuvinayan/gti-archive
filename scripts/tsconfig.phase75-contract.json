@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.user-projects.json",
+  "include": ["phase75-contract-check.ts"]
+}

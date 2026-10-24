@@ -16,6 +16,7 @@ type DashboardAppFrameProps = {
   projectBadgeCount?: number;
   taskBadgeCount?: number;
   sidebarVisibility: SidebarVisibility;
+  liveAttentionEnabled?: boolean;
   backNavigation?: {
     href: string;
     label: string;
@@ -70,6 +71,7 @@ export function DashboardAppFrame({
   projectBadgeCount,
   taskBadgeCount,
   sidebarVisibility,
+  liveAttentionEnabled = false,
   backNavigation,
 }: DashboardAppFrameProps) {
   const pathname = usePathname();
@@ -90,12 +92,13 @@ export function DashboardAppFrame({
   }
 
   return (
-    <NotificationCenterProvider key={user.id} currentUserId={user.id} enabled={sidebarVisibility.notifications && pathname === "/notifications" && searchParams.get("view") === "messages"}>
+    <NotificationCenterProvider key={user.id} currentUserId={user.id} enabled={sidebarVisibility.notifications && (!liveAttentionEnabled || pathname === "/notifications" && searchParams.get("view") === "messages")}>
       <DashboardShell
         user={user}
         projectBadgeCount={projectBadgeCount}
         taskBadgeCount={taskBadgeCount}
         sidebarVisibility={sidebarVisibility}
+        liveAttentionEnabled={liveAttentionEnabled}
         topbarProps={getTopbarProps(pathname, searchParams, backNavigation)}
       >
         {children}

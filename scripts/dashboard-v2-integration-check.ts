@@ -23,9 +23,10 @@ async function main() {
   const mod = req("node:module") as { _load: (name: string, ...args: unknown[]) => unknown }, original = mod._load, compiled = dirname(dirname(__filename));
   const objects = new Map<string, { ContentLength: number; ContentType: string; ETag: string }>();
   let storageReads = 0, external = 0;
+  let serviceDb = db;
   global.fetch = async () => { external++; throw new Error("External network forbidden"); };
   mod._load = function(name, ...args) {
-    if (["@/lib/prisma", "../prisma", "./prisma"].includes(name)) return { prisma: db, withPrismaRetry: (fn: () => unknown) => fn() };
+    if (["@/lib/prisma", "../prisma", "./prisma"].includes(name)) return { prisma: serviceDb, withPrismaRetry: (fn: () => unknown) => fn() };
     if (name === "next/headers") return { cookies: async () => ({ get: () => token ? { value: token } : undefined }) };
     if (name === "react") return { cache: (fn: unknown) => fn };
     if (name === "next/cache") return { unstable_cache: (fn: unknown) => fn, revalidatePath: () => {}, revalidateTag: () => {} };
@@ -37,6 +38,7 @@ async function main() {
       createPresignedUploadUrl: async () => "http://127.0.0.1/fake", createPresignedUploadTarget: async () => ({ uploadUrl: "http://127.0.0.1/fake" }) };
     return original.call(this, name.startsWith("@/") ? resolve(compiled, "src", name.slice(2)) : name, ...args);
   };
+  serviceDb = (req(join(compiled, "src/lib/authorization/project-transaction.js")) as typeof import("../src/lib/authorization/project-transaction")).projectTransactionClient(db);
   const dashboard = req(join(compiled, "src/lib/dashboard-v2/service.js")) as typeof import("../src/lib/dashboard-v2/service");
   const api = req(join(compiled, "src/app/api/dashboard/route.js")) as typeof import("../src/app/api/dashboard/route");
   const tasks = req(join(compiled, "src/lib/tasker/service.js")) as typeof import("../src/lib/tasker/service");
@@ -203,6 +205,10 @@ async function main() {
   if (process.env.FLUX_NOTIFICATIONS_TEST === "1") {
     const notificationTests = req(join(compiled, "scripts/notifications-v2-integration-check.js")) as typeof import("./notifications-v2-integration-check");
     await notificationTests.runAttentionAcceptance({ db, as, setToken: value => { token = value; }, queries, root, storageReads: () => storageReads, external: () => external });
+  }
+  if (process.env.FLUX_COMPATIBILITY_TEST === "1") {
+    const compatibilityTests = req(join(compiled, "scripts/phase75-integration-check.js")) as typeof import("./phase75-integration-check");
+    await compatibilityTests.runCompatibilityAcceptance({ db, as, setToken: value => { token = value; }, root, storageReads: () => storageReads, external: () => external });
   }
   console.log(`PASS dashboard service: ${assertions} assertions; all five business roles, technical/anonymous denials, counts, six Tasker types, Sisters, accepted output, exact decision queues, project families, pagination and no dashboard storage/network reads.`);
 }

@@ -1,8 +1,6 @@
 import { canLibrary } from "@/lib/authorization/library-rules";
 import { dashboardV2Enabled } from "@/lib/dashboard-v2/activation";
 import { searchV2Enabled } from "@/lib/search-v2/activation";
-import { calendarV2Enabled } from "@/lib/calendar-v2/activation";
-import { notificationsV2Enabled } from "@/lib/notifications-v2/activation";
 import { canArchive, archiveAccessLevel } from "@/lib/authorization/archive-rules";
 import {
   Prisma,
@@ -295,12 +293,12 @@ export function getSidebarVisibility(user: PermissionUser): SidebarVisibility {
     tasks: canUseTasks(user),
     projectCounts:
       projects && hasPermission(user, "dashboard.viewProjectCounts"),
-    calendar: calendarV2Enabled() && hasPermission(user, "calendar.view"),
+    calendar: hasPermission(user, "calendar.view"),
     collaboration: hasPermission(user, "collaboration.viewDirectory"),
     clients: canManageContactDirectories(user),
     finalBeneficiaries: canManageContactDirectories(user),
     users: hasPermission(user, "users.view"),
-    notifications: notificationsV2Enabled() && hasPermission(user, "notification.view"),
+    notifications: hasPermission(user, "notification.view"),
     library: hasPermission(user, "library.view"),
     archives: canUseArchives(user),
     settings: hasPermission(user, "settings.viewOwnProfile"),

@@ -112,7 +112,7 @@ export async function runCalendarAcceptance({ db, as, setToken, queries, root, s
   for (const v of [null, [], { date: ["2026-11-01"] }, { view: true }, { after: 20 }]) await assert.rejects(getTaskCalendar(v));
   for (const dashboard of ["0", "1"]) for (const search of ["0", "1"]) for (const calendar of ["0", "1"]) {
     process.env.FLUX_DASHBOARD_V2 = dashboard; process.env.FLUX_SEARCH_V2 = search; process.env.FLUX_CALENDAR_V2 = calendar;
-    const user = (await getCurrentUser())!, visibility = getSidebarVisibility(user); assert.equal(visibility.calendar, calendar === "1"); assert.equal(visibility.search, search === "1"); assert.equal(visibility.dashboard, dashboard === "1");
+    const user = (await getCurrentUser())!, visibility = getSidebarVisibility(user); assert.equal(visibility.calendar, true); assert.equal(visibility.search, search === "1"); assert.equal(visibility.dashboard, dashboard === "1");
     assert.equal(getAuthenticatedDefaultRoute(user), dashboard === "1" ? "/" : "/tasks"); assert.equal((await api("date=2026-11-01")).status, calendar === "1" ? 200 : 404);
     assert.equal((await dashboardApi(new Request("http://local/api/dashboard"))).status, dashboard === "1" ? 200 : 404); assert.equal((await searchApi(new Request("http://local/api/search?q=Calendar"))).status, search === "1" ? 200 : 404);
   }

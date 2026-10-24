@@ -1,3 +1,4 @@
+import { runCurrentContract } from "./run-server-contract-check.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
@@ -45,12 +46,15 @@ assert(
 );
 assert(stats.includes("KPI_ICONS"), "KPI cards must use the shared visual component.");
 
+// Private-project data remains permission scoped regardless of the panel label.
+runCurrentContract("dashboard");
+assert(workspace.includes("<FlexibleProjectsOverview"), "Private-project overview must remain connected.");
+
 for (const panel of [
   "Needs Attention",
   "Upcoming Deadlines",
   "Projects by Stage",
   "My Work",
-  "Flexible Projects",
   "Recent Projects",
 ]) {
   assert(workspace.includes(panel), `Dashboard panel is missing: ${panel}`);
@@ -82,23 +86,8 @@ assert(
   "Dashboard must keep business state separate from SUPER_ADMIN workflow diagnostics.",
 );
 
-assert(
-  service.includes("if (isGlobalProjectAdministrator(user)) return {};") &&
-    service.includes("{ ownerId: user.id }") &&
-    service.includes("coOwners: { some: { userId: user.id } }") &&
-    service.includes("executors: { some: { userId: user.id } }") &&
-    service.includes("collaborators: { some: { userId: user.id } }") &&
-    service.includes("const isGlobalAdministrator = isGlobalProjectAdministrator(user)"),
-  "Dashboard scope must be global for business administrators and relationship-based for standard users.",
-);
-assert(
-  flexibleProjectsService.includes("export function getFlexibleProjectAccessWhere") &&
-    flexibleProjectsService.includes("if (isGlobalProjectAdministrator(user)) return {};") &&
-    flexibleProjectsService.includes("{ ownerId: user.id }") &&
-    flexibleProjectsService.includes("collaborators: { some: { userId: user.id } }") &&
-    service.includes("where: getFlexibleProjectAccessWhere(user)"),
-  "Flexible dashboard projects must reuse the global-admin and owner/collaborator access scope.",
-);
+assert(service.includes("structuredProjectReadWhere(projectReadActor(user), true)"), "Dashboard must use current full-project scope.");
+assert(flexibleProjectsService.includes("flexibleProjectReadWhere(projectReadActor(user), true)") && service.includes("where: getFlexibleProjectAccessWhere(user)"), "Private projects must use current full-workspace scope.");
 assert(
   service.includes("projectId: { in: activeProjectIds }"),
   "Operational dashboard queries must begin from authorized active project IDs.",
@@ -176,7 +165,7 @@ assert(
 );
 assert(
   service.includes('hasPermission(\n    user,\n    "dashboard.viewRecentProjects"') &&
-    service.includes("const recentProjects = canViewRecentProjects") &&
+    service.includes("const fullRecentProjects = canViewRecentProjects") &&
     service.includes(": [];") &&
     service.includes(".slice(0, 6)") &&
     service.includes("updatedAt") &&
@@ -186,7 +175,7 @@ assert(
 );
 assert(
   page.includes("canCreateProjects(user)"),
-  "New Project visibility must combine the ADMIN role boundary with the existing create permission.",
+  "New Project visibility must use current business-role authority with the existing create permission.",
 );
 assert(
   !schema.includes("DashboardAttentionItem") &&

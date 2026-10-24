@@ -68,13 +68,13 @@ try{
  pass('Mobile agenda and scrollable month, tablet week, focusable navigation and controls render without page overflow');
  for(const dashboard of ['0','1'])for(const search of ['0','1'])for(const cal of ['0','1']){
   await stop();await start(dashboard,search,cal);await designer.goto(origin+'/');await designer.waitForURL(u=>u.pathname===(dashboard==='1'?'/':'/tasks'));
-  assert.equal(await designer.getByRole('link',{name:'Calendar',exact:true}).count(),cal==='1'?1:0);assert.equal(await designer.getByRole('link',{name:'Search',exact:true}).count(),search==='1'?1:0);
+  assert.equal(await designer.getByRole('link',{name:'Calendar',exact:true}).count(),1);assert.equal(await designer.getByRole('link',{name:'Search',exact:true}).count(),search==='1'?1:0);
   assert.equal((await json(designer)).status,cal==='1'?200:404);assert.equal((await json(designer,'/api/search?q=Calendar')).status,search==='1'?200:404);assert.equal((await json(designer,'/api/dashboard')).status,dashboard==='1'?200:404);
   if(cal==='1'){await calendar(designer,{view:'agenda',span:'day',date:'2026-11-20'});await designer.getByText('Initial Concept · Completed',{exact:true}).waitFor();}
-  else{const response=await designer.goto(origin+'/calendar');assert.ok([200,404].includes(response.status()));await designer.getByRole('heading',{name:'404',exact:true}).waitFor();await designer.getByText('This page could not be found.',{exact:true}).waitFor();assert.equal(await designer.locator('[data-calendar-v2]').count(),0);result.disabledPages.push({flags:dashboard+search+cal,status:response.status(),notFound:true});await director.goto(origin+'/');await director.getByRole('heading',{name:'Dashboard',exact:true}).waitFor();}
+  else{await designer.goto(origin+'/calendar');await designer.locator('[data-manual-calendar]').waitFor();assert.equal(await designer.locator('[data-calendar-v2]').count(),0);result.disabledPages.push({flags:dashboard+search+cal,legacyCalendar:true});await director.goto(origin+'/');await director.getByRole('heading',{name:'Dashboard',exact:true}).waitFor();}
   await shot(cal==='1'?designer:director,`flags-${dashboard}${search}${cal}`);
  }
- pass('All eight dashboard/search/calendar flag combinations preserve independent APIs, hidden Calendar navigation, disabled page behavior and existing landing routes');
+ pass('All eight dashboard/search/calendar flag combinations preserve independent APIs, legacy Calendar navigation, restored manual-event pages and existing landing routes');
  assert.deepEqual(result.pageErrors,[]);assert.deepEqual(result.unexpectedResponses,[]);assert.deepEqual(result.externalRequests,[]);assert.ok(!logs.join('').includes('EXTERNAL_NETWORK_FORBIDDEN'));result.status='PASS';
 }catch(error){result.status='FAIL';result.error=error.stack;console.error(error.stack);process.exitCode=1;if(browser)for(const [i,c]of browser.contexts().entries())for(const [j,p]of c.pages().entries()){await p.screenshot({path:join(artifact,`failure-${i}-${j}.png`),fullPage:true}).catch(()=>{});console.log(JSON.stringify({url:p.url(),text:(await p.locator('body').innerText()).slice(-1200)}));}}
 finally{writeFileSync(join(artifact,'result.json'),JSON.stringify(result,null,2),{mode:0o600});writeFileSync(join(artifact,'server.log'),logs.join(''),{mode:0o600});await browser?.close();await stop();}

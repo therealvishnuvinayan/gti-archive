@@ -38,13 +38,13 @@ const resolver = read("src/lib/permissions/resolver.ts");
 assertIncludesAll(
   resolver,
   [
-    "isBusinessAdministratorRole(user.role)",
+    'projectReadActor(user)?.businessRole === "DIRECTOR"',
     "project.ownerId === user.id",
     "isProjectCoOwner",
     "hasProjectCollaboratorGrant(user, project, \"canInteract\")",
     "hasProjectCollaboratorGrant(user, project, \"canAddCaptions\")",
     "hasProjectCollaboratorGrant(user, project, \"canViewBudget\")",
-    "hasProjectArchiveAccessGrant(user, project)",
+    'canArchive(user, "archive.download")',
     "case \"stage.submitWork\":",
     "case \"file.uploadSubmission\":",
     "return isProjectExecutor(user, project);",
@@ -84,7 +84,7 @@ assertIncludes(
 const archiveCategories = read("src/lib/archive-categories.ts");
 assertIncludes(
   archiveCategories,
-  "if (!canUseArchives(user))",
+  'if (!canArchive(fresh, "archive.view"))',
   "archive category API option hard-deny",
 );
 
@@ -96,8 +96,6 @@ assertIncludesAll(
     "assertCanAccessArchiveCategory(user, manualArchiveFile.archiveCategoryId)",
     "if (!hasPermission(user, \"archive.download\"))",
     "assertCanAccessManualArchiveFileAsset",
-    "if (!hasProjectPermission(user, project, \"archive.download\"))",
-    "if (!hasProjectPermission(user, project, \"archive.view\"))",
     "Final completion requirements must be resolved before archive.",
     "getFinalCompletionArchiveBlockers",
     "latestProject.archive.status !== ArchiveRecordStatus.SAVED",
@@ -119,8 +117,8 @@ assertIncludesAll(
   projects,
   [
     "export function canViewProjectBudget",
-    "hasProjectPermission(currentUser, project, \"project.viewBudget\")",
-    "hasProjectPermission(currentUser, project, \"project.updateBudget\")",
+    "canReadFullProject(currentUser, project)",
+    "canViewBudget: allowBudgetView",
     "budget: allowBudgetView",
     "currency: allowBudgetView ? project.currency : null",
     "buildProjectListStatusWhere(filter.status ?? \"ALL\")",
@@ -177,8 +175,9 @@ for (const functionName of [
   "finalizePreparedStageCommentUploads",
   "completePreparedChatAttachmentUpload",
 ]) {
+  assertIncludes(projectHistory, `runProjectMutation(user, "${functionName}"`, `${functionName} central authorization wrapper`);
   assert(
-    new RegExp(`export async function ${functionName}[\\s\\S]*?assertStageChatWriteAccess`).test(
+    new RegExp(`async function ${functionName}Implementation[\\s\\S]*?assertStageChatWriteAccess`).test(
       projectHistory,
     ),
     `${functionName} must use assertStageChatWriteAccess.`,
@@ -315,12 +314,12 @@ assertIncludesAll(
     "Copyright transfer is required and still pending.",
     "Final invoice is required and still pending.",
     "ProjectCompletionStepStatus.NOT_REQUIRED",
-    "canUploadApprovalProofForProject",
-    "canUploadCopyrightDocumentForProject",
-    "canUploadInvoiceForProject",
-    "Only the selected approval contact can upload authority approval proof.",
-    "Only the selected copyright contact can upload copyright transfer documents.",
-    "Only the selected final invoice recipient can upload the final invoice.",
+    "canManageCompletionWorkflow",
+    'runProjectMutation(user, "requestProjectCompletionDocumentUpload"',
+    'runProjectMutation(user, "finalizeProjectCompletionDocumentUpload"',
+    "prepareCompletionUpload",
+    "finishCompletionUpload",
+    "completionDocumentEvent",
     "requestProjectFinalInvoice",
     "ProjectCompletionDocumentType.AUTHORITY_APPROVAL_PROOF",
     "ProjectCompletionDocumentType.COPYRIGHT_TRANSFER",

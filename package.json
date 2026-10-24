@@ -28,7 +28,7 @@
     "projects:v2-check": "node scripts/projects-v2-dashboard-checks.mjs",
     "projects:layout-check": "node scripts/project-layout-ui-check.cjs",
     "projects:pagination-check": "tsc --project scripts/tsconfig.project-pagination-integration.json && node scripts/run-project-pagination-isolated-integration.mjs",
-    "projects:user-check": "tsc --project scripts/tsconfig.user-projects.json && COMPILED_ALIAS_ROOT=.tmp/user-projects node -r ./scripts/register-compiled-alias.cjs .tmp/user-projects/scripts/user-projects-page-check.js",
+    "projects:user-check": "node scripts/run-server-contract-check.mjs user-projects",
     "projects:user-integration-check": "tsc --project scripts/tsconfig.user-projects-integration.json && COMPILED_ALIAS_ROOT=.tmp/user-projects-integration node -r ./scripts/register-compiled-alias.cjs .tmp/user-projects-integration/scripts/user-projects-integration-check.js",
     "projects:flexible-integration-check": "tsc --project scripts/tsconfig.flexible-projects-integration.json && node scripts/run-flexible-projects-isolated-integration.mjs",
     "projects:milestone-attachment-check": "node scripts/flexible-milestone-attachment-check.cjs",
@@ -140,7 +140,10 @@
     "notifications:v2-browser-check": "node scripts/run-dashboard-isolated.mjs --notifications --browser",
     "calendar:v2-check": "node scripts/run-dashboard-isolated.mjs --calendar",
     "calendar:v2-build": "node scripts/dashboard-v2-build.mjs --calendar",
-    "calendar:v2-browser-check": "node scripts/run-dashboard-isolated.mjs --calendar --browser"
+    "calendar:v2-browser-check": "node scripts/run-dashboard-isolated.mjs --calendar --browser",
+    "phase7:compatibility-check": "node scripts/run-dashboard-isolated.mjs --compatibility",
+    "phase7:compatibility-build": "node scripts/dashboard-v2-build.mjs --compatibility",
+    "phase7:compatibility-browser-check": "node scripts/run-dashboard-isolated.mjs --compatibility --browser"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1053.0",

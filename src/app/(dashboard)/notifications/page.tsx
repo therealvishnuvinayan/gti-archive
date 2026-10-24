@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { NotificationsPageWorkspace } from "@/components/notifications/notifications-page-workspace";
 import { LiveAttentionWorkspace } from "@/components/notifications/live-attention-workspace";
@@ -12,9 +12,9 @@ import { AttentionError } from "@/lib/notifications-v2/contracts";
 import { getLiveAttention } from "@/lib/notifications-v2/service";
 export const dynamic = "force-dynamic";
 export default async function NotificationsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  if (!notificationsV2Enabled()) notFound();
   const user = await requireUser();
   if (!getSidebarVisibility(user).notifications) redirect(getAuthenticatedDefaultRoute(user));
+  if (!notificationsV2Enabled()) return <DashboardLayout><NotificationsPageWorkspace /></DashboardLayout>;
   const params = await searchParams;
   if (params.view === "messages" && Object.keys(params).length === 1) return <DashboardLayout><div className="space-y-4"><Link href="/notifications" className="text-emerald-800 underline">Back to live attention</Link><p className="text-sm text-[#68716a]">Recorded in-app messages. Read controls apply only to these stored, user-targeted records.</p><NotificationsPageWorkspace /></div></DashboardLayout>;
   let data;
